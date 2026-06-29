@@ -392,7 +392,13 @@ final class ReceiptReturnService
             };
 
             // ─────────────────────────────────────────────────────────────────
-            // Step 11: Restore stock
+            // Step 11: Restore stock (disposition-branched)
+            //
+            // NOT_RECEIVED → zero movements (goods never came back).
+            // RESTOCK      → receive back (+qty), then batch restitution.
+            // SCRAP        → receive back (+qty) then write-off (-qty);
+            //                net aggregate change = 0; batch restitution skipped
+            //                (scrapped goods never re-enter a sellable batch).
             // ─────────────────────────────────────────────────────────────────
             foreach ($validatedLines as $returnLine) {
                 /** @var ReceiptLine $originalLine */
@@ -400,6 +406,13 @@ final class ReceiptReturnService
 
                 if ($originalLine->product_id === null) {
                     continue;
+                }
+
+                /** @var ReturnLineDisposition $disposition */
+                $disposition = $returnLine['disposition'];
+
+                if ($disposition === ReturnLineDisposition::NotReceived) {
+                    continue; // nothing came back — no aggregate, no batch movement
                 }
 
                 /** @var numeric-string $qty */
@@ -423,12 +436,27 @@ final class ReceiptReturnService
                     variantId: $originalLine->variant_id,
                 );
 
-                $this->restoreBatchAllocations(
-                    originalLine: $originalLine,
-                    returnQuantity: $qty,
-                    alreadyReturnedQuantity: $alreadyReturnedQty,
-                    locationId: $originalReceipt->location_id,
-                );
+                if ($disposition === ReturnLineDisposition::Scrap) {
+                    // Net the received qty back out as a write-off; batch restitution skipped
+                    // (scrapped goods never re-enter a sellable batch).
+                    $this->writeOffReturnedStock(
+                        tenantId: $terminal->tenant_id,
+                        companyId: $companyId,
+                        locationId: $originalReceipt->location_id,
+                        productId: $originalLine->product_id,
+                        quantity: $qty,
+                        returnReceiptId: $draft->id,
+                        cashierId: $cashier->id,
+                        variantId: $originalLine->variant_id,
+                    );
+                } else { // RESTOCK
+                    $this->restoreBatchAllocations(
+                        originalLine: $originalLine,
+                        returnQuantity: $qty,
+                        alreadyReturnedQuantity: $alreadyReturnedQty,
+                        locationId: $originalReceipt->location_id,
+                    );
+                }
             }
 
             // ─────────────────────────────────────────────────────────────────
@@ -1209,6 +1237,80 @@ final class ReceiptReturnService
             'reference_type' => 'pos_receipt_return',
             'reference_id' => $returnReceiptId,
             'notes' => "Stock returned via POS return (return receipt: {$returnReceiptId})",
+            'user_id' => $cashierId,
+            'is_historical' => false,
+        ]);
+    }
+
+    /**
+     * Write off the received-back quantity for a SCRAP return.
+     *
+     * Called immediately after restoreStock so the two movements form a matched
+     * pair: the aggregate stock_levels.quantity returns to its pre-return value
+     * while the fiscal ledger records both legs (receipt + write-off).
+     *
+     * Quantity-only (Phase 0): no unit_cost / avg_cost_* columns are touched
+     * and WeightedAverageCostService is NOT called — mirrors restoreStock's
+     * quantity-only shape exactly (same StockLevel lockForUpdate + variant-aware
+     * lookup), just subtracts instead of adds. bcmath scale 4; no float.
+     *
+     * @param  numeric-string  $quantity
+     */
+    private function writeOffReturnedStock(
+        string $tenantId,
+        string $companyId,
+        string $locationId,
+        string $productId,
+        string $quantity,
+        string $returnReceiptId,
+        string $cashierId,
+        ?string $variantId = null,
+    ): void {
+        /** @var StockLevel|null $stockLevel */
+        $stockLevel = StockLevel::where('product_id', $productId)
+            ->where('location_id', $locationId)
+            ->where('company_id', $companyId)
+            ->when(
+                $variantId !== null,
+                fn ($query) => $query->where('variant_id', $variantId),
+                fn ($query) => $query->whereNull('variant_id'),
+            )
+            ->lockForUpdate()
+            ->first();
+
+        if ($stockLevel === null) {
+            Log::warning('No stock level for scrap write-off during return', [
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+                'location_id' => $locationId,
+            ]);
+
+            return;
+        }
+
+        $quantityBefore = (string) $stockLevel->quantity;
+        // Subtract at scale 4 (canonical quantity storage scale) — mirrors
+        // restoreStock's bcadd; no float.
+        $quantityAfter = bcsub((string) $stockLevel->quantity, $quantity, 4); // 4 = canonical quantity storage scale
+        $stockLevel->quantity = $quantityAfter;
+        $stockLevel->save();
+
+        StockMovement::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'product_id' => $productId,
+            'variant_id' => $variantId,
+            'location_id' => $locationId,
+            'movement_type' => MovementType::Adjustment,
+            'reason' => MovementReason::WriteOff,
+            'quantity' => $quantity,
+            'quantity_before' => $quantityBefore,
+            'quantity_after' => $quantityAfter,
+            'reference' => 'POS Return Scrap',
+            'reference_type' => 'pos_receipt_return_scrap',
+            'reference_id' => $returnReceiptId,
+            'notes' => "Scrapped on return (return receipt: {$returnReceiptId})",
             'user_id' => $cashierId,
             'is_historical' => false,
         ]);

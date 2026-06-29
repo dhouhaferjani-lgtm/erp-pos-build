@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Unit\POS;
 
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Services\ReceiptFinalizationService;
@@ -16,6 +20,7 @@ use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
+use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
 use App\Modules\POS\Domain\Services\CashDrawerService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Services\RefundDestinationResolver;
@@ -27,6 +32,7 @@ use App\Modules\Treasury\Domain\Services\PaymentRefundService;
 use App\Modules\Voucher\Application\Services\VoucherIssuanceService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -239,6 +245,163 @@ class ReceiptReturnServiceDispositionTest extends TestCase
     }
 
     // =========================================================================
+    // Task 7: disposition-branch stock step
+    // =========================================================================
+
+    public function test_scrap_writes_two_movements_and_skips_batch(): void
+    {
+        // Arrange: 10 units in stock; one batch allocation seeded to prove
+        // batch restitution is skipped for SCRAP.
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $stock = $this->createStockLevel($product->id, null, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '2.000']);
+
+        [$batch, $batchStock] = $this->createBatchWithStock($product, 'SCR-B1', '5.0000');
+        $this->createAllocation($sale, $line, $batch, '2.0000');
+
+        // Act
+        $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [['line_id' => $line->id, 'quantity' => '2.000',
+                'physical_receipt' => true, 'resalable' => false, 'disposition' => 'scrap']],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Net sellable unchanged vs before-return baseline of 10 (receive +2, write-off -2).
+        $this->assertSame('10.0000', (string) $stock->refresh()->quantity);
+
+        // One pos_return receive movement (+qty) and one write_off subtract movement (-qty).
+        $this->assertSame(1, StockMovement::where('product_id', $product->id)->where('reason', 'pos_return')->count());
+        $this->assertSame(1, StockMovement::where('product_id', $product->id)->where('reason', 'write_off')->count());
+
+        $writeOff = StockMovement::where('product_id', $product->id)->where('reason', 'write_off')->firstOrFail();
+        $this->assertSame(MovementType::Adjustment->value, $writeOff->movement_type->value);
+        $this->assertSame('pos_receipt_return_scrap', $writeOff->reference_type);
+
+        // Batch stock NOT inflated — restitution was skipped for SCRAP.
+        $this->assertSame('5.0000', (string) $batchStock->refresh()->quantity);
+    }
+
+    public function test_not_received_writes_zero_movements(): void
+    {
+        // Arrange
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $stock = $this->createStockLevel($product->id, null, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '1.000']);
+
+        // Act
+        $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [['line_id' => $line->id, 'quantity' => '1.000',
+                'physical_receipt' => false, 'resalable' => null, 'disposition' => 'not_received']],
+            returnReason: ReturnReason::CustomerChangedMind,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Stock level unchanged — zero movements written.
+        $this->assertSame('10.0000', (string) $stock->refresh()->quantity);
+        $this->assertSame(0, StockMovement::where('product_id', $product->id)->count());
+    }
+
+    public function test_explicit_restock_increases_stock_and_runs_batch_restitution(): void
+    {
+        // Arrange: explicit disposition=restock with valid physical_receipt + resalable.
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $stock = $this->createStockLevel($product->id, null, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '2.000']);
+
+        [$batch, $batchStock] = $this->createBatchWithStock($product, 'RST-B1', '0.0000');
+        $this->createAllocation($sale, $line, $batch, '2.0000');
+
+        // Act: explicit restock
+        $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [['line_id' => $line->id, 'quantity' => '2.000',
+                'physical_receipt' => true, 'resalable' => true, 'disposition' => 'restock']],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // Stock increased by returned qty.
+        $this->assertSame('12.0000', (string) $stock->refresh()->quantity);
+
+        // Only one movement (pos_return); no write_off.
+        $this->assertSame(1, StockMovement::where('product_id', $product->id)->where('reason', 'pos_return')->count());
+        $this->assertSame(0, StockMovement::where('product_id', $product->id)->where('reason', 'write_off')->count());
+
+        // Batch restitution ran — batch stock was restored.
+        $this->assertSame('2.0000', (string) $batchStock->refresh()->quantity);
+    }
+
+    public function test_variant_aware_scrap_both_movements_target_variant_row(): void
+    {
+        // Arrange: one product with two variants + a null/product-level row.
+        // Only variantA should be touched by either movement.
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $variantA = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+        ]);
+        $variantB = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+        ]);
+
+        $stockA = $this->createStockLevel($product->id, $variantA->id, '8.0000');
+        $stockB = $this->createStockLevel($product->id, $variantB->id, '5.0000');
+        $stockNull = $this->createStockLevel($product->id, null, '50.0000');
+
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, [
+            'variant_id' => $variantA->id,
+            'quantity' => '2.000',
+        ]);
+
+        // Act: SCRAP on a variant-A line
+        $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [['line_id' => $line->id, 'quantity' => '2.000',
+                'physical_receipt' => true, 'resalable' => false, 'disposition' => 'scrap']],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        // All three stock rows: variantA net unchanged (+2 receive, −2 write-off); decoys untouched.
+        $this->assertSame('8.0000', (string) $stockA->refresh()->quantity);
+        $this->assertSame('5.0000', (string) $stockB->refresh()->quantity);
+        $this->assertSame('50.0000', (string) $stockNull->refresh()->quantity);
+
+        // Both movements carry variantA's id; no movement for variantB or NULL.
+        $movements = StockMovement::where('product_id', $product->id)->get();
+        $this->assertCount(2, $movements);
+        foreach ($movements as $movement) {
+            $this->assertSame($variantA->id, $movement->variant_id);
+        }
+    }
+
+    // =========================================================================
     // Helpers — mirrors ReceiptReturnServiceTest scaffold exactly
     // =========================================================================
 
@@ -342,5 +505,51 @@ class ReceiptReturnServiceDispositionTest extends TestCase
         ];
 
         return Receipt::create(array_merge($defaults, $overrides));
+    }
+
+    /**
+     * Create a batch + its inventory_batch_stock row at the test location.
+     *
+     * @return array{0: Batch, 1: BatchStock}
+     */
+    private function createBatchWithStock(Product $product, string $batchNumber, string $quantity): array
+    {
+        $batch = Batch::create([
+            'uuid' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'batch_number' => $batchNumber,
+            'expiry_date' => now()->addYear(),
+            'is_active' => true,
+            'is_expired' => false,
+            'is_recalled' => false,
+        ]);
+
+        $batchStock = BatchStock::create([
+            'tenant_id' => $this->tenant->id,
+            'batch_id' => $batch->id,
+            'location_id' => $this->location->id,
+            'quantity' => $quantity,
+            'reserved_quantity' => '0',
+        ]);
+
+        return [$batch, $batchStock];
+    }
+
+    private function createAllocation(
+        Receipt $receipt,
+        ReceiptLine $line,
+        Batch $batch,
+        string $quantity,
+    ): ReceiptLineBatchAllocation {
+        return ReceiptLineBatchAllocation::create([
+            'receipt_id' => $receipt->id,
+            'receipt_line_id' => $line->id,
+            'batch_id' => $batch->id,
+            'quantity' => $quantity,
+            'batch_number' => $batch->batch_number,
+            'expiry_date' => $batch->expiry_date,
+        ]);
     }
 }
