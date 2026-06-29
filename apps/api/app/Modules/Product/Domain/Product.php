@@ -8,6 +8,7 @@ use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
@@ -62,6 +63,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $shelf_location
  * @property string|null $reorder_point
  * @property string|null $reorder_quantity
+ * @property RestockPolicy|null $restock_policy Per-product return restock policy override
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Unit|null $unitOfMeasure
@@ -114,6 +116,7 @@ class Product extends Model implements SellableContract
         'platform_product_id',
         'platform_submission_id',
         'enrichment_status',
+        'restock_policy',
     ];
 
     /**
@@ -154,6 +157,7 @@ class Product extends Model implements SellableContract
             'units_per_pack' => 'integer',
             'reorder_point' => 'decimal:4',
             'reorder_quantity' => 'decimal:4',
+            'restock_policy' => RestockPolicy::class,
         ];
     }
 

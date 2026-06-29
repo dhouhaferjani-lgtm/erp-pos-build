@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain;
 
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
+use App\Modules\POS\Domain\Enums\ReturnLineDisposition;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -29,6 +30,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $original_line_id FK to original sale line (set on return lines)
  * @property string|null $product_description
  * @property numeric-string $quantity
+ * @property bool|null $physical_receipt Whether the physical goods were actually returned
+ * @property bool|null $resalable Whether the returned item is in resalable condition
+ * @property ReturnLineDisposition|null $disposition Disposition decision for returned item
  * @property string $unit
  * @property numeric-string $unit_price
  * @property numeric-string|null $unit_cost
@@ -93,6 +97,10 @@ class ReceiptLine extends Model
         'eco_tax_amount',
         'eco_tax_rate',
         'eco_tax_category',
+        // Return disposition fields (Phase 0 — columns only; writer wired in later task)
+        'physical_receipt',
+        'resalable',
+        'disposition',
     ];
 
     /**
@@ -115,6 +123,10 @@ class ReceiptLine extends Model
             // Phase 1: always null; Phase 2 wires the writer.
             'eco_tax_amount' => 'decimal:5',
             'eco_tax_rate' => 'decimal:4',
+            // Return disposition fields
+            'physical_receipt' => 'boolean',
+            'resalable' => 'boolean',
+            'disposition' => ReturnLineDisposition::class,
         ];
     }
 

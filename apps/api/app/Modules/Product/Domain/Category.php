@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Product\Domain;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Product\Domain\Enums\RestockPolicy;
 use Database\Factories\CategoryFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -30,6 +31,7 @@ use Illuminate\Support\Str;
  * @property bool $is_active
  * @property string|null $default_tax_rate
  * @property string|null $default_tax_configuration_id
+ * @property RestockPolicy|null $restock_policy Category-level return restock policy
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
@@ -59,6 +61,7 @@ class Category extends Model
         'is_active',
         'default_tax_rate',
         'default_tax_configuration_id',
+        'restock_policy',
     ];
 
     /**
@@ -81,6 +84,7 @@ class Category extends Model
             'sort_order' => 'integer',
             'is_active' => 'boolean',
             'default_tax_rate' => 'decimal:2',
+            'restock_policy' => RestockPolicy::class,
         ];
     }
 
