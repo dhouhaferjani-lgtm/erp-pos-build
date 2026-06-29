@@ -83,7 +83,15 @@ NEXT on resume:
 - Customer/loyalty card slot in the cart = seam owned by the loyalty session.
 - `ProductCard`/`ProductGrid` + product-detail fiche → parapharmacy session Phase D (do not touch).
 
-## ✅ DARK-MODE TOKEN-DETOX SWEEP — P4-P7 (2026-06-28, batched; +4 ahead of origin/dev, NOT yet promoted)
+## ✅ FOLLOW-UP BATCH — layout/breakdown/shells (2026-06-29; owner "fold in as much as possible")
+- **✅ Dark-mode visual pass PASSED** (owner, 2026-06-29 — sell/cash/success/returns screenshots in dark): token mapping held, no contrast/semantic issues.
+- **CashPaymentScreen space-usage** (owner-flagged): numpad fills its column (`h-full auto-rows-fr`, no dead gap above Valider), denominations at the 56px floor, navy amounts bigger (text-5xl/text-4xl).
+- **PaymentSummary §5.1 discount split**: new bc-math cartStore selectors `grossSubtotal*`/`lineDiscountTotal*` (no float; TDD) → Sous-total (GROSS) · Remises produits · Remise panier (removable) · dont TVA · Total. **Kept generic "TVA" label** (owner decision — "dont TVA 19%" wrong on mixed rates; VAT is TTC/"of which"). Non-discount sales unchanged. en+fr keys.
+- **AdvancedPaymentsModal**: 3-column layout was already present (detox tokenized it); polished — amount-column numpad fills + mono amount (matches cash screen).
+- **P5 Drawer shell** (`components/ui/Drawer`): slide-in panel (backdrop fade + 240ms `ez-slide-in-*`, focus-trap, Esc/backdrop close, 48px close, i18n close label, footer) for the parapharmacy Filtres/fiche + future use. TDD (5) + DEV /theme-preview demo. **Toast: intentionally NOT built** — sonner is already the app's toast system (a parallel atom would fragment it); a tokenised sonner theming pass is an optional follow-up.
+- All green (typecheck + eslint-guarded + tests + react-doctor); **+4 ahead of origin/dev** (CashPaymentScreen space, PaymentSummary split, AdvancedPayments polish, Drawer).
+
+## ✅ DARK-MODE TOKEN-DETOX SWEEP — P4-P7 (2026-06-28, batched; PROMOTED to origin/dev)
 Owner asked to batch a lot then check. Detoxed **14 surfaces** → semantic tokens, ALL added to the ESLint token guard (dark-mode ready + regression-proof). Every file's own tests pass; big files fork-migrated per my mapping table, combined diffs verified COLOR-ONLY (no logic/JSX/testid/aria); typecheck + eslint(guarded) + react-doctor clean throughout.
 - **P4 payments** (1ee3854d4, 0d424cf7b, d0dab0155): CashPaymentScreen (+navy restyle), AdvancedPaymentsModal (916L), CardPaymentModal, CheckoutSuccessModal.
 - **P5 modals** (7671bc8d6): LineDiscountModal, DiscountModal, HeldTransactionsModal.
