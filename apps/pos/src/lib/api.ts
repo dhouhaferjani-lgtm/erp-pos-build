@@ -240,6 +240,14 @@ export async function apiPut<T>(
   return request<T>('PUT', url, data, undefined, opts);
 }
 
+export async function apiPatch<T>(
+  url: string,
+  data?: unknown,
+  opts?: ApiRequestOptions,
+): Promise<T> {
+  return request<T>('PATCH', url, data, undefined, opts);
+}
+
 export async function apiDelete<T>(
   url: string,
   opts?: ApiRequestOptions,

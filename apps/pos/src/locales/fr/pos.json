@@ -994,6 +994,31 @@
   },
   "customers": {
     "pageTitle": "Clients",
-    "placeholder": "La gestion des clients arrive bientôt."
+    "placeholder": "La gestion des clients arrive bientôt.",
+    "search": "Rechercher un client…",
+    "addCustomer": "Nouveau client",
+    "noCustomers": "Aucun client synchronisé.",
+    "loadError": "Impossible de charger les clients.",
+    "close": "Fermer",
+    "backToList": "Retour",
+    "name": "Nom",
+    "phone": "Téléphone",
+    "email": "E-mail",
+    "nameRequired": "Le nom est requis.",
+    "contactRequired": "Téléphone ou e-mail requis.",
+    "creating": "Création…",
+    "createCustomer": "Créer le client",
+    "createFailed": "La création du client a échoué.",
+    "skinProfileTitle": "Profil de peau",
+    "skinType": "Type de peau",
+    "skinTypeNone": "Non renseigné",
+    "skinAdviceNote": "Note de conseil",
+    "skinAdviceNotePlaceholder": "Conseils personnalisés pour ce client…",
+    "editSkinProfile": "Modifier le profil de peau",
+    "saveSkinProfile": "Enregistrer",
+    "savingSkinProfile": "Enregistrement…",
+    "updateSkinError": "Mise à jour du profil de peau échouée.",
+    "phone_label": "Téléphone : {{value}}",
+    "email_label": "E-mail : {{value}}"
   }
 }

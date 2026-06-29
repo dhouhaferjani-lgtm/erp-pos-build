@@ -181,6 +181,54 @@ export async function searchCustomers(
   );
 }
 
+const DEFAULT_LIST_LIMIT = 50;
+
+export async function listCustomers(
+  db: Database,
+  tenantId: string,
+  companyId: string,
+  limit: number = DEFAULT_LIST_LIMIT,
+): Promise<CustomerMirrorRow[]> {
+  assertPresent('tenant_id', tenantId);
+  assertPresent('company_id', companyId);
+
+  return queryAll<CustomerMirrorRow>(
+    db,
+    `SELECT *
+       FROM customers
+      WHERE tenant_id = $1
+        AND company_id = $2
+        AND is_active = 1
+      ORDER BY name, id
+      LIMIT $3`,
+    [tenantId, companyId, limit],
+  );
+}
+
+export async function updateCustomerSkinProfile(
+  db: Database,
+  tenantId: string,
+  companyId: string,
+  id: string,
+  skinType: string | null,
+  skinAdviceNote: string | null,
+): Promise<void> {
+  assertPresent('tenant_id', tenantId);
+  assertPresent('company_id', companyId);
+  assertPresent('id', id);
+
+  await execute(
+    db,
+    `UPDATE customers
+        SET skin_type = $4,
+            skin_advice_note = $5
+      WHERE tenant_id = $1
+        AND company_id = $2
+        AND id = $3`,
+    [tenantId, companyId, id, skinType ?? null, skinAdviceNote ?? null],
+  );
+}
+
 export function isBalanceStale(
   row: CustomerMirrorRow,
   now: Date,
