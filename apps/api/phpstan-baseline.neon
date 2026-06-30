@@ -97,54 +97,6 @@ parameters:
 			path: app/Modules/BatchExpiry/Application/Services/BatchStockService.php
 
 		-
-			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\Invoice\:\:\$amount_paid \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 2
-			path: app/Modules/Billing/Domain/Invoice.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\Invoice\:\:\$total \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/Billing/Domain/Invoice.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\InvoiceItem\:\:\$discount_percent \(cast ''decimal\:2''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/Billing/Domain/InvoiceItem.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\InvoiceItem\:\:\$quantity \(cast ''decimal\:2''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/Billing/Domain/InvoiceItem.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\InvoiceItem\:\:\$tax_rate \(cast ''decimal\:2''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/Billing/Domain/InvoiceItem.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\InvoiceItem\:\:\$unit_price \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/Billing/Domain/InvoiceItem.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\Payment\:\:\$amount \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 4
-			path: app/Modules/Billing/Domain/Payment.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\Payment\:\:\$refunded_amount \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 3
-			path: app/Modules/Billing/Domain/Payment.php
-
-		-
 			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\Plan\:\:\$price_monthly \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
 			identifier: precision.floatCastOnDecimalProperty
 			count: 3
@@ -157,22 +109,10 @@ parameters:
 			path: app/Modules/Billing/Domain/Plan.php
 
 		-
-			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\Refund\:\:\$amount \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/Billing/Domain/Refund.php
-
-		-
 			message: '#^Access to an undefined property object\{alipay_handle_redirect\?\: object\{native_data\: string\|null, native_url\: string\|null, return_url\: string\|null, url\: string\|null\}&Stripe\\StripeObject, boleto_display_details\?\: object\{expires_at\: int\|null, hosted_voucher_url\: string\|null, number\: string\|null, pdf\: string\|null\}&Stripe\\StripeObject, card_await_notification\?\: object\{charge_attempt_at\: int\|null, customer_approval_required\: bool\|null\}&Stripe\\StripeObject, cashapp_handle_redirect_or_display_qr_code\?\: object\{hosted_instructions_url\: string, mobile_auth_url\: string, qr_code\: object\{expires_at\: int, image_url_png\: string, image_url_svg\: string\}&Stripe\\StripeObject\}&Stripe\\StripeObject, display_bank_transfer_instructions\?\: object\{amount_remaining\: int\|null, currency\: string\|null, financial_addresses\?\: array\<object\{aba\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string, account_number\: string, account_type\: string, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, bank_name\: string, routing_number\: string\}&Stripe\\StripeObject, iban\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, bic\: string, country\: string, iban\: string\}&Stripe\\StripeObject, sort_code\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string, account_number\: string, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, sort_code\: string\}&Stripe\\StripeObject, spei\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, bank_code\: string, bank_name\: string, clabe\: string\}&Stripe\\StripeObject, supported_networks\?\: array\<string\>, swift\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string, account_number\: string, account_type\: string, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, bank_name\: string, swift_code\: string\}&Stripe\\StripeObject, type\: string, zengin\?\: object\{account_holder_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, account_holder_name\: string\|null, account_number\: string\|null, account_type\: string\|null, bank_address\: object\{city\: string\|null, country\: string\|null, line1\: string\|null, line2\: string\|null, postal_code\: string\|null, state\: string\|null\}&Stripe\\StripeObject, bank_code\: string\|null, bank_name\: string\|null, branch_code\: string\|null, branch_name\: string\|null\}&Stripe\\StripeObject\}&Stripe\\StripeObject\>, hosted_instructions_url\: string\|null, reference\: string\|null, type\: string\}&Stripe\\StripeObject, konbini_display_details\?\: object\{expires_at\: int, hosted_voucher_url\: string\|null, stores\: object\{familymart\: \(object\{confirmation_number\?\: string, payment_code\: string\}&Stripe\\StripeObject\)\|null, lawson\: \(object\{confirmation_number\?\: string, payment_code\: string\}&Stripe\\StripeObject\)\|null, ministop\: \(object\{confirmation_number\?\: string, payment_code\: string\}&Stripe\\StripeObject\)\|null, seicomart\: \(object\{confirmation_number\?\: string, payment_code\: string\}&Stripe\\StripeObject\)\|null\}&Stripe\\StripeObject\}&Stripe\\StripeObject, multibanco_display_details\?\: object\{entity\: string\|null, expires_at\: int\|null, hosted_voucher_url\: string\|null, reference\: string\|null\}&Stripe\\StripeObject, oxxo_display_details\?\: object\{expires_after\: int\|null, hosted_voucher_url\: string\|null, number\: string\|null\}&Stripe\\StripeObject, paynow_display_qr_code\?\: object\{data\: string, hosted_instructions_url\: string\|null, image_url_png\: string, image_url_svg\: string\}&Stripe\\StripeObject, pix_display_qr_code\?\: Stripe\\StripeObject, promptpay_display_qr_code\?\: object\{data\: string, hosted_instructions_url\: string, image_url_png\: string, image_url_svg\: string\}&Stripe\\StripeObject, redirect_to_url\?\: object\{return_url\: string\|null, url\: string\|null\}&Stripe\\StripeObject, swish_handle_redirect_or_display_qr_code\?\: object\{hosted_instructions_url\: string, mobile_auth_url\: string, qr_code\: object\{data\: string, image_url_png\: string, image_url_svg\: string\}&Stripe\\StripeObject\}&Stripe\\StripeObject, type\: string, use_stripe_sdk\?\: Stripe\\StripeObject, verify_with_microdeposits\?\: object\{arrival_date\: int, hosted_verification_url\: string, microdeposit_type\: string\|null\}&Stripe\\StripeObject, wechat_pay_display_qr_code\?\: object\{data\: string, hosted_instructions_url\: string, image_data_url\: string, image_url_png\: string, image_url_svg\: string\}&Stripe\\StripeObject, wechat_pay_redirect_to_android_app\?\: object\{app_id\: string, nonce_str\: string, package\: string, partner_id\: string, prepay_id\: string, sign\: string, timestamp\: string\}&Stripe\\StripeObject, wechat_pay_redirect_to_ios_app\?\: object\{native_url\: string\}&Stripe\\StripeObject\}&Stripe\\StripeObject\:\:\$redirect_to_url\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Modules/Billing/Infrastructure/Providers/StripePaymentProvider.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Billing\\Domain\\Payment\:\:\$amount \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/Billing/Presentation/Controllers/AdminBillingController.php
 
 		-
 			message: '#^bccomp\(\) called with a hardcoded literal scale in the service layer\. Monetary/quantity scale is currency\- and domain\-dependent — resolve it at runtime \(scale resolver, \$this\-\>scale\(\), CurrencyScale\) or, if a literal is genuinely correct, append a "// precision\-ok\: \<reason\>" comment\.$#'
@@ -519,13 +459,13 @@ parameters:
 		-
 			message: '#^bcadd\(\) called with a hardcoded literal scale in the service layer\. Monetary/quantity scale is currency\- and domain\-dependent — resolve it at runtime \(scale resolver, \$this\-\>scale\(\), CurrencyScale\) or, if a literal is genuinely correct, append a "// precision\-ok\: \<reason\>" comment\.$#'
 			identifier: precision.hardcodedBcmathScale
-			count: 3
+			count: 1
 			path: app/Modules/Inventory/Application/Services/WeightedAverageCostService.php
 
 		-
 			message: '#^bccomp\(\) called with a hardcoded literal scale in the service layer\. Monetary/quantity scale is currency\- and domain\-dependent — resolve it at runtime \(scale resolver, \$this\-\>scale\(\), CurrencyScale\) or, if a literal is genuinely correct, append a "// precision\-ok\: \<reason\>" comment\.$#'
 			identifier: precision.hardcodedBcmathScale
-			count: 4
+			count: 3
 			path: app/Modules/Inventory/Application/Services/WeightedAverageCostService.php
 
 		-
@@ -829,12 +769,6 @@ parameters:
 			path: app/Modules/POS/Application/Services/ReceiptPaymentService.php
 
 		-
-			message: '#^Casting decimal property App\\Modules\\POS\\Domain\\Receipt\:\:\$total \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/POS/Application/Services/ReceiptPdfService.php
-
-		-
 			message: '#^bcadd\(\) called with a hardcoded literal scale in the service layer\. Monetary/quantity scale is currency\- and domain\-dependent — resolve it at runtime \(scale resolver, \$this\-\>scale\(\), CurrencyScale\) or, if a literal is genuinely correct, append a "// precision\-ok\: \<reason\>" comment\.$#'
 			identifier: precision.hardcodedBcmathScale
 			count: 4
@@ -869,18 +803,6 @@ parameters:
 			identifier: precision.hardcodedBcmathScale
 			count: 1
 			path: app/Modules/POS/Application/Services/ReceiptVoidService.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Identity\\Domain\\User\:\:\$max_discount_percent \(cast ''decimal\:2''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/POS/Domain/Services/DiscountCalculationService.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\POS\\Domain\\Terminal\:\:\$max_discount_percent \(cast ''decimal\:2''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/POS/Domain/Services/DiscountCalculationService.php
 
 		-
 			message: '#^bccomp\(\) called with a hardcoded literal scale in the service layer\. Monetary/quantity scale is currency\- and domain\-dependent — resolve it at runtime \(scale resolver, \$this\-\>scale\(\), CurrencyScale\) or, if a literal is genuinely correct, append a "// precision\-ok\: \<reason\>" comment\.$#'
@@ -1019,24 +941,6 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: app/Modules/SmartPrompts/Infrastructure/Http/RecommendationEngineHttpClient.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Taxation\\Domain\\Entities\\WithholdingCertificate\:\:\$gross_amount \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/Taxation/Application/Services/CertificatePDFService.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Taxation\\Domain\\Entities\\WithholdingCertificate\:\:\$net_amount \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/Taxation/Application/Services/CertificatePDFService.php
-
-		-
-			message: '#^Casting decimal property App\\Modules\\Taxation\\Domain\\Entities\\WithholdingCertificate\:\:\$withholding_amount \(cast ''decimal\:3''\) to float re\-introduces IEEE 754 precision loss\. Keep it a numeric\-string and use bcmath \(bcadd/bcmul/CurrencyScale\:\:bcformat\) instead of \(float\)\.$#'
-			identifier: precision.floatCastOnDecimalProperty
-			count: 1
-			path: app/Modules/Taxation/Application/Services/CertificatePDFService.php
 
 		-
 			message: '#^bcadd\(\) called with a hardcoded literal scale in the service layer\. Monetary/quantity scale is currency\- and domain\-dependent — resolve it at runtime \(scale resolver, \$this\-\>scale\(\), CurrencyScale\) or, if a literal is genuinely correct, append a "// precision\-ok\: \<reason\>" comment\.$#'

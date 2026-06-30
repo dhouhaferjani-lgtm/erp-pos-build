@@ -54,3 +54,39 @@ Unchanged-or-worse god components: `apps/web/src/routes/index.tsx` grew 2,699 �
 ## 5. Net guidance
 
 The 06-24 audit is **safe to act on as-is** for all P0/P1 priorities — every one is confirmed live in a path that runs. The only stale parts are *understatements*: structural debt is worse than reported and the deptrac reassurance is outdated. Recommended next step is unchanged from README §5: **P0 precision sweep first**, **P1-1 cross-module deptrac ruleset in parallel** (now more urgent given the 726 → 775 creep and the +11 deptrac drift with no enforcement).
+
+---
+
+## 6. P0 sweep — fixed 2026-06-30
+
+All 6 P0 precision violations have been fixed via TDD on branch `fix/precision-p0-sweep` (worktree `erp.hex-p0`).
+
+| P0 | Description | Status | Commit(s) |
+|---|---|---|---|
+| P0-1 | WAC pipeline float rebase (`WeightedAverageCostService`) | **FIXED** | `46ac02a4a` |
+| P0-2 | `DraftPersistenceService` `line_total` float product | **FIXED** | `7f1cc7f80` |
+| P0-3 | Billing entity money via float (Invoice/Payment/InvoiceItem/Refund + MRR) | **FIXED** | `2c7b05f6f` + `e044b261a` + `c3b739e72` |
+| P0-4 | POS discount percent + change-given float (`DiscountCalculationService`, `ReceiptCreationService`, `ReceiptPdfService`) | **FIXED** | `49e83650d` + `64c0a04bf` |
+| P0-5 | Frontend POS payment float sum (`AdvancedPaymentsModal`) | **FIXED** | `ff5c4263f` + `c76fd8ed1` |
+| P0-6 | Tax/fiscal output floated (`CertificatePDFService`, `MtdJsonExporter`) | **FIXED** | `d12f1f28f` + `83ba255dd` |
+
+### Guard coverage (Step 2 outcome)
+
+Both PHPStan rules run **repo-wide** (no path allowlist):
+- `ForbidFloatCastOnDecimalProperty` — matches any `(float) $model->prop` where the property carries a `decimal:*` Eloquent cast; enforced across the entire `app/` tree.
+- `ForbidHardcodedBcmathScale` — matches literal integer scale args to bcmath functions; restricted by code to `Application/Services/` and `Domain/Services/` directories under any module. All cleaned service files fall within this scope.
+
+No config changes were required. The baseline (`phpstan-baseline.neon`) was trimmed to remove 18 stale entries that the P0 sweep eliminated:
+- **Removed entirely** (all violations fixed): `Billing/Domain/Invoice.php` (2), `Billing/Domain/InvoiceItem.php` (4), `Billing/Domain/Payment.php` (2), `Billing/Domain/Refund.php` (1), `Billing/Presentation/Controllers/AdminBillingController.php` (1), `POS/Application/Services/ReceiptPdfService.php` (1), `Taxation/Application/Services/CertificatePDFService.php` (3).
+- **Float cast entries removed, bcmath scale entries kept** (some violations remain, now properly suppressed): `POS/Domain/Services/DiscountCalculationService.php` (2 float cast entries removed).
+- **Counts reduced** (partial fix): `Inventory/Application/Services/WeightedAverageCostService.php` — `bcadd` count 3→1, `bccomp` count 4→3.
+- **No changes** (no stale entries): `Document/Domain/Services/DraftPersistenceService.php`, `Taxation/Infrastructure/Exporters/MtdJsonExporter.php`, `Inventory/Application/Services/GoodsReceiptService.php`, `POS/Application/Services/ReceiptCreationService.php`.
+
+### Slice preflight (2026-06-30)
+
+- **Pint:** all 13 production PHP files — clean (no changes)
+- **PHPStan:** all 13 production PHP files — 0 errors with updated baseline
+- **PHPUnit:** 162 tests, 356 assertions — all green (7 skipped env-dependent, 14 pre-existing deprecations)
+  - `DraftPersistenceServiceTest`, `DiscountCalculationServiceTest`, `TransactionDiscountValidationTest`, `ReceiptPdfChangeDueTest`, `DiscountEnforcementTest`, `WeightedAverageCostServiceTest`, `GoodsReceiptTest`, `WithholdingPrecisionTest`, `WithholdingCertificateTest`, `MoneyBcmathTest`, `CreateManualInvoicePrecisionTest`
+- **Frontend typecheck:** `pnpm typecheck` — 0 errors
+- **Vitest:** `AdvancedPaymentsModal` — 28/28 tests pass (2 test files)
