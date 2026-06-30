@@ -296,7 +296,7 @@ class ReturnNoteController extends Controller
                 'partner_id' => $data['partner_id'],
                 'source_document_id' => $data['source_document_id'] ?? null,
                 'location_id' => $locationId,
-                'currency' => $data['currency'] ?? $company->default_currency ?? 'EUR',
+                'currency' => $data['currency'] ?? $company->currency,
                 'notes' => $data['notes'] ?? null,
                 'subtotal' => '0.00',
                 'tax_amount' => '0.00',

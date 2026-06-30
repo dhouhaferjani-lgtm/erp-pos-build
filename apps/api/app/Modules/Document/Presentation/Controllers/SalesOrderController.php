@@ -166,7 +166,7 @@ class SalesOrderController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        return DB::transaction(function () use ($tenantId, $companyId, $validated, $lines, $vehicleContext): JsonResponse {
+        return DB::transaction(function () use ($tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
             // Generate document number
             $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::SalesOrder);
 
@@ -208,7 +208,7 @@ class SalesOrderController extends Controller
                 'status' => DocumentStatus::Draft,
                 'location_id' => $locationId,
                 'document_number' => $documentNumber,
-                'currency' => $validated['currency'] ?? 'EUR',
+                'currency' => $validated['currency'] ?? $company->currency,
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
                 'total' => $total,

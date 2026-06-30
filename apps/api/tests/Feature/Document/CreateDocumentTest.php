@@ -243,6 +243,31 @@ class CreateDocumentTest extends TestCase
         $this->assertDatabaseCount('document_lines', 2);
     }
 
+    public function test_document_inherits_company_currency_when_not_provided(): void
+    {
+        // Tunisia company — a document created WITHOUT an explicit currency must
+        // inherit the company currency (TND), never a hardcoded 'EUR' fallback.
+        $this->company->update(['currency' => 'TND']);
+
+        $payload = [
+            'partner_id' => $this->customer->id,
+            'document_date' => now()->toDateString(),
+            'lines' => [
+                ['description' => 'Service', 'quantity' => '1.00', 'unit_price' => '50.00', 'tax_rate' => '19.00'],
+            ],
+        ];
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.currency', 'TND');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/invoices', $payload + ['due_date' => now()->addDays(30)->toDateString()])
+            ->assertCreated()
+            ->assertJsonPath('data.currency', 'TND');
+    }
+
     public function test_can_create_invoice(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
