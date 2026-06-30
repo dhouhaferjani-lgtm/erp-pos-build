@@ -9,6 +9,7 @@ use App\Modules\Billing\Domain\Enums\PaymentProviderCode;
 use App\Modules\Billing\Domain\Enums\PaymentStatus;
 use App\Modules\Billing\Domain\ValueObjects\Money;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -185,17 +186,30 @@ final class Payment extends Model
             return false;
         }
 
-        $refundableAmount = (float) $this->amount - (float) $this->refunded_amount;
+        $scale = CurrencyScale::for($this->currency);
+        /** @var numeric-string $amount */
+        $amount = (string) $this->amount;
+        /** @var numeric-string $refundedAmount */
+        $refundedAmount = (string) $this->refunded_amount;
+        $refundable = bcsub($amount, $refundedAmount, $scale);
 
-        return $refundableAmount > 0;
+        return bccomp($refundable, '0', $scale) > 0;
     }
 
     /**
-     * Get remaining refundable amount.
+     * Get remaining refundable amount as a numeric-string at currency scale.
      */
-    public function getRefundableAmount(): float
+    public function getRefundableAmount(): string
     {
-        return max(0, (float) $this->amount - (float) $this->refunded_amount);
+        $scale = CurrencyScale::for($this->currency);
+        /** @var numeric-string $amount */
+        $amount = (string) $this->amount;
+        /** @var numeric-string $refundedAmount */
+        $refundedAmount = (string) $this->refunded_amount;
+        $diff = bcsub($amount, $refundedAmount, $scale);
+
+        // Clamp to '0.00' — bccomp guards against negative (over-refunded edge)
+        return bccomp($diff, '0', $scale) < 0 ? bcadd('0', '0', $scale) : $diff;
     }
 
     /**
@@ -210,7 +224,9 @@ final class Payment extends Model
 
         // Update invoice if linked
         if ($this->invoice_id && $this->invoice !== null) {
-            $this->invoice->recordPayment((float) $this->amount);
+            /** @var numeric-string $paidAmount */
+            $paidAmount = (string) $this->amount;
+            $this->invoice->recordPayment($paidAmount);
         }
     }
 
@@ -228,11 +244,19 @@ final class Payment extends Model
 
     /**
      * Record a refund.
+     *
+     * @param  numeric-string  $amount
      */
-    public function recordRefund(float $amount): void
+    public function recordRefund(string $amount): void
     {
-        $newRefundedAmount = (float) $this->refunded_amount + $amount;
-        $isFullRefund = $newRefundedAmount >= (float) $this->amount;
+        $scale = CurrencyScale::for($this->currency);
+        /** @var numeric-string $refundedAmount */
+        $refundedAmount = (string) $this->refunded_amount;
+        /** @var numeric-string $originalAmount */
+        $originalAmount = (string) $this->amount;
+        $newRefundedAmount = bcadd($refundedAmount, $amount, $scale);
+        // bccomp — full refund when accumulated refunded >= original amount
+        $isFullRefund = bccomp($newRefundedAmount, $originalAmount, $scale) >= 0;
 
         $this->update([
             'refunded_amount' => $newRefundedAmount,

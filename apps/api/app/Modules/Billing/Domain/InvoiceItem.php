@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Billing\Domain;
 
+use App\Shared\Domain\CurrencyScale;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -90,26 +91,52 @@ final class InvoiceItem extends Model
 
     /**
      * Calculate amount based on quantity and unit price.
+     *
+     * Returns a numeric-string at intermediate scale (EUR scale 2 + 1 = 3).
+     * Billing invoices are always in EUR; scale is resolved from the ISO map.
+     *
+     * @return numeric-string
      */
-    public function calculateAmount(): float
+    public function calculateAmount(): string
     {
-        return (float) $this->quantity * (float) $this->unit_price;
+        $interScale = CurrencyScale::for('EUR') + 1; // 3
+        /** @var numeric-string $qty */
+        $qty = (string) $this->quantity;
+        /** @var numeric-string $price */
+        $price = (string) $this->unit_price;
+
+        return bcmul($qty, $price, $interScale);
     }
 
     /**
      * Calculate tax amount.
+     *
+     * tax_rate is a RATE (not currency-scaled); divide by 100 at extra precision
+     * before multiplying to avoid scale loss.
      */
-    public function calculateTaxAmount(): float
+    public function calculateTaxAmount(): string
     {
-        return $this->calculateAmount() * ((float) $this->tax_rate / 100);
+        $interScale = CurrencyScale::for('EUR') + 1; // 3
+        /** @var numeric-string $taxRate */
+        $taxRate = (string) $this->tax_rate;
+        $rateFraction = bcdiv($taxRate, '100', $interScale + 3);
+
+        return bcmul($this->calculateAmount(), $rateFraction, $interScale);
     }
 
     /**
      * Calculate discount amount.
+     *
+     * discount_percent is a RATE (not currency-scaled); same pattern as tax.
      */
-    public function calculateDiscountAmount(): float
+    public function calculateDiscountAmount(): string
     {
-        return $this->calculateAmount() * ((float) $this->discount_percent / 100);
+        $interScale = CurrencyScale::for('EUR') + 1; // 3
+        /** @var numeric-string $discountPercent */
+        $discountPercent = (string) $this->discount_percent;
+        $discountFraction = bcdiv($discountPercent, '100', $interScale + 3);
+
+        return bcmul($this->calculateAmount(), $discountFraction, $interScale);
     }
 
     /**

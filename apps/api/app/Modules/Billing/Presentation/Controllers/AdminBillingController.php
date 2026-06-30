@@ -37,9 +37,10 @@ final class AdminBillingController extends Controller
     #[CrossTenantRoute(reason: 'Super-admin billing dashboard: aggregates fleet-wide MRR/ARR/revenue, active+trial+past_due subscription counts, and outstanding/overdue invoice totals across all tenants for platform finance operations; mounted under auth:sanctum-admin + super_admin (EnsureSuperAdmin).')]
     public function dashboard(): JsonResponse
     {
+        $mrr = $this->calculateMRR();
         $stats = [
-            'mrr' => $this->calculateMRR(),
-            'arr' => $this->calculateMRR() * 12,
+            'mrr' => $mrr,
+            'arr' => bcmul($mrr, '12', 2),
             'active_subscriptions' => TenantSubscription::whereIn('status', ['active', 'trial'])->count(),
             'trial_subscriptions' => TenantSubscription::where('status', 'trial')->count(),
             'past_due_subscriptions' => TenantSubscription::where('status', 'past_due')->count(),
@@ -274,7 +275,9 @@ final class AdminBillingController extends Controller
 
             // Update invoice if linked
             if ($payment->invoice_id && $payment->invoice !== null) {
-                $payment->invoice->recordPayment((float) $payment->amount);
+                /** @var numeric-string $paidAmount */
+                $paidAmount = (string) $payment->amount;
+                $payment->invoice->recordPayment($paidAmount);
             }
 
             return response()->json(['data' => $payment->load(['tenant', 'invoice'])], 201);
@@ -306,14 +309,15 @@ final class AdminBillingController extends Controller
             'reason' => 'nullable|string|max:255',
         ]);
 
-        $amount = $validated['amount'] ?? $payment->getRefundableAmount();
+        /** @var numeric-string $amount */
+        $amount = (string) ($validated['amount'] ?? $payment->getRefundableAmount());
 
         // If online provider, process refund
         if (! $payment->isManual()) {
             $provider = $this->providerManager->provider($payment->provider);
             $result = $provider->refund(
                 $payment->provider_payment_id ?? '',
-                new Money((string) $amount, $payment->currency)
+                new Money($amount, $payment->currency)
             );
 
             if (! $result->success) {
@@ -337,7 +341,6 @@ final class AdminBillingController extends Controller
             'refunded_at' => now(),
         ]);
 
-        // Update payment's refunded amount
         $payment->recordRefund($amount);
 
         return response()->json(['data' => $refund]);
@@ -373,18 +376,27 @@ final class AdminBillingController extends Controller
     }
 
     /**
-     * Calculate Monthly Recurring Revenue.
+     * Calculate Monthly Recurring Revenue as a numeric-string.
+     *
+     * yearly / 12 computed at scale+1=3 to preserve sub-cent precision;
+     * final sum normalised at scale 2 (EUR billing).
+     *
+     * @return numeric-string
      */
-    private function calculateMRR(): float
+    private function calculateMRR(): string
     {
-        $monthly = TenantSubscription::whereIn('status', ['active', 'trial', 'past_due'])
+        /** @var numeric-string $monthly */
+        $monthly = (string) TenantSubscription::whereIn('status', ['active', 'trial', 'past_due'])
             ->where('billing_cycle', 'monthly')
             ->sum('price');
 
-        $yearly = TenantSubscription::whereIn('status', ['active', 'trial', 'past_due'])
+        /** @var numeric-string $yearly */
+        $yearly = (string) TenantSubscription::whereIn('status', ['active', 'trial', 'past_due'])
             ->where('billing_cycle', 'yearly')
             ->sum('price');
 
-        return (float) $monthly + ((float) $yearly / 12);
+        $monthlyFromYearly = bcdiv($yearly, '12', 3);
+
+        return bcadd($monthly, $monthlyFromYearly, 2);
     }
 }

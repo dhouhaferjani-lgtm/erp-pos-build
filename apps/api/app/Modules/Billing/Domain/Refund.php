@@ -105,7 +105,9 @@ final class Refund extends Model
         // Update parent payment's refunded amount
         /** @var Payment $payment */
         $payment = $this->payment;
-        $payment->recordRefund((float) $this->amount);
+        /** @var numeric-string $refundAmount */
+        $refundAmount = (string) $this->amount;
+        $payment->recordRefund($refundAmount);
     }
 
     /**

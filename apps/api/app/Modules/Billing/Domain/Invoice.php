@@ -7,6 +7,7 @@ namespace App\Modules\Billing\Domain;
 use App\Modules\Billing\Domain\Enums\InvoiceStatus;
 use App\Modules\Billing\Domain\ValueObjects\Money;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -191,21 +192,30 @@ final class Invoice extends Model
 
     /**
      * Record a payment against this invoice.
+     *
+     * @param  numeric-string  $amount
      */
-    public function recordPayment(float $amount): void
+    public function recordPayment(string $amount): void
     {
-        $newAmountPaid = (float) $this->amount_paid + $amount;
-        $newAmountDue = (float) $this->total - $newAmountPaid;
+        $scale = CurrencyScale::for($this->currency);
+        /** @var numeric-string $amountPaid */
+        $amountPaid = (string) $this->amount_paid;
+        /** @var numeric-string $total */
+        $total = (string) $this->total;
+        $newAmountPaid = bcadd($amountPaid, $amount, $scale);
+        $newAmountDue = bcsub($total, $newAmountPaid, $scale);
 
-        $status = $newAmountDue <= 0
-            ? InvoiceStatus::Paid
-            : InvoiceStatus::PartiallyPaid;
+        // bccomp — never float comparison; bccomp(due,'0',scale)<=0 means fully paid
+        $isPaid = bccomp($newAmountDue, '0', $scale) <= 0;
+        $status = $isPaid ? InvoiceStatus::Paid : InvoiceStatus::PartiallyPaid;
+        // Clamp: if overpaid by rounding, floor to '0.00' at currency scale
+        $clampedDue = $isPaid ? bcadd('0', '0', $scale) : $newAmountDue;
 
         $this->update([
             'amount_paid' => $newAmountPaid,
-            'amount_due' => max(0, $newAmountDue),
+            'amount_due' => $clampedDue,
             'status' => $status,
-            'paid_at' => $status === InvoiceStatus::Paid ? now() : null,
+            'paid_at' => $isPaid ? now() : null,
         ]);
     }
 
