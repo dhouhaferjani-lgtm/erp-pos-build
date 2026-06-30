@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
-import { bcformat } from '@/lib/decimal';
+import { bcformat, bcadd, bcsub, bccomp, bcsum } from '@/lib/decimal';
 import { NumPad } from '@/components/molecules/NumPad';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { requiresInstrumentForMethodCode } from '@/lib/payment/paymentMethodKind';
@@ -116,6 +116,39 @@ export interface AdvancedPaymentsModalProps {
    * canonical scoped (audited) path. Built once by HomePage.
    */
   approvalContext?: PosOverrideContext;
+}
+
+/**
+ * Pure helper extracted for unit-testability (D0-1, 2026-07-01).
+ * Computes tender state using decimal-string bcmath (big.js) — no IEEE-754 float.
+ * PaymentLineItem.amount is still `number` upstream; String() converts at the boundary.
+ * Upstream TODO: change PaymentLineItem.amount to `string` and store via
+ * `bcformat(inputStr, decimals)` in handleAddPayment to eliminate the last
+ * float-to-string conversion in this path.
+ */
+export function computeTenderState(
+  paymentLines: readonly { amount: number }[],
+  voucherTenders: readonly { amount: string }[],
+  total: number,
+  decimals: number,
+): { totalPaid: string; remaining: string; overpayment: string; isFullyPaid: boolean } {
+  const totalStr = String(total);
+  const voucherTotal = bcsum(voucherTenders.map((v) => v.amount), decimals);
+  const totalPaid = bcadd(
+    bcsum(paymentLines.map((l) => String(l.amount)), decimals),
+    voucherTotal,
+    decimals,
+  );
+  const remaining =
+    bccomp(totalPaid, totalStr) < 0
+      ? bcsub(totalStr, totalPaid, decimals)
+      : bcformat('0', decimals);
+  const overpayment =
+    bccomp(totalPaid, totalStr) > 0
+      ? bcsub(totalPaid, totalStr, decimals)
+      : bcformat('0', decimals);
+  const isFullyPaid = bccomp(totalPaid, totalStr) >= 0;
+  return { totalPaid, remaining, overpayment, isFullyPaid };
 }
 
 export function AdvancedPaymentsModal({
@@ -228,29 +261,16 @@ export function AdvancedPaymentsModal({
     return '';
   }, [repositoryId, compatibleRepositories]);
 
-  // B3-followup audit (Finding 1, 2026-05-01): voucher tender amounts must
-  // count toward `totalPaid` so the modal's running balance, "Pay Remaining"
-  // pill, change-due indicator, and "fully paid" gate all reflect the true
-  // tender state. Stored as decimal strings — convert to float for the same
-  // arithmetic the rest of the modal uses.
-  const voucherTotal = useMemo(
-    () =>
-      voucherTenders.reduce(
-        (sum, v) => sum + (Number.parseFloat(v.amount) || 0),
-        0,
-      ),
-    [voucherTenders],
+  // D0-1 (2026-07-01): tender arithmetic via decimal-string bcmath (big.js).
+  // computeTenderState is a pure exported function — unit-tested independently.
+  const { totalPaid, remaining, overpayment, isFullyPaid } = useMemo(
+    () => computeTenderState(paymentLines, voucherTenders, total, decimals),
+    [paymentLines, voucherTenders, total, decimals],
   );
-
-  const totalPaid = useMemo(
-    () => paymentLines.reduce((sum, l) => sum + l.amount, 0) + voucherTotal,
-    [paymentLines, voucherTotal],
-  );
-
-  const remaining = Math.max(0, total - totalPaid);
-  const overpayment = Math.max(0, totalPaid - total);
-  const isFullyPaid = totalPaid >= total;
-  const canSubmitWithTenderTolerance = remaining > 0 && totalPaid > 0 && tenderTolerancePin.trim() !== '';
+  const canSubmitWithTenderTolerance =
+    bccomp(remaining, '0') > 0 &&
+    bccomp(totalPaid, '0') > 0 &&
+    tenderTolerancePin.trim() !== '';
   const canComplete = isFullyPaid || canSubmitWithTenderTolerance;
 
   // Codex review B4 (2026-04-30) UI half: tapping an instrument-bearing
@@ -331,7 +351,7 @@ export function AdvancedPaymentsModal({
       }
 
       setSelectedMethodId(methodId);
-      setAmount(remaining > 0 ? remaining.toFixed(decimals) : '');
+      setAmount(bccomp(remaining, '0') > 0 ? remaining : '');
       setRepositoryId('');
       setReference('');
       setCardLastFour('');
@@ -341,10 +361,10 @@ export function AdvancedPaymentsModal({
   );
 
   const handlePayRemaining = useCallback(() => {
-    if (remaining > 0) {
-      setAmount(remaining.toFixed(decimals));
+    if (bccomp(remaining, '0') > 0) {
+      setAmount(remaining);
     }
-  }, [remaining, decimals]);
+  }, [remaining]);
 
   const handleAddPayment = useCallback(() => {
     if (!selectedMethod) {
@@ -711,7 +731,7 @@ export function AdvancedPaymentsModal({
           </div>
 
           {/* Pay Remaining pill */}
-          {remaining > 0 && (
+          {bccomp(remaining, '0') > 0 && (
             <div className="mb-3 text-center">
               <button
                 onClick={handlePayRemaining}
@@ -782,7 +802,7 @@ export function AdvancedPaymentsModal({
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-ink">
-                        {format(Number.parseFloat(v.amount) || 0)}
+                        {format(v.amount)}
                       </span>
                       <button
                         onClick={() => removeVoucherPayment(v.code)}
@@ -838,13 +858,13 @@ export function AdvancedPaymentsModal({
                   {format(totalPaid)}
                 </span>
               </div>
-              {remaining > 0 && (
+              {bccomp(remaining, '0') > 0 && (
                 <div className="flex justify-between text-warning-strong">
                   <span>{t('advancedPayments.remaining')}</span>
                   <span className="font-medium">{format(remaining)}</span>
                 </div>
               )}
-              {overpayment > 0 && (
+              {bccomp(overpayment, '0') > 0 && (
                 <div className="flex justify-between text-success-strong">
                   <span>{t('advancedPayments.changeDue')}</span>
                   <span className="font-medium">{format(overpayment)}</span>
@@ -859,7 +879,7 @@ export function AdvancedPaymentsModal({
               </div>
             )}
 
-            {remaining > 0 && (
+            {bccomp(remaining, '0') > 0 && (
               <label className="mb-2 block text-sm">
                 <span className="mb-1 block font-medium text-ink-muted">
                   {t('advancedPayments.tenderTolerancePinLabel')}
@@ -907,7 +927,7 @@ export function AdvancedPaymentsModal({
           isOpen={isVoucherTenderModalOpen}
           onClose={handleVoucherTenderModalClose}
           db={voucherDb}
-          remainingDue={remaining.toFixed(decimals)}
+          remainingDue={remaining}
           currency={currency}
           onApplied={handleVoucherApplied}
           methodCode={voucherTenderMethodCode}

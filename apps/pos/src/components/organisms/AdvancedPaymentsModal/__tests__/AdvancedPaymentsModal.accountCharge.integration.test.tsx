@@ -45,7 +45,10 @@ vi.mock('@/lib/currency', async () => {
     useCurrency: () => ({
       currency: 'EUR',
       decimals: 2,
-      format: (amount: number) => `${amount.toFixed(2)} EUR`,
+      format: (amount: number | string) => {
+        const n = typeof amount === 'string' ? parseFloat(amount) : amount;
+        return `${n.toFixed(2)} EUR`;
+      },
     }),
   };
 });

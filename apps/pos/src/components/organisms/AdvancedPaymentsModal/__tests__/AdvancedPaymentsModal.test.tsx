@@ -26,7 +26,10 @@ vi.mock('@/lib/currency', () => ({
   useCurrency: () => ({
     currency: 'EUR',
     decimals: 2,
-    format: (amount: number) => `${amount.toFixed(2)} EUR`,
+    format: (amount: number | string) => {
+      const n = typeof amount === 'string' ? parseFloat(amount) : amount;
+      return `${n.toFixed(2)} EUR`;
+    },
   }),
 }));
 
@@ -148,7 +151,7 @@ vi.mock('@/components/customers/AccountChargeConfirmation', () => ({
   },
 }));
 
-import { AdvancedPaymentsModal } from '../AdvancedPaymentsModal';
+import { AdvancedPaymentsModal, computeTenderState } from '../AdvancedPaymentsModal';
 
 // On Account mode (Task 5): a minimal eligible attached customer. The modal
 // only inspects `charge_account_enabled` for tile eligibility; the rest of the
@@ -1109,5 +1112,102 @@ describe('AdvancedPaymentsModal — focus management (PR #97 follow-up)', () => 
 
     expect(screen.queryByTestId('advanced-payments-dialog')).not.toBeInTheDocument();
     expect(document.activeElement).toBe(opener);
+  });
+});
+
+/**
+ * D0-1 (2026-07-01): discriminating unit tests for the extracted pure helper
+ * `computeTenderState`. These tests MUST fail on the original float reduce
+ * implementation and MUST pass on the bcmath implementation.
+ *
+ * Key float-drift case: 10.1 + 10.2 = 20.299999999999997 in IEEE-754,
+ * which is strictly less than 20.3 → `isFullyPaid = false` (checkout blocked
+ * even though the cashier has paid the full amount). With bcmath the result
+ * is '20.30' and `isFullyPaid = true`.
+ */
+describe('computeTenderState — bcmath precision (D0-1)', () => {
+  it('10.1 + 10.2 pays a 20.30 total exactly — checkout NOT blocked by float drift', () => {
+    const state = computeTenderState(
+      [{ amount: 10.1 }, { amount: 10.2 }],
+      [],
+      20.3,
+      2,
+    );
+    // float: 10.1 + 10.2 = 20.299999999999997 < 20.3 → isFullyPaid=false (fiscal blocker)
+    // bcmath: '10.10' + '10.20' = '20.30' = total → isFullyPaid=true
+    expect(state.totalPaid).toBe('20.30');
+    expect(state.remaining).toBe('0.00');
+    expect(state.isFullyPaid).toBe(true);
+  });
+
+  it('0.1 + 0.2 = 0.30 exactly with no overpayment or remaining', () => {
+    const state = computeTenderState(
+      [{ amount: 0.1 }, { amount: 0.2 }],
+      [],
+      0.3,
+      2,
+    );
+    expect(state.totalPaid).toBe('0.30');
+    expect(state.remaining).toBe('0.00');
+    expect(state.overpayment).toBe('0.00');
+    expect(state.isFullyPaid).toBe(true);
+  });
+
+  it('voucher string amounts are not float-parsed: "0.10" + "0.20" = "0.30" on a 0.30 total', () => {
+    const state = computeTenderState(
+      [],
+      [{ amount: '0.10' }, { amount: '0.20' }],
+      0.3,
+      2,
+    );
+    expect(state.totalPaid).toBe('0.30');
+    expect(state.isFullyPaid).toBe(true);
+  });
+
+  it('mixed payment lines + voucher: 10.1 line + "10.20" voucher on 20.30 total', () => {
+    const state = computeTenderState(
+      [{ amount: 10.1 }],
+      [{ amount: '10.20' }],
+      20.3,
+      2,
+    );
+    expect(state.totalPaid).toBe('20.30');
+    expect(state.isFullyPaid).toBe(true);
+    expect(state.remaining).toBe('0.00');
+  });
+
+  it('overpayment is exact: 1.01 paid on a 1.00 total gives 0.01 change', () => {
+    const state = computeTenderState(
+      [{ amount: 1.01 }],
+      [],
+      1.0,
+      2,
+    );
+    expect(state.overpayment).toBe('0.01');
+    expect(state.remaining).toBe('0.00');
+    expect(state.isFullyPaid).toBe(true);
+  });
+
+  it('underpayment: 19.99 paid on a 20.00 total leaves 0.01 remaining', () => {
+    const state = computeTenderState(
+      [{ amount: 19.99 }],
+      [],
+      20.0,
+      2,
+    );
+    expect(state.remaining).toBe('0.01');
+    expect(state.overpayment).toBe('0.00');
+    expect(state.isFullyPaid).toBe(false);
+  });
+
+  it('TND scale-3: three 33.333 TND lines sum exactly to 99.999 on a 99.999 total', () => {
+    const state = computeTenderState(
+      [{ amount: 33.333 }, { amount: 33.333 }, { amount: 33.333 }],
+      [],
+      99.999,
+      3,
+    );
+    expect(state.totalPaid).toBe('99.999');
+    expect(state.isFullyPaid).toBe(true);
   });
 });
