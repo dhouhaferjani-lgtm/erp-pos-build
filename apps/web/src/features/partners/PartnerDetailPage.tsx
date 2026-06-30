@@ -22,6 +22,7 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
+import { bccomp } from '../../lib/decimal'
 import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
 import { usePartnerDeposits } from './hooks/usePartnerDeposits'
 import { RecordDepositModal } from './RecordDepositModal'
@@ -375,8 +376,8 @@ export function PartnerDetailPage() {
 
                 {/* No balance */}
                 {(!accountBalance || parseFloat(accountBalance.unallocated_balance) === 0) &&
-                 parseFloat(partner.receivable_balance ?? '0') === 0 &&
-                 parseFloat(partner.payable_balance ?? '0') === 0 && (
+                 bccomp(partner.receivable_balance ?? '0', '0') === 0 &&
+                 bccomp(partner.payable_balance ?? '0', '0') === 0 && (
                   <div className="text-sm text-gray-400 text-center py-2">
                     {t('partner.noBalance')}
                   </div>
