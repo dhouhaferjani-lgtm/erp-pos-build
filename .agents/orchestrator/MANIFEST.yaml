@@ -3,7 +3,7 @@
 # Updated after every dispatch, completion, review, or merge.
 # The orchestrator reads this on startup to restore full awareness.
 #
-# Last updated: 2026-06-15T12:00:00Z
+# Last updated: 2026-06-30 (initial backlog seeded from PRODUCT-BIBLE)
 
 ---
 
@@ -91,6 +91,56 @@ blocked: []
   #   escalated: true
   #   escalated_at: "2026-06-15T08:05:00Z"
 
+# Backlog -- prioritized, not yet dispatched. Top 5 from PRODUCT-BIBLE (2026-06-30).
+# Founder-selected top-3 financial-correctness gaps lead; #4 completes inventory GL;
+# #5 unblocks vertical #2 (Otospex automotive) for the waiting France client.
+backlog:
+  - id: TASK-001
+    title: "POS-sale COGS posting to GL"
+    description: "POS receipts bypass the invoice flow, so COGS is never posted for POS sales (gross-margin reports wrong). Add a COGS listener on a POS receipt event mirroring Inventory/Listeners/PostCOGSOnInvoice. WAC x qty, Dr COGS(601) / Cr Inventory(37)."
+    bible_ref: "§4 (POS flow), §8 TD-001"
+    modules: [POS, Inventory, Accounting]
+    domain_agents: [finance]
+    autonomy_tier: 3          # fiscal/GL -> human eyes
+    status: backlog
+    priority: 1
+  - id: TASK-002
+    title: "Treasury money-movement spine"
+    description: "Three gaps: (a) no cash-flow report (no CashFlowService); (b) payment-instrument lifecycle (deposit/clear/bounce) has no GL integration; (c) bank reconciliation has no statement import / auto-match. Likely a task group."
+    bible_ref: "§4 (Treasury flow), §8 TD-002"
+    modules: [Treasury, Accounting]
+    domain_agents: [finance]
+    autonomy_tier: 3          # money movement -> human eyes
+    status: backlog
+    priority: 2
+  - id: TASK-003
+    title: "Fix Accounting hierarchy balance calculation"
+    description: "Hierarchical trial balance / P&L / balance sheet return wrong numbers for multi-level charts of accounts. 3x TODO at ReportsController.php:275/430/581."
+    bible_ref: "§4 (Accounting flow), §8 TD-003"
+    modules: [Accounting]
+    domain_agents: [finance]
+    autonomy_tier: 2          # reports (GL-adjacent); confirm with finance agent
+    status: backlog
+    priority: 3
+  - id: TASK-004
+    title: "GL integration for inventory adjustments & transfers"
+    description: "General StockAdjustmentService adjust/transfer post NO GL (only batch write-offs do). Add GL entries + a dedicated WriteOff MovementType. Inventory account drifts from real value otherwise."
+    bible_ref: "§4 (Inventory flow), §8 TD-004"
+    modules: [Inventory, Accounting]
+    domain_agents: [supply-chain, finance]
+    autonomy_tier: 3          # GL posting -> human eyes
+    status: backlog
+    priority: 4
+  - id: TASK-005
+    title: "e-facture (France) readiness for Otospex automotive"
+    description: "Vertical #2 has a WAITING France car-repair client needing French e-invoicing (Factur-X / e-facture). FacturXService exists in Document; complete + certify the e-facture path. France-entry compliance gate."
+    bible_ref: "§5 (roadmap), §6.6 (compliance)"
+    modules: [Document, Taxation, Compliance]
+    domain_agents: [finance, product-intel]
+    autonomy_tier: 3          # fiscal/e-invoicing -> human eyes
+    status: backlog
+    priority: 5
+
 # Task groups -- multi-task work items with dependencies
 task_groups: []
   # Example entry:
@@ -111,7 +161,7 @@ task_groups: []
 
 # Counters -- for generating unique IDs
 counters:
-  task: 0          # next task ID: TASK-{counter+1}
+  task: 5          # next task ID: TASK-{counter+1}  (TASK-001..005 seeded in backlog)
   codex: 0         # next Codex job: CX-{counter+1}
   session: 0       # next session: SES-{counter+1}
   group: 0         # next group: GRP-{counter+1}
