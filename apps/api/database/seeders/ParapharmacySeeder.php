@@ -2071,13 +2071,18 @@ class ParapharmacySeeder extends Seeder
         $now = now();
 
         // One representative product ID per category (lexicographic minimum UUID).
+        // Computed in PHP rather than via SQL MIN() because PostgreSQL has no
+        // MIN(uuid) aggregate (product_id is a uuid column); sorting the ids as
+        // strings yields the same lexicographic minimum the design intends and
+        // stays portable across PostgreSQL and SQLite.
         /** @var array<string, string> $firstByCategory — category value => product_id */
         $firstByCategory = DB::table('parapharmacy_product_metadata as m')
             ->join('products as p', 'p.id', '=', 'm.product_id')
             ->where('p.company_id', $company->id)
-            ->select('m.category', DB::raw('MIN(m.product_id) as product_id'))
-            ->groupBy('m.category')
-            ->pluck('product_id', 'category')
+            ->select('m.category', 'm.product_id')
+            ->get()
+            ->groupBy('category')
+            ->map(fn ($group) => (string) $group->pluck('product_id')->map(fn ($id) => (string) $id)->sort()->first())
             ->all();
 
         // Cross-category pairs that form clinically meaningful bundles:
