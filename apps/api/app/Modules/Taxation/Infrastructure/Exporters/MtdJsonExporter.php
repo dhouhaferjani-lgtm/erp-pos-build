@@ -9,6 +9,7 @@ use App\Modules\Taxation\Domain\DTOs\VatDeclarationData;
 use App\Modules\Taxation\Domain\DTOs\VatSummary;
 use App\Modules\Taxation\Domain\Entities\VatPeriod;
 use App\Modules\Taxation\Domain\Enums\VatExportFormat;
+use App\Shared\Domain\CurrencyScale;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MtdJsonExporter implements VatExporterInterface
@@ -52,20 +53,27 @@ class MtdJsonExporter implements VatExporterInterface
      * Boxes 6-9: integer (whole pounds, no decimals)
      * Box 5 (netVatDue): always positive (absolute value)
      *
+     * All intermediate arithmetic stays in bcmath (numeric-strings).  The ONLY
+     * float conversions are at the final return array, required because HMRC MTD
+     * VAT JSON must carry numeric (not string) JSON types.
+     *
      * @return array<string, float|int>
      */
     private function buildNineBox(VatSummary $summary, VatDeclarationData $declaration): array
     {
         $fields = $declaration->fields;
 
-        // Boxes 1-5: decimal (2dp)
+        // Boxes 1-5: decimal (2dp) — kept as numeric-strings throughout.
         $box1 = $this->toDecimal2((string) ($fields['box1_vat_due_sales'] ?? $summary->totalOutputVat));
         $box2 = $this->toDecimal2((string) ($fields['box2_vat_due_acquisitions'] ?? '0.00'));
-        $box3 = $this->toDecimal2((string) ($fields['box3_total_vat_due'] ?? bcadd((string) $box1, (string) $box2, 2)));
+        $box3 = $this->toDecimal2((string) ($fields['box3_total_vat_due'] ?? bcadd($box1, $box2, 2)));
         $box4 = $this->toDecimal2((string) ($fields['box4_vat_reclaimed'] ?? $summary->totalInputVat));
 
-        $netVat = bcsub((string) $box3, (string) $box4, 2);
-        $box5 = $this->toDecimal2((string) abs((float) $netVat));
+        // netVat = box3 − box4 (can be negative when reclaimed > due).
+        // Box 5 is always the absolute value — compute via bcmath, no float abs().
+        $netVat = bcsub($box3, $box4, 2);
+        $absVat = bccomp($netVat, '0', 2) < 0 ? ltrim($netVat, '-') : $netVat;
+        $box5 = $this->toDecimal2($absVat);
 
         // Boxes 6-9: whole pounds (integers)
         $box6 = $this->toWholePounds((string) ($fields['box6_total_sales_ex_vat'] ?? $this->sumOutputBases($summary)));
@@ -73,12 +81,14 @@ class MtdJsonExporter implements VatExporterInterface
         $box8 = $this->toWholePounds((string) ($fields['box8_goods_supplied_ex_vat'] ?? '0'));
         $box9 = $this->toWholePounds((string) ($fields['box9_acquisitions_ex_vat'] ?? '0'));
 
+        // HMRC MTD JSON requires numeric types — cast each already-2dp-rounded
+        // bcmath string to float exactly once here, at the JSON payload boundary.
         return [
-            'vatDueSales' => $box1,
-            'vatDueAcquisitions' => $box2,
-            'totalVatDue' => $box3,
-            'vatReclaimedCurrPeriod' => $box4,
-            'netVatDue' => $box5,
+            'vatDueSales' => (float) $box1, // HMRC MTD JSON requires numeric type; value already bcmath-rounded to 2dp
+            'vatDueAcquisitions' => (float) $box2, // HMRC MTD JSON requires numeric type; value already bcmath-rounded to 2dp
+            'totalVatDue' => (float) $box3, // HMRC MTD JSON requires numeric type; value already bcmath-rounded to 2dp
+            'vatReclaimedCurrPeriod' => (float) $box4, // HMRC MTD JSON requires numeric type; value already bcmath-rounded to 2dp
+            'netVatDue' => (float) $box5, // HMRC MTD JSON requires numeric type; value already bcmath-rounded to 2dp
             'totalValueSalesExVAT' => $box6,
             'totalValuePurchasesExVAT' => $box7,
             'totalValueGoodsSuppliedExVAT' => $box8,
@@ -86,10 +96,18 @@ class MtdJsonExporter implements VatExporterInterface
         ];
     }
 
-    private function toDecimal2(string $value): float
+    /**
+     * Normalise a value to exactly 2 decimal places using bcmath.
+     *
+     * Returns a numeric-string (never a float) so all intermediate calculations
+     * stay in bcmath.  The caller is responsible for the single float cast at the
+     * JSON payload boundary.
+     *
+     * @return numeric-string
+     */
+    private function toDecimal2(string $value): string
     {
-        /** @var numeric-string $value */
-        return (float) bcadd($value, '0', 2);
+        return CurrencyScale::bcformat($value, 2);
     }
 
     private function toWholePounds(string $value): int

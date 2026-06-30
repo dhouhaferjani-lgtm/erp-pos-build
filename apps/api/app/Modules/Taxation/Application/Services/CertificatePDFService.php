@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Taxation\Application\Services;
 
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
+use App\Shared\Domain\CurrencyScale;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Endroid\QrCode\QrCode;
 use Endroid\QrCode\Writer\PngWriter;
@@ -80,12 +81,24 @@ class CertificatePDFService
             'partner_tax_id' => $partner->vat_number ?? $partner->code,
             'partner_address' => $partner->address ?? 'N/A',
 
-            // Amounts
+            // Amounts — use bcmath to normalise source decimals before any display
+            // formatting.  The (float) cast below operates on the already-bcmath-rounded
+            // string (3 dp, well within float64 precision) for thousands grouping only.
+            // The SOURCE decimal column is NEVER cast directly to float.
             'currency' => $certificate->currency,
-            'gross_amount' => number_format((float) $certificate->gross_amount, 3, '.', ','),
+            'gross_amount' => number_format(
+                (float) CurrencyScale::bcformat((string) $certificate->gross_amount, 3),
+                3, '.', ','
+            ),
             'withholding_rate' => $certificate->getRateAsPercentage().'%',
-            'withholding_amount' => number_format((float) $certificate->withholding_amount, 3, '.', ','),
-            'net_amount' => number_format((float) $certificate->net_amount, 3, '.', ','),
+            'withholding_amount' => number_format(
+                (float) CurrencyScale::bcformat((string) $certificate->withholding_amount, 3),
+                3, '.', ','
+            ),
+            'net_amount' => number_format(
+                (float) CurrencyScale::bcformat((string) $certificate->net_amount, 3),
+                3, '.', ','
+            ),
 
             // Rule info
             'rule_code' => $certificate->rule?->code,

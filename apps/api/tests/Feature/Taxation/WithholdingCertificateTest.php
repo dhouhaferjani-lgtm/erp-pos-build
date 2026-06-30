@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Application\Services\CertificatePDFService;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
 use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
@@ -16,6 +17,7 @@ use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Taxation\Domain\Enums\WithholdingDirection;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Payment;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -260,6 +262,57 @@ class WithholdingCertificateTest extends TestCase
             $certificate = WithholdingCertificate::find($certificateData->id);
             $this->assertEquals(sprintf('WHT-%d-%04d', now()->year, $i), $certificate->certificate_number);
         }
+    }
+
+    /**
+     * P0-6 precision guard: certificate PDF amounts must be formatted via bcmath,
+     * never by casting the source decimal column directly to float.
+     *
+     * For decimal(15,3) TND columns, float64 rounding inside number_format happens
+     * to preserve 3dp for values tested here — the change is a PRINCIPLE fix that
+     * eliminates the float cast on the source and future-proofs against wider columns.
+     * This test pins the exact formatted output so regressions are caught immediately.
+     *
+     * @test
+     */
+    public function it_formats_certificate_amounts_via_bcmath_not_direct_float_cast(): void
+    {
+        // Arrange: standard 10% withholding on 1 000.000 TND
+        $rule = $this->createRule('TN_PROF_10', 10.0, null, 'NON_REGISTERED');
+        $document = $this->createInvoice('1000.000');
+        $payment = $this->createPayment($document, '900.000');
+
+        $certData = $this->service->createFromPayment($payment, $document);
+        /** @var WithholdingCertificate $certificate */
+        $certificate = WithholdingCertificate::findOrFail($certData->id);
+
+        // Act
+        $pdfService = app(CertificatePDFService::class);
+        $data = $pdfService->getCertificateData($certificate);
+
+        // Assert — exact bcmath-formatted strings with thousands grouping.
+        // CurrencyScale::bcformat('1000.000', 3) => '1000.000'; display: '1,000.000'
+        // CurrencyScale::bcformat('100.000',  3) => '100.000';  display: '100.000'
+        // CurrencyScale::bcformat('900.000',  3) => '900.000';  display: '900.000'
+        $this->assertSame('1,000.000', $data['gross_amount'],
+            'gross_amount must be bcmath-rounded then grouped, never (float) source');
+        $this->assertSame('100.000', $data['withholding_amount'],
+            'withholding_amount must be bcmath-rounded then grouped, never (float) source');
+        $this->assertSame('900.000', $data['net_amount'],
+            'net_amount must be bcmath-rounded then grouped, never (float) source');
+
+        // Return types are strings (display-ready), never raw floats.
+        $this->assertIsString($data['gross_amount']);
+        $this->assertIsString($data['withholding_amount']);
+        $this->assertIsString($data['net_amount']);
+
+        // Confirm the bcmath baseline independently matches what the service must produce.
+        $expectedGross = number_format(
+            (float) CurrencyScale::bcformat((string) $certificate->gross_amount, 3),
+            3, '.', ','
+        );
+        $this->assertSame($expectedGross, $data['gross_amount'],
+            'Service output must match bcformat+grouping, not direct (float) cast');
     }
 
     /**

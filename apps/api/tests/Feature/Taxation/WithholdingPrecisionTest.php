@@ -6,6 +6,9 @@ namespace Tests\Feature\Taxation;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Taxation\Domain\DTOs\VatDeclarationData;
+use App\Modules\Taxation\Domain\DTOs\VatSummary;
+use App\Modules\Taxation\Infrastructure\Exporters\MtdJsonExporter;
 use App\Modules\Taxation\Presentation\Requests\CreateWithholdingCertificateRequest;
 use App\Modules\Taxation\Presentation\Requests\CreateWithholdingRuleRequest;
 use App\Modules\Taxation\Presentation\Requests\RecordSalesWithholdingRequest;
@@ -228,5 +231,108 @@ final class WithholdingPrecisionTest extends TestCase
             '2-decimal' => ['100.12'],
             '3-decimal (TND)' => ['100.123'],
         ];
+    }
+
+    // ── 4.8.7 MTD JSON exporter — bcmath throughout, float only at JSON edge ──
+
+    /**
+     * P0-6: box5 (netVatDue) must be the absolute value of (box3 − box4) computed
+     * entirely in bcmath. The final JSON must carry a numeric type (not a string).
+     *
+     * Scenario: box3 = 500.50, box4 = 600.75 → netVat = -100.25 → box5 = 100.25.
+     * abs() must be done via bcmath (ltrim/bccomp), not abs((float)…).
+     */
+    public function test_mtd_box5_is_bcmath_abs_of_box3_minus_box4(): void
+    {
+        $exporter = app(MtdJsonExporter::class);
+
+        // Supply box1–4 explicitly so box3-box4 arithmetic is predictable.
+        $summary = new VatSummary([], [], '0.00', '0.00');
+        $declaration = new VatDeclarationData([
+            'box1_vat_due_sales' => '500.50',
+            'box2_vat_due_acquisitions' => '0.00',
+            'box3_total_vat_due' => '500.50',
+            'box4_vat_reclaimed' => '600.75',
+        ], 'VAT100');
+
+        $json = $this->captureExportJson($exporter, $summary, $declaration);
+
+        // box5 = abs(500.50 − 600.75) = abs(-100.25) = 100.25
+        $this->assertSame(100.25, $json['netVatDue'],
+            'box5 must equal |box3 − box4| computed in bcmath (100.25)');
+
+        // HMRC MTD contract: box values must be numeric (float|int), never JSON strings.
+        $this->assertIsFloat($json['netVatDue'], 'HMRC MTD requires numeric JSON type for box5');
+        $this->assertIsFloat($json['vatDueSales'], 'HMRC MTD requires numeric JSON type for box1');
+        $this->assertIsFloat($json['vatReclaimedCurrPeriod'], 'HMRC MTD requires numeric JSON type for box4');
+    }
+
+    /**
+     * P0-6: when netVat is already positive, box5 stays positive (no sign flip).
+     *
+     * Scenario: box3 = 700.00, box4 = 300.00 → netVat = +400.00 → box5 = 400.00.
+     */
+    public function test_mtd_box5_positive_when_net_vat_is_positive(): void
+    {
+        $exporter = app(MtdJsonExporter::class);
+
+        $summary = new VatSummary([], [], '0.00', '0.00');
+        $declaration = new VatDeclarationData([
+            'box1_vat_due_sales' => '700.00',
+            'box2_vat_due_acquisitions' => '0.00',
+            'box3_total_vat_due' => '700.00',
+            'box4_vat_reclaimed' => '300.00',
+        ], 'VAT100');
+
+        $json = $this->captureExportJson($exporter, $summary, $declaration);
+
+        // netVat = 700.00 - 300.00 = +400.00 (positive) → box5 = 400.00 (already positive)
+        $this->assertSame(400.0, $json['netVatDue'],
+            'box5 must stay positive when netVat is already positive');
+        $this->assertIsFloat($json['netVatDue']);
+    }
+
+    /**
+     * P0-6: zero netVat yields box5 = 0.0 (numeric JSON, never a string zero).
+     */
+    public function test_mtd_box5_is_zero_when_box3_equals_box4(): void
+    {
+        $exporter = app(MtdJsonExporter::class);
+
+        $summary = new VatSummary([], [], '0.00', '0.00');
+        $declaration = new VatDeclarationData([
+            'box1_vat_due_sales' => '250.00',
+            'box2_vat_due_acquisitions' => '0.00',
+            'box3_total_vat_due' => '250.00',
+            'box4_vat_reclaimed' => '250.00',
+        ], 'VAT100');
+
+        $json = $this->captureExportJson($exporter, $summary, $declaration);
+
+        $this->assertSame(0.0, $json['netVatDue'],
+            'box5 must be 0.0 when box3 equals box4');
+        $this->assertIsFloat($json['netVatDue']);
+    }
+
+    /**
+     * Helper: invoke the exporter and return the decoded JSON payload.
+     *
+     * @return array<string, float|int>
+     */
+    private function captureExportJson(
+        MtdJsonExporter $exporter,
+        VatSummary $summary,
+        VatDeclarationData $declaration,
+    ): array {
+        $response = $exporter->export($summary, $declaration);
+
+        ob_start();
+        $response->sendContent();
+        $raw = ob_get_clean();
+
+        /** @var array<string, float|int> $decoded */
+        $decoded = json_decode((string) $raw, true);
+
+        return $decoded;
     }
 }
