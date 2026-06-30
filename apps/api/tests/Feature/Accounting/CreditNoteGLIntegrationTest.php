@@ -86,6 +86,8 @@ class CreditNoteGLIntegrationTest extends TestCase
 
     private Account $vatCollectedAccount;
 
+    private Account $salesStampDutyAccount;
+
     private Product $product1;
 
     private Product $product2;
@@ -210,6 +212,16 @@ class CreditNoteGLIntegrationTest extends TestCase
             'name' => 'TVA collectée',
             'type' => AccountType::Liability,
             'system_purpose' => SystemAccountPurpose::VatCollected,
+            'is_active' => true,
+        ]);
+
+        $this->salesStampDutyAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4375',
+            'name' => 'Droit de timbre à reverser',
+            'type' => AccountType::Liability,
+            'system_purpose' => SystemAccountPurpose::SalesStampDutyPayable,
             'is_active' => true,
         ]);
 
@@ -592,6 +604,57 @@ class CreditNoteGLIntegrationTest extends TestCase
 
         $this->assertEquals($creditNote1->id, $entry1->source_id);
         $this->assertEquals($creditNote2->id, $entry2->source_id);
+    }
+
+    /**
+     * Test: a credit note reverses the collected stamp duty (timbre) out of the
+     * 4375 liability (Dr 4375), mirroring the invoice posting, and balances.
+     *
+     * Bug #5A (credit-note side): without this leg the AR credit carried the
+     * timbre with no matching debit and the reversal was unbalanced.
+     */
+    public function test_credit_note_gl_reverses_collected_stamp_duty_from_4375_and_balances(): void
+    {
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::CreditNote,
+            'document_number' => 'CN-STAMP-'.uniqid(),
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '100.000',
+            'tax_amount' => '21.000',  // 20 VAT + 1 timbre
+            'total' => '121.000',
+            'balance_due' => '121.000',
+            'currency' => 'EUR',
+        ]);
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $creditNote->id,
+            'product_id' => $this->product1->id,
+            'line_number' => 1,
+            'description' => 'Reversed product with VAT + timbre',
+            'quantity' => '1',
+            'unit_price' => '100.00',
+            'tax_rate' => '20.00',
+            'line_total' => '100.000',
+        ]);
+        $creditNote = $creditNote->fresh(['lines']);
+
+        $journalEntryId = $this->accountingService->createCreditNoteGLEntries($creditNote);
+        $lines = JournalLine::where('journal_entry_id', $journalEntryId)->get();
+
+        // Stamp duty debited (reversed) out of 4375.
+        $stampLine = $lines->firstWhere('account_id', $this->salesStampDutyAccount->id);
+        $this->assertNotNull($stampLine, 'Credit note must reverse stamp duty from the 4375 account');
+        $this->assertEquals('1.000', $stampLine->debit);
+        $this->assertEquals('0.000', $stampLine->credit);
+
+        $debits = $lines->sum(fn ($l) => (float) $l->debit);
+        $credits = $lines->sum(fn ($l) => (float) $l->credit);
+        $this->assertEquals($debits, $credits, 'Credit note reversal must balance');
+        $this->assertEquals(121.00, $credits);
     }
 
     // ==================== HELPER METHODS ====================

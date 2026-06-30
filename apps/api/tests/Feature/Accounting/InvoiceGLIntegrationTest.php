@@ -74,6 +74,8 @@ class InvoiceGLIntegrationTest extends TestCase
 
     private Account $vatCollectedAccount;
 
+    private Account $salesStampDutyAccount;
+
     private Product $product1;
 
     private Product $product2;
@@ -194,6 +196,16 @@ class InvoiceGLIntegrationTest extends TestCase
             'name' => 'TVA collectée',
             'type' => AccountType::Liability,
             'system_purpose' => SystemAccountPurpose::VatCollected,
+            'is_active' => true,
+        ]);
+
+        $this->salesStampDutyAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4375',
+            'name' => 'Droit de timbre à reverser',
+            'type' => AccountType::Liability,
+            'system_purpose' => SystemAccountPurpose::SalesStampDutyPayable,
             'is_active' => true,
         ]);
 
@@ -529,6 +541,63 @@ class InvoiceGLIntegrationTest extends TestCase
 
         $this->assertEquals($invoice1->id, $entry1->source_id);
         $this->assertEquals($invoice2->id, $entry2->source_id);
+    }
+
+    /**
+     * Test: collected sales stamp duty (timbre) is credited to the dedicated
+     * 4375 liability — not lumped into VAT, not dropped — and the entry balances.
+     *
+     * Bug #5A: previously the AR debit carried the timbre (in `total`) but no
+     * credit leg covered it, so every TN invoice posted an unbalanced JE.
+     */
+    public function test_invoice_gl_credits_collected_stamp_duty_to_4375_and_balances(): void
+    {
+        // 1 line: 100 @ 20% VAT = 20 VAT, plus a 1.000 document-level timbre.
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-STAMP-'.uniqid(),
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '100.000',
+            'tax_amount' => '21.000',  // 20 VAT + 1 timbre
+            'total' => '121.000',      // 100 + 21
+            'balance_due' => '121.000',
+            'currency' => 'EUR',
+        ]);
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $invoice->id,
+            'product_id' => $this->product1->id,
+            'line_number' => 1,
+            'description' => 'Product with VAT + timbre',
+            'quantity' => '1',
+            'unit_price' => '100.00',
+            'tax_rate' => '20.00',
+            'line_total' => '100.000',
+        ]);
+        $invoice = $invoice->fresh(['lines']);
+
+        $journalEntryId = $this->accountingService->createInvoiceGLEntries($invoice);
+        $lines = JournalLine::where('journal_entry_id', $journalEntryId)->get();
+
+        // Stamp duty credited to 4375 (the timbre, = total − revenue − VAT).
+        $stampLine = $lines->firstWhere('account_id', $this->salesStampDutyAccount->id);
+        $this->assertNotNull($stampLine, 'Collected stamp duty must be credited to the sales stamp-duty account (4375)');
+        $this->assertEquals('0.000', $stampLine->debit);
+        $this->assertEquals('1.000', $stampLine->credit);
+
+        // VAT unchanged (line VAT only, on 4457).
+        $vat = $lines->where('account_id', $this->vatCollectedAccount->id)->sum(fn ($l) => (float) $l->credit);
+        $this->assertEquals(20.00, $vat);
+
+        // Entry balances.
+        $debits = $lines->sum(fn ($l) => (float) $l->debit);
+        $credits = $lines->sum(fn ($l) => (float) $l->credit);
+        $this->assertEquals($debits, $credits, 'Journal entry must balance');
+        $this->assertEquals(121.00, $debits);
     }
 
     // ==================== HELPER METHODS ====================

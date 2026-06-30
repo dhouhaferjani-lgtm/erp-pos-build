@@ -154,6 +154,8 @@ final class AccountingService implements AccountingServiceInterface
             ]);
 
             // 2. Create Revenue credit lines (one per invoice line)
+            /** @var numeric-string $revenueCredited */
+            $revenueCredited = '0';
             foreach ($invoice->lines as $line) {
                 // Determine revenue account based on product/service type
                 $revenueAccount = $this->getRevenueAccountForLine(
@@ -162,16 +164,21 @@ final class AccountingService implements AccountingServiceInterface
                     $serviceRevenueAccount
                 );
 
+                /** @var numeric-string $lineTotal */
+                $lineTotal = $line->line_total ?? '0';
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $revenueAccount->id,
                     'debit' => '0',
-                    'credit' => $line->line_total,
+                    'credit' => $lineTotal,
                     'description' => 'Revenue from Invoice '.$invoice->document_number.' - Line '.$line->line_number,
                 ]);
+                $revenueCredited = bcadd($revenueCredited, $lineTotal, $this->scale());
             }
 
             // 3. Create VAT credit lines (grouped by tax rate)
+            /** @var numeric-string $vatCredited */
+            $vatCredited = '0';
             $taxByRate = $this->groupTaxByRate($invoice->lines);
             foreach ($taxByRate as $rate => $amount) {
                 if (bccomp($amount, '0', $this->scale()) > 0) {
@@ -182,7 +189,31 @@ final class AccountingService implements AccountingServiceInterface
                         'credit' => $amount,
                         'description' => 'VAT '.$rate.'% from Invoice '.$invoice->document_number,
                     ]);
+                    $vatCredited = bcadd($vatCredited, $amount, $this->scale());
                 }
+            }
+
+            // 3b. Document-level stamp duty (Tunisian timbre / droit de timbre) is
+            // the residual of total − revenue − line VAT. It rides in the AR debit
+            // (invoice total) but is NOT a line VAT and must NOT be lumped into the
+            // VAT account; credit it to the dedicated collected-stamp-duty liability
+            // (4375) so it is remitted to the State. Without this leg the AR debit
+            // carried the timbre uncredited and every TN invoice posted an
+            // unbalanced journal entry (bug #5A).
+            /** @var numeric-string $stampDuty */
+            $stampDuty = bcsub((string) ($invoice->total ?? '0'), bcadd($revenueCredited, $vatCredited, $this->scale()), $this->scale());
+            if (bccomp($stampDuty, '0', $this->scale()) > 0) {
+                $stampDutyAccount = $this->findAccountByPurpose(
+                    $invoice->company_id,
+                    SystemAccountPurpose::SalesStampDutyPayable
+                );
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $stampDutyAccount->id,
+                    'debit' => '0',
+                    'credit' => $stampDuty,
+                    'description' => 'Stamp duty (timbre) from Invoice '.$invoice->document_number,
+                ]);
             }
 
             // 4. Calculate and set fiscal_hash AFTER lines are created
@@ -275,6 +306,8 @@ final class AccountingService implements AccountingServiceInterface
             ]);
 
             // 2. Create Revenue debit lines (one per credit note line) - REVERSED from invoice
+            /** @var numeric-string $revenueDebited */
+            $revenueDebited = '0';
             foreach ($creditNote->lines as $line) {
                 // Determine revenue account based on product/service type
                 $revenueAccount = $this->getRevenueAccountForLine(
@@ -283,16 +316,21 @@ final class AccountingService implements AccountingServiceInterface
                     $serviceRevenueAccount
                 );
 
+                /** @var numeric-string $lineTotal */
+                $lineTotal = $line->line_total ?? '0';
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $revenueAccount->id,
-                    'debit' => $line->line_total,
+                    'debit' => $lineTotal,
                     'credit' => '0',
                     'description' => 'Revenue reversal from Credit Note '.$creditNote->document_number.' - Line '.$line->line_number,
                 ]);
+                $revenueDebited = bcadd($revenueDebited, $lineTotal, $this->scale());
             }
 
             // 3. Create VAT debit lines (grouped by tax rate) - REVERSED from invoice
+            /** @var numeric-string $vatDebited */
+            $vatDebited = '0';
             $taxByRate = $this->groupTaxByRate($creditNote->lines);
             foreach ($taxByRate as $rate => $amount) {
                 if (bccomp($amount, '0', $this->scale()) > 0) {
@@ -303,7 +341,29 @@ final class AccountingService implements AccountingServiceInterface
                         'credit' => '0',
                         'description' => 'VAT reversal '.$rate.'% from Credit Note '.$creditNote->document_number,
                     ]);
+                    $vatDebited = bcadd($vatDebited, $amount, $this->scale());
                 }
+            }
+
+            // 3b. Reverse the collected stamp duty (timbre): the residual of
+            // total − revenue − line VAT rides in the AR credit and must be
+            // debited back out of the collected-stamp-duty liability (4375),
+            // mirroring the invoice posting (bug #5A). Without it the credit note
+            // posts an unbalanced reversal.
+            /** @var numeric-string $stampDuty */
+            $stampDuty = bcsub((string) ($creditNote->total ?? '0'), bcadd($revenueDebited, $vatDebited, $this->scale()), $this->scale());
+            if (bccomp($stampDuty, '0', $this->scale()) > 0) {
+                $stampDutyAccount = $this->findAccountByPurpose(
+                    $creditNote->company_id,
+                    SystemAccountPurpose::SalesStampDutyPayable
+                );
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $stampDutyAccount->id,
+                    'debit' => $stampDuty,
+                    'credit' => '0',
+                    'description' => 'Stamp duty (timbre) reversal from Credit Note '.$creditNote->document_number,
+                ]);
             }
 
             // 4. Calculate and set fiscal_hash AFTER lines are created
