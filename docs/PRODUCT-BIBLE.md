@@ -247,14 +247,18 @@ POS is **offline-first** (Tauri + SQLite). The device does **read-time availabil
 
 ### 7.1 Definition of Shippable
 
-**Bar: critical paths 100% covered, everything else 90%+.**
+**Bar: 100% test coverage everywhere. TDD is a strict, non-negotiable requirement.**
+
+- **TDD is mandatory** — write the failing test first (red), minimum code to pass (green), refactor. No implementation code lands without a test written first. This is a hard process rule, not a guideline.
+- **Coverage target = 100%** (line + branch), backend and frontend. Because TDD is enforced, **new code is 100%-covered by construction**; **existing/legacy code is raised to 100% as it is touched** (so the bar drives coverage up continuously without freezing work on currently-undertested modules).
 
 | Criterion | Target | Blocking? |
 |-----------|--------|-----------|
+| **TDD** | test-first, red→green→refactor, always | Yes (process rule) |
+| **Coverage** (backend & frontend, line + branch) | **100%** (new code by construction; legacy as touched) | Yes |
 | PHPStan level | 8, zero errors on new code | Yes |
 | TypeScript strict | Yes | Yes |
-| **Critical-path coverage** (money / fiscal / POS / inventory) | **100% + E2E** | Yes |
-| **Overall coverage** (backend & frontend) | **≥ 90%** | Yes |
+| Critical-path E2E (money / fiscal / POS / inventory) | present + passing | Yes |
 | Architecture (deptrac) | no new cross-boundary violations | Yes |
 | Performance budgets | API p95 + POS interaction budgets | Yes (targets: OQ-002) |
 | Fiscal behavior | Tunisia-correct, hash-chain verification passes | Yes |
@@ -265,9 +269,16 @@ POS is **offline-first** (Tauri + SQLite). The device does **read-time availabil
 
 > ⚠️ Never run the full PHPUnit suite without permission (crashes the laptop) — run by path.
 
-### 7.3 Release Process
+### 7.3 Release Process & Autonomy Model
 
 Local → **Dokploy** staging → production. **Branch discipline (CLAUDE.md rule 21):** work in a `git worktree` off `dev`; merge to **local** `dev` first; promote to `origin/dev` as clean **fast-forwards**; never force-push shared `dev` (`dev-push-guard` hook). Exact staging/prod URLs + approval gates: OQ-003.
+
+**Autonomy tiers (BD-005, graduated):**
+- **Autonomous work → local `dev`:** domain agents run TDD + code review + all gates (preflight, deptrac, Playwright, fiscal-chain verify). When everything is green, work is *ready* for merge.
+- **Merges are performed by a dedicated, Bible- and architecture-aware merge agent/team** — not ad hoc by feature agents — and **only happen when the founder is around** (never while away). Promotion to `origin/dev` is batched and founder-aware.
+- **Phase A (current): founder is notified for every merge** and approves/triggers it. No merge proceeds unprompted.
+- **Phase B (later, once the approach proves itself): more freedom per task type** — low-risk categories (UI, docs, tests, non-fiscal refactors) may merge without per-merge notification, while the merge agent still runs all gates.
+- **Always human sign-off for the certification-proof core:** anything touching **money / fiscal events / hash chain / GL postings**, **DB topology / schema** changes, **published API or contract** changes, and **production promotion**. "Very critical → human eyes always."
 
 ### 7.4 QA Process
 
@@ -320,7 +331,8 @@ Billing (3), Communication (1), Dashboard (1) are thin and financial/integration
 | BD-001 | 2026-06-30 | Revenue = **SaaS + paid upgrade modules** (verticals.php extras) |
 | BD-002 | 2026-06-30 | **Launch = single-tier retailer node**; whole-chain + growth + CLI layers are post-launch (chain = 12-month target for para + auto) |
 | BD-003 | 2026-06-30 | First market **Tunisia / TND**; France auto client (e-facture) is vertical #2 |
-| BD-004 | 2026-06-30 | Quality bar: **critical paths 100%, else 90%+** |
+| BD-004 | 2026-06-30 | Quality bar: **100% coverage everywhere; TDD strict/mandatory** (new code 100% by construction, legacy raised as touched) |
+| BD-005 | 2026-06-30 | **Autonomy model (graduated):** agents autonomous → local `dev` behind green gates. **Phase A (now):** founder is **notified for every merge** and approves/triggers it; a dedicated Bible-aware **merge agent/team** executes merges, **only when founder is around**. **Phase B (later):** as the approach proves itself, founder grants **more freedom per task type** (low-risk categories merge without per-merge notification). **Always human sign-off** for the certification-proof core: money/fiscal/hash-chain/GL, DB topology/schema, published API/contract, and prod promotion. |
 
 ### 9.3 Rejected Approaches
 
