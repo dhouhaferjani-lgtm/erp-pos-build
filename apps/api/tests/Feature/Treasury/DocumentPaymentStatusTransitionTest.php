@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Treasury;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -103,12 +106,21 @@ class DocumentPaymentStatusTransitionTest extends TestCase
             'is_active' => true,
         ]);
 
+        // Full chart of accounts so admin payments can post a balanced GL entry
+        // (AR/revenue/cash) once the repository is ledgered.
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $cashGlAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Bank);
+
         $this->cashRegister = PaymentRepository::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'CASH-01',
             'name' => 'Main Cash Register',
             'type' => RepositoryType::CashRegister,
+            // Ledgered repository (gl_account_id set) — admin payments require a
+            // ledger account to post the cash leg; an unledgered repository is
+            // rejected with PAYMENT_REQUIRES_LEDGERED_REPOSITORY.
+            'gl_account_id' => $cashGlAccount->id,
             'is_active' => true,
         ]);
 

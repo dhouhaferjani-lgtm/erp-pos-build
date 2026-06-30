@@ -617,8 +617,8 @@ class SmartPaymentIntegrationTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Link cash register to cash account
-        $this->cashRegister->account_id = $cashAccount->id;
+        // Link cash register to cash account (canonical GL account)
+        $this->cashRegister->gl_account_id = $cashAccount->id;
         $this->cashRegister->save();
 
         // Customer advance account (liability - we owe customer until invoice issued)

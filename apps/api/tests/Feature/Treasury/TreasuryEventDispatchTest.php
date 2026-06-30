@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Treasury;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
@@ -67,7 +70,13 @@ class TreasuryEventDispatchTest extends TestCase
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         $this->seed(RolesAndPermissionsSeeder::class);
 
-        $this->company = Company::factory()->for($this->tenant)->create();
+        // TN company: its chart of accounts maps every system purpose the payment
+        // GL path needs (incl. CustomerAdvance), consistent with the TND payments
+        // these tests post.
+        $this->company = Company::factory()->for($this->tenant)->create([
+            'country_code' => 'TN',
+            'currency' => 'TND',
+        ]);
 
         $this->user = User::create([
             'tenant_id' => $this->tenant->id,
@@ -133,6 +142,14 @@ class TreasuryEventDispatchTest extends TestCase
 
     private function createBankRepository(): PaymentRepository
     {
+        // Ledger the repository against a real GL account so admin payments post a
+        // balanced journal entry. Seed the full chart once (idempotent across calls).
+        $glAccount = Account::findByPurpose($this->company->id, SystemAccountPurpose::Bank);
+        if ($glAccount === null) {
+            app(ChartOfAccountsService::class)->seedForCompany($this->company);
+            $glAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Bank);
+        }
+
         return PaymentRepository::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $this->tenant->id,
@@ -142,6 +159,8 @@ class TreasuryEventDispatchTest extends TestCase
             'type' => RepositoryType::BankAccount,
             'balance' => '0.000',
             'currency' => 'TND',
+            // Ledgered repository so admin payments can post the cash leg.
+            'gl_account_id' => $glAccount->id,
         ]);
     }
 

@@ -327,9 +327,9 @@ class PaymentController extends Controller
             ], 422);
         }
 
-        // Supplier payments require a ledgered repository (an account_id to post the
-        // Cr Bank leg). Without it the cash would leave the repository with no 401
-        // entry. Reject up front rather than moving cash with no ledger record.
+        // Supplier payments require a ledgered repository (a gl_account_id to post
+        // the Cr Bank leg). Without it the cash would leave the repository with no
+        // 401 entry. Reject up front rather than moving cash with no ledger record.
         if ($isSupplierPayment) {
             $supplierRepositoryId = $validated['repository_id'] ?? null;
             /** @var PaymentRepository|null $supplierRepository */
@@ -340,13 +340,38 @@ class PaymentController extends Controller
                     ->find($supplierRepositoryId)
                 : null;
 
-            if (! $supplierRepository instanceof PaymentRepository || $supplierRepository->account_id === null) {
+            if (! $supplierRepository instanceof PaymentRepository || $supplierRepository->gl_account_id === null) {
                 return response()->json([
                     'error' => [
                         'code' => 'SUPPLIER_PAYMENT_REQUIRES_LEDGERED_REPOSITORY',
                         'message' => 'Supplier payments require a repository linked to a ledger account',
                     ],
                 ], 422);
+            }
+        }
+
+        // Mirror the supplier guard for customer/AR payments: a payment that names a
+        // repository must point at a ledgered repository (gl_account_id set). The GL
+        // posting below is gated on gl_account_id; without this guard a misconfigured
+        // repository would silently skip the journal entry and AR balances would
+        // never refresh (the "account_id vs gl_account_id" trap).
+        if (! $isSupplierPayment) {
+            $customerRepositoryId = $validated['repository_id'] ?? null;
+            if ($customerRepositoryId !== null) {
+                /** @var PaymentRepository|null $customerRepository */
+                $customerRepository = PaymentRepository::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->find($customerRepositoryId);
+
+                if (! $customerRepository instanceof PaymentRepository || $customerRepository->gl_account_id === null) {
+                    return response()->json([
+                        'error' => [
+                            'code' => 'PAYMENT_REQUIRES_LEDGERED_REPOSITORY',
+                            'message' => 'Payments require a repository linked to a ledger account',
+                        ],
+                    ], 422);
+                }
             }
         }
 
@@ -576,7 +601,7 @@ class PaymentController extends Controller
                     $repository = $repoResult;
                 }
 
-                if ($repository instanceof PaymentRepository && $repository->account_id) {
+                if ($repository instanceof PaymentRepository && $repository->gl_account_id) {
                     if ($isSupplierPayment) {
                         // Supplier-side: Dr SupplierPayable (401, partner-tagged) / Cr Bank.
                         // Reuse the existing canonical, hash-chained GL method.
@@ -585,7 +610,7 @@ class PaymentController extends Controller
                             partnerId: $validated['partner_id'],
                             paymentId: $payment->id,
                             amount: $totalAllocatedForGL,
-                            paymentMethodAccountId: $repository->account_id,
+                            paymentMethodAccountId: $repository->gl_account_id,
                             date: new \DateTimeImmutable($validated['payment_date']),
                             user: $user,
                             description: "Supplier payment - {$payment->reference}",
@@ -606,7 +631,7 @@ class PaymentController extends Controller
                             partnerId: $validated['partner_id'],
                             paymentId: $payment->id,
                             amount: $totalAllocatedForGL,
-                            paymentMethodAccountId: $repository->account_id,
+                            paymentMethodAccountId: $repository->gl_account_id,
                             date: new \DateTimeImmutable($validated['payment_date']),
                             description: "Customer payment - {$payment->reference}",
                             user: $user,
@@ -636,14 +661,14 @@ class PaymentController extends Controller
                     $repository = $foundRepository;
                 }
 
-                if ($repository instanceof PaymentRepository && $repository->account_id) {
+                if ($repository instanceof PaymentRepository && $repository->gl_account_id) {
                     // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer Advance)
                     $this->glService->createCustomerAdvanceJournalEntry(
                         companyId: $companyId,
                         partnerId: $validated['partner_id'],
                         advanceId: $payment->id,
                         amount: $excessAmount,
-                        paymentMethodAccountId: $repository->account_id,
+                        paymentMethodAccountId: $repository->gl_account_id,
                         date: new \DateTimeImmutable($validated['payment_date']),
                         user: $user,
                         description: "Customer advance from payment {$payment->reference}",
@@ -906,13 +931,13 @@ class PaymentController extends Controller
                         $repository->save();
 
                         // Create GL entry for allocated portion
-                        if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0 && $repository->account_id) {
+                        if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0 && $repository->gl_account_id) {
                             $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
                                 companyId: $companyId,
                                 partnerId: $validated['partner_id'],
                                 paymentId: $payment->id,
                                 amount: $allocationForThisPayment,
-                                paymentMethodAccountId: $repository->account_id,
+                                paymentMethodAccountId: $repository->gl_account_id,
                                 date: new \DateTimeImmutable($validated['payment_date']),
                                 description: "Customer payment - {$payment->reference}",
                                 user: $user,
@@ -976,13 +1001,13 @@ class PaymentController extends Controller
                             ->where('tenant_id', $tenantId)
                             ->where('company_id', $companyId)
                             ->find($repositoryId);
-                        if ($repository && $repository->account_id) {
+                        if ($repository && $repository->gl_account_id) {
                             $this->glService->createCustomerAdvanceJournalEntry(
                                 companyId: $companyId,
                                 partnerId: $validated['partner_id'],
                                 advanceId: $lastPayment->id,
                                 amount: $excessAmount,
-                                paymentMethodAccountId: $repository->account_id,
+                                paymentMethodAccountId: $repository->gl_account_id,
                                 date: new \DateTimeImmutable($validated['payment_date']),
                                 user: $user,
                                 description: "Customer advance from payment {$lastPayment->reference}",
@@ -1127,13 +1152,13 @@ class PaymentController extends Controller
                                 ->where('tenant_id', $tenantId)
                                 ->where('company_id', $companyId)
                                 ->find($repositoryId);
-                            if ($repository && $repository->account_id) {
+                            if ($repository && $repository->gl_account_id) {
                                 $this->glService->createCustomerAdvanceJournalEntry(
                                     companyId: $companyId,
                                     partnerId: $validated['partner_id'],
                                     advanceId: $lastPayment->id,
                                     amount: $remainingExcess,
-                                    paymentMethodAccountId: $repository->account_id,
+                                    paymentMethodAccountId: $repository->gl_account_id,
                                     date: new \DateTimeImmutable($validated['payment_date']),
                                     user: $user,
                                     description: "Customer advance from payment {$lastPayment->reference}",
@@ -1184,7 +1209,7 @@ class PaymentController extends Controller
             ->where('company_id', $payment->company_id)
             ->find($payment->repository_id);
 
-        if ($repository === null || $repository->account_id === null) {
+        if ($repository === null || $repository->gl_account_id === null) {
             return;
         }
 
@@ -1193,7 +1218,7 @@ class PaymentController extends Controller
             partnerId: $payment->partner_id,
             paymentId: $payment->id,
             amount: $amount,
-            paymentMethodAccountId: $repository->account_id,
+            paymentMethodAccountId: $repository->gl_account_id,
             date: $payment->payment_date,
             description: "Customer payment - {$payment->reference}",
             user: $user,
