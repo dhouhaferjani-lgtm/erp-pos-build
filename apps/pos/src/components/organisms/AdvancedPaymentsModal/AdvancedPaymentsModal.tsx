@@ -357,7 +357,7 @@ export function AdvancedPaymentsModal({
       setCardLastFour('');
       setValidationError(null);
     },
-    [activeMethods, remaining, decimals, t, voucherDb],
+    [activeMethods, remaining, t, voucherDb],
   );
 
   const handlePayRemaining = useCallback(() => {
