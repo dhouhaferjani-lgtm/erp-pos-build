@@ -207,6 +207,101 @@ final class CreateManualInvoicePrecisionTest extends TestCase
     }
 
     /**
+     * Invoice::recalculateTotals() must accumulate via bcmath, not float SQL SUM (P0-3).
+     *
+     * Before the fix:
+     *   $subtotal = $this->items()->sum('amount');   // Builder::sum() → PHP float
+     *   $total    = $subtotal + $taxAmount - ...;    // native float arithmetic
+     *   amount_due = $total - (float) $this->amount_paid;
+     *
+     * After the fix: bcadd accumulation at EUR scale 2, bcsub for amount_due.
+     *
+     * Discriminating values — 3 items each with amount '33.333' (EUR, scale 2):
+     *
+     *   Float / SQL SUM path:
+     *     Builder::sum('amount') → PHP float 99.999
+     *     amount_due = 99.999 − (float)'0.000' = 99.999 → stored '99.999'
+     *
+     *   bcmath path (scale 2):
+     *     bcadd('0.00', '33.333', 2) = '33.33'
+     *     bcadd('33.33', '33.333', 2) = '66.66'
+     *     bcadd('66.66', '33.333', 2) = '99.99'   ← truncates to currency scale
+     *     bcsub('99.99', '0.000', 2)  = '99.99'
+     *     → stored '99.990'  (decimal:3 column pads to 3 places)
+     *
+     * subtotal/total/amount_due = '99.990' (bcmath) ≠ '99.999' (float SQL SUM).
+     * Must fail before the fix, pass after.
+     */
+    public function test_recalculate_totals_uses_bcmath_not_float_sql_sum(): void
+    {
+        $invoice = Invoice::create([
+            'tenant_id' => $this->tenant->id,
+            'number' => 'RECALC-'.uniqid('', true),
+            'status' => InvoiceStatus::Sent,
+            'subtotal' => '0.000',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '0.000',
+            'amount_paid' => '0.000',
+            'amount_due' => '0.000',
+            'currency' => 'EUR',
+            'tax_rate' => '0.00',
+            'billing_address' => [],
+            'billing_email' => 'recalc@example.com',
+            'billing_name' => 'Recalc Test',
+            'invoice_date' => now(),
+            'due_date' => now()->addDays(14),
+        ]);
+
+        // Three items, each with amount='33.333'.
+        // At EUR scale 2, bcadd truncates to 2 decimal places per step → total '99.99'.
+        // Builder::sum() returns PHP float 99.999 (3 decimal places retained via SQL SUM).
+        foreach (range(1, 3) as $i) {
+            InvoiceItem::create([
+                'invoice_id' => $invoice->id,
+                'description' => "Bcmath Test Item {$i}",
+                'quantity' => '1.00',
+                'unit_price' => '33.333',
+                'amount' => '33.333',
+                'tax_rate' => '0.00',
+                'tax_amount' => '0.000',
+                'discount_percent' => '0.00',
+                'discount_amount' => '0.000',
+                'sort_order' => $i,
+                'metadata' => [],
+            ]);
+        }
+
+        $invoice->recalculateTotals();
+        $invoice->refresh();
+
+        // bcadd at scale 2 truncates '33.333' to '33.33' per step → sum '99.99'
+        // → decimal:3 column pads to '99.990'.
+        // Float SQL SUM: 99.999 → decimal:3 → '99.999' (before fix).
+        $this->assertSame(
+            '99.990',
+            $invoice->subtotal,
+            'subtotal: float SQL SUM gives "99.999"; bcmath at EUR scale 2 gives "99.990". '
+            .'recalculateTotals() still uses Builder::sum() / native float.',
+        );
+
+        $this->assertSame(
+            '99.990',
+            $invoice->total,
+            'total must equal subtotal when tax=0 and discount=0.',
+        );
+
+        // amount_due: old code → float 99.999 − (float)"0.000" = 99.999 → "99.999"
+        // new code  → bcsub("99.99","0.000",2) = "99.99" → stored "99.990"
+        $this->assertSame(
+            '99.990',
+            $invoice->amount_due,
+            'amount_due: float path gives "99.999"; bcmath gives "99.990". '
+            .'Confirms the bccomp gate in recordPayment operates on a bcmath amount_due.',
+        );
+    }
+
+    /**
      * InvoiceItem::calculateAmount() must return a string via bcmul, not a float (P0-3).
      *
      * The old return type was float. assertIsString() fails on old code.

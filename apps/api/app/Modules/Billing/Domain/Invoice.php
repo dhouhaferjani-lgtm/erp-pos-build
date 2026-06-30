@@ -220,21 +220,48 @@ final class Invoice extends Model
     }
 
     /**
-     * Calculate totals from items.
+     * Calculate totals from items using bcmath — no float on money paths.
+     *
+     * Accumulates item amounts via bcadd at the invoice currency scale so that
+     * amount_due is always computed by the same bcmath gate that recordPayment uses
+     * (bccomp-safe). SQL Builder::sum() returns a PHP float; bcadd over the loaded
+     * items avoids that float conversion entirely.
      */
     public function recalculateTotals(): void
     {
-        $subtotal = $this->items()->sum('amount');
-        $taxAmount = $this->items()->sum('tax_amount');
-        $discountAmount = $this->items()->sum('discount_amount');
-        $total = $subtotal + $taxAmount - $discountAmount;
+        $scale = CurrencyScale::for($this->currency);
+        $zero = CurrencyScale::bcformat('0', $scale);
+
+        $items = $this->items()->get();
+
+        $subtotal = $zero;
+        $taxAmount = $zero;
+        $discountAmount = $zero;
+
+        foreach ($items as $item) {
+            /** @var numeric-string $itemAmount */
+            $itemAmount = (string) $item->amount;
+            /** @var numeric-string $itemTax */
+            $itemTax = (string) $item->tax_amount;
+            /** @var numeric-string $itemDiscount */
+            $itemDiscount = (string) $item->discount_amount;
+
+            $subtotal = bcadd($subtotal, $itemAmount, $scale);
+            $taxAmount = bcadd($taxAmount, $itemTax, $scale);
+            $discountAmount = bcadd($discountAmount, $itemDiscount, $scale);
+        }
+
+        $total = bcsub(bcadd($subtotal, $taxAmount, $scale), $discountAmount, $scale);
+        /** @var numeric-string $amountPaid */
+        $amountPaid = (string) $this->amount_paid;
+        $amountDue = bcsub($total, $amountPaid, $scale);
 
         $this->update([
             'subtotal' => $subtotal,
             'tax_amount' => $taxAmount,
             'discount_amount' => $discountAmount,
             'total' => $total,
-            'amount_due' => $total - (float) $this->amount_paid,
+            'amount_due' => $amountDue,
         ]);
     }
 }
