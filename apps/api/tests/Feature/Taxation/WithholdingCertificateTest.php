@@ -78,7 +78,6 @@ class WithholdingCertificateTest extends TestCase
         $certificateData = $this->service->createFromPayment($payment, $document);
 
         // Assert
-        $this->assertNotNull($certificateData);
         $this->assertEquals($this->company->id, $certificateData->companyId);
         $this->assertEquals($this->partner->id, $certificateData->partnerId);
         $this->assertEquals('1000.000', $certificateData->grossAmount);

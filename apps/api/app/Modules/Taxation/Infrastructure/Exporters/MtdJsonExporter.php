@@ -112,7 +112,19 @@ class MtdJsonExporter implements VatExporterInterface
 
     private function toWholePounds(string $value): int
     {
-        return (int) floor((float) $value);
+        if (! is_numeric($value)) {
+            throw new \InvalidArgumentException("toWholePounds expects a numeric string, got: {$value}");
+        }
+
+        // floor() toward −∞ in bcmath: truncate toward zero first, then subtract 1
+        // for any negative value whose fractional part was discarded.
+        // After is_numeric() guard above, PHPStan narrows $value to numeric-string.
+        $truncated = bcadd($value, '0', 0);
+        if (bccomp($value, $truncated, 9) < 0) {
+            $truncated = bcsub($truncated, '1', 0);
+        }
+
+        return (int) $truncated; // whole-pound integer; bcmath-floored, exact integer string
     }
 
     private function sumOutputBases(VatSummary $summary): string

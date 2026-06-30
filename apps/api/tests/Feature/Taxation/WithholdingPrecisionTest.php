@@ -293,6 +293,51 @@ final class WithholdingPrecisionTest extends TestCase
     }
 
     /**
+     * P0-6: MTD boxes 6-9 whole-pound floor must be computed in bcmath, not via
+     * floor((float) $value).
+     *
+     * Positive fractional case: '1234.99' → floor = 1234 (truncation toward zero = floor).
+     * Negative fractional case: '-5678.01' → floor = -5679 (toward −∞, NOT toward zero).
+     *
+     * The bcmath path: bcadd('-5678.01','0',0) = '-5678'; since -5678.01 < -5678 (bccomp
+     * < 0), bcsub gives '-5679'. A naïve (int) truncation toward zero would give -5678,
+     * proving the floor semantic is enforced by the bcsub branch.
+     *
+     * Both boxes must be PHP int in the JSON payload (HMRC MTD contract).
+     */
+    public function test_mtd_boxes_6_7_whole_pound_floor_via_bcmath(): void
+    {
+        $exporter = app(MtdJsonExporter::class);
+
+        $summary = new VatSummary([], [], '0.00', '0.00');
+        $declaration = new VatDeclarationData([
+            'box1_vat_due_sales' => '0.00',
+            'box2_vat_due_acquisitions' => '0.00',
+            'box3_total_vat_due' => '0.00',
+            'box4_vat_reclaimed' => '0.00',
+            'box6_total_sales_ex_vat' => '1234.99',
+            'box7_total_purchases_ex_vat' => '-5678.01',
+        ], 'VAT100');
+
+        $json = $this->captureExportJson($exporter, $summary, $declaration);
+
+        // Positive fractional: floor(1234.99) = 1234
+        $this->assertSame(1234, $json['totalValueSalesExVAT'],
+            'box6: bcmath floor of 1234.99 must yield integer 1234');
+
+        // Negative fractional: floor(-5678.01) = -5679 (toward −∞, not toward zero)
+        // A (int) truncation would incorrectly give -5678; the bcmath bcsub branch gives -5679.
+        $this->assertSame(-5679, $json['totalValuePurchasesExVAT'],
+            'box7: bcmath floor of -5678.01 must yield -5679 (toward −∞, not toward zero)');
+
+        // Both must be PHP int in the HMRC MTD payload — never float
+        $this->assertIsInt($json['totalValueSalesExVAT'],
+            'box6 must carry PHP int type in the HMRC MTD JSON payload');
+        $this->assertIsInt($json['totalValuePurchasesExVAT'],
+            'box7 must carry PHP int type in the HMRC MTD JSON payload');
+    }
+
+    /**
      * P0-6: zero netVat yields box5 = 0.0 (numeric JSON, never a string zero).
      */
     public function test_mtd_box5_is_zero_when_box3_equals_box4(): void
