@@ -307,6 +307,114 @@ class ReturnNoteIntegrationTest extends TestCase
     }
 
     /** @test */
+    public function it_rejects_a_return_exceeding_the_invoiced_quantity(): void
+    {
+        $invoice = $this->makeSourceInvoice('3.0000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/return-notes', [
+            'partner_id' => $this->customer->id,
+            'document_date' => now()->toDateString(),
+            'currency' => 'TND',
+            'source_document_id' => $invoice->id,
+            'lines' => [[
+                'product_id' => $this->product->id,
+                'description' => 'Test Product',
+                'quantity' => '5.0000',
+                'unit_price' => '100.00',
+                'tax_rate' => '19.00',
+            ]],
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error.code', 'RETURN_EXCEEDS_INVOICED_QUANTITY');
+
+        $this->assertDatabaseMissing('documents', [
+            'type' => DocumentType::ReturnNote->value,
+            'source_document_id' => $invoice->id,
+        ]);
+    }
+
+    /** @test */
+    public function it_allows_a_return_within_the_invoiced_quantity(): void
+    {
+        $invoice = $this->makeSourceInvoice('3.0000');
+
+        $this->actingAs($this->user)->postJson('/api/v1/return-notes', [
+            'partner_id' => $this->customer->id,
+            'document_date' => now()->toDateString(),
+            'currency' => 'TND',
+            'source_document_id' => $invoice->id,
+            'lines' => [[
+                'product_id' => $this->product->id,
+                'description' => 'Test Product',
+                'quantity' => '3.0000',
+                'unit_price' => '100.00',
+                'tax_rate' => '19.00',
+            ]],
+        ])->assertCreated();
+    }
+
+    /** @test */
+    public function it_caps_cumulative_returns_to_the_invoiced_quantity(): void
+    {
+        $invoice = $this->makeSourceInvoice('3.0000');
+
+        $payload = fn (string $qty): array => [
+            'partner_id' => $this->customer->id,
+            'document_date' => now()->toDateString(),
+            'currency' => 'TND',
+            'source_document_id' => $invoice->id,
+            'lines' => [[
+                'product_id' => $this->product->id,
+                'description' => 'Test Product',
+                'quantity' => $qty,
+                'unit_price' => '100.00',
+                'tax_rate' => '19.00',
+            ]],
+        ];
+
+        // First return of 2 of 3 invoiced is fine.
+        $this->actingAs($this->user)->postJson('/api/v1/return-notes', $payload('2.0000'))->assertCreated();
+
+        // A second return of 2 would total 4 > 3 — rejected (only 1 remains).
+        $this->actingAs($this->user)->postJson('/api/v1/return-notes', $payload('2.0000'))
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'RETURN_EXCEEDS_INVOICED_QUANTITY');
+    }
+
+    private function makeSourceInvoice(string $quantity): Document
+    {
+        $lineTotal = bcmul($quantity, '100.00', 2);
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::Invoice,
+            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'fiscal_status' => FiscalStatus::Sealed,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'INV-SRC-'.bin2hex(random_bytes(4)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => $lineTotal,
+            'tax_amount' => '0.00',
+            'total' => $lineTotal,
+        ]);
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Test Product',
+            'product_id' => $this->product->id,
+            'quantity' => $quantity,
+            'unit_price' => '100.00',
+            'tax_rate' => '0.00',
+            'line_total' => $lineTotal,
+        ]);
+
+        return $invoice;
+    }
+
+    /** @test */
     public function it_updates_a_draft_return_note(): void
     {
         $returnNote = Document::create([

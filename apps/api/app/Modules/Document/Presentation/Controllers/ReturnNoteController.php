@@ -21,7 +21,9 @@ use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -53,6 +55,95 @@ class ReturnNoteController extends Controller
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * Reject a return that would exceed the source invoice's quantity for any
+     * product, accounting for quantities already returned on prior return notes.
+     *
+     * Quantities are compared at the canonical quantity scale (4). The source
+     * document is locked FOR UPDATE so two concurrent returns against the same
+     * invoice serialise and cannot jointly over-return.
+     *
+     * @param  array<int, array<string, mixed>>  $requestLines
+     */
+    private function assertWithinReturnableQuantities(string $sourceDocumentId, array $requestLines, string $companyId): void
+    {
+        /** @var Document|null $source */
+        $source = Document::query()
+            ->where('company_id', $companyId)
+            ->with('lines')
+            ->lockForUpdate()
+            ->find($sourceDocumentId);
+
+        // No resolvable source → nothing to cap against (other validation owns
+        // the existence contract); leave the create path unchanged.
+        if ($source === null) {
+            return;
+        }
+
+        $qtyScale = 4;
+
+        /** @var array<string, numeric-string> $invoiced */
+        $invoiced = [];
+        foreach ($source->lines as $line) {
+            if ($line->product_id === null) {
+                continue;
+            }
+            $invoiced[$line->product_id] = bcadd($invoiced[$line->product_id] ?? '0', (string) $line->quantity, $qtyScale);
+        }
+
+        // Quantities already returned against this source on non-cancelled return notes.
+        /** @var array<string, numeric-string> $alreadyReturned */
+        $alreadyReturned = [];
+        $priorReturnLines = DocumentLine::query()
+            ->whereHas('document', static function (Builder $query) use ($sourceDocumentId, $companyId): void {
+                /** @var Builder<Document> $query */
+                $query->where('company_id', $companyId)
+                    ->where('type', DocumentType::ReturnNote)
+                    ->where('source_document_id', $sourceDocumentId)
+                    ->where('status', '!=', DocumentStatus::Cancelled->value);
+            })
+            ->get();
+        foreach ($priorReturnLines as $line) {
+            if ($line->product_id === null) {
+                continue;
+            }
+            $alreadyReturned[$line->product_id] = bcadd($alreadyReturned[$line->product_id] ?? '0', (string) $line->quantity, $qtyScale);
+        }
+
+        // Requested quantities on this return, summed per product.
+        /** @var array<string, numeric-string> $requested */
+        $requested = [];
+        foreach ($requestLines as $line) {
+            $productId = $line['product_id'] ?? null;
+            if ($productId === null) {
+                continue;
+            }
+            /** @var numeric-string $qty */
+            $qty = (string) ($line['quantity'] ?? '0');
+            $requested[(string) $productId] = bcadd($requested[(string) $productId] ?? '0', $qty, $qtyScale);
+        }
+
+        foreach ($requested as $productId => $qty) {
+            $remaining = bcsub($invoiced[$productId] ?? '0', $alreadyReturned[$productId] ?? '0', $qtyScale);
+
+            if (bccomp($qty, $remaining, $qtyScale) > 0) {
+                throw new HttpResponseException(response()->json([
+                    'error' => [
+                        'code' => 'RETURN_EXCEEDS_INVOICED_QUANTITY',
+                        'message' => 'Return quantity exceeds the invoiced quantity available to return',
+                        'details' => [
+                            'product_id' => $productId,
+                            'requested' => $qty,
+                            'remaining_returnable' => $remaining,
+                            'invoiced' => $invoiced[$productId] ?? '0',
+                            'already_returned' => $alreadyReturned[$productId] ?? '0',
+                        ],
+                    ],
+                ], 422));
+            }
+        }
     }
 
     /**
@@ -166,6 +257,18 @@ class ReturnNoteController extends Controller
             $company = $this->companyContext->requireCompany();
             $companyId = $company->id;
             $tenantId = $company->tenant_id;
+
+            // When linked to a source invoice, a customer cannot return more than
+            // was invoiced (net of earlier returns). Mirrors the POS return-cap
+            // (ReceiptReturnService::validateReturnQuantities). Race-safe: the
+            // source document row is locked for the duration of this transaction.
+            if (isset($data['source_document_id'])) {
+                $this->assertWithinReturnableQuantities(
+                    (string) $data['source_document_id'],
+                    is_array($data['lines'] ?? null) ? $data['lines'] : [],
+                    $companyId,
+                );
+            }
 
             // Generate document number
             $documentNumber = $this->numberingService->generateNumber(
