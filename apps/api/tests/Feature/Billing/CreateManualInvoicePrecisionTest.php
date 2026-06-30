@@ -4,17 +4,22 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Billing;
 
+use App\Models\SuperAdmin;
 use App\Modules\Billing\Application\Services\InvoiceService;
 use App\Modules\Billing\Domain\Enums\InvoiceStatus;
 use App\Modules\Billing\Domain\Enums\PaymentStatus;
+use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Invoice;
 use App\Modules\Billing\Domain\InvoiceItem;
 use App\Modules\Billing\Domain\Payment;
+use App\Modules\Billing\Domain\Plan;
+use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -298,6 +303,109 @@ final class CreateManualInvoicePrecisionTest extends TestCase
             $invoice->amount_due,
             'amount_due: float path gives "99.999"; bcmath gives "99.990". '
             .'Confirms the bccomp gate in recordPayment operates on a bcmath amount_due.',
+        );
+    }
+
+    /**
+     * AdminBillingController::calculateMRR() must accumulate prices via bcadd, not float SQL SUM (P0-3).
+     *
+     * Before the fix:
+     *   $monthly = (string) TenantSubscription::...->sum('price');  // Builder::sum() → PHP float
+     *   $yearly  = (string) TenantSubscription::...->sum('price');  // same
+     *
+     * After the fix: rows are pluck()'d and bcadd-reduced at scale+1=3 (sub-cent precision),
+     * with a final bcadd normalisation to EUR scale 2.
+     *
+     * Test mix:
+     *   2 × monthly @ '50.00'  →  $monthly = bcadd('50.000','50.000',3) = '100.000'
+     *   1 × yearly  @ '600.00' →  $yearly  = '600.000'
+     *   monthlyFromYearly = bcdiv('600.000','12',3) = '50.000'
+     *   MRR = bcadd('100.000','50.000',2) = '150.00'
+     *
+     * Returning a PHP float via sum() and (string)-casting to '150' or '150.0' would
+     * fail the '150.00' assertion, proving the path was changed.
+     */
+    public function test_calculate_mrr_uses_bcadd_not_float_sql_sum(): void
+    {
+        $superAdmin = SuperAdmin::create([
+            'id' => Str::uuid()->toString(),
+            'name' => 'MRR Precision Admin',
+            'email' => 'mrr-precision-'.uniqid().'@example.com',
+            'password' => bcrypt('secret'),
+            'role' => 'super_admin',
+            'is_active' => true,
+        ]);
+
+        $plan = Plan::create([
+            'code' => 'MRR-TEST-'.strtoupper(substr(Str::uuid()->toString(), 0, 8)),
+            'name' => 'MRR Precision Plan',
+            'limits' => [],
+            'currency' => 'EUR',
+            'trial_days' => 0,
+            'is_active' => true,
+            'is_public' => false,
+            'display_order' => 99,
+        ]);
+
+        // Two monthly subscriptions @ EUR 50.00
+        foreach (range(1, 2) as $i) {
+            $tenant = Tenant::create([
+                'name' => "MRR Monthly Tenant {$i}",
+                'slug' => 'mrr-monthly-'.uniqid(),
+                'status' => TenantStatus::Active,
+                'plan' => SubscriptionPlan::Professional,
+                'email' => 'mrr-monthly-'.uniqid().'@example.com',
+            ]);
+
+            TenantSubscription::create([
+                'tenant_id' => $tenant->id,
+                'plan_id' => $plan->id,
+                'status' => SubscriptionStatus::Active,
+                'billing_cycle' => 'monthly',
+                'price' => '50.00',
+                'currency' => 'EUR',
+                'metadata' => [],
+            ]);
+        }
+
+        // One yearly subscription @ EUR 600.00 (= EUR 50.00/month equivalent)
+        $yearlyTenant = Tenant::create([
+            'name' => 'MRR Yearly Tenant',
+            'slug' => 'mrr-yearly-'.uniqid(),
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+            'email' => 'mrr-yearly-'.uniqid().'@example.com',
+        ]);
+
+        TenantSubscription::create([
+            'tenant_id' => $yearlyTenant->id,
+            'plan_id' => $plan->id,
+            'status' => SubscriptionStatus::Active,
+            'billing_cycle' => 'yearly',
+            'price' => '600.00',
+            'currency' => 'EUR',
+            'metadata' => [],
+        ]);
+
+        $response = $this->actingAs($superAdmin, 'sanctum-admin')
+            ->getJson('/api/v1/admin/billing/dashboard');
+
+        $response->assertOk();
+
+        // bcadd path: monthly='100.000', monthlyFromYearly='50.000', MRR='150.00'
+        // float path: (string)(100.0 + 50.0) = '150', not '150.00' — scale-unaware
+        $this->assertSame(
+            '150.00',
+            $response->json('data.mrr'),
+            'MRR must be "150.00" (EUR scale 2 via bcadd), not a float-cast string. '
+            .'If "150" is returned, calculateMRR() still uses Builder::sum() + (string)float.',
+        );
+
+        // ARR = MRR × 12 — also a bcmath result
+        $this->assertSame(
+            '1800.00',
+            $response->json('data.arr'),
+            'ARR must be "1800.00" = bcmul("150.00","12",2).',
         );
     }
 

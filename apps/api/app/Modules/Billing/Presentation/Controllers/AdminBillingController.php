@@ -16,6 +16,7 @@ use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Billing\Domain\ValueObjects\Money;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Architecture\CrossTenantRoute;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -378,25 +379,46 @@ final class AdminBillingController extends Controller
     /**
      * Calculate Monthly Recurring Revenue as a numeric-string.
      *
-     * yearly / 12 computed at scale+1=3 to preserve sub-cent precision;
-     * final sum normalised at scale 2 (EUR billing).
+     * Prices are accumulated via bcadd (no float SQL aggregate) so that
+     * no IEEE-754 rounding ever touches monetary values.
+     * Intermediate accumulation at scale+1 (3) preserves sub-cent precision
+     * that is present in the decimal:3 price column; the final bcadd normalises
+     * to the billing scale (EUR = 2).
      *
      * @return numeric-string
      */
     private function calculateMRR(): string
     {
+        $scale = CurrencyScale::for('EUR'); // billing currency is EUR by design
+
         /** @var numeric-string $monthly */
-        $monthly = (string) TenantSubscription::whereIn('status', ['active', 'trial', 'past_due'])
+        $monthly = TenantSubscription::whereIn('status', ['active', 'trial', 'past_due'])
             ->where('billing_cycle', 'monthly')
-            ->sum('price');
+            ->pluck('price')
+            ->reduce(
+                static fn (string $carry, ?string $price): string => bcadd(
+                    $carry,
+                    CurrencyScale::bcformatStrict($price ?? '0', $scale + 1),
+                    $scale + 1,
+                ),
+                '0.000',
+            );
 
         /** @var numeric-string $yearly */
-        $yearly = (string) TenantSubscription::whereIn('status', ['active', 'trial', 'past_due'])
+        $yearly = TenantSubscription::whereIn('status', ['active', 'trial', 'past_due'])
             ->where('billing_cycle', 'yearly')
-            ->sum('price');
+            ->pluck('price')
+            ->reduce(
+                static fn (string $carry, ?string $price): string => bcadd(
+                    $carry,
+                    CurrencyScale::bcformatStrict($price ?? '0', $scale + 1),
+                    $scale + 1,
+                ),
+                '0.000',
+            );
 
-        $monthlyFromYearly = bcdiv($yearly, '12', 3);
+        $monthlyFromYearly = bcdiv($yearly, '12', $scale + 1);
 
-        return bcadd($monthly, $monthlyFromYearly, 2);
+        return bcadd($monthly, $monthlyFromYearly, $scale);
     }
 }
