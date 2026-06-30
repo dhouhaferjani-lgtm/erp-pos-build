@@ -4,9 +4,9 @@ layers:
   0_always:
     description: Loaded at agent startup
     files:
-      - ~/erp-agents/supply-chain/CLAUDE.md
-      - ~/projects/erp/CLAUDE.md
-      - ~/projects/erp/apps/api/.claude/context/architecture.md
+      - ~/Projects/syneriva/apps/erp/.agents/supply-chain/CLAUDE.md
+      - ~/Projects/syneriva/apps/erp/CLAUDE.md
+      - ~/Projects/syneriva/apps/erp/apps/api/.claude/context/architecture.md
 
   1_per_task:
     description: Loaded based on the specific task

@@ -20,7 +20,7 @@ decision_tree:
     yes:
       action: dispatch_product_intel
       target: product-intel
-      agent_path: "~/erp-agents/product-intel/"
+      agent_path: "~/Projects/syneriva/apps/erp/.agents/product-intel/"
       output: "Feature spec that re-enters the tree at root"
       manifest_status: "in_progress"
       manifest_dispatch: "product_intel"
@@ -129,7 +129,7 @@ decision_tree:
   # Post-dispatch: determine domain agent involvement
   domain_routing:
     finance:
-      agent_path: "~/erp-agents/finance/"
+      agent_path: "~/Projects/syneriva/apps/erp/.agents/finance/"
       trigger_modules:
         - Accounting
         - Treasury
@@ -143,7 +143,7 @@ decision_tree:
       review_type: "business_logic"
 
     supply_chain:
-      agent_path: "~/erp-agents/supply-chain/"
+      agent_path: "~/Projects/syneriva/apps/erp/.agents/supply-chain/"
       trigger_modules:
         - Product
         - Catalog

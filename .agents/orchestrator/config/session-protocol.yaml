@@ -1,4 +1,4 @@
-# Session Communication Protocol — AutoERP
+# Session Communication Protocol — Synerivia ERP
 # Load when managing long-running sessions
 
 session_directory: ~/erp-sessions/{task-id}/
@@ -7,13 +7,13 @@ files:
   handoff:
     path: HANDOFF.md
     written_by: orchestrator
-    template: ~/erp-agents/orchestrator/templates/HANDOFF.md
+    template: ~/Projects/syneriva/apps/erp/.agents/orchestrator/templates/HANDOFF.md
     description: "Full context for the session. Written once at kickoff."
 
   state:
     path: STATE.yaml
     written_by: worker_session
-    template: ~/erp-agents/orchestrator/templates/STATE.yaml
+    template: ~/Projects/syneriva/apps/erp/.agents/orchestrator/templates/STATE.yaml
     update_interval: 30_minutes
     description: "Current progress. Worker updates every 30 min."
 

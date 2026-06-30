@@ -6,9 +6,9 @@ layers:
   0_always:
     description: Loaded at agent startup, every session
     files:
-      - ~/erp-agents/finance/CLAUDE.md
-      - ~/projects/erp/CLAUDE.md
-      - ~/projects/erp/apps/api/.claude/context/architecture.md
+      - ~/Projects/syneriva/apps/erp/.agents/finance/CLAUDE.md
+      - ~/Projects/syneriva/apps/erp/CLAUDE.md
+      - ~/Projects/syneriva/apps/erp/apps/api/.claude/context/architecture.md
     rationale: Core identity, architecture rules, module structure
 
   1_per_task:

@@ -33,7 +33,7 @@
 
 Read these files before starting implementation:
 
-1. `~/projects/erp/CLAUDE.md` -- master architecture rules (focus on the 18 operational rules)
+1. `~/Projects/syneriva/apps/erp/CLAUDE.md` -- master architecture rules (focus on the 21 operational rules)
 2. {module-specific files}
 3. {relevant convention docs from docs/conventions/}
 4. {relevant Shared/Contracts/ interfaces}
