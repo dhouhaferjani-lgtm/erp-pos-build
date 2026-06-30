@@ -521,6 +521,18 @@ class CreditNoteIntegrationTest extends TestCase
             'confirmed_by' => $this->user->id,
         ]);
 
+        // A real credit note carries lines; revenue (500) + VAT (19% = 95) cover
+        // the 595 total so the reversal GL balances with no stamp residual.
+        DocumentLine::create([
+            'document_id' => $creditNote->id,
+            'line_number' => 1,
+            'description' => 'Credited item',
+            'quantity' => '1',
+            'unit_price' => '500.000',
+            'tax_rate' => '19.00',
+            'line_total' => '500.000',
+        ]);
+
         $this->user->givePermissionTo('credit-notes.post');
 
         $response = $this->actingAs($this->user)

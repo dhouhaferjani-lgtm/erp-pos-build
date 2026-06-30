@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -180,6 +181,17 @@ class CreditNoteDocumentTest extends TestCase
             'currency' => 'EUR',
             'subtotal' => '100.00',
             'total' => '100.00',
+        ]);
+
+        // Revenue line covering the total so the reversal GL balances.
+        DocumentLine::create([
+            'document_id' => $creditNote->id,
+            'line_number' => 1,
+            'description' => 'Credited item',
+            'quantity' => '1',
+            'unit_price' => '100.000',
+            'tax_rate' => '0.00',
+            'line_total' => '100.000',
         ]);
 
         $response = $this->actingAs($this->user)->postJson("/api/v1/credit-notes/{$creditNote->id}/post");

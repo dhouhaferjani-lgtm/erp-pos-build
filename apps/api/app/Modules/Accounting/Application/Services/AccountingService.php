@@ -202,11 +202,8 @@ final class AccountingService implements AccountingServiceInterface
             // unbalanced journal entry (bug #5A).
             /** @var numeric-string $stampDuty */
             $stampDuty = bcsub((string) ($invoice->total ?? '0'), bcadd($revenueCredited, $vatCredited, $this->scale()), $this->scale());
-            if (bccomp($stampDuty, '0', $this->scale()) > 0) {
-                $stampDutyAccount = $this->findAccountByPurpose(
-                    $invoice->company_id,
-                    SystemAccountPurpose::SalesStampDutyPayable
-                );
+            $stampDutyAccount = Account::findByPurpose($invoice->company_id, SystemAccountPurpose::SalesStampDutyPayable);
+            if (bccomp($stampDuty, '0', $this->scale()) > 0 && $stampDutyAccount !== null) {
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $stampDutyAccount->id,
@@ -352,11 +349,8 @@ final class AccountingService implements AccountingServiceInterface
             // posts an unbalanced reversal.
             /** @var numeric-string $stampDuty */
             $stampDuty = bcsub((string) ($creditNote->total ?? '0'), bcadd($revenueDebited, $vatDebited, $this->scale()), $this->scale());
-            if (bccomp($stampDuty, '0', $this->scale()) > 0) {
-                $stampDutyAccount = $this->findAccountByPurpose(
-                    $creditNote->company_id,
-                    SystemAccountPurpose::SalesStampDutyPayable
-                );
+            $stampDutyAccount = Account::findByPurpose($creditNote->company_id, SystemAccountPurpose::SalesStampDutyPayable);
+            if (bccomp($stampDuty, '0', $this->scale()) > 0 && $stampDutyAccount !== null) {
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $stampDutyAccount->id,
