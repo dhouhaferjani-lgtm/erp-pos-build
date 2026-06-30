@@ -77,6 +77,25 @@ class InvoiceController extends Controller
     }
 
     /**
+     * Read a line's discount field (validated numeric by the FormRequest) as a
+     * numeric-string for the discount arithmetic, or null when absent.
+     *
+     * @param  array<string, mixed>  $line
+     * @return numeric-string|null
+     */
+    private function lineDiscount(array $line, string $key): ?string
+    {
+        if (! isset($line[$key])) {
+            return null;
+        }
+
+        /** @var numeric-string $value */
+        $value = (string) $line[$key];
+
+        return $value;
+    }
+
+    /**
      * Get the CompanyContext service.
      *
      * Required by HandlesDocuments trait.
@@ -197,7 +216,16 @@ class InvoiceController extends Controller
                 /** @var numeric-string $taxRate */
                 $taxRate = (string) ($line['tax_rate'] ?? '0');
 
-                $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                // NET of any line discount (before tax) — the canonical helper
+                // keeps the draft subtotal and tax base consistent with the
+                // fiscal recompute done on confirm.
+                $lineSubtotal = DocumentLine::computeLineTotal(
+                    $quantity,
+                    $unitPrice,
+                    $this->lineDiscount($line, 'discount_percent'),
+                    $this->lineDiscount($line, 'discount_amount'),
+                    $this->scale(),
+                );
                 $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
                 $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
@@ -243,7 +271,14 @@ class InvoiceController extends Controller
                 $quantity = (string) $lineData['quantity'];
                 /** @var numeric-string $unitPrice */
                 $unitPrice = (string) $lineData['unit_price'];
-                $lineTotal = bcmul($quantity, $unitPrice, $this->scale());
+                // Stored line_total is NET of the line discount (before tax).
+                $lineTotal = DocumentLine::computeLineTotal(
+                    $quantity,
+                    $unitPrice,
+                    $this->lineDiscount($lineData, 'discount_percent'),
+                    $this->lineDiscount($lineData, 'discount_amount'),
+                    $this->scale(),
+                );
 
                 /** @var Service|null $lineService */
                 $lineService = isset($lineData['service_id']) ? $services->get($lineData['service_id']) : null;
@@ -359,7 +394,15 @@ class InvoiceController extends Controller
                     /** @var numeric-string $taxRate */
                     $taxRate = (string) ($lineData['tax_rate'] ?? '0');
 
-                    $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                    // NET of any line discount (before tax); also persisted as the
+                    // line_total below via $lineSubtotal.
+                    $lineSubtotal = DocumentLine::computeLineTotal(
+                        $quantity,
+                        $unitPrice,
+                        $this->lineDiscount($lineData, 'discount_percent'),
+                        $this->lineDiscount($lineData, 'discount_amount'),
+                        $this->scale(),
+                    );
                     $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
                     $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());

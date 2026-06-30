@@ -269,6 +269,61 @@ class CreateDocumentTest extends TestCase
             ->assertJsonPath('data.total', '240.00');
     }
 
+    public function test_invoice_draft_applies_line_discount_percent_to_totals(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/invoices', [
+                'partner_id' => $this->customer->id,
+                'document_date' => now()->toDateString(),
+                'due_date' => now()->addDays(30)->toDateString(),
+                'currency' => 'EUR',
+                'lines' => [
+                    [
+                        'description' => 'Discounted Services',
+                        'quantity' => '2.00',
+                        'unit_price' => '100.00',
+                        'discount_percent' => '10.00',
+                        'tax_rate' => '20.00',
+                    ],
+                ],
+            ]);
+
+        // gross 200 − 10% = net 180; line discount must flow into the draft
+        // subtotal, the line_total, and the tax base.
+        $response->assertCreated()
+            ->assertJsonPath('data.subtotal', '180.00')
+            ->assertJsonPath('data.tax_amount', '36.00')
+            ->assertJsonPath('data.total', '216.00')
+            ->assertJsonPath('data.lines.0.line_total', '180.00');
+    }
+
+    public function test_invoice_draft_applies_line_discount_amount_to_totals(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/invoices', [
+                'partner_id' => $this->customer->id,
+                'document_date' => now()->toDateString(),
+                'due_date' => now()->addDays(30)->toDateString(),
+                'currency' => 'EUR',
+                'lines' => [
+                    [
+                        'description' => 'Flat-discounted Services',
+                        'quantity' => '1.00',
+                        'unit_price' => '100.00',
+                        'discount_amount' => '25.00',
+                        'tax_rate' => '20.00',
+                    ],
+                ],
+            ]);
+
+        // gross 100 − 25 flat = net 75
+        $response->assertCreated()
+            ->assertJsonPath('data.subtotal', '75.00')
+            ->assertJsonPath('data.tax_amount', '15.00')
+            ->assertJsonPath('data.total', '90.00')
+            ->assertJsonPath('data.lines.0.line_total', '75.00');
+    }
+
     public function test_document_number_is_auto_generated(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')

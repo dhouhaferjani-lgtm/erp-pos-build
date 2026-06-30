@@ -35,7 +35,12 @@ final readonly class DocumentTotalsCalculator
         $subtotal = '0';
 
         foreach ($document->lines as $line) {
-            $lineSubtotal = bcmul($line->quantity, $line->unit_price, $scale);
+            // calculateTotal() is the canonical NET line value: gross
+            // (qty × unit_price) minus the line discount (percent, else flat
+            // amount), before tax. Without it line discounts were silently
+            // dropped from the subtotal. For a line with no discount it returns
+            // bcmul(qty, unit_price, scale) — byte-identical to the old code.
+            $lineSubtotal = $line->calculateTotal($scale);
             $subtotal = bcadd($subtotal, $lineSubtotal, $scale);
         }
 
