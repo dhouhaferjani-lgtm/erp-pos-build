@@ -64,11 +64,14 @@ export interface PartnerDetail {
   type: 'customer' | 'supplier' | 'both'
   email: string | null
   phone: string | null
-  address?: string | null
+  street_address?: string | null
   city?: string | null
   postal_code?: string | null
   country?: string | null
-  tax_id?: string | null
+  vat_number?: string | null
+  receivable_balance?: string | null
+  payable_balance?: string | null
+  credit_balance?: string | null
   notes?: string | null
   is_active?: boolean
   created_at: string
@@ -127,11 +130,14 @@ export function makePartnerDetail(
     type: 'customer',
     email: 'contact@acme.com',
     phone: '+1234567890',
-    address: null,
+    street_address: null,
     city: null,
     postal_code: null,
     country: null,
-    tax_id: null,
+    vat_number: null,
+    receivable_balance: null,
+    payable_balance: null,
+    credit_balance: null,
     notes: null,
     is_active: true,
     created_at: '2025-01-01T00:00:00Z',

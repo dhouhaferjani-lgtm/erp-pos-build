@@ -14,6 +14,7 @@ import {
   makePartnerDetail,
   makePartnersListResponse,
 } from './__fixtures__/partner'
+import { defaultCompanyConfig, mechanicCompanyConfig } from '@/test/fixtures/companyConfig'
 
 // Mock the API - must use vi.hoisted for variables used in vi.mock factory
 const { mockApiGet, mockApiPost, mockApiPatch, mockApiDelete, mockGetErrorMessage, mockIsApiError } = vi.hoisted(() => ({
@@ -255,9 +256,6 @@ describe('Partner Management', () => {
      */
     function routeDetailMock(partner = mockPartnerDetailAcme) {
       mockApiInstance.get.mockImplementation((url: string) => {
-        if (url.startsWith('/partners/') && !url.includes('/account-balance')) {
-          return Promise.resolve({ data: { data: partner } })
-        }
         if (url.includes('/account-balance')) {
           return Promise.resolve({
             data: {
@@ -270,7 +268,22 @@ describe('Partner Management', () => {
             },
           })
         }
-        // documents, payments, vehicles — all array payloads
+        // Customer-account deposit history — usePartnerDeposits unwraps data.data (array).
+        if (url.includes('/deposits')) {
+          return Promise.resolve({ data: { data: [] } })
+        }
+        // Partner vehicles — fetchVehiclesForPartner returns the full {data, meta}
+        // paginated envelope (the page reads ?.meta.total), so meta must be present.
+        if (url.includes('/vehicles')) {
+          return Promise.resolve({
+            data: { data: [], meta: { current_page: 1, per_page: 20, total: 0, last_page: 1 } },
+          })
+        }
+        // Partner detail — match /partners/{id} exactly, not nested sub-resources.
+        if (/^\/partners\/[^/]+(\?|$)/.test(url)) {
+          return Promise.resolve({ data: { data: partner } })
+        }
+        // documents, payments — array payloads
         return Promise.resolve({ data: { data: [] } })
       })
     }
@@ -335,6 +348,71 @@ describe('Partner Management', () => {
         expect(screen.getByRole('link', { name: /edit/i })).toBeInTheDocument()
         expect(screen.getByRole('link', { name: /back/i })).toBeInTheDocument()
       })
+    })
+
+    // ── Bug #6A: balance read the wrong field name (total_receivable) instead of
+    // the API's receivable_balance, so the customer balance always rendered 0.
+    it('renders the customer receivable balance from the API receivable_balance field', async () => {
+      routeDetailMock(
+        makePartnerDetail({
+          id: '1',
+          name: 'Acme Corp',
+          type: 'customer',
+          receivable_balance: '150.000',
+        })
+      )
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/sales/customers/:id" element={<PartnerDetailPage />} />
+        </Routes>,
+        { route: '/sales/customers/1' }
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText('Acme Corp')).toBeInTheDocument()
+      })
+
+      // The balance card must reflect the receivable (150), not the 0 / "no balance" state.
+      expect(screen.getByText(/150/)).toBeInTheDocument()
+      expect(screen.queryByText(/no balance/i)).not.toBeInTheDocument()
+    })
+
+    // ── Bug #6C: the Vehicles tab was gated only on context + partner type, not on
+    // the Vehicle module, so it appeared on parapharmacy tenants where the backend
+    // route is module:Vehicle → 403.
+    it('hides the Vehicles tab when the Vehicle module is not enabled', async () => {
+      routeDetailMock(makePartnerDetail({ id: '1', name: 'Acme Corp', type: 'customer' }))
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/sales/customers/:id" element={<PartnerDetailPage />} />
+        </Routes>,
+        { route: '/sales/customers/1', companyConfig: defaultCompanyConfig }
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText('Acme Corp')).toBeInTheDocument()
+      })
+
+      expect(screen.queryByRole('tab', { name: /vehicles/i })).not.toBeInTheDocument()
+    })
+
+    it('shows the Vehicles tab when the Vehicle module is enabled', async () => {
+      routeDetailMock(makePartnerDetail({ id: '1', name: 'Acme Corp', type: 'customer' }))
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/sales/customers/:id" element={<PartnerDetailPage />} />
+        </Routes>,
+        { route: '/sales/customers/1', companyConfig: mechanicCompanyConfig }
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText('Acme Corp')).toBeInTheDocument()
+      })
+
+      expect(screen.getByRole('tab', { name: /vehicles/i })).toBeInTheDocument()
     })
   })
 

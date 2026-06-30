@@ -30,6 +30,7 @@ import { AddVehicleModal } from '../../components/organisms'
 import { VehiclesTab } from '../vehicles/components/organisms/VehiclesTab'
 import { usePartnerVehicles } from '../vehicles/hooks/usePartnerVehicles'
 import { partnerVehiclesInvalidationPredicate } from './_invalidation'
+import { useCompanyConfig } from '@/contexts'
 
 interface PartnerAccountBalance {
   partner_id: string
@@ -38,24 +39,11 @@ interface PartnerAccountBalance {
   deposit_count: number
 }
 
-interface Partner {
-  id: string
-  name: string
-  type: 'customer' | 'supplier' | 'both'
-  email: string | null
-  phone: string | null
-  address: string | null
-  city: string | null
-  postal_code: string | null
-  country: string | null
-  tax_id: string | null
-  notes: string | null
-  is_active: boolean
-  total_receivable?: number
-  total_payable?: number
-  created_at: string
-  updated_at: string
-}
+// Source of truth is the backend resource (Rule 7: types flow from backend).
+// Balances are decimal strings (receivable_balance / payable_balance), and the
+// address/tax fields are street_address / vat_number — NOT total_receivable /
+// total_payable / address / tax_id as the previous hand-rolled interface assumed.
+type Partner = App.Modules.Partner.Application.DTOs.PartnerData
 
 interface Document {
   id: string
@@ -113,6 +101,7 @@ export function PartnerDetailPage() {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const { hasModule } = useCompanyConfig()
   const hasTenantScope = tenantId !== null && companyId !== null
 
   // Get company currency with fallback
@@ -163,7 +152,10 @@ export function PartnerDetailPage() {
 
   // Fetch related vehicles (for customers) — uses the ownership-aware endpoint via the
   // shared VehiclesTab organism. We still read the count here to surface it in the tab trigger.
-  const showVehiclesTab = isCustomerContext && (partner?.type === 'customer' || partner?.type === 'both')
+  const showVehiclesTab =
+    isCustomerContext &&
+    hasModule('Vehicle') &&
+    (partner?.type === 'customer' || partner?.type === 'both')
   const showDepositsTab = isCustomerContext && (partner?.type === 'customer' || partner?.type === 'both')
 
   const { data: deposits = [] } = usePartnerDeposits(id)
@@ -185,7 +177,7 @@ export function PartnerDetailPage() {
   const vehicleCount = partnerVehiclesData?.meta.total ?? partnerVehiclesData?.data.length ?? 0
 
   // Format currency using company settings
-  const formatAmount = (amount: number) => {
+  const formatAmount = (amount: string | number) => {
     return formatCurrency(amount, {
       currency: companyCurrency,
       locale: companyLocale,
@@ -336,7 +328,7 @@ export function PartnerDetailPage() {
                   <div className="flex justify-between">
                     <dt className="text-sm text-gray-500">{t('fields.totalReceivable')}</dt>
                     <dd className="text-sm font-medium text-gray-900">
-                      {formatAmount(partner.total_receivable ?? 0)}
+                      {formatAmount(partner.receivable_balance ?? 0)}
                     </dd>
                   </div>
                 )}
@@ -346,7 +338,7 @@ export function PartnerDetailPage() {
                   <div className="flex justify-between">
                     <dt className="text-sm text-gray-500">{t('fields.totalPayable')}</dt>
                     <dd className="text-sm font-medium text-gray-900">
-                      {formatAmount(partner.total_payable ?? 0)}
+                      {formatAmount(partner.payable_balance ?? 0)}
                     </dd>
                   </div>
                 )}
@@ -383,8 +375,8 @@ export function PartnerDetailPage() {
 
                 {/* No balance */}
                 {(!accountBalance || parseFloat(accountBalance.unallocated_balance) === 0) &&
-                 (partner.total_receivable ?? 0) === 0 &&
-                 (partner.total_payable ?? 0) === 0 && (
+                 parseFloat(partner.receivable_balance ?? '0') === 0 &&
+                 parseFloat(partner.payable_balance ?? '0') === 0 && (
                   <div className="text-sm text-gray-400 text-center py-2">
                     {t('partner.noBalance')}
                   </div>
@@ -416,13 +408,13 @@ export function PartnerDetailPage() {
                     </div>
                   </div>
                 )}
-                {(partner.address != null || partner.city != null) && (
+                {(partner.street_address != null || partner.city != null) && (
                   <div className="flex items-start gap-3">
                     <Building2 className="mt-0.5 h-5 w-5 text-gray-400" />
                     <div>
                       <dt className="text-sm font-medium text-gray-500">{t('fields.address')}</dt>
                       <dd className="text-gray-900">
-                        {partner.address && <div>{partner.address}</div>}
+                        {partner.street_address && <div>{partner.street_address}</div>}
                         {(partner.city != null || partner.postal_code != null) && (
                           <div>
                             {partner.postal_code} {partner.city}
@@ -442,10 +434,10 @@ export function PartnerDetailPage() {
                 {t('sections.businessInfo')}
               </h2>
               <dl className="space-y-4">
-                {partner.tax_id && (
+                {partner.vat_number && (
                   <div>
                     <dt className="text-sm font-medium text-gray-500">{t('fields.taxId')}</dt>
-                    <dd className="text-gray-900">{partner.tax_id}</dd>
+                    <dd className="text-gray-900">{partner.vat_number}</dd>
                   </div>
                 )}
                 <div className="flex items-start gap-3">
