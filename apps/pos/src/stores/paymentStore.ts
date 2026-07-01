@@ -267,7 +267,7 @@ interface PaymentActions {
 	processCashCheckout: (
 	  terminalId: string,
 	  cartItems: CartItem[],
-	  tenderedAmount: number,
+	  tenderedAmount: string,
 	  transactionDiscount?: CartTransactionDiscount,
     consumptionMode?: string,
     tableId?: string | null,
@@ -497,7 +497,7 @@ async function createReceiptLocalFirst(
   terminalId: string,
   cartItems: CartItem[],
   payments: LocalFirstPaymentLine[],
-  tenderedAmount: number,
+  tenderedAmount: string,
   /**
    * T0.2: Caller-allocated idempotency key for this cart submission attempt.
    * Same key is reused across cashier double-clicks so the server-side
@@ -864,7 +864,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     }
 
     const totalEstimate = estimateCartTotal(cartItems, transactionDiscount, getActiveCurrency());
-    if (tenderedAmount + 0.000001 < totalEstimate) {
+    if (bccomp(tenderedAmount, String(totalEstimate)) < 0) {
       const msg = 'Cash tender tolerance requires a manager-authored tender tolerance override and is not available from quick cash checkout.';
       set({ error: msg });
       throw new Error(msg);
@@ -930,7 +930,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         cartItems,
         [{
           methodCode: cashMethod.code,
-          amount: tenderedAmount.toFixed(decimals),
+          amount: bcformat(tenderedAmount, decimals),
           paymentMethodId: cashMethod.id,
           repositoryId: cashRegister.id,
         }],
@@ -1028,7 +1028,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
           cardLastFour: cardData?.lastFour,
           transactionReference: cardData?.reference,
         }],
-        0, // tenderedAmount = 0 for card (no cash in hand)
+        '0', // tenderedAmount = '0' for card (no cash in hand)
         idempotencyKey,
         transactionDiscount,
         consumptionMode,
@@ -1110,11 +1110,10 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       // currency-scale strings that get persisted/hashed, so the tendered
       // total and the per-line `amount` strings cannot disagree.
       const tenderedAmountStr = bcsum(enriched.map((e) => e.amount), decimals);
-      const tenderedAmount = Number(tenderedAmountStr);
       const totalEstimate = estimateCartTotal(cartItems, transactionDiscount, currency);
       let tenderToleranceEvidence: PosOverrideEvidence | undefined;
 
-      if (tenderedAmount + 0.000001 < totalEstimate) {
+      if (bccomp(tenderedAmountStr, String(totalEstimate)) < 0) {
         const pin = options?.tenderTolerancePin?.trim() ?? '';
         if (pin === '') {
           const msg = 'Tender tolerance requires a manager PIN.';
@@ -1187,7 +1186,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         terminalId,
         cartItems,
         enriched,
-        tenderedAmount,
+        tenderedAmountStr,
         idempotencyKey,
         transactionDiscount,
         consumptionMode,

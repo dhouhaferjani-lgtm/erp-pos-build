@@ -121,7 +121,7 @@ describe('paymentStore stress / throughput (offline-first)', () => {
     const items = useCartStore.getState().items;
     const start = performance.now();
     for (let i = 0; i < 100; i++) {
-      await usePaymentStore.getState().processCashCheckout('term-1', items, 10);
+      await usePaymentStore.getState().processCashCheckout('term-1', items, '10.00');
     }
     const elapsed = performance.now() - start;
     expect(elapsed).toBeLessThan(5000);
@@ -134,7 +134,7 @@ describe('paymentStore stress / throughput (offline-first)', () => {
     const timings: number[] = [];
     for (let i = 0; i < 50; i++) {
       const t0 = performance.now();
-      await usePaymentStore.getState().processCashCheckout('term-1', items, 10);
+      await usePaymentStore.getState().processCashCheckout('term-1', items, '10.00');
       timings.push(performance.now() - t0);
     }
     timings.sort((a, b) => a - b);

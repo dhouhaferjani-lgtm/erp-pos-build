@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { CashPaymentScreen, type CashPaymentScreenProps } from '../CashPaymentScreen';
+import { CashPaymentScreen, type CashPaymentScreenProps, computeCashTenderState } from '../CashPaymentScreen';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -103,13 +103,13 @@ describe('CashPaymentScreen', () => {
     expect(confirmBtn).toBeDisabled();
   });
 
-  it('calls onConfirm with tendered amount when confirm clicked', () => {
+  it('calls onConfirm with tendered amount STRING (not float) when confirm clicked', () => {
     const onConfirm = vi.fn();
     renderScreen({ total: 3, onConfirm });
-    // Click a denomination
+    // Click a denomination — 50 EUR → tenderedStr should be '50.00' (bcformat string)
     fireEvent.click(screen.getByText('50 EUR'));
     fireEvent.click(screen.getByText('cashPayment.complete'));
-    expect(onConfirm).toHaveBeenCalledWith(50);
+    expect(onConfirm).toHaveBeenCalledWith('50.00');
   });
 
   it('error message renders when error prop provided', () => {
@@ -179,5 +179,42 @@ describe('CashPaymentScreen', () => {
     fireEvent.click(screen.getByTestId('numpad-press-5'));
     // Preset flag was cleared after the first overwrite, so this appends
     expect(screen.getByTestId('numpad-value').textContent).toBe('55');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// computeCashTenderState — pure helper (D0-2 precision sweep)
+// These tests fail on the float path and pass on the bcmath path.
+// ──────────────────────────────────────────────────────────────────────────────
+describe('computeCashTenderState', () => {
+  it('exact change: 100.10 tendered vs 99.80 total → "0.30" (not float drift 0.30000000000000027)', () => {
+    // Float path: Math.max(0, 100.10 - 99.80) = 0.30000000000000027
+    // bcmath path: bcsub('100.10', '99.80', 2) = '0.30'
+    const { changeDue, isValid } = computeCashTenderState('100.10', '99.80', 2);
+    expect(changeDue).toBe('0.30');
+    expect(isValid).toBe(true);
+  });
+
+  it('exact tender equals total: isValid=true, changeDue="0.00"', () => {
+    const { changeDue, isValid } = computeCashTenderState('99.80', '99.80', 2);
+    expect(isValid).toBe(true);
+    expect(changeDue).toBe('0.00');
+  });
+
+  it('under-tender: isValid=false', () => {
+    const { isValid } = computeCashTenderState('50.00', '99.80', 2);
+    expect(isValid).toBe(false);
+  });
+
+  it('empty tender string: isValid=false, changeDue="0.00"', () => {
+    const { changeDue, isValid } = computeCashTenderState('', '99.80', 2);
+    expect(isValid).toBe(false);
+    expect(changeDue).toBe('0.00');
+  });
+
+  it('TND scale-3: 10.100 tendered vs 9.800 total → "0.300"', () => {
+    const { changeDue, isValid } = computeCashTenderState('10.100', '9.800', 3);
+    expect(changeDue).toBe('0.300');
+    expect(isValid).toBe(true);
   });
 });

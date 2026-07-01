@@ -150,7 +150,7 @@ describe('paymentStore — cash payment amount is tendered (Bug 2)', () => {
     // Cart total = 50; cashier tendered 120; change = 70.
     await usePaymentStore
       .getState()
-      .processCashCheckout('term-1', useCartStore.getState().items, 120);
+      .processCashCheckout('term-1', useCartStore.getState().items, '120.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
@@ -172,7 +172,7 @@ describe('paymentStore — cash payment amount is tendered (Bug 2)', () => {
     // Cart total = 50; cashier tendered 50; change = 0.
     await usePaymentStore
       .getState()
-      .processCashCheckout('term-1', useCartStore.getState().items, 50);
+      .processCashCheckout('term-1', useCartStore.getState().items, '50.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
@@ -214,12 +214,42 @@ describe('paymentStore — cash payment amount is tendered (Bug 2)', () => {
 
     await usePaymentStore
       .getState()
-      .processCashCheckout('term-1', useCartStore.getState().items, 60);
+      .processCashCheckout('term-1', useCartStore.getState().items, '60.000');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         payments: [expect.objectContaining({ methodCode: 'CASH', amount: '60.000' })],
+      }),
+    );
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // D0-2 discriminating: processCashCheckout must accept a decimal STRING,
+  // store it as string in tenderedAmount, and use bcformat (not .toFixed) for
+  // payments[0].amount. On the old float path '100.10' causes TypeError
+  // (String.prototype.toFixed is not a function).
+  // ──────────────────────────────────────────────────────────────────────────
+  it('D0-2: tender string is stored as-is in tenderedAmount and bcformat-scaled in payments.amount', async () => {
+    const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
+
+    // Cart total = 50.00; tender 100.10 (over-tender, change = 50.10)
+    await usePaymentStore
+      .getState()
+      .processCashCheckout('term-1', useCartStore.getState().items, '100.10');
+
+    expect(createOfflineReceipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        // tenderedAmount must arrive as the exact string — not as float 100.1
+        tenderedAmount: '100.10',
+        payments: [
+          expect.objectContaining({
+            methodCode: 'CASH',
+            // bcformat('100.10', 2) = '100.10' — must not be float-derived
+            amount: '100.10',
+          }),
+        ],
       }),
     );
   });

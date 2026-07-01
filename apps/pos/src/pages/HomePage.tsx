@@ -1166,7 +1166,7 @@ export function HomePage() {
   }, [cartItems, blockMixedCheckout, startRefundCheckout]);
 
   const handleCashConfirm = useCallback(
-    async (tenderedAmount: number) => {
+    async (tenderedAmount: string) => {
       if (!terminal) return;
       // Defense-in-depth (Task 2b): a receipt scan can hydrate return lines
       // while the cash modal is already open — a non-pure-sale cart must

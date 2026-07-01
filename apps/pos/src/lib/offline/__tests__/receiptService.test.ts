@@ -132,7 +132,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       seller,
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
-      tenderedAmount: 10,
+      tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
     });
@@ -166,7 +166,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       seller,
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
-      tenderedAmount: 10,
+      tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
     })).rejects.toMatch('database is locked');
@@ -192,7 +192,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       seller,
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
-      tenderedAmount: 10,
+      tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
     });
@@ -266,7 +266,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       seller,
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
-      tenderedAmount: 8,
+      tenderedAmount: '8.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       transactionDiscount: {
         type: 'fixed',
@@ -343,7 +343,7 @@ describe('receiptService — fiscal-event engine wiring', () => {
       seller,
       paymentMethodId: 'pm-1',
       paymentRepositoryId: 'repo-1',
-      tenderedAmount: 10,
+      tenderedAmount: '10.00',
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
       payments: [{ methodCode: 'CASH', amount: '10.00' }],
     });

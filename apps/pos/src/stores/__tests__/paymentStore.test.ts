@@ -65,7 +65,7 @@ describe('paymentStore', () => {
     await usePaymentStore.getState().fetchPaymentConfig();
 
     await expect(
-      usePaymentStore.getState().processCashCheckout('t-1', [], 50),
+      usePaymentStore.getState().processCashCheckout('t-1', [], '50.00'),
     ).rejects.toThrow('No cash payment method configured');
   });
 
@@ -75,7 +75,7 @@ describe('paymentStore', () => {
     await usePaymentStore.getState().fetchPaymentConfig();
 
     await expect(
-      usePaymentStore.getState().processCashCheckout('t-1', [], 50),
+      usePaymentStore.getState().processCashCheckout('t-1', [], '50.00'),
     ).rejects.toThrow('No cash register configured');
   });
 

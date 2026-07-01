@@ -196,7 +196,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
       currency: 'EUR',
       paymentMethodId: 'pm-store-voucher',
       paymentRepositoryId: 'repo-virtual',
-      tenderedAmount: 50,
+      tenderedAmount: '50.00',
       payments: [
         {
           methodCode: 'store_voucher',
@@ -260,7 +260,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
       currency: 'EUR',
       paymentMethodId: 'pm-store-voucher',
       paymentRepositoryId: 'repo-virtual',
-      tenderedAmount: 20,
+      tenderedAmount: '20.00',
       payments: [
         {
           methodCode: 'store_voucher',
@@ -290,7 +290,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
         currency: 'EUR',
         paymentMethodId: 'pm-store-voucher',
         paymentRepositoryId: 'repo-virtual',
-        tenderedAmount: 50,
+        tenderedAmount: '50.00',
         payments: [
           {
             methodCode: 'store_voucher',
@@ -335,7 +335,7 @@ d('B5 integration: voucher tender end-to-end (offline)', () => {
       currency: 'EUR',
       paymentMethodId: 'pm-store-voucher',
       paymentRepositoryId: 'repo-virtual',
-      tenderedAmount: 50,
+      tenderedAmount: '50.00',
       payments: [
         {
           methodCode: 'CASH',

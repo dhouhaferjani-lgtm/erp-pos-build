@@ -270,7 +270,7 @@ describe('paymentStore branch seller tax source', () => {
   it('authors the FULL branch identity in SALE_RECEIPT seller payloads when the location is fiscally complete', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 50);
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '50.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
@@ -298,7 +298,7 @@ describe('paymentStore branch seller tax source', () => {
       },
     });
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 50);
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '50.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
@@ -320,7 +320,7 @@ describe('paymentStore branch seller tax source', () => {
       },
     });
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 50);
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '50.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),

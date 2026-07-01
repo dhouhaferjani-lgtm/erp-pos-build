@@ -301,7 +301,7 @@ describe('offline-first POS lifecycle (integration)', () => {
     await usePaymentStore.getState().processCashCheckout(
       'terminal-1',
       useCartStore.getState().items,
-      100,
+      '100.00',
     );
 
     // Assert: insertOfflineReceipt called once with correct shape

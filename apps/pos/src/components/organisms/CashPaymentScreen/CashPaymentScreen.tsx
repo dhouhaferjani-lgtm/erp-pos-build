@@ -6,11 +6,33 @@ import { NumPad } from '@/components/molecules/NumPad';
 import { tokens } from '@/lib/designTokens';
 import { cn } from '@/lib/utils';
 import { ArrowLeft, Banknote, CheckCircle2, AlertCircle } from 'lucide-react';
+import { bccomp, bcsub, bcformat } from '@/lib/decimal';
+
+/**
+ * Pure helper — no React, safe to unit-test directly.
+ * Computes the change-due string and valid-tender gate from decimal strings.
+ * Uses bcmath (big.js) — no IEEE-754 float drift.
+ */
+export function computeCashTenderState(
+  tenderedStr: string,
+  totalStr: string,
+  decimals: number,
+): { changeDue: string; isValid: boolean } {
+  if (!tenderedStr) {
+    return { changeDue: bcformat('0', decimals), isValid: false };
+  }
+  const cmp = bccomp(tenderedStr, totalStr);
+  const isValid = cmp >= 0;
+  const changeDue = cmp > 0
+    ? bcsub(tenderedStr, totalStr, decimals)
+    : bcformat('0', decimals);
+  return { changeDue, isValid };
+}
 
 export interface CashPaymentScreenProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (tenderedAmount: number) => void;
+  onConfirm: (tenderedAmount: string) => void;
   total: number;
   discountAmount?: number;
   isProcessing: boolean;
@@ -42,17 +64,16 @@ export function CashPaymentScreen({
     }
   }, [isOpen]);
 
-  const tenderedNum = parseFloat(tenderedStr) || 0;
-  const changeDue = Math.max(0, tenderedNum - total);
-  const isValid = tenderedNum >= total && tenderedStr !== '';
+  const totalStr = bcformat(String(total), decimals);
+  const { changeDue, isValid } = computeCashTenderState(tenderedStr, totalStr, decimals);
 
   const handleExact = useCallback(() => {
-    setTenderedStr(total.toFixed(decimals));
+    setTenderedStr(bcformat(String(total), decimals));
     setPresetSet(true);
   }, [total, decimals]);
 
   const handleDenomination = useCallback((amount: number) => {
-    setTenderedStr(amount.toFixed(decimals));
+    setTenderedStr(bcformat(String(amount), decimals));
     setPresetSet(true);
   }, [decimals]);
 
@@ -71,8 +92,8 @@ export function CashPaymentScreen({
   }, [presetSet, tenderedStr]);
 
   const handleConfirm = useCallback(() => {
-    if (isValid && !isProcessing) onConfirm(tenderedNum);
-  }, [isValid, isProcessing, onConfirm, tenderedNum]);
+    if (isValid && !isProcessing) onConfirm(tenderedStr);
+  }, [isValid, isProcessing, onConfirm, tenderedStr]);
 
   const denominations = getDenominations(currency, total);
 
@@ -131,11 +152,11 @@ export function CashPaymentScreen({
               {t('cashPayment.tendered')}
             </p>
             <p className="mt-2 font-mono text-4xl font-bold tabular-nums text-pay-navy-fg">
-              {tenderedStr ? format(tenderedNum) : format(0)}
+              {tenderedStr ? format(tenderedStr) : format(0)}
             </p>
           </div>
 
-          {changeDue > 0 && (
+          {bccomp(changeDue, '0') > 0 && (
             <div className="mt-8 w-full max-w-xs rounded-xl border-2 border-success-subtle bg-success-surface p-4 text-center">
               <p className="text-xs font-medium uppercase tracking-widest text-success-strong">
                 {t('cashPayment.changeDue')}

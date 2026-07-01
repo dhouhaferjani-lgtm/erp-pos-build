@@ -147,7 +147,7 @@ describe('paymentStore offline-first cash checkout', () => {
   it('writes receipt to SQLite first; the server-authoring receipt methods are gone (Phase 1 Task 27 Pass 1)', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '100.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledOnce();
 
@@ -168,7 +168,7 @@ describe('paymentStore offline-first cash checkout', () => {
   it('passes operator from useOperatorStore to createOfflineReceipt', async () => {
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '100.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
@@ -202,7 +202,7 @@ describe('paymentStore offline-first cash checkout', () => {
       },
     } as never);
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '100.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
@@ -226,7 +226,7 @@ describe('paymentStore offline-first cash checkout', () => {
       },
     } as never);
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100);
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '100.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
@@ -238,7 +238,7 @@ describe('paymentStore offline-first cash checkout', () => {
     useTerminalStore.setState({ terminal: null } as never);
 
     await expect(
-      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100),
+      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '100.00'),
     ).rejects.toBeInstanceOf(ActiveTerminalRequiredError);
 
     const { createOfflineReceipt } = await import('@/lib/offline/receiptService');
@@ -252,7 +252,7 @@ describe('paymentStore offline-first cash checkout', () => {
     );
 
     await expect(
-      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100),
+      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '100.00'),
     ).rejects.toThrow(/Terminal hash chain not initialized/);
 
     expect(usePaymentStore.getState().isProcessing).toBe(false);
@@ -274,7 +274,7 @@ describe('paymentStore offline-first cash checkout', () => {
     vi.mocked(createOfflineReceipt).mockRejectedValueOnce(new SqliteBusyError());
 
     await expect(
-      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100),
+      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '100.00'),
     ).rejects.toBeInstanceOf(SqliteBusyError);
 
     expect(usePaymentStore.getState().error).toContain('SqliteBusyError');
@@ -297,7 +297,7 @@ describe('paymentStore offline-first cash checkout', () => {
     );
 
     await expect(
-      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 100),
+      usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '100.00'),
     ).rejects.toBe(
       'error returned from database: (code: 1) NOT NULL constraint failed: offline_receipts.payment_method_id',
     );
@@ -354,7 +354,7 @@ describe('paymentStore offline-first cash checkout', () => {
     await usePaymentStore.getState().processCashCheckout(
       'term-1',
       useCartStore.getState().items,
-      100,
+      '100.00',
     );
     const firstKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
 
@@ -363,7 +363,7 @@ describe('paymentStore offline-first cash checkout', () => {
     await usePaymentStore.getState().processCashCheckout(
       'term-1',
       useCartStore.getState().items,
-      100,
+      '100.00',
     );
     const secondKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
 
@@ -410,12 +410,12 @@ describe('paymentStore offline-first cash checkout', () => {
     const firstCallPromise = usePaymentStore.getState().processCashCheckout(
       'term-1',
       useCartStore.getState().items,
-      100,
+      '100.00',
     );
     const secondCallPromise = usePaymentStore.getState().processCashCheckout(
       'term-1',
       useCartStore.getState().items,
-      100,
+      '100.00',
     );
 
     try {
@@ -459,7 +459,7 @@ describe('paymentStore offline-first cash checkout', () => {
     await usePaymentStore.getState().processCashCheckout(
       'term-1',
       useCartStore.getState().items,
-      100,
+      '100.00',
     );
     const firstSaleKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
     // Lifecycle event: cart cleared + receipt acknowledged (= new sale starts)
@@ -468,7 +468,7 @@ describe('paymentStore offline-first cash checkout', () => {
     await usePaymentStore.getState().processCashCheckout(
       'term-1',
       useCartStore.getState().items,
-      100,
+      '100.00',
     );
     const secondSaleKey = usePaymentStore.getState().lastReceiptIdempotencyKey;
 
@@ -483,7 +483,7 @@ describe('paymentStore offline-first cash checkout', () => {
     await usePaymentStore.getState().processCashCheckout(
       'term-1',
       useCartStore.getState().items,
-      100,
+      '100.00',
       undefined,
       'SUR_PLACE',
       'table-7',
@@ -518,7 +518,7 @@ describe('paymentStore offline-first cash checkout', () => {
       items: [makeCartItem({ line_total: '50.000', tax_amount: '0.000' })],
     });
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 60);
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '60.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),

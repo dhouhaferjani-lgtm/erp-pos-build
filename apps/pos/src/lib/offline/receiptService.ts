@@ -44,7 +44,7 @@ interface OfflineReceiptInput {
   paymentMethodId: string;
   /** Primary payment repository (first entry in `payments`) */
   paymentRepositoryId: string;
-  tenderedAmount: number;
+  tenderedAmount: string;
   /**
    * T0.2: Caller-allocated idempotency key for this cart submission attempt.
    * Optional for backward compatibility; if omitted, a fresh `crypto.randomUUID()`
@@ -331,8 +331,8 @@ export async function createOfflineReceipt(
   // submission attempt and reuses on retry); fall back to a fresh UUID for
   // legacy callers (e.g. test fixtures) that don't supply one.
   const idempotencyKey = input.idempotencyKey ?? crypto.randomUUID();
-  // tenderedAmount is a number (UI input), subtracted from string total via bcformat round-trip
-  const changeDueRaw = bcsub(String(input.tenderedAmount), total);
+  // tenderedAmount is a decimal string — subtract directly with bcmath, no String() wrap needed
+  const changeDueRaw = bcsub(input.tenderedAmount, total, decimals);
   const changeDueFormatted = bccomp(changeDueRaw, '0') >= 0 ? bcformat(changeDueRaw, decimals) : bcformat('0', decimals);
 
   // Codex review B3 (2026-04-30): persist methodCode, instrumentType, and
@@ -477,7 +477,7 @@ export async function createOfflineReceipt(
           ? bcformat(transactionDiscountAmount, decimals)
           : null,
         transaction_discount_reason: input.transactionDiscount?.reason ?? null,
-        tendered_amount: bcformat(String(input.tenderedAmount), decimals),
+        tendered_amount: bcformat(input.tenderedAmount, decimals),
         change_due: changeDueFormatted,
         payment_method_id: input.paymentMethodId,
         payment_repository_id: input.paymentRepositoryId,

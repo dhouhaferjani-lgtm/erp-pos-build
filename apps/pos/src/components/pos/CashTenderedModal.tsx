@@ -4,11 +4,12 @@ import { useCurrency } from '@/lib/currency';
 import { Modal } from './Modal';
 import { MoneyInput } from '@/components/atoms/MoneyInput';
 import { Banknote } from 'lucide-react';
+import { bccomp, bcsub, bcformat } from '@/lib/decimal';
 
 interface CashTenderedModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (tenderedAmount: number) => void;
+  onConfirm: (tenderedAmount: string) => void;
   total: number;
   isProcessing: boolean;
   error?: string | null;
@@ -29,27 +30,30 @@ export function CashTenderedModal({
 
   useEffect(() => {
     if (isOpen) {
-      setTenderedStr(total.toFixed(decimals));
+      setTenderedStr(bcformat(String(total), decimals));
     }
   }, [isOpen, total, decimals]);
 
-  const tenderedNum = parseFloat(tenderedStr) || 0;
-  const changeDue = Math.max(0, tenderedNum - total);
-  const isValid = tenderedNum >= total && tenderedStr !== '';
+  const totalStr = bcformat(String(total), decimals);
+  const cmp = tenderedStr ? bccomp(tenderedStr, totalStr) : -1;
+  const isValid = cmp >= 0 && tenderedStr !== '';
+  const changeDue = cmp > 0
+    ? bcsub(tenderedStr, totalStr, decimals)
+    : bcformat('0', decimals);
 
   const handleDenomination = useCallback((amount: number) => {
-    setTenderedStr(amount.toFixed(decimals));
+    setTenderedStr(bcformat(String(amount), decimals));
   }, [decimals]);
 
   const handleExact = useCallback(() => {
-    setTenderedStr(total.toFixed(decimals));
+    setTenderedStr(bcformat(String(total), decimals));
   }, [total, decimals]);
 
   const handleConfirm = useCallback(() => {
     if (isValid) {
-      onConfirm(tenderedNum);
+      onConfirm(tenderedStr);
     }
-  }, [isValid, onConfirm, tenderedNum]);
+  }, [isValid, onConfirm, tenderedStr]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('cashTendered.title')} size="md">
@@ -104,7 +108,7 @@ export function CashTenderedModal({
         </div>
 
         {/* Change due */}
-        {tenderedNum > total && (
+        {bccomp(changeDue, '0') > 0 && (
           <div className="rounded-xl border border-success-subtle bg-success-surface p-4 text-center">
             <p className="mb-1 text-sm font-medium text-success-strong">
               {t('cashTendered.changeDue')}

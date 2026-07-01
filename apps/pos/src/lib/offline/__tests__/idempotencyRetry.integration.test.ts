@@ -128,7 +128,7 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
       currency: 'EUR',
       paymentMethodId: 'pm-cash',
       paymentRepositoryId: 'repo-cash',
-      tenderedAmount: 50,
+      tenderedAmount: '50.00',
       idempotencyKey: sharedKey,
       payments: [
         {
@@ -157,7 +157,7 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
       currency: 'EUR',
       paymentMethodId: 'pm-cash',
       paymentRepositoryId: 'repo-cash',
-      tenderedAmount: 100,
+      tenderedAmount: '100.00',
       idempotencyKey: sharedKey,
       payments: [
         {
@@ -206,7 +206,7 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
       currency: 'EUR',
       paymentMethodId: 'pm-cash',
       paymentRepositoryId: 'repo-cash',
-      tenderedAmount: 10,
+      tenderedAmount: '10.00',
       idempotencyKey: 'distinct-key-A',
       payments: [
         { methodCode: 'CASH', amount: '10.00', paymentMethodId: 'pm-cash', repositoryId: 'repo-cash' },
@@ -222,7 +222,7 @@ d('T0.2 integration: idempotency-key retry against real SQLite', () => {
       currency: 'EUR',
       paymentMethodId: 'pm-cash',
       paymentRepositoryId: 'repo-cash',
-      tenderedAmount: 20,
+      tenderedAmount: '20.00',
       idempotencyKey: 'distinct-key-B',
       payments: [
         { methodCode: 'CASH', amount: '20.00', paymentMethodId: 'pm-cash', repositoryId: 'repo-cash' },

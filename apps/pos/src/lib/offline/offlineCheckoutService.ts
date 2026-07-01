@@ -19,7 +19,7 @@ export interface CheckoutInput {
   seller: SaleReceiptSellerInput;
   paymentMethodId: string;
   paymentRepositoryId: string;
-  tenderedAmount: number;
+  tenderedAmount: string;
   receiptData: Record<string, unknown>;
   transactionDiscount?: {
     type: 'percentage' | 'fixed';

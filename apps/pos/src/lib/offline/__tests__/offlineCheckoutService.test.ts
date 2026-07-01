@@ -64,7 +64,7 @@ function makeInput(overrides: Partial<CheckoutInput> = {}): CheckoutInput {
     },
     paymentMethodId: 'pm-1',
     paymentRepositoryId: 'repo-1',
-    tenderedAmount: 100,
+    tenderedAmount: '100.00',
     receiptData: { terminal_id: 'terminal-1', lines: [] },
     ...overrides,
   };

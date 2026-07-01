@@ -172,7 +172,7 @@ describe('paymentStore fiscal shift id in SALE_RECEIPT payloads', () => {
       }),
     });
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 50);
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '50.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
@@ -188,7 +188,7 @@ describe('paymentStore fiscal shift id in SALE_RECEIPT payloads', () => {
       shift: shiftState({ id: '33333333-3333-4333-8333-333333333333' }),
     });
 
-    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, 50);
+    await usePaymentStore.getState().processCashCheckout('term-1', useCartStore.getState().items, '50.00');
 
     expect(createOfflineReceipt).toHaveBeenCalledWith(
       expect.anything(),
