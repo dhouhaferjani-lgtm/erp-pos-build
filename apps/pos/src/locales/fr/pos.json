@@ -642,6 +642,7 @@
   },
   "numpad": {
     "backspace": "Effacer",
+    "clear": "Tout effacer",
     "confirm": "OK"
   },
   "voidReturn": {

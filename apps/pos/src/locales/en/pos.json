@@ -642,6 +642,7 @@
   },
   "numpad": {
     "backspace": "Delete",
+    "clear": "Clear",
     "confirm": "OK"
   },
   "voidReturn": {

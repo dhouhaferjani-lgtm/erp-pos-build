@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Delete } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -29,6 +30,7 @@ export function NumPad({
   allowDecimal = true,
   className,
 }: NumPadProps) {
+  const { t } = useTranslation('pos');
   const handleKey = useCallback(
     (key: string) => {
       if (key === 'backspace') {
@@ -58,7 +60,7 @@ export function NumPad({
       <button type="button" onClick={() => handleKey('9')} className={keyClass}>9</button>
       <button
         type="button"
-        aria-label="backspace"
+        aria-label={t('numpad.backspace')}
         onClick={() => handleKey('backspace')}
         className={keyClass}
       >
@@ -71,7 +73,7 @@ export function NumPad({
       <button type="button" onClick={() => handleKey('6')} className={keyClass}>6</button>
       <button
         type="button"
-        aria-label="clear"
+        aria-label={t('numpad.clear')}
         onClick={() => handleKey('clear')}
         className={keyClass}
       >
