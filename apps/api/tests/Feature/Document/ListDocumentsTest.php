@@ -169,6 +169,39 @@ class ListDocumentsTest extends TestCase
             ->assertJsonPath('data.0.type', 'invoice');
     }
 
+    public function test_dashboard_recent_documents_limit_request_allows_documents_without_partner(): void
+    {
+        $this->company->update([
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'currency' => 'TND',
+        ]);
+
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => null,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'EXP-RECENT-001',
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/documents?limit=5&sort=-created_at');
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $document->id)
+            ->assertJsonPath('data.0.partner_id', null)
+            ->assertJsonPath('data.0.document_number', 'EXP-RECENT-001')
+            ->assertJsonPath('meta.total', 1);
+    }
+
     public function test_list_is_paginated(): void
     {
         for ($i = 1; $i <= 25; $i++) {
@@ -598,8 +631,16 @@ class ListDocumentsTest extends TestCase
         $response->assertOk()
             ->assertJsonCount(2, 'data');
 
-        // Verify the returned documents are the ones with our product
-        $returnedIds = collect($response->json('data'))->pluck('id')->toArray();
+        $documents = $response->json('data');
+        $this->assertIsArray($documents);
+
+        $returnedIds = [];
+        foreach ($documents as $document) {
+            $this->assertIsArray($document);
+            $this->assertIsString($document['id'] ?? null);
+            $returnedIds[] = $document['id'];
+        }
+
         $this->assertContains($invoiceWithProduct->id, $returnedIds);
         $this->assertContains($poWithProduct->id, $returnedIds);
         $this->assertNotContains($quoteWithoutProduct->id, $returnedIds);
