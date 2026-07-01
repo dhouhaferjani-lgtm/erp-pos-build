@@ -20,13 +20,15 @@ import { borderColors, colors, textColors, tokens } from '../../../lib/designTok
 
 // Map frontend document type strings to backend applicable_document_types format
 const DOCUMENT_TYPE_MAP: Record<string, string> = {
-  quote: 'QUOTATION',
-  sales_order: 'SALES_ORDER',
   invoice: 'TAX_INVOICE',
-  purchase_order: 'PURCHASE_ORDER',
   delivery_note: 'DELIVERY_NOTE',
   credit_note: 'CREDIT_NOTE',
-  return_note: 'CREDIT_NOTE',
+  return_note: 'RETURN_NOTE',
+}
+
+function taxSelectorDocumentType(documentType: string | undefined): string | undefined {
+  if (!documentType) return undefined
+  return DOCUMENT_TYPE_MAP[documentType]
 }
 
 interface Product {
@@ -119,6 +121,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
   const canSearchServices = hasModule('Workshop')
   const activeSearchTab: SearchTab = canSearchServices ? searchTab : 'product'
+  const taxDocumentType = taxSelectorDocumentType(documentType)
 
   // Fetch products for search
   const { data: productsData, isLoading: isLoadingProducts } = useQuery({
@@ -405,7 +408,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                 tax_rate: parseFloat(taxRate) || 0,
               })
             }}
-            {...(documentType ? { documentType: DOCUMENT_TYPE_MAP[documentType] ?? documentType } : {})}
+            {...(taxDocumentType !== undefined ? { documentType: taxDocumentType } : {})}
             size="sm"
           />
         )
@@ -443,12 +446,12 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   ], [
     companyCurrency,
     designationFeatureEnabled,
-    documentType,
     formatAmount,
     handleRemoveLine,
     handleUpdateLine,
     readonly,
     t,
+    taxDocumentType,
   ])
 
   const totalsFooter = (

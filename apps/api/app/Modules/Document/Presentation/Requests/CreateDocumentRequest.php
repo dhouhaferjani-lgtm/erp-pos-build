@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Presentation\Requests;
 
+use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Presentation\Requests\Concerns\AppliesDiscountToleranceRule;
 use App\Modules\Identity\Domain\User;
 use App\Services\CompanyConfigService;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class CreateDocumentRequest extends FormRequest
 {
@@ -43,7 +45,8 @@ class CreateDocumentRequest extends FormRequest
         // have foreign-company partner/product/service/location/document
         // names persisted into a Company A document line snapshot.
         $companyId = $this->companyContext->requireCompanyId();
-        $scopedTenantId = $this->companyContext->requireCompany()->tenant_id;
+        $company = $this->companyContext->requireCompany();
+        $scopedTenantId = $company->tenant_id;
 
         // Check if Vehicle module is enabled for this tenant
         $configService = app(CompanyConfigService::class);
@@ -110,6 +113,14 @@ class CreateDocumentRequest extends FormRequest
             'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'lines.*.tax_configuration_id' => [
+                'nullable',
+                'uuid',
+                Rule::exists('tax_configurations', 'id')
+                    ->where('country_code', $company->country_code)
+                    ->where('applies_to', 'LINE_ITEMS'),
+                new TaxConfigurationCountryCoherent($company->country_code),
+            ],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
         ];
 

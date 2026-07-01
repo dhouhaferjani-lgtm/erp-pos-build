@@ -56,7 +56,7 @@ describe('TaxConfigurationSelect', () => {
     expect(screen.getByRole('combobox')).toBeInTheDocument()
     expect(screen.getByText('TVA 19% (19.00%)')).toBeInTheDocument()
     expect(screen.getByText('TVA 7% (7.00%)')).toBeInTheDocument()
-    expect(screen.getByText('Stamp Duty (1.000)')).toBeInTheDocument()
+    expect(screen.queryByText('Stamp Duty (1.000)')).not.toBeInTheDocument()
   })
 
   it('filters by documentType — keeps matching and universal configs', () => {
@@ -65,8 +65,8 @@ describe('TaxConfigurationSelect', () => {
     expect(screen.getByText('TVA 19% (19.00%)')).toBeInTheDocument()
     // TVA 7% has SALES_INVOICE in its list → matches
     expect(screen.getByText('TVA 7% (7.00%)')).toBeInTheDocument()
-    // Stamp Duty has SALES_INVOICE → matches
-    expect(screen.getByText('Stamp Duty (1.000)')).toBeInTheDocument()
+    // Stamp Duty is DOCUMENT_TOTAL, so it is not offered for line-item tax selection.
+    expect(screen.queryByText('Stamp Duty (1.000)')).not.toBeInTheDocument()
   })
 
   it('filters OUT configs that do not match documentType', () => {
@@ -81,15 +81,9 @@ describe('TaxConfigurationSelect', () => {
     expect(onChange).toHaveBeenCalledWith('tax-1', '19.00')
   })
 
-  it('calls onChange with fixed amount for FIXED_AMOUNT type', () => {
-    const { onChange } = setup()
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tax-3' } })
-    expect(onChange).toHaveBeenCalledWith('tax-3', '1.000')
-  })
-
   it('pre-selects the value prop', () => {
     setup({ value: 'tax-2' })
-    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('tax-2')
+    expect(screen.getByRole('combobox')).toHaveValue('tax-2')
   })
 
   it('shows placeholder when no value selected', () => {
@@ -105,7 +99,7 @@ describe('TaxConfigurationSelect', () => {
   it('shows loading state while fetching', () => {
     mockUseTaxConfigurations.mockReturnValue({ data: undefined, isLoading: true, isError: false })
     setup()
-    expect((screen.getByRole('combobox') as HTMLSelectElement).disabled).toBe(true)
+    expect(screen.getByRole('combobox')).toBeDisabled()
   })
 
   it('handles empty configurations list', () => {
