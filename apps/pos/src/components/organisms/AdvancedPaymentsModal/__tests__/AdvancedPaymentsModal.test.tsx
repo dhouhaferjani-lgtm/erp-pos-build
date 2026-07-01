@@ -1128,7 +1128,7 @@ describe('AdvancedPaymentsModal — focus management (PR #97 follow-up)', () => 
 describe('computeTenderState — bcmath precision (D0-1)', () => {
   it('10.1 + 10.2 pays a 20.30 total exactly — checkout NOT blocked by float drift', () => {
     const state = computeTenderState(
-      [{ amount: 10.1 }, { amount: 10.2 }],
+      [{ amount: '10.1' }, { amount: '10.2' }],
       [],
       20.3,
       2,
@@ -1142,7 +1142,7 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
 
   it('0.1 + 0.2 = 0.30 exactly with no overpayment or remaining', () => {
     const state = computeTenderState(
-      [{ amount: 0.1 }, { amount: 0.2 }],
+      [{ amount: '0.1' }, { amount: '0.2' }],
       [],
       0.3,
       2,
@@ -1164,9 +1164,9 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     expect(state.isFullyPaid).toBe(true);
   });
 
-  it('mixed payment lines + voucher: 10.1 line + "10.20" voucher on 20.30 total', () => {
+  it('mixed payment lines + voucher: "10.1" line + "10.20" voucher on 20.30 total', () => {
     const state = computeTenderState(
-      [{ amount: 10.1 }],
+      [{ amount: '10.1' }],
       [{ amount: '10.20' }],
       20.3,
       2,
@@ -1176,9 +1176,9 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     expect(state.remaining).toBe('0.00');
   });
 
-  it('overpayment is exact: 1.01 paid on a 1.00 total gives 0.01 change', () => {
+  it('overpayment is exact: "1.01" paid on a 1.00 total gives 0.01 change', () => {
     const state = computeTenderState(
-      [{ amount: 1.01 }],
+      [{ amount: '1.01' }],
       [],
       1.0,
       2,
@@ -1188,9 +1188,9 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     expect(state.isFullyPaid).toBe(true);
   });
 
-  it('underpayment: 19.99 paid on a 20.00 total leaves 0.01 remaining', () => {
+  it('underpayment: "19.99" paid on a 20.00 total leaves 0.01 remaining', () => {
     const state = computeTenderState(
-      [{ amount: 19.99 }],
+      [{ amount: '19.99' }],
       [],
       20.0,
       2,
@@ -1200,14 +1200,84 @@ describe('computeTenderState — bcmath precision (D0-1)', () => {
     expect(state.isFullyPaid).toBe(false);
   });
 
-  it('TND scale-3: three 33.333 TND lines sum exactly to 99.999 on a 99.999 total', () => {
+  it('TND scale-3: three "33.333" TND lines sum exactly to 99.999 on a 99.999 total', () => {
     const state = computeTenderState(
-      [{ amount: 33.333 }, { amount: 33.333 }, { amount: 33.333 }],
+      [{ amount: '33.333' }, { amount: '33.333' }, { amount: '33.333' }],
       [],
       99.999,
       3,
     );
     expect(state.totalPaid).toBe('99.999');
     expect(state.isFullyPaid).toBe(true);
+  });
+});
+
+/**
+ * S4 (2026-07-01): PaymentLineItem.amount is a decimal STRING end-to-end.
+ *
+ * Discriminating contract:
+ *  - `computeTenderState` now accepts `readonly { amount: string }[]` (not number).
+ *    Passing string amounts to the OLD signature (`amount: number`) is a TypeScript
+ *    TS2322 type error — `pnpm exec tsc --noEmit` FAILS in the RED step and is clean
+ *    after the GREEN implementation.
+ *  - Three `'33.333'` TND lines must sum to `'99.999'` exactly WITHOUT any
+ *    float-to-string bridge. The `String(l.amount)` bridge in the OLD path is removed;
+ *    `l.amount` is passed directly as a string to bcsum.
+ *  - `handleAddPayment` stores `amount: bcformat(input, decimals)` (string)
+ *    instead of `amount: parseFloat(input)` (number).
+ *  - `handleComplete` forwards `l.amount` directly (no `bcformat(String(l.amount))` round-trip).
+ */
+describe('S4: PaymentLineItem.amount is a decimal string end-to-end', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVoucherTenders = [];
+  });
+
+  /**
+   * Primary TypeScript-discriminating test.
+   * Passing `{ amount: string }` to computeTenderState is a TS2322 type error
+   * on the OLD `{ amount: number }` signature → `tsc --noEmit` FAILS (RED step).
+   * After S4 the signature accepts strings and tsc is clean (GREEN step).
+   *
+   * At Vitest runtime (esbuild, no type-checking), both old and new code
+   * produce '99.999' — the TypeScript compiler is the discriminating gate.
+   */
+  it('computeTenderState accepts string amounts — three "33.333" TND lines sum to "99.999" exactly', () => {
+    const state = computeTenderState(
+      // RED: TS2322 on old { amount: number } signature; clean after S4.
+      [{ amount: '33.333' }, { amount: '33.333' }, { amount: '33.333' }],
+      [],
+      99.999,
+      3,
+    );
+    expect(state.totalPaid).toBe('99.999');
+    expect(state.isFullyPaid).toBe(true);
+  });
+
+  /**
+   * Contract test: onComplete wire amount is a decimal string at currency scale.
+   * This documents the end-to-end type contract (PaymentLineItem.amount: string →
+   * AdvancedPaymentLine.amount: string). The TypeScript test above is the RED gate;
+   * this test locks the observed wire value.
+   */
+  it('onComplete wire amount is a decimal string at currency scale ("50.00" for EUR)', async () => {
+    const { onComplete } = renderModal({ total: 50 });
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.click(screen.getByText(/advancedPayments.payRemaining/i));
+    fireEvent.click(screen.getByText('advancedPayments.addPayment'));
+
+    const completeBtn = screen
+      .getByText('advancedPayments.completeTransaction')
+      .closest('button');
+    expect(completeBtn).not.toBeDisabled();
+    fireEvent.click(completeBtn!);
+    await Promise.resolve();
+
+    expect(onComplete).toHaveBeenCalledOnce();
+    const payments = vi.mocked(onComplete).mock.calls[0]![0];
+    expect(payments).toHaveLength(1);
+    // Wire amount is the currency-scale string '50.00' (EUR, 2dp).
+    expect(payments[0]!.amount).toBe('50.00');
+    expect(typeof payments[0]!.amount).toBe('string');
   });
 });

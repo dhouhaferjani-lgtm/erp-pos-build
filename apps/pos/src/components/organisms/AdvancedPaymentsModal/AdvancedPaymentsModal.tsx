@@ -64,7 +64,8 @@ interface PaymentLineItem {
   id: string;
   methodId: string;
   methodName: string;
-  amount: number;
+  /** Decimal string at the tenant's currency scale, e.g. "50.00". Set via bcformat. */
+  amount: string;
   repositoryId: string;
   repositoryName: string;
   reference: string;
@@ -121,13 +122,11 @@ export interface AdvancedPaymentsModalProps {
 /**
  * Pure helper extracted for unit-testability (D0-1, 2026-07-01).
  * Computes tender state using decimal-string bcmath (big.js) — no IEEE-754 float.
- * PaymentLineItem.amount is still `number` upstream; String() converts at the boundary.
- * Upstream TODO: change PaymentLineItem.amount to `string` and store via
- * `bcformat(inputStr, decimals)` in handleAddPayment to eliminate the last
- * float-to-string conversion in this path.
+ * PaymentLineItem.amount is a decimal string (S4, 2026-07-01); amounts are passed
+ * directly to bcsum with no String() bridge.
  */
 export function computeTenderState(
-  paymentLines: readonly { amount: number }[],
+  paymentLines: readonly { amount: string }[],
   voucherTenders: readonly { amount: string }[],
   total: number,
   decimals: number,
@@ -135,7 +134,7 @@ export function computeTenderState(
   const totalStr = String(total);
   const voucherTotal = bcsum(voucherTenders.map((v) => v.amount), decimals);
   const totalPaid = bcadd(
-    bcsum(paymentLines.map((l) => String(l.amount)), decimals),
+    bcsum(paymentLines.map((l) => l.amount), decimals),
     voucherTotal,
     decimals,
   );
@@ -372,8 +371,10 @@ export function AdvancedPaymentsModal({
       return;
     }
 
-    const parsedAmount = parseFloat(amount);
-    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+    // S4 (2026-07-01): validate without float ingress. Reject empty, non-numeric,
+    // or non-positive amounts using a decimal regex + bccomp.
+    const trimmedAmount = amount.trim();
+    if (!/^\d+(\.\d+)?$/.test(trimmedAmount) || bccomp(trimmedAmount, '0') <= 0) {
       setValidationError(t('advancedPayments.amountRequired'));
       return;
     }
@@ -389,7 +390,8 @@ export function AdvancedPaymentsModal({
       id: crypto.randomUUID(),
       methodId: selectedMethod.id,
       methodName: selectedMethod.name,
-      amount: parsedAmount,
+      // S4: store as a decimal string at currency scale — no parseFloat ingress.
+      amount: bcformat(trimmedAmount, decimals),
       repositoryId: effectiveRepositoryId,
       repositoryName: repo?.name ?? '',
       reference,
@@ -410,6 +412,7 @@ export function AdvancedPaymentsModal({
     paymentRepositories,
     reference,
     cardLastFour,
+    decimals,
     t,
   ]);
 
@@ -441,10 +444,9 @@ export function AdvancedPaymentsModal({
 
     const cashAndCardPayments: AdvancedPaymentLine[] = paymentLines.map((l) => ({
       payment_method_id: l.methodId,
-      // Canonicalize the display-math float to a currency-scale string at the
-      // wire boundary so the amount enters the fiscal hash without IEEE-754
-      // jitter (F-FRONTEND-VOUCHER / precision remediation Phase 10.1).
-      amount: bcformat(String(l.amount), decimals),
+      // S4 (2026-07-01): l.amount is already a currency-scale decimal string
+      // (set via bcformat in handleAddPayment) — forward directly, no String() bridge.
+      amount: l.amount,
       repository_id: l.repositoryId,
       ...(l.cardLastFour ? { card_last_four: l.cardLastFour } : {}),
       ...(l.reference ? { transaction_reference: l.reference } : {}),
@@ -484,7 +486,6 @@ export function AdvancedPaymentsModal({
     voucherTenders,
     storeVoucherMethod,
     voucherRepository,
-    decimals,
   ]);
 
   const handleClose = useCallback(() => {
@@ -726,7 +727,7 @@ export function AdvancedPaymentsModal({
               {t('advancedPayments.amount')}
             </p>
             <p className="mt-1 font-mono text-3xl font-bold tabular-nums text-ink">
-              {amount ? format(parseFloat(amount)) : format(0)}
+              {format(amount || '0')}
             </p>
           </div>
 
