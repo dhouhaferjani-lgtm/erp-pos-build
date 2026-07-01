@@ -195,19 +195,13 @@ describe('ProductForm (canonical layout)', () => {
 })
 
 describe('ProductForm (General section parity)', () => {
-  it('renders a Type select with part, service, consumable options (no storable)', () => {
+  it('does NOT render the deprecated Product Type selector (part/service/consumable retired)', () => {
     render(<ProductForm />)
-    // The Type select is rendered via a <select> element with the three valid options
-    const typeSelect = screen.getByLabelText(/inventory:products\.type/i, { exact: false })
-    expect(typeSelect).toBeInTheDocument()
-
-    // Verify the three valid options are present
-    expect(screen.getByText(/inventory:products\.typeOptions\.part/i)).toBeInTheDocument()
-    expect(screen.getByText(/inventory:products\.typeOptions\.service/i)).toBeInTheDocument()
-    expect(screen.getByText(/inventory:products\.typeOptions\.consumable/i)).toBeInTheDocument()
-
-    // Verify "storable" is NOT present
-    expect(screen.queryByText(/storable/i)).not.toBeInTheDocument()
+    // The legacy Product Type taxonomy has been removed from the form entirely.
+    expect(screen.queryByLabelText(/inventory:products\.type/i, { exact: false })).not.toBeInTheDocument()
+    expect(screen.queryByText(/inventory:products\.typeOptions\.part/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/inventory:products\.typeOptions\.service/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/inventory:products\.typeOptions\.consumable/i)).not.toBeInTheDocument()
   })
 
   it('renders the UnitDropdown (unit of measure) in the General section', () => {

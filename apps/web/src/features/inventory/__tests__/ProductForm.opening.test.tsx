@@ -161,7 +161,6 @@ function makeProduct(
     id: PRODUCT_ID,
     name: 'Opening Test Product',
     sku: 'SKU-OPENING-001',
-    type: 'part' as const,
     is_physical: overrides.is_physical ?? true,
     is_active_for_ecommerce: false,
     unit_id: null,
