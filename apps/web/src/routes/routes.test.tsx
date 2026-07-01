@@ -38,4 +38,21 @@ describe('route module guards', () => {
     const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)
     expect(fragment).toContain('permission="batches.write-off"')
   })
+
+  // F&B leak: Table Management + Kitchen Display must be vertical-gated so they
+  // are unreachable on non-F&B verticals (e.g. parapharmacy). Module keys mirror
+  // the Sidebar nav (Sidebar.tsx: tables -> 'Tables', kitchen -> 'Menu').
+  it('guards pos tables (Table Management) route with the Tables module', () => {
+    const idx = routesSource.indexOf('path="tables"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)
+    expect(fragment).toContain('<ModuleGuard module="Tables">')
+  })
+
+  it('guards pos kitchen (KDS) route with the Menu module', () => {
+    const idx = routesSource.indexOf('path="/pos/kitchen"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)
+    expect(fragment).toContain('<ModuleGuard module="Menu">')
+  })
 })

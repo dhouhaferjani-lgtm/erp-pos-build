@@ -11,6 +11,8 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Requests\AssignRoleRequest;
 use App\Modules\Identity\Presentation\Requests\StoreRoleRequest;
 use App\Modules\Identity\Presentation\Requests\UpdateRoleRequest;
+use App\Modules\Tenant\Domain\Tenant;
+use App\Services\CompanyConfigService;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,9 +23,65 @@ use Spatie\Permission\Models\Role;
 
 class RoleController extends Controller
 {
+    /**
+     * Permission-group prefix (the token before the first '.') => the module
+     * that must be enabled for the group to be listed. Only VERTICAL-GATED
+     * prefixes appear here; any group whose prefix is NOT a key is treated as
+     * a core group and is always shown. Mirrors the seeded catalog: the seeder
+     * always creates every group (111 tests depend on that) — this is a
+     * READ-TIME filter only.
+     */
+    private const PERMISSION_GROUP_MODULE = [
+        'vehicles' => 'Vehicle',
+        'workshop' => 'Workshop',
+        'workshop-bundles' => 'Workshop',
+        'work-orders' => 'Workshop',
+        'menus' => 'Menu',
+        'modifier-groups' => 'Menu',
+        'composite-items' => 'CompositeItems',
+        'scheduling' => 'Appointments',
+        'batches' => 'BatchExpiry',
+        'loyalty' => 'Loyalty',
+    ];
+
+    /**
+     * Role name => the module that must be enabled for the role to be listed.
+     * Only vertical-exclusive roles appear here; unmapped roles (admin,
+     * manager, cashier, viewer, accountant, ...) are core and always shown.
+     */
+    private const ROLE_MODULE = [
+        'technician' => 'Workshop',
+        'operator' => 'Workshop',
+    ];
+
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly CompanyConfigService $configService,
     ) {}
+
+    /**
+     * Resolve the enabled modules for the caller's tenant, mirroring
+     * RequireModule::handle. Returns null when there is no tenant context
+     * (super-admin / central) — callers treat null as "do not filter".
+     *
+     * @return array<int, string>|null
+     */
+    private function enabledModules(Request $request): ?array
+    {
+        $user = $request->user();
+
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        $tenant = $user->tenant;
+
+        if (! $tenant instanceof Tenant) {
+            return null;
+        }
+
+        return $this->configService->getConfigForTenant($tenant)->allEnabledModules;
+    }
 
     /**
      * Count users assigned to a role via direct database query.
@@ -64,6 +122,18 @@ class RoleController extends Controller
     public function index(Request $request): JsonResponse
     {
         $roles = Role::with('permissions')->get();
+
+        // Read-time vertical filter: drop vertical-exclusive roles whose backing
+        // module is not enabled for this tenant. Null => no tenant context, so
+        // list everything (admin/central behavior unchanged).
+        $enabledModules = $this->enabledModules($request);
+        if ($enabledModules !== null) {
+            $roles = $roles->reject(function (Role $role) use ($enabledModules): bool {
+                $module = self::ROLE_MODULE[$role->name] ?? null;
+
+                return $module !== null && ! in_array($module, $enabledModules, true);
+            })->values();
+        }
 
         $data = $roles->map(fn (Role $role) => [
             'id' => $role->id,
@@ -251,6 +321,18 @@ class RoleController extends Controller
 
             return $parts[0];
         });
+
+        // Read-time vertical filter: drop vertical-gated groups whose backing
+        // module is not enabled for this tenant. Null => no tenant context, so
+        // list everything. Core (unmapped) groups are always kept.
+        $enabledModules = $this->enabledModules($request);
+        if ($enabledModules !== null) {
+            $grouped = $grouped->reject(function ($perms, $prefix) use ($enabledModules): bool {
+                $module = self::PERMISSION_GROUP_MODULE[$prefix] ?? null;
+
+                return $module !== null && ! in_array($module, $enabledModules, true);
+            });
+        }
 
         return response()->json([
             'data' => $grouped->map(fn ($perms) => $perms->pluck('name')),

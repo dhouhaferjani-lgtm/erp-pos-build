@@ -6,7 +6,6 @@ function makeFormData(overrides: Partial<ProductFormData> = {}): ProductFormData
   return {
     name: 'Café Express 250g',
     sku: 'SKU-CAFE-001',
-    type: null,
     is_physical: true,
     is_active_for_ecommerce: false,
     unit_id: null,
@@ -96,16 +95,6 @@ describe('buildProductPayload', () => {
     expect(payload).not.toHaveProperty('tax_rate')
   })
 
-  it('includes type in the payload when set', () => {
-    const payload = buildProductPayload(makeFormData({ type: 'part' }), { isParapharmacy: false })
-    expect(payload.type).toBe('part')
-  })
-
-  it('includes null type in the payload when unset', () => {
-    const payload = buildProductPayload(makeFormData({ type: null }), { isParapharmacy: false })
-    expect(payload.type).toBeNull()
-  })
-
   it('includes unit_id in the payload when set', () => {
     const payload = buildProductPayload(
       makeFormData({ unit_id: 'unit-uuid-abc' }),
@@ -127,32 +116,19 @@ describe('buildProductPayload', () => {
     expect(payload.is_active_for_ecommerce).toBe(true)
   })
 
-  it('sets is_physical=false when type is service', () => {
-    // The derive happens in the form (not in buildProductPayload itself); this
-    // test asserts the form value flows through the payload unchanged.
+  it('passes is_physical=false through the payload unchanged', () => {
     const payload = buildProductPayload(
-      makeFormData({ type: 'service', is_physical: false }),
+      makeFormData({ is_physical: false }),
       { isParapharmacy: false },
     )
-    expect(payload.type).toBe('service')
     expect(payload.is_physical).toBe(false)
   })
 
-  it('sets is_physical=true when type is part', () => {
+  it('passes is_physical=true through the payload unchanged', () => {
     const payload = buildProductPayload(
-      makeFormData({ type: 'part', is_physical: true }),
+      makeFormData({ is_physical: true }),
       { isParapharmacy: false },
     )
-    expect(payload.type).toBe('part')
-    expect(payload.is_physical).toBe(true)
-  })
-
-  it('sets is_physical=true when type is consumable', () => {
-    const payload = buildProductPayload(
-      makeFormData({ type: 'consumable', is_physical: true }),
-      { isParapharmacy: false },
-    )
-    expect(payload.type).toBe('consumable')
     expect(payload.is_physical).toBe(true)
   })
 

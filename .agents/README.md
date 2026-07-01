@@ -1,13 +1,13 @@
-# ERP Agent Ecosystem -- AutoERP
+# ERP Agent Ecosystem -- Synerivia ERP
 
-This directory contains the specialized AI agents that coordinate development of the AutoERP codebase at `~/projects/erp/`.
+This directory contains the specialized AI agents that coordinate development of the Synerivia ERP codebase at `~/Projects/syneriva/apps/erp/`.
 
 ---
 
 ## Architecture
 
 ```
-erp-agents/
+~/Projects/syneriva/apps/erp/.agents/   # in-repo agent ecosystem
   orchestrator/           # Master agent -- dispatches, tracks, reviews, merges
   finance/                # Finance domain agent -- GL, treasury, tax, compliance
   supply-chain/           # Supply Chain domain agent -- inventory, products, procurement
@@ -143,7 +143,7 @@ Research and analysis agent. Does NOT write code.
 ### Starting the orchestrator
 
 ```bash
-cd ~/erp-agents/orchestrator
+cd ~/Projects/syneriva/apps/erp/.agents/orchestrator
 claude "Read CLAUDE.md and MANIFEST.yaml. Generate a status report of all active work."
 ```
 
@@ -151,7 +151,7 @@ claude "Read CLAUDE.md and MANIFEST.yaml. Generate a status report of all active
 
 ```bash
 # Create a worktree for the task
-cd ~/projects/erp
+cd ~/Projects/syneriva/apps/erp
 git worktree add ~/erp-worktrees/TASK-001 -b feature/TASK-001
 
 # Write the handoff
@@ -165,19 +165,19 @@ tmux new-session -d -s TASK-001 "cd ~/erp-worktrees/TASK-001 && claude 'Read ~/e
 
 ```bash
 # Read the MANIFEST
-cat ~/erp-agents/orchestrator/MANIFEST.yaml
+cat ~/Projects/syneriva/apps/erp/.agents/orchestrator/MANIFEST.yaml
 
 # Check a specific session
 cat ~/erp-sessions/TASK-001/STATE.yaml
 
 # Check active worktrees
-cd ~/projects/erp && git worktree list
+cd ~/Projects/syneriva/apps/erp && git worktree list
 ```
 
 ### Running quality gates
 
 ```bash
-cd ~/projects/erp
+cd ~/Projects/syneriva/apps/erp
 
 # Full preflight
 ./scripts/preflight.sh
@@ -199,14 +199,13 @@ cd apps/web && pnpm test
 ## Directory Layout
 
 ```
-~/
-  projects/
-    erp/                        # AutoERP codebase (the thing being built)
-  erp-agents/
+~/Projects/syneriva/apps/erp/   # Synerivia ERP codebase (the thing being built)
+  .agents/                      # in-repo agent ecosystem
     orchestrator/               # This ecosystem's brain
     finance/                    # Finance domain expertise
     supply-chain/               # Supply chain domain expertise
     product-intel/              # Research and analysis
+~/
   erp-sessions/                 # Active session state (HANDOFF.md + STATE.yaml)
     {task-id}/
   erp-worktrees/                # Git worktrees for isolated parallel work

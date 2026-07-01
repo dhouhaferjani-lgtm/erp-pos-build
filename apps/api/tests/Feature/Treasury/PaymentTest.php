@@ -340,7 +340,7 @@ class PaymentTest extends TestCase
             'name' => 'AP Bank',
             'type' => RepositoryType::BankAccount,
             'balance' => $balance,
-            'account_id' => $bankAccount->id,
+            'gl_account_id' => $bankAccount->id,
             'is_active' => true,
         ]);
 
@@ -523,7 +523,7 @@ class PaymentTest extends TestCase
             'name' => 'Mix Bank',
             'type' => RepositoryType::BankAccount,
             'balance' => '1000.00',
-            'account_id' => $bankAccount->id,
+            'gl_account_id' => $bankAccount->id,
             'is_active' => true,
         ]);
 
@@ -595,7 +595,7 @@ class PaymentTest extends TestCase
             'name' => 'Unledgered Cash',
             'type' => RepositoryType::CashRegister,
             'balance' => '1000.00',
-            'account_id' => null,
+            'gl_account_id' => null,
             'is_active' => true,
         ]);
 
@@ -733,7 +733,7 @@ class PaymentTest extends TestCase
             'name' => 'AR Bank',
             'type' => RepositoryType::BankAccount,
             'balance' => '0.00',
-            'account_id' => $bankAccount->id,
+            'gl_account_id' => $bankAccount->id,
             'is_active' => true,
         ]);
 

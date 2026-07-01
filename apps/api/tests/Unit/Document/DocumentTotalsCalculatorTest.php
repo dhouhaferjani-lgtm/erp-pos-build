@@ -143,6 +143,92 @@ class DocumentTotalsCalculatorTest extends TestCase
         $this->assertSame('239.000', $document->total);
     }
 
+    public function test_line_discount_percent_reduces_subtotal_tax_and_total(): void
+    {
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'name' => 'TVA 19%',
+            'code' => 'TVA_19',
+            'tax_type' => 'PERCENTAGE',
+            'percentage_rate' => '19.00',
+            'applies_to' => 'LINE_ITEMS',
+            'sequence_order' => 1,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => [],
+            'is_active' => true,
+            'is_stamp_duty' => false,
+        ]);
+
+        $document = Document::factory()->create([
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Invoice,
+            'discount_amount' => '0',
+        ]);
+        DocumentLine::create([
+            'document_id' => $document->id,
+            'line_number' => 1,
+            'description' => 'Discounted item',
+            'quantity' => '2',
+            'unit_price' => '100.000',
+            'discount_percent' => '10.00',
+            'tax_rate' => '19.00',
+            'line_total' => '180.000',
+        ]);
+
+        $this->calculator()->recalculate($document->load('lines'));
+
+        $document->refresh();
+        // gross 200 − 10% = net 180
+        $this->assertSame('180.000', $document->subtotal);
+        // line tax = 19% of NET 180 = 34.200
+        $this->assertSame('34.200', $document->tax_amount);
+        $this->assertSame('214.200', $document->total);
+    }
+
+    public function test_line_discount_amount_reduces_subtotal_tax_and_total(): void
+    {
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'name' => 'TVA 19%',
+            'code' => 'TVA_19',
+            'tax_type' => 'PERCENTAGE',
+            'percentage_rate' => '19.00',
+            'applies_to' => 'LINE_ITEMS',
+            'sequence_order' => 1,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => [],
+            'is_active' => true,
+            'is_stamp_duty' => false,
+        ]);
+
+        $document = Document::factory()->create([
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Invoice,
+            'discount_amount' => '0',
+        ]);
+        DocumentLine::create([
+            'document_id' => $document->id,
+            'line_number' => 1,
+            'description' => 'Flat-discounted item',
+            'quantity' => '1',
+            'unit_price' => '100.000',
+            'discount_amount' => '25.000',
+            'tax_rate' => '19.00',
+            'line_total' => '75.000',
+        ]);
+
+        $this->calculator()->recalculate($document->load('lines'));
+
+        $document->refresh();
+        // gross 100 − 25 flat = net 75
+        $this->assertSame('75.000', $document->subtotal);
+        // line tax = 19% of NET 75 = 14.250
+        $this->assertSame('14.250', $document->tax_amount);
+        $this->assertSame('89.250', $document->total);
+    }
+
     public function test_recalculates_with_no_applicable_taxes(): void
     {
         $document = $this->makeDocument([

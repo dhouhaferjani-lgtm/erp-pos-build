@@ -1,10 +1,18 @@
 # autonomy-tiers.yaml -- Orchestrator Autonomy Framework
 # Defines what the orchestrator can do freely, what needs approval,
 # and what requires Houssam's direct session.
+# Source of truth: PRODUCT-BIBLE.md BD-005 (graduated autonomy).
+#
+# Merge model (BD-005): the orchestrator NEVER executes merges. A dedicated,
+# Bible-aware merge agent/team performs them, and ONLY when Houssam is around.
+# Phase A (current): Houssam is notified for EVERY merge and approves/triggers it.
+# Phase B (later, once proven): low-risk task types merge without per-merge
+# notification (see transition.from_tier_2_to_tier_1). The certification-proof
+# core stays Tier 3 forever (never_upgradeable).
 
 ---
 
-current_phase: hybrid  # laptop_first | hybrid | autonomous
+current_phase: phase_a_notify_every_merge  # phase_a_notify_every_merge | phase_b_graduated_freedom | autonomous
 
 tiers:
   tier_1:
@@ -61,7 +69,7 @@ tiers:
         - action: "New features within an approved spec"
           note: "First implementation of a new capability"
         - action: "Merging to local-dev"
-          condition: "CI passes AND domain agent approves"
+          condition: "CI passes AND domain agent approves. Phase A: Houssam notified for EVERY merge; merge agent executes only when Houssam is around. NOT performed by the orchestrator."
         - action: "Adding new Composer dependencies"
           require: "Package name, version, purpose"
         - action: "Adding new npm dependencies"

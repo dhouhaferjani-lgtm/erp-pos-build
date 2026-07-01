@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\Services\CreditNoteService;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\CreditNoteReason;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -189,6 +190,45 @@ class CreditNoteServiceTest extends TestCase
         $this->assertNotEquals($cn1->document_number, $cn2->document_number);
         $this->assertStringStartsWith('CN-', $cn1->document_number);
         $this->assertStringStartsWith('CN-', $cn2->document_number);
+    }
+
+    /** @test */
+    public function it_materializes_prorated_lines_for_amount_based_credit_note(): void
+    {
+        // Posted invoice with one real line: qty 2 × 500 = 1000 net, 20% VAT = 200, total 1200.
+        $invoice = $this->createInvoice('INV-LINE-001', '1000.00', '200.00', '1200.00', DocumentStatus::Posted);
+        $sourceLine = DocumentLine::create([
+            'document_id' => $invoice->id,
+            'product_id' => null,
+            'line_number' => 1,
+            'description' => 'Widget',
+            'quantity' => '2.0000',
+            'unit_price' => '500.000',
+            'tax_rate' => '20.00',
+            'line_total' => '1000.000',
+        ]);
+
+        // Credit half the invoice value.
+        $creditNote = $this->service->createCreditNote(
+            sourceInvoiceId: $invoice->id,
+            amount: '600.00',
+            reason: CreditNoteReason::RETURN,
+        );
+
+        // The amount path must materialise lines (previously it created none, so
+        // confirm recomputed totals from an empty document → unbalanced GL).
+        $lines = $creditNote->lines()->get();
+        $this->assertCount(1, $lines, 'Amount-based credit note must materialise prorated lines');
+
+        $line = $lines->first();
+        $this->assertSame($sourceLine->description, $line->description);
+        $this->assertSame('20.00', $line->tax_rate);
+        // Prorated: ratio 600/1200 = 0.5 → qty 2 × 0.5 = 1; net 1 × 500 = 500.
+        $this->assertSame('1.0000', $line->quantity);
+        $this->assertSame('500.000', $line->line_total);
+
+        // Header total stays the requested credit amount.
+        $this->assertSame('600.000', $creditNote->total);
     }
 
     private function createPostedInvoice(

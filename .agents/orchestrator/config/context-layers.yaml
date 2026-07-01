@@ -7,17 +7,17 @@
 layer_0:
   description: "Always loaded at session start"
   files:
-    - ~/erp-agents/orchestrator/CLAUDE.md
-    - ~/erp-agents/orchestrator/MANIFEST.yaml
-    - ~/projects/erp/CLAUDE.md  # first 100 lines only (operational rules)
-    - ~/projects/erp/docs/PRODUCT-BIBLE.md  # summary section only (if exists)
+    - ~/Projects/syneriva/apps/erp/.agents/orchestrator/CLAUDE.md
+    - ~/Projects/syneriva/apps/erp/.agents/orchestrator/MANIFEST.yaml
+    - ~/Projects/syneriva/apps/erp/CLAUDE.md  # first 100 lines only (operational rules)
+    - ~/Projects/syneriva/apps/erp/docs/PRODUCT-BIBLE.md  # summary section only (if exists)
 
 layer_1:
   description: "Per-task — load when dispatching or reviewing a specific task"
   load_when: "a task involves specific modules"
   files:
     - "ls -R apps/api/app/Modules/{Module}/"  # module structure
-    - "~/erp-agents/{domain-agent}/CLAUDE.md"  # domain agent's business rules
+    - "~/Projects/syneriva/apps/erp/.agents/{domain-agent}/CLAUDE.md"  # domain agent's business rules
     - "apps/api/app/Modules/{Module}/routes.php"  # routes
     - "apps/api/app/Shared/Contracts/{Module}*"  # cross-module interfaces
     - "apps/api/tests/Unit/Modules/{Module}/"  # existing tests

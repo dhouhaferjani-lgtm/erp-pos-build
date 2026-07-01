@@ -248,9 +248,9 @@ class PaymentAllocationService
                 $document->save();
             }
 
-            // Create GL journal entry for the payment if repository has account_id
+            // Create GL journal entry for the payment if repository has gl_account_id
             $journalEntryId = null;
-            if ($payment->repository && $payment->repository->account_id && bccomp($totalAllocated, '0', 4) > 0) {
+            if ($payment->repository && $payment->repository->gl_account_id && bccomp($totalAllocated, '0', 4) > 0) {
                 // Check if any allocations are to sales orders (prepayments)
                 /** @var numeric-string $allocatedToOrders */
                 $allocatedToOrders = '0.00';
@@ -279,7 +279,7 @@ class PaymentAllocationService
                         partnerId: $payment->partner_id,
                         paymentId: $payment->id,
                         amount: $allocatedToInvoices,
-                        paymentMethodAccountId: $payment->repository->account_id,
+                        paymentMethodAccountId: $payment->repository->gl_account_id,
                         date: $payment->payment_date,
                         description: "Customer payment - {$payment->reference}",
                         user: $actor instanceof User ? $actor : null,
@@ -300,7 +300,7 @@ class PaymentAllocationService
                         partnerId: $payment->partner_id,
                         advanceId: $payment->id,
                         amount: $allocatedToOrders,
-                        paymentMethodAccountId: $payment->repository->account_id,
+                        paymentMethodAccountId: $payment->repository->gl_account_id,
                         date: $payment->payment_date,
                         user: $actor,
                         description: "Prepayment on order - {$payment->reference}",
@@ -321,7 +321,7 @@ class PaymentAllocationService
             $excessAmount = $preview['excess_amount'];
             $advanceJournalEntryId = null;
 
-            if (bccomp($excessAmount, '0', 4) > 0 && $payment->repository && $payment->repository->account_id) {
+            if (bccomp($excessAmount, '0', 4) > 0 && $payment->repository && $payment->repository->gl_account_id) {
                 if ($actor instanceof User) {
                     // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer Advance)
                     $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
@@ -329,7 +329,7 @@ class PaymentAllocationService
                         partnerId: $payment->partner_id,
                         advanceId: $payment->id,
                         amount: bcsub($excessAmount, '0', $this->scale($payment->currency)), // Format to currency scale
-                        paymentMethodAccountId: $payment->repository->account_id,
+                        paymentMethodAccountId: $payment->repository->gl_account_id,
                         date: $payment->payment_date,
                         user: $actor,
                         description: "Customer advance from payment {$payment->reference}",

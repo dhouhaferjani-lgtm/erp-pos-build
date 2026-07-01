@@ -14,7 +14,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
-import { Button, Checkbox, FormField, Input, Select, Textarea, MoneyInput, Toggle, QuantityInput } from '../../components/atoms'
+import { Button, Checkbox, FormField, Input, Textarea, MoneyInput, Toggle, QuantityInput } from '../../components/atoms'
 import { CatalogBanner } from './components/CatalogBanner'
 import { useProductSubmission } from './api/platformQueries'
 import type { LookupState, SuggestedProduct } from './types/platform'
@@ -101,7 +101,6 @@ interface ParapharmacyMetadata {
 export interface ProductFormData {
   name: string
   sku: string
-  type: ProductType | null
   is_physical: boolean
   is_active_for_ecommerce: boolean
   unit_id: string | null
@@ -173,7 +172,6 @@ export function ProductForm() {
     defaultValues: {
       name: '',
       sku: '',
-      type: null,
       is_physical: true,
       is_active_for_ecommerce: false,
       unit_id: null,
@@ -332,7 +330,6 @@ export function ProductForm() {
       reset({
         name: product.name,
         sku: product.sku,
-        type: product.type ?? null,
         is_physical: product.is_physical ?? true,
         is_active_for_ecommerce: product.is_active_for_ecommerce ?? false,
         unit_id: product.unit_id ?? null,
@@ -767,34 +764,6 @@ export function ProductForm() {
                   id="sku"
                   error={Boolean(errors.sku)}
                   {...register('sku', { required: t('inventory:products.skuRequired') })}
-                />
-              </FormField>
-
-              {/* Product Type — drives is_physical automatically (service→false, else true).
-                  The hidden is_physical value stays in the form to keep payload consistent
-                  with the backend's own type↔is_physical derivation. */}
-              <FormField label={t('inventory:products.type')} htmlFor="type">
-                <Controller
-                  name="type"
-                  control={control}
-                  render={({ field }) => (
-                    <Select
-                      id="type"
-                      value={field.value ?? ''}
-                      onChange={(e) => {
-                        const raw = e.target.value
-                        const val: ProductType | null =
-                          raw === 'part' || raw === 'service' || raw === 'consumable' ? raw : null
-                        field.onChange(val)
-                        setValue('is_physical', val !== 'service')
-                      }}
-                    >
-                      <option value="">{t('inventory:products.typePlaceholder')}</option>
-                      <option value="part">{t('inventory:products.typeOptions.part')}</option>
-                      <option value="service">{t('inventory:products.typeOptions.service')}</option>
-                      <option value="consumable">{t('inventory:products.typeOptions.consumable')}</option>
-                    </Select>
-                  )}
                 />
               </FormField>
 

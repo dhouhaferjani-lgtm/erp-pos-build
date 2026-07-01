@@ -5,10 +5,10 @@ gap_entry:
   schema:
     id: string            # Unique identifier (e.g., PARA-001, AUTO-012)
     vertical: string      # Which vertical this gap affects
-    module: string        # Which AutoERP module this belongs to
+    module: string        # Which Synerivia ERP module this belongs to
     title: string         # Short descriptive title
     description: string   # Detailed explanation of the gap
-    current_state: string # What AutoERP currently does (or doesn't)
+    current_state: string # What Synerivia ERP currently does (or doesn't)
     desired_state: string # What the feature should do
     category: enum        # compliance | table_stakes | differentiator | future
     severity: enum        # critical | high | medium | low

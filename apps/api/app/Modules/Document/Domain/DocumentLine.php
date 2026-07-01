@@ -222,18 +222,49 @@ class DocumentLine extends Model
     }
 
     /**
-     * Calculate the line total
+     * Calculate the line total (NET of any line discount, before tax).
+     *
+     * @return numeric-string
      */
     public function calculateTotal(int $scale = 3): string
     {
-        $subtotal = bcmul($this->quantity, $this->unit_price, $scale);
+        return self::computeLineTotal(
+            $this->quantity,
+            $this->unit_price,
+            $this->discount_percent,
+            $this->discount_amount,
+            $scale,
+        );
+    }
 
-        // Apply discount if any
-        if ($this->discount_percent !== null && bccomp($this->discount_percent, '0', 4) !== 0) {
-            $discount = bcmul($subtotal, bcdiv($this->discount_percent, '100', 4), $scale);
+    /**
+     * Canonical NET line total from raw values: gross (qty × unit_price) minus
+     * the line discount (percent if present, otherwise the flat amount), before
+     * tax. This is the single source of truth for line-level discount
+     * arithmetic — used both by the {@see calculateTotal()} instance method and
+     * by the document line builders that compute totals before a model exists.
+     *
+     * @param  numeric-string  $quantity
+     * @param  numeric-string  $unitPrice
+     * @param  numeric-string|null  $discountPercent
+     * @param  numeric-string|null  $discountAmount
+     * @return numeric-string
+     */
+    public static function computeLineTotal(
+        string $quantity,
+        string $unitPrice,
+        ?string $discountPercent,
+        ?string $discountAmount,
+        int $scale = 3,
+    ): string {
+        $subtotal = bcmul($quantity, $unitPrice, $scale);
+
+        // Discount before tax: percentage takes precedence over a flat amount.
+        if ($discountPercent !== null && bccomp($discountPercent, '0', 4) !== 0) {
+            $discount = bcmul($subtotal, bcdiv($discountPercent, '100', 4), $scale);
             $subtotal = bcsub($subtotal, $discount, $scale);
-        } elseif ($this->discount_amount !== null && bccomp($this->discount_amount, '0', $scale) !== 0) {
-            $subtotal = bcsub($subtotal, $this->discount_amount, $scale);
+        } elseif ($discountAmount !== null && bccomp($discountAmount, '0', $scale) !== 0) {
+            $subtotal = bcsub($subtotal, $discountAmount, $scale);
         }
 
         return $subtotal;

@@ -2557,15 +2557,17 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
-          {/* Table Management */}
+          {/* Table Management — F&B only, vertical-gated (mirrors Sidebar nav) */}
           <Route
             path="tables"
             element={
-              <RequirePermission permission="pos.manage_tables">
-                <SuspenseWrapper>
-                  <TableManagementPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Tables">
+                <RequirePermission permission="pos.manage_tables">
+                  <SuspenseWrapper>
+                    <TableManagementPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           {/* Promotions */}
@@ -2807,16 +2809,18 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
-      {/* KDS - Fullscreen Kitchen Display (Outside Layout) */}
+      {/* KDS - Fullscreen Kitchen Display (Outside Layout) — F&B only, vertical-gated (mirrors Sidebar nav) */}
       <Route
         path="/pos/kitchen"
         element={
           <RequireAuth>
-            <RequirePermission permission="pos.operate_terminal">
-              <SuspenseWrapper>
-                <KitchenDisplayPage />
-              </SuspenseWrapper>
-            </RequirePermission>
+            <ModuleGuard module="Menu">
+              <RequirePermission permission="pos.operate_terminal">
+                <SuspenseWrapper>
+                  <KitchenDisplayPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            </ModuleGuard>
           </RequireAuth>
         }
       />

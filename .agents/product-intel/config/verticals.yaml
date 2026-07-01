@@ -2,6 +2,39 @@
 # Each vertical defines what modules are relevant, required business flows,
 # compliance requirements, and expected industry-standard features.
 
+# Priority order (PRODUCT-BIBLE §5, founder interview 2026-06-30).
+# Launch optimizes the single-tier RETAILER node; whole-chain (lab -> importer ->
+# wholesaler -> retailer -> customer) is a 12-MONTH target for parapharmacy AND automotive,
+# mediated by the Synerivia platform (apps/platform), not the ERP node.
+priority_order:
+  - rank: 1
+    vertical: parapharmacy
+    edition: IziPOS
+    status: LAUNCH (imminent demo)
+    market: Tunisia / TND single-currency
+    scope: single-tier retailer node (POS + FEFO inventory + procure-to-pay + financial backbone + merchandising + loyalty)
+    note: most-advanced retail vertical; Skin IQ (end-customer loyalty/customer-success) is the post-launch growth differentiator
+  - rank: 2
+    vertical: automotive
+    edition: Otospex
+    status: NEXT — real customer pulling it
+    market: France
+    pull: "A France car-repair-shop client is WAITING. Needs e-facture (French e-invoicing / Factur-X). This makes automotive #2 with a committed customer, not speculative."
+    note: Workshop + Vehicle modules already substantial
+  - rank: 3
+    vertical: restaurant
+    edition: IziPOS
+    status: later 2026
+    note: F&B — Menu + composite items/recipes + table mgmt; composite-inventory work currently deferred
+  - rank: 4
+    vertical: general_retail
+    edition: IziPOS
+    status: opportunistic / horizontal
+
+# Cross-vertical post-launch moat layers (committed direction, PRODUCT-BIBLE §5.3):
+# Skin IQ, Growth Coach (AI lifecycle advisor — likely evolves Progression module),
+# Scenario data enrichment, CLI + MCP control surface (run business from WhatsApp/messenger).
+
 verticals:
   parapharmacy:
     display_name: Parapharmacy / Pharmacy Adjacent
@@ -193,6 +226,11 @@ verticals:
         status: not_implemented
 
     compliance_requirements:
+      - name: e-facture (French e-invoicing)
+        description: French electronic-invoicing (Factur-X / e-facture) — REQUIRED by the waiting France car-repair client. 12-month certification target (Tunisia + France).
+        severity: legally_required_france
+        status: partially_implemented
+        notes: FacturXService exists in Document module; full e-facture certification is the France-entry gate.
       - name: VIN decoding
         description: Decode VIN to identify make, model, year, engine for parts compatibility
         severity: table_stakes

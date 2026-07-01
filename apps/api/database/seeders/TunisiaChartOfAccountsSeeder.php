@@ -159,6 +159,8 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
                 'system_purpose' => SystemAccountPurpose::VatDeductible->value, 'is_system' => true],
             ['code' => '4457', 'name' => 'TVA collectée', 'type' => 'liability', 'parent_code' => '44',
                 'system_purpose' => SystemAccountPurpose::VatCollected->value, 'is_system' => true],
+            ['code' => '4375', 'name' => 'État - Droit de timbre à reverser', 'type' => 'liability', 'parent_code' => '44',
+                'system_purpose' => SystemAccountPurpose::SalesStampDutyPayable->value, 'is_system' => true],
             ['code' => '45', 'name' => 'Groupe et associés', 'type' => 'asset', 'parent_code' => '4'],
             ['code' => '46', 'name' => 'Débiteurs et créditeurs divers', 'type' => 'asset', 'parent_code' => '4'],
             ['code' => '47', 'name' => 'Comptes transitoires ou d\'attente', 'type' => 'asset', 'parent_code' => '4'],

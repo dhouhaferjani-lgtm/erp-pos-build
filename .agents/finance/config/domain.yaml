@@ -149,6 +149,52 @@ modules:
       - NF525 requires Z-reports, perpetual totals, receipt chaining, JET
       - Chain integrity verified by recomputing all hashes in sequence
 
+  procurement:
+    path: apps/api/app/Modules/Procurement/
+    purpose: Procure-to-pay AP — supplier invoice creation, 3-way match (PO↔GR↔Bill), GR-IR clearing GL posting. Phase 1 = GR-first (received) bill control.
+    key_models:
+      - Application/CreateSupplierInvoiceService.php
+      - Application/SupplierInvoicePostingService.php
+      - Application/SupplierCreditNotePostingService.php
+      - Application/SupplierInvoiceMatcher.php       # 2/3-way match, read-only
+      - Application/ProcurementPolicyResolver.php
+      - Domain/ProcurementPolicy.php
+    key_enums:
+      - Domain/Enums/MatchMode.php                   # two_way | three_way
+      - Domain/Enums/BillControlMode.php             # received (GR-first, Phase 1) | ordered (reserved)
+      - Domain/Enums/MatchEnforcement.php            # warn | block
+      - Domain/Enums/SupplierCreditNoteReason.php
+    business_rules:
+      - Supplier invoices persist as Document rows (DocumentType::SupplierInvoice / SupplierCreditNote) — Procurement does NOT own an invoice model
+      - GoodsReceipt lives in Inventory (GoodsReceiptService); Procurement consumes it for matching
+      - GR posts Dr Inventory / Cr GRNI(408) via PostGrIrOnGoodsReceipt; supplier-invoice posting clears 408 against AP at the same accrual basis
+      - HARD match blockers (qty over-clear at PO-line aggregate, exceptions) always block; ADVISORY price variance governed by MatchEnforcement, dual-threshold tolerance mirroring PaymentToleranceService
+      - bcmath only; qty scale 4, money scale 3
+    notes: Supersedes the thin PurchaseHub module for real procure-to-pay. FISCAL-ADJACENT (GR-IR GL posting) — treat posting changes as Tier 3.
+
+  fiscal:
+    path: apps/api/app/Modules/Fiscal/
+    purpose: Device-authored fiscal event engine — ingests, parses, projects, and quarantines fiscal events authored on POS devices (post-2026-06-12). The device is the fiscal source of truth; GL is a downstream projection.
+    key_models:
+      - Domain/Models/FiscalEvent.php
+      - Domain/Models/FiscalEventProjectionRow.php
+      - Domain/Models/FiscalEventQuarantine.php
+      - Domain/Models/DeviceLossIncident.php
+      - Application/                                  # parsers, projection dispatcher/registry, integrity policy, outbox ingestor
+    key_enums:
+      - Domain/Enums/FiscalEventType.php
+      - Domain/Enums/ProjectionStatus.php
+      - Domain/Enums/IntegrityStatus.php
+      - Domain/Enums/SignatureStatus.php
+      - Domain/Enums/FiscalIntegrityAnomaly.php
+      - Domain/Enums/FiscalIntegrityPolicyAction.php
+    business_rules:
+      - Fiscal events are device-authored, immutable, append-only; ingestion projects them into read rows
+      - Failed-integrity events are quarantined, never silently dropped
+      - Queued jobs / projections run with NO CompanyContext — pass explicit currency to scale resolution (CLAUDE.md rule 20)
+      - NF525 canonical projection
+    notes: ALWAYS Tier 3 (fiscal integrity). 70 tests — heaviest-tested new module.
+
 shared_contracts:
   provided:
     - path: app/Shared/Contracts/Treasury/PaymentToleranceCheckerContract.php
@@ -172,3 +218,15 @@ test_locations:
   feature: apps/api/tests/Feature/Accounting/, tests/Feature/Document/, etc.
   unit: apps/api/tests/Unit/Accounting/, tests/Unit/Compliance/, etc.
   integration: apps/api/tests/Integration/
+
+# Founder-prioritized gaps (PRODUCT-BIBLE §4 / §8, 2026-06-30) — top of the finance backlog
+priority_gaps:
+  - id: TD-001
+    title: "POS-sale COGS not posted to GL"
+    detail: "PostCOGSOnInvoice fires only on InvoicePosted; POS receipts bypass the invoice flow so POS sales post revenue+VAT but never COGS. Gross-margin reports wrong for any POS business. Fix mirrors PostCOGSOnInvoice on a POS receipt event. FISCAL-ADJACENT → Tier 3 review."
+  - id: TD-002
+    title: "Treasury money-movement spine"
+    detail: "No cash-flow report (no CashFlowService); payment-instrument lifecycle (deposit/clear/bounce) has no GL integration; bank reconciliation has no statement import / auto-match."
+  - id: TD-003
+    title: "Accounting hierarchy balance calculation broken"
+    detail: "3x TODO at ReportsController.php:275/430/581 — hierarchical trial balance / P&L / balance sheet return wrong numbers for multi-level charts of accounts."

@@ -69,6 +69,7 @@ enum SystemAccountPurpose: string
     // Procurement (GR-IR / Domestic P2P)
     case GoodsReceivedNotInvoiced = 'goods_received_not_invoiced'; // 408 — accrued liability until supplier invoice matched
     case PurchaseStampDuty = 'purchase_stamp_duty';                // Timbre fiscal on domestic purchase documents
+    case SalesStampDutyPayable = 'sales_stamp_duty_payable';       // 4375 — droit de timbre collected on sales, remittable to the State (liability)
 
     /**
      * Get human-readable label for display.
@@ -111,6 +112,7 @@ enum SystemAccountPurpose: string
             self::PosTenderClearing => 'POS Tender Clearing',
             self::GoodsReceivedNotInvoiced => 'Goods Received Not Invoiced (GR-IR)',
             self::PurchaseStampDuty => 'Purchase Stamp Duty (Timbre)',
+            self::SalesStampDutyPayable => 'Sales Stamp Duty Payable (Timbre à reverser)',
         };
     }
 
@@ -148,7 +150,8 @@ enum SystemAccountPurpose: string
 
             self::SupplierPayable, self::CustomerAdvance,
             self::VatCollected, self::VoucherLiability,
-            self::GoodsReceivedNotInvoiced => AccountType::Liability,
+            self::GoodsReceivedNotInvoiced,
+            self::SalesStampDutyPayable => AccountType::Liability,
 
             self::ProductRevenue, self::ServiceRevenue,
             self::PaymentToleranceIncome, self::RealizedFxGain,

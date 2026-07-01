@@ -132,7 +132,7 @@ final class SupplierPaymentGuardTest extends TestCase
             'name' => 'AP Bank Repo',
             'type' => RepositoryType::BankAccount,
             'balance' => '5000.000',
-            'account_id' => $this->bankAccount->id,
+            'gl_account_id' => $this->bankAccount->id,
             'is_active' => true,
         ]);
     }

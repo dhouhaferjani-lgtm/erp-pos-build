@@ -119,8 +119,99 @@ class CreditNoteService
                 ]);
             }
 
+            // Materialise prorated lines from the source invoice. Without lines,
+            // confirm()'s tax recompute runs on an empty document and collapses
+            // the total to a stamp-only figure → a single unbalanced GL line
+            // (bug #2). Prorated lines give revenue/VAT/AR (and restock) real
+            // data and keep the reversal balanced.
+            /** @var numeric-string $creditTotal */
+            $creditTotal = $amount;
+            $this->materializeProratedLines($creditNote, $invoice, $creditTotal, $subtotal);
+
             return $creditNote;
         });
+    }
+
+    /**
+     * Build credit-note lines for an amount-based credit by prorating the source
+     * invoice lines (preserving product, tax rate, and discount). When the source
+     * has no lines, fall back to a single synthetic line carrying the net credit
+     * at the invoice's blended tax rate so the document is never line-less.
+     *
+     * @param  numeric-string  $amount  requested credit total (tax-inclusive)
+     * @param  numeric-string  $creditSubtotal  net portion of the credit
+     */
+    private function materializeProratedLines(
+        Document $creditNote,
+        Document $invoice,
+        string $amount,
+        string $creditSubtotal,
+    ): void {
+        /** @var Collection<int, DocumentLine> $sourceLines */
+        $sourceLines = $invoice->lines;
+        /** @var numeric-string $invoiceTotal */
+        $invoiceTotal = (string) ($invoice->total ?? '0');
+
+        if ($sourceLines->isEmpty() || bccomp($invoiceTotal, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity/amount comparison scale
+            /** @var numeric-string $invoiceSubtotal */
+            $invoiceSubtotal = (string) ($invoice->subtotal ?? '0');
+            /** @var numeric-string $blendedRate */
+            $blendedRate = bccomp($invoiceSubtotal, '0', 4) > 0 // precision-ok: 4 = canonical amount comparison scale
+                // precision-ok: 6 = high-precision rate intermediate; 2 = tax_rate column scale
+                ? bcmul(bcdiv((string) ($invoice->tax_amount ?? '0'), $invoiceSubtotal, 6), '100', 2)
+                : '0';
+
+            DocumentLine::create([
+                'document_id' => $creditNote->id,
+                'line_number' => 1,
+                'description' => 'Credit',
+                'quantity' => '1',
+                'unit_price' => $creditSubtotal,
+                'tax_rate' => $blendedRate,
+                'line_total' => $creditSubtotal,
+            ]);
+
+            return;
+        }
+
+        /** @var numeric-string $ratio */
+        $ratio = bcdiv($amount, $invoiceTotal, 6); // precision-ok: 6 = high-precision proration ratio intermediate
+        $lineNumber = 1;
+
+        foreach ($sourceLines as $sourceLine) {
+            /** @var numeric-string $creditQty */
+            $creditQty = bcmul((string) $sourceLine->quantity, $ratio, 4); // precision-ok: 4 = canonical quantity storage scale
+            if (bccomp($creditQty, '0', 4) <= 0) { // precision-ok: 4 = canonical quantity storage scale
+                continue;
+            }
+
+            /** @var numeric-string|null $discountPercent */
+            $discountPercent = $sourceLine->discount_percent !== null ? (string) $sourceLine->discount_percent : null;
+            /** @var numeric-string|null $discountAmount */
+            $discountAmount = $sourceLine->discount_amount !== null ? (string) $sourceLine->discount_amount : null;
+
+            $lineTotal = DocumentLine::computeLineTotal(
+                $creditQty,
+                (string) $sourceLine->unit_price,
+                $discountPercent,
+                $discountAmount,
+                4,
+            );
+
+            DocumentLine::create([
+                'document_id' => $creditNote->id,
+                'product_id' => $sourceLine->product_id,
+                'line_number' => $lineNumber++,
+                'description' => $sourceLine->description,
+                'quantity' => $creditQty,
+                'unit_price' => $sourceLine->unit_price,
+                'discount_percent' => $sourceLine->discount_percent,
+                'discount_amount' => $sourceLine->discount_amount,
+                'tax_rate' => $sourceLine->tax_rate,
+                'line_total' => $lineTotal,
+                'designation_default_snapshot' => $sourceLine->designation_default_snapshot,
+            ]);
+        }
     }
 
     /**

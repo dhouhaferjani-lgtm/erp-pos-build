@@ -637,8 +637,8 @@ class MultiPaymentTest extends TestCase
     {
         app(ChartOfAccountsService::class)->seedForCompany($this->company);
         $bankAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Bank);
-        $this->cashRegister->update(['account_id' => $bankAccount->id]);
-        $this->bankAccount->update(['account_id' => $bankAccount->id]);
+        $this->cashRegister->update(['gl_account_id' => $bankAccount->id]);
+        $this->bankAccount->update(['gl_account_id' => $bankAccount->id]);
 
         $secondInvoice = Document::create([
             'tenant_id' => $this->tenant->id,

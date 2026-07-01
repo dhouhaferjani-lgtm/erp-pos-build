@@ -126,7 +126,11 @@ class TaxCalculationService
                 /** @var numeric-string $taxAccumulator */
                 $taxAccumulator = '0';
                 foreach ($linesWithRate as $line) {
-                    $lineSubtotal = bcmul((string) $line->quantity, (string) $line->unit_price, $scale + 1);
+                    // Tax base is the NET line (gross − line discount), computed
+                    // at scale+1 to keep the 4th quantity decimal alive. For a
+                    // line with no discount calculateTotal() == bcmul(qty, price,
+                    // scale+1), so undiscounted lines are byte-identical.
+                    $lineSubtotal = $line->calculateTotal($scale + 1);
                     $lineTax = bcmul($lineSubtotal, $rateFraction, $scale + 1);
                     $taxAccumulator = bcadd($taxAccumulator, $lineTax, $scale + 1);
                 }
@@ -203,13 +207,16 @@ class TaxCalculationService
         $subtotal = '0';
 
         foreach ($document->lines as $line) {
-            // Money = qty(scale 4) × unitPrice. Use a scale+1 intermediate to
-            // keep the 4th quantity decimal alive through the multiply, then
-            // round each line to the currency boundary. This keeps the subtotal
-            // coherent with DocumentTotalsCalculator::recalculate, which sums
-            // per-line bcmul(qty, unitPrice, scale) values.
+            // NET line (gross − line discount) is the taxable base. Money =
+            // qty(scale 4) × unitPrice with the discount applied; a scale+1
+            // intermediate keeps the 4th quantity decimal alive through the
+            // multiply, then round each line to the currency boundary. This
+            // keeps the subtotal coherent with DocumentTotalsCalculator::
+            // recalculate, which sums per-line calculateTotal(scale) values.
+            // For a line with no discount this is byte-identical to the old
+            // bcmul(qty, unitPrice, scale+1) intermediate.
             $lineTotal = CurrencyScale::bcformat(
-                bcmul((string) $line->quantity, (string) $line->unit_price, $scale + 1),
+                $line->calculateTotal($scale + 1),
                 $scale,
             );
             $subtotal = bcadd($subtotal, $lineTotal, $scale);

@@ -91,10 +91,11 @@ modules:
       - ALL stock changes create StockMovement records with before/after snapshots
       - WAC recalculates on purchases and returns only, not on sales
       - Pessimistic locking (lockForUpdate) mandatory for stock modifications
-      - Stock cannot go negative (DomainException thrown)
+      - "Stock cannot go negative — HARD BLOCK, no override, no negative sales/overselling (ADR-0002, docs/adr/2026-06-30-negative-stock-hard-block.md). DomainException thrown. This is a system invariant: never add an allow_negative flag. No back-valuation/recosting engine exists or is needed while the block holds. 'Backorder against incoming PO' is a separate future feature, NOT an override."
       - Reserved stock tracked separately from total
       - Available = quantity - reserved
       - Events dispatched via DB::afterCommit(), not inside transactions
+      - "GL gap (PRODUCT-BIBLE §4): general StockAdjustmentService adjust/transfer post NO GL (only batch write-offs via BatchWriteOffService do); no dedicated WriteOff MovementType. Coordinate with Finance agent for any GL integration."
 
   batch_expiry:
     path: apps/api/app/Modules/BatchExpiry/
@@ -134,10 +135,11 @@ modules:
 
   purchase_hub:
     path: apps/api/app/Modules/PurchaseHub/
-    purpose: Purchase order management, procurement workflows
+    purpose: Marketplace-purchasing helper (thin/scaffolded). NOTE — the real procure-to-pay flow now lives in the new **Procurement** module (Finance agent's domain): supplier invoices, 3-way match, GR-IR posting. PurchaseHub is NOT the procurement engine.
     key_models:
       - Application/Services/PurchaseHubService.php
     business_rules:
+      - "Cross-agent boundary: GoodsReceipt (Inventory, this agent) ↔ Procurement AP/GR-IR posting (Finance agent). Coordinate on procure-to-pay work."
       - PO lifecycle tracked via DocumentStatus
       - Goods receipt validates against PO quantities
       - Over-receipt tolerance configurable

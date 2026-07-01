@@ -243,6 +243,31 @@ class CreateDocumentTest extends TestCase
         $this->assertDatabaseCount('document_lines', 2);
     }
 
+    public function test_document_inherits_company_currency_when_not_provided(): void
+    {
+        // Tunisia company — a document created WITHOUT an explicit currency must
+        // inherit the company currency (TND), never a hardcoded 'EUR' fallback.
+        $this->company->update(['currency' => 'TND']);
+
+        $payload = [
+            'partner_id' => $this->customer->id,
+            'document_date' => now()->toDateString(),
+            'lines' => [
+                ['description' => 'Service', 'quantity' => '1.00', 'unit_price' => '50.00', 'tax_rate' => '19.00'],
+            ],
+        ];
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/quotes', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.currency', 'TND');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/invoices', $payload + ['due_date' => now()->addDays(30)->toDateString()])
+            ->assertCreated()
+            ->assertJsonPath('data.currency', 'TND');
+    }
+
     public function test_can_create_invoice(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
@@ -267,6 +292,61 @@ class CreateDocumentTest extends TestCase
             ->assertJsonPath('data.subtotal', '200.00')
             ->assertJsonPath('data.tax_amount', '40.00')
             ->assertJsonPath('data.total', '240.00');
+    }
+
+    public function test_invoice_draft_applies_line_discount_percent_to_totals(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/invoices', [
+                'partner_id' => $this->customer->id,
+                'document_date' => now()->toDateString(),
+                'due_date' => now()->addDays(30)->toDateString(),
+                'currency' => 'EUR',
+                'lines' => [
+                    [
+                        'description' => 'Discounted Services',
+                        'quantity' => '2.00',
+                        'unit_price' => '100.00',
+                        'discount_percent' => '10.00',
+                        'tax_rate' => '20.00',
+                    ],
+                ],
+            ]);
+
+        // gross 200 − 10% = net 180; line discount must flow into the draft
+        // subtotal, the line_total, and the tax base.
+        $response->assertCreated()
+            ->assertJsonPath('data.subtotal', '180.00')
+            ->assertJsonPath('data.tax_amount', '36.00')
+            ->assertJsonPath('data.total', '216.00')
+            ->assertJsonPath('data.lines.0.line_total', '180.00');
+    }
+
+    public function test_invoice_draft_applies_line_discount_amount_to_totals(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/invoices', [
+                'partner_id' => $this->customer->id,
+                'document_date' => now()->toDateString(),
+                'due_date' => now()->addDays(30)->toDateString(),
+                'currency' => 'EUR',
+                'lines' => [
+                    [
+                        'description' => 'Flat-discounted Services',
+                        'quantity' => '1.00',
+                        'unit_price' => '100.00',
+                        'discount_amount' => '25.00',
+                        'tax_rate' => '20.00',
+                    ],
+                ],
+            ]);
+
+        // gross 100 − 25 flat = net 75
+        $response->assertCreated()
+            ->assertJsonPath('data.subtotal', '75.00')
+            ->assertJsonPath('data.tax_amount', '15.00')
+            ->assertJsonPath('data.total', '90.00')
+            ->assertJsonPath('data.lines.0.line_total', '75.00');
     }
 
     public function test_document_number_is_auto_generated(): void

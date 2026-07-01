@@ -2,6 +2,43 @@
 
 **Date:** 2026-06-15
 **Scope:** `apps/api/app/Modules/` -- all 37 modules (Workshop counted as 3 sub-modules)
+**Verified:** 2026-06-29 against `origin/dev` @ `96f421c56` (see Verification Update below)
+
+---
+
+## ⚠️ Verification Update (2026-06-29)
+
+This audit was re-verified two weeks after authoring. The codebase drifted materially; corrections below take precedence over the original tables where they conflict.
+
+**Four new modules now exist** (added since 2026-06-15) — see new rows folded into the table:
+
+| Module | Models | Actions/Services | Routes | Tests | Events | Status |
+|--------|--------|-------------------|--------|-------|--------|--------|
+| **Channel** | 5 (Channel, ChannelCredential, ChannelOrder, ChannelProductMapping, ChannelSyncOperation) | 2 (ChannelService, ChannelOrderIngestService) + adapter registry | Yes | 7 | 6 | **Complete** — sales-channel/marketplace sync: webhook ingestion, dispatch jobs, drift detection |
+| **Fiscal** | 4 (FiscalEvent, FiscalEventProjectionRow, FiscalEventQuarantine, DeviceLossIncident) | ~18 services (parsers, projection dispatcher/registry, integrity policy, outbox ingestor) + jobs + 3 console commands | Yes | 70 | 0 (consumes device fiscal events as data) | **Complete** — the post-2026-06-12 device-authored fiscal event engine; heaviest-tested new module, NF525 canonical projection/quarantine |
+| **Procurement** | 1 (ProcurementPolicy) | 5 (CreateSupplierInvoice, SupplierInvoicePosting, SupplierCreditNotePosting, SupplierInvoiceMatcher, ProcurementPolicyResolver) | Yes | 5 | 0 | **Partial** — Phase-1 procure-to-pay AP: GR-first 3-way match + GR-IR clearing posting; Phase-2 (invoice-first) reserved. Does NOT own GoodsReceipt (Inventory) or a supplier-invoice model (Documents) |
+| **Voucher** | 2 (Voucher, VoucherLedger) | 4 (Issuance, Redemption, Cascade, Lookup) + VoucherCodeGenerator | Yes | 14 | 6 | **Complete** — issuance/redemption/cascade/lookup, append-only ledger, fraud alerts, POS sync |
+
+**Spot-check corrections to existing rows** (status unchanged unless noted; counts drifted up):
+- **Inventory** — Models 7→**11** (+StockTransfer family), Services 9→**17**, Events 5→**14**, Tests 15→**47**. Still Complete.
+- **Treasury** — Models 7→**8**, Services 7→**10**, Tests 28→**38**, Events 11 (unchanged). Still Complete.
+- **Document** — Services 12→**16**, Events 17→**21**, Tests 57→**69**, Models 7 (unchanged). Still Complete.
+- **Product** — Models 12→**19** (+Brand, Ingredient/HealthClaim/KeyComponent/Certification + Translations, Routine, ProductSkinSuitability/Complement/Equivalent, automotive sub-models). Tests 27→**48**. Services 7, Events 5 (unchanged). Still Complete.
+- **Expense** — **STATUS CORRECTION: Scaffolded → Partial.** Now has **8** dedicated tests (`tests/Feature/Expense/`), not 0. Remove from "Modules With Zero Tests".
+- **BatchExpiry** — Services 3→**5**, Events 0→**1**, Tests 3→**18**. Promotion candidate (Partial→Complete); at minimum counts are stale.
+
+**Corrected summary statistics:**
+
+| Metric | Doc (2026-06-15) | Current (2026-06-29) |
+|--------|------------------|----------------------|
+| Total modules | 37 | **44** (42 top-level dirs, Workshop = 3 sub-modules) |
+| Complete | 18 | **~21–22** (+Channel, +Fiscal, +Voucher; BatchExpiry candidate) |
+| Partial | 14 | **~15–16** (+Procurement, +Expense) |
+| Scaffolded | 5 | **4** (Communication, Dashboard, Media, Pricing — Expense removed) |
+| Total test files | ~545 | **1126** (`find tests -name '*Test.php' \| wc -l`) |
+| Migrations | 330 | **445** (root `central` + `tenant/` + `manual/` subdirs; a flat `ls` of the top dir misleadingly shows ~33) |
+
+> Caveat: only the 6 spot-checked modules + 4 new ones were re-rated this pass. The other ~30 modules' statuses were not re-verified and have likely also drifted upward on test counts.
 
 ---
 
@@ -93,11 +130,13 @@
 
 ## Modules With Zero Tests (Risk Areas)
 
-1. **Billing** -- subscription/payment provider logic untested
-2. **Communication** -- email sending untested
-3. **Dashboard** -- aggregation logic untested
-4. **Expense** -- basic CRUD untested
-5. **Media** -- file upload untested
+> **[VERIFIED 2026-06-29]** This list is now stale — none of these 5 has zero tests anymore. Current dedicated test counts: Billing **3**, Communication **1**, Dashboard **1**, Expense **8**, Media **26**. The genuine risk is *thin* coverage (Billing/Communication/Dashboard at 1–3), not zero. Expense should be struck entirely.
+
+1. **Billing** -- subscription/payment provider logic thinly tested (3)
+2. **Communication** -- email sending thinly tested (1)
+3. **Dashboard** -- aggregation logic thinly tested (1)
+4. ~~**Expense** -- basic CRUD untested~~ — **now 8 dedicated tests**
+5. **Media** -- now 26 tests (no longer a risk area)
 
 ---
 

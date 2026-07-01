@@ -6,6 +6,7 @@ namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -59,6 +60,19 @@ class ChartOfAccountsServiceTest extends TestCase
 
         // Tunisia COA has around 80+ accounts
         $this->assertGreaterThan(50, $accounts->count());
+    }
+
+    public function test_tunisia_chart_includes_sales_stamp_duty_account(): void
+    {
+        $company = $this->createCompany('TN');
+
+        $this->service->seedForCompany($company);
+
+        $account = Account::findByPurpose($company->id, SystemAccountPurpose::SalesStampDutyPayable);
+
+        $this->assertNotNull($account, 'TN chart must map a collected sales stamp-duty (timbre) account');
+        $this->assertSame('4375', $account->code);
+        $this->assertSame(AccountType::Liability, $account->type);
     }
 
     public function test_seeded_accounts_have_system_purposes(): void
