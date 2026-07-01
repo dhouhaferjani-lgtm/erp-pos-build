@@ -422,20 +422,28 @@ function assertAttachedCustomerScope(customer: AttachedCheckoutCustomer): void {
   }
 }
 
-function estimateCartTotal(
+/** @internal Exported for unit testing. */
+export function estimateCartTotal(
   cartItems: CartItem[],
   transactionDiscount?: CartTransactionDiscount,
   currency: string = 'EUR',
-): number {
+): string {
   const decimals = getCurrencyDecimals(currency);
   const subtotal = bcsum(cartItems.map((item) => item.line_total), decimals);
   if (transactionDiscount === undefined) {
-    return Number(subtotal);
+    return subtotal;
   }
 
-  const discountValue = parseFloat(transactionDiscount.value);
-  if (!Number.isFinite(discountValue) || discountValue <= 0) {
-    return Number(subtotal);
+  // Use bccomp instead of parseFloat to keep the check in the decimal domain.
+  // safeBig handles empty string (→ 0); try/catch handles a non-numeric value.
+  let discountIsPositive = false;
+  try {
+    discountIsPositive = bccomp(transactionDiscount.value, '0') > 0;
+  } catch {
+    /* non-numeric discount value — treat as no discount */
+  }
+  if (!discountIsPositive) {
+    return subtotal;
   }
 
   const rawDiscount = transactionDiscount.type === 'percentage'
@@ -444,7 +452,7 @@ function estimateCartTotal(
   // Clamp discount to the subtotal so the total can never go negative.
   const discount = bccomp(rawDiscount, subtotal) > 0 ? subtotal : rawDiscount;
   const total = bcsub(subtotal, discount, decimals);
-  return bccomp(total, '0') < 0 ? 0 : Number(total);
+  return bccomp(total, '0') < 0 ? bcformat('0', decimals) : total;
 }
 
 
@@ -864,7 +872,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
     }
 
     const totalEstimate = estimateCartTotal(cartItems, transactionDiscount, getActiveCurrency());
-    if (bccomp(tenderedAmount, String(totalEstimate)) < 0) {
+    if (bccomp(tenderedAmount, totalEstimate) < 0) {
       const msg = 'Cash tender tolerance requires a manager-authored tender tolerance override and is not available from quick cash checkout.';
       set({ error: msg });
       throw new Error(msg);
@@ -1113,7 +1121,7 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
       const totalEstimate = estimateCartTotal(cartItems, transactionDiscount, currency);
       let tenderToleranceEvidence: PosOverrideEvidence | undefined;
 
-      if (bccomp(tenderedAmountStr, String(totalEstimate)) < 0) {
+      if (bccomp(tenderedAmountStr, totalEstimate) < 0) {
         const pin = options?.tenderTolerancePin?.trim() ?? '';
         if (pin === '') {
           const msg = 'Tender tolerance requires a manager PIN.';
@@ -1130,7 +1138,8 @@ export const usePaymentStore = create<PaymentStore>()((set, get) => ({
         }
 
         const businessDate = new Date().toISOString().slice(0, 10);
-        const totalEstimateStr = bcformat(String(totalEstimate), decimals);
+        // totalEstimate is already at `decimals` scale (returned by estimateCartTotal).
+        const totalEstimateStr = totalEstimate;
         // Exact shortfall = total − tendered, clamped at 0 (Big.js).
         const rawShortfall = bcsub(totalEstimateStr, tenderedAmountStr, decimals);
         const shortfall = bccomp(rawShortfall, '0') < 0 ? (0).toFixed(decimals) : rawShortfall;
