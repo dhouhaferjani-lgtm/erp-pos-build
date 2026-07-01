@@ -459,16 +459,31 @@ final class ImportService
             return $rows;
         }
 
-        return array_map(static function (array $row) use ($mapping): array {
+        $mappedRows = [];
+
+        foreach ($rows as $rowNumber => $row) {
+            $normalizedRow = [];
+            foreach ($row as $source => $value) {
+                $normalizedRow[self::normalizeColumnKey($source)] = $value;
+            }
+
             $mapped = [];
             foreach ($mapping as $source => $target) {
-                if (array_key_exists($source, $row)) {
-                    $mapped[$target] = $row[$source];
+                $normalizedSource = self::normalizeColumnKey($source);
+                if (array_key_exists($normalizedSource, $normalizedRow)) {
+                    $mapped[$target] = $normalizedRow[$normalizedSource];
                 }
             }
 
-            return $mapped;
-        }, $rows);
+            $mappedRows[$rowNumber] = $mapped;
+        }
+
+        return $mappedRows;
+    }
+
+    private static function normalizeColumnKey(string $key): string
+    {
+        return strtolower(trim($key));
     }
 
     /**

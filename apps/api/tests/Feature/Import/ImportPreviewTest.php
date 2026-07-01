@@ -19,6 +19,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -171,11 +172,19 @@ class ImportPreviewTest extends TestCase
         $previewResponse->assertOk();
 
         $rows = $previewResponse->json('data.rows');
+        $this->assertIsArray($rows);
         $this->assertCount(4, $rows);
 
-        // Check validity status
-        $validCount = collect($rows)->where('is_valid', true)->count();
-        $invalidCount = collect($rows)->where('is_valid', false)->count();
+        $validCount = 0;
+        $invalidCount = 0;
+        foreach ($rows as $row) {
+            $this->assertIsArray($row);
+            if (($row['is_valid'] ?? false) === true) {
+                $validCount++;
+            } else {
+                $invalidCount++;
+            }
+        }
 
         $this->assertEquals(2, $validCount);
         $this->assertEquals(2, $invalidCount);
@@ -280,10 +289,76 @@ class ImportPreviewTest extends TestCase
         $this->assertEquals(2, $summary['total_rows']);
     }
 
+    public function test_preview_populates_mapped_data_rows_from_display_header_csvs(): void
+    {
+        $productFile = $this->uploadedFixture('products-display-headers.csv');
+
+        $productResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $productFile,
+                'type' => 'products',
+                'column_mapping' => json_encode([
+                    'Product Name' => 'name',
+                    'SKU' => 'sku',
+                    'Type' => 'type',
+                    'Sale Price' => 'sale_price',
+                    'Tax Rate' => 'tax_rate',
+                ], JSON_THROW_ON_ERROR),
+            ]);
+
+        $productResponse->assertCreated();
+
+        $productPreview = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$productResponse->json('data.id')}/preview");
+
+        $productPreview->assertOk();
+        $productPreview->assertJsonPath('data.rows.0.data.name', 'Panadol 500mg');
+        $productPreview->assertJsonPath('data.rows.0.data.sku', 'MED-001');
+        $productPreview->assertJsonPath('data.rows.0.data.type', 'part');
+        $productPreview->assertJsonPath('data.rows.0.is_valid', true);
+        $productPreview->assertJsonPath('data.summary.valid_rows', 1);
+
+        $partnerFile = $this->uploadedFixture('partners-display-headers.csv');
+
+        $partnerResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $partnerFile,
+                'type' => 'partners',
+                'column_mapping' => json_encode([
+                    'Partner Name' => 'name',
+                    'Partner Type' => 'type',
+                    'Email' => 'email',
+                    'Phone' => 'phone',
+                ], JSON_THROW_ON_ERROR),
+            ]);
+
+        $partnerResponse->assertCreated();
+
+        $partnerPreview = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/imports/{$partnerResponse->json('data.id')}/preview");
+
+        $partnerPreview->assertOk();
+        $partnerPreview->assertJsonPath('data.rows.0.data.name', 'Clinique El Manar');
+        $partnerPreview->assertJsonPath('data.rows.0.data.type', 'customer');
+        $partnerPreview->assertJsonPath('data.rows.0.data.email', 'contact@elmanar.example');
+        $partnerPreview->assertJsonPath('data.rows.0.is_valid', true);
+        $partnerPreview->assertJsonPath('data.summary.valid_rows', 1);
+    }
+
     public function test_preview_requires_authentication(): void
     {
         $response = $this->getJson('/api/v1/imports/some-job-id/preview');
 
         $response->assertUnauthorized();
+    }
+
+    private function uploadedFixture(string $name): UploadedFile
+    {
+        $path = __DIR__.'/../../Fixtures/Import/'.$name;
+        if (! is_file($path)) {
+            throw new RuntimeException("Missing import fixture [{$name}].");
+        }
+
+        return new UploadedFile($path, $name, 'text/csv', null, true);
     }
 }
