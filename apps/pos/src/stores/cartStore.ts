@@ -3,7 +3,7 @@ import type { CartItem, SelectedModifier } from '@/types/cart';
 export type { CartItem } from '@/types/cart';
 import type { POSProduct, POSProductVariant } from '@/types/product';
 import { getCurrencyDecimals } from '@/lib/currency';
-import { bcadd, bcdiv, bcmul, bcsub, bcsum, bccomp, bcabs } from '@/lib/decimal';
+import { bcadd, bcdiv, bcformat, bcmul, bcsub, bcsum, bccomp, bcabs } from '@/lib/decimal';
 import { useAuthStore } from '@/stores/authStore';
 import type { PosOverrideEvidence } from '@/lib/operatorApproval/posOverrideAuthoring';
 import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
@@ -469,22 +469,26 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     set((state) => ({
       items: state.items.map((item) => {
         if (item.id !== itemId) return item;
-        const grossTotal = parseFloat(item.unit_price) * item.quantity;
-        let discountAmount = 0;
+        const grossTotal = bcmul(item.unit_price, String(item.quantity), decimals);
+        let discountAmount: string;
         if (input.type === 'percentage') {
-          discountAmount = (grossTotal * parseFloat(input.value)) / 100;
+          // Carry one extra digit before the final currency-scale rounding so that
+          // e.g. 10.05% of €10.00 = 1.005 → rounds half-up to '1.01', not '1.00'.
+          discountAmount = bcdiv(bcmul(grossTotal, input.value, decimals + 1), '100', decimals);
         } else {
-          discountAmount = parseFloat(input.value);
+          discountAmount = bcformat(input.value, decimals);
         }
-        const lineTotal = Math.max(0, grossTotal - discountAmount);
+        const rawTotal = bcsub(grossTotal, discountAmount, decimals);
+        // Clamp to zero for sale lines via bccomp — never let a discount invert a positive line.
+        const lineTotal = bccomp(rawTotal, '0') < 0 ? bcformat('0', decimals) : rawTotal;
         return {
           ...item,
           discount_type: input.type,
           discount_percent: input.type === 'percentage' ? input.value : undefined,
-          discount_amount: discountAmount.toFixed(decimals),
+          discount_amount: discountAmount,
           discount_reason: input.reason || undefined,
           discount_approval_evidence: input.approvalEvidence,
-          line_total: lineTotal.toFixed(decimals),
+          line_total: lineTotal,
           tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
         };
       }),
@@ -513,7 +517,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     set((state) => ({
       items: state.items.map((item) => {
         if (item.id !== itemId) return item;
-        const grossTotal = parseFloat(item.unit_price) * item.quantity;
+        const grossTotal = bcmul(item.unit_price, String(item.quantity), decimals);
         return {
           ...item,
           discount_type: undefined,
@@ -521,7 +525,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
           discount_amount: undefined,
           discount_reason: undefined,
           discount_approval_evidence: undefined,
-          line_total: grossTotal.toFixed(decimals),
+          line_total: grossTotal,
           tax_amount: computeTaxAmount(grossTotal, item.tax_rate),
         };
       }),

@@ -747,3 +747,72 @@ describe('cartStore — refund/return sections (Task 52)', () => {
     });
   });
 });
+
+describe('D0-3: applyLineDiscount / removeLineDiscount — bcmath precision (S2)', () => {
+  beforeEach(() => {
+    useCartStore.getState().clearCart();
+  });
+
+  it('percentage discount uses bcmath arithmetic (10.05% of €10.00 must not float-drift)', () => {
+    // Discriminating case: parseFloat('10.05') is slightly below 10.05 in IEEE-754.
+    // float: (10.0 * parseFloat('10.05')) / 100 ≈ 1.00499... → toFixed(2) = '1.00' (wrong).
+    // bcmath: bcdiv(bcmul('10.00', '10.05', 3), '100', 2) = 1.005 → round-half-up = '1.01'.
+    // line_total:
+    //   float: 10.0 - 1.00499... = 8.99500... → toFixed(2) drifts
+    //   bcmath: bcsub('10.00', '1.01', 2) = '8.99'
+    useCartStore.getState().addItem(makeProduct({ sale_price: '10.00' }));
+    const itemId = useCartStore.getState().items[0]!.id;
+
+    useCartStore.getState().applyLineDiscount(itemId, { type: 'percentage', value: '10.05' });
+
+    const item = useCartStore.getState().items[0]!;
+    // float gives '1.00' (drift); bcmath gives '1.01' (correct round-half-up of 1.005)
+    expect(item.discount_amount).toBe('1.01');
+    // bcmath: bcsub('10.00', '1.01', 2) = '8.99'
+    expect(item.line_total).toBe('8.99');
+  });
+
+  it('fixed discount uses bcformat, not parseFloat (persists exact string at currency scale)', () => {
+    useCartStore.getState().addItem(makeProduct({ sale_price: '20.00' }));
+    const itemId = useCartStore.getState().items[0]!.id;
+
+    useCartStore.getState().applyLineDiscount(itemId, { type: 'fixed', value: '5.005' });
+
+    const item = useCartStore.getState().items[0]!;
+    // bcformat('5.005', 2) rounds half-up → '5.01'
+    // float parseFloat('5.005').toFixed(2) ≈ '5.00' (5.005 in IEEE-754 is below 5.005)
+    expect(item.discount_amount).toBe('5.01');
+    expect(item.line_total).toBe('14.99');
+  });
+
+  it('removeLineDiscount restores line_total via bcmath when unit_price has sub-scale decimals', () => {
+    // 3.335 × 3 = 10.005 → round-half-up at 2dp = '10.01'.
+    // float: parseFloat('3.335') ≈ 3.33499... → 3.33499... * 3 = 10.00499... → toFixed(2) = '10.00' (wrong).
+    // bcmath: bcmul('3.335', '3', 2) → Big(10.005).toFixed(2, ROUND_HALF_UP) = '10.01' (correct).
+    // Such unit_prices arise when a server-side discount yields a price at higher precision.
+    useCartStore.getState().replaceCart(
+      [
+        {
+          id: 'prec-line',
+          product: { id: 'p-prec', name: 'Precision Item', sku: 'SKU-P', price: '3.335' },
+          quantity: 3,
+          unit_price: '3.335',
+          line_total: '10.01',
+          tax_rate: '0',
+          tax_amount: '0.00',
+        },
+      ],
+      undefined,
+    );
+
+    // Apply then remove a fixed discount — removeLineDiscount must recompute grossTotal via bcmath.
+    useCartStore.getState().applyLineDiscount('prec-line', { type: 'fixed', value: '1.00' });
+    useCartStore.getState().removeLineDiscount('prec-line');
+
+    const item = useCartStore.getState().items[0]!;
+    // float gives '10.00' (drift); bcmath gives '10.01' (correct)
+    expect(item.line_total).toBe('10.01');
+    expect(item.discount_amount).toBeUndefined();
+    expect(item.discount_type).toBeUndefined();
+  });
+});
