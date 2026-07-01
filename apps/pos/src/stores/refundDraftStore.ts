@@ -8,6 +8,8 @@ import {
   type RefundDraftRow,
 } from '@/lib/db/repositories/refundDraftRepository';
 import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
+import { bcsum, bcabs } from '@/lib/decimal';
+import { getActiveCurrencyDecimals } from '@/lib/currency';
 
 export interface ActiveRefundDraft {
   id: string;
@@ -153,7 +155,11 @@ export const useRefundDraftStore = create<RefundDraftStore>()((set, get) => ({
   },
 }));
 
-/** Sum of the return-line totals (absolute) for the refund-draft audit payload. */
-function refundDraftTotal(returnItems: CartItem[]): number {
-  return returnItems.reduce((sum, item) => sum + Math.abs(parseFloat(item.line_total) || 0), 0);
+/** Sum of the return-line totals (absolute) for the refund-draft audit payload. Decimal string — no float. */
+export function refundDraftTotal(returnItems: CartItem[]): string {
+  const decimals = getActiveCurrencyDecimals();
+  return bcsum(
+    returnItems.map((item) => bcabs(item.line_total, decimals)),
+    decimals,
+  );
 }

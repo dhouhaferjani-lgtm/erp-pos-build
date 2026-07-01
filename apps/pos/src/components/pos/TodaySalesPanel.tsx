@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { fetchShiftReceipts, type ShiftReceipt } from '@/api/reportApi';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useCurrency } from '@/lib/currency';
+import { bcsum, bcdiv, bccomp, bcformat } from '@/lib/decimal';
 import { printReceiptAsPdf } from '@/lib/printing';
 import { SaleDetailModal } from '@/components/pos/SaleDetailModal';
 
@@ -33,7 +34,7 @@ function getReceiptStatus(receipt: ShiftReceipt, t: (key: string) => string): { 
 export function TodaySalesPage() {
   const { t } = useTranslation('pos');
   const navigate = useNavigate();
-  const { format } = useCurrency();
+  const { format, decimals } = useCurrency();
   const shift = useTerminalStore((s) => s.shift);
   const shiftId = shift?.id ?? null;
 
@@ -79,9 +80,12 @@ export function TodaySalesPage() {
   const saleReceipts = receipts.filter((r) => r.receipt_type === 'sale' && !r.is_voided);
   const returnReceipts = receipts.filter((r) => r.receipt_type === 'return');
   const voidedCount = receipts.filter((r) => r.is_voided).length;
-  const totalSales = saleReceipts.reduce((sum, r) => sum + Number(r.total), 0);
-  const totalReturns = returnReceipts.reduce((sum, r) => sum + Number(r.total), 0);
-  const avgTicket = saleReceipts.length > 0 ? totalSales / saleReceipts.length : 0;
+  const totalSales = bcsum(saleReceipts.map((r) => r.total), decimals);
+  const totalReturns = bcsum(returnReceipts.map((r) => r.total), decimals);
+  const avgTicket =
+    saleReceipts.length > 0
+      ? bcdiv(totalSales, String(saleReceipts.length), decimals)
+      : bcformat('0', decimals);
 
   const receiptTime = (receipt: ShiftReceipt) => {
     const ts = receipt.posted_at ?? receipt.created_at;
@@ -123,7 +127,7 @@ export function TodaySalesPage() {
               <p className="text-xs font-medium text-danger-strong">{t('reports.returns')}</p>
               <p className="mt-1 text-2xl font-bold text-ink">
                 {returnReceipts.length}
-                {totalReturns > 0 && (
+                {bccomp(totalReturns, '0') > 0 && (
                   <span className="ml-2 text-sm font-normal text-danger">
                     −{format(totalReturns)}
                   </span>

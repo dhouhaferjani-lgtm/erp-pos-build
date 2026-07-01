@@ -19,7 +19,7 @@ vi.mock('@/lib/db/repositories/refundDraftRepository', () => ({
   deleteRefundDraft: (...a: unknown[]) => deleteRefundDraft(...a),
 }));
 
-import { useRefundDraftStore, type ActiveRefundDraft } from '../refundDraftStore';
+import { useRefundDraftStore, refundDraftTotal, type ActiveRefundDraft } from '../refundDraftStore';
 
 function makeReturnItem(overrides: Partial<CartItem> = {}): CartItem {
   return {
@@ -139,6 +139,17 @@ describe('refundDraftStore — audit emits', () => {
       await expect(useRefundDraftStore.getState().discardDraft('co-1', 'draft-1')).resolves.toBeUndefined();
       expect(deleteRefundDraft).toHaveBeenCalledTimes(1);
       expect(useRefundDraftStore.getState().draft).toBeNull();
+    });
+  });
+
+  describe('refundDraftTotal (bcmath — no float drift)', () => {
+    it('sums absolute line totals as an exact decimal string, not IEEE-754 float', () => {
+      // Float: |−0.10| + |−0.20| = 0.30000000000000004. bcmath = "0.30".
+      const items = [
+        makeReturnItem({ line_total: '-0.10' }),
+        makeReturnItem({ line_total: '-0.20' }),
+      ];
+      expect(refundDraftTotal(items)).toBe('0.30');
     });
   });
 });
