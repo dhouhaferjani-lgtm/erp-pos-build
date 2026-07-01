@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Application\DTOs;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -152,15 +153,28 @@ final class DocumentData extends Data
                 ->find($document->source_document_id);
         }
 
-        // Calculate balance and amount paid
-        $total = $document->total !== null ? (float) $document->total : 0.0;
-        $balanceDue = $document->balance_due !== null ? (float) $document->balance_due : $total;
-        $amountPaid = $total - $balanceDue;
-
         // Get computed outstanding amount, payment status, and fulfillment status (SOURCE OF TRUTH for single document views)
         $outstandingAmount = $document->getOutstandingAmount();
         $paymentStatus = $document->getPaymentStatus()->value;
         $fulfillmentStatus = $document->getFulfillmentStatus()->value;
+
+        $total = $document->total !== null
+            ? CurrencyScale::bcformatStrict($document->total, $scale)
+            : CurrencyScale::bcformatStrict('0', $scale);
+
+        $isPaymentTrackedDocument = in_array($document->type, [
+            DocumentType::Invoice,
+            DocumentType::SalesOrder,
+            DocumentType::PurchaseOrder,
+        ], true);
+
+        $balanceDue = $isPaymentTrackedDocument
+            ? CurrencyScale::bcformatStrict($outstandingAmount, $scale)
+            : ($document->balance_due !== null
+                ? CurrencyScale::bcformatStrict($document->balance_due, $scale)
+                : $total);
+
+        $amountPaid = CurrencyScale::bcformatStrict(bcsub($total, $balanceDue, $scale), $scale);
 
         return new self(
             id: $document->id,
@@ -183,13 +197,13 @@ final class DocumentData extends Data
             subtotal: $document->subtotal !== null ? CurrencyScale::bcformat($document->subtotal, $scale) : null,
             discount_amount: $document->discount_amount !== null ? CurrencyScale::bcformat($document->discount_amount, $scale) : null,
             tax_amount: $document->tax_amount !== null ? CurrencyScale::bcformat($document->tax_amount, $scale) : null,
-            total: $document->total !== null ? CurrencyScale::bcformat($total, $scale) : null,
-            balance_due: CurrencyScale::bcformat($balanceDue, $scale),
+            total: $document->total !== null ? $total : null,
+            balance_due: $balanceDue,
             outstanding_amount: $outstandingAmount,
             payment_status: $paymentStatus,
             fulfillment_status: $fulfillmentStatus,
-            amount_paid: CurrencyScale::bcformat($amountPaid, $scale),
-            amount_residual: CurrencyScale::bcformat($balanceDue, $scale),
+            amount_paid: $amountPaid,
+            amount_residual: $balanceDue,
             notes: $document->notes,
             internal_notes: $document->internal_notes,
             reference: $document->reference,
