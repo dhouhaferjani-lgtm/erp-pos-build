@@ -49,17 +49,24 @@ interface ModuleGuardProps {
 export function ModuleGuard({ module, fallback = '/dashboard', children }: ModuleGuardProps) {
   const { config, isLoading, error, hasModule } = useCompanyConfig()
 
-  // While loading, don't render anything (prevent flash of wrong content)
-  if (isLoading) {
+  // Hold (render nothing) while the company config has not resolved yet.
+  // This covers both the in-flight fetch (`isLoading`) AND the cold-load
+  // window where the config query is DISABLED because `isAuthenticated` has
+  // not rehydrated yet (`isAuthenticated` is intentionally not persisted).
+  // A disabled query is `isLoading === false` with `config === null` and no
+  // error — treating that as "module absent" wrongly bounced valid, enabled
+  // modules (Batches / Parapharmacy / Loyalty …) to the fallback on direct
+  // URL loads. Only decide once we have a definitive answer.
+  if (isLoading || (!config && !error)) {
     return null
   }
 
-  // On error, redirect to fallback (safe default)
+  // Genuine config fetch failure → redirect to fallback (safe default).
   if (error || !config) {
     return <Navigate to={fallback} replace />
   }
 
-  // Check if the module is enabled for this vertical
+  // Config is resolved — enforce the module gate for this vertical.
   if (!hasModule(module)) {
     return <Navigate to={fallback} replace />
   }
