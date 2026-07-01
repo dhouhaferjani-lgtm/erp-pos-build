@@ -25,8 +25,8 @@ export interface HeldTransaction {
   label: string;
   items: CartItem[];
   transactionDiscount?: TransactionDiscount;
-  subtotal: number;
-  total: number;
+  subtotal: string;
+  total: string;
   itemCount: number;
   heldAt: string;
   /** Operator who parked the sale — used for cross-operator recall detection. */
@@ -58,8 +58,8 @@ function rowToHeldTransaction(row: HeldTransactionRow): HeldTransaction {
     label: row.label,
     items,
     transactionDiscount,
-    subtotal: parseFloat(row.subtotal),
-    total: parseFloat(row.total),
+    subtotal: row.subtotal,
+    total: row.total,
     itemCount: row.item_count,
     heldAt: row.held_at,
     heldByOperatorId: row.operator_id,
@@ -104,8 +104,8 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
     }
 
     const resolvedLabel = label || new Date().toLocaleTimeString();
-    const subtotal = cartState.subtotal();
-    const total = cartState.total();
+    const subtotal = cartState.subtotalString();
+    const total = cartState.totalString();
     const itemCount = cartState.itemCount();
     const discountTotal = cartState.discountAmount();
     const heldAt = new Date().toISOString();
@@ -123,8 +123,8 @@ export const useHoldStore = create<HoldState>()((set, get) => ({
       transaction_discount_json: cartState.transactionDiscount
         ? JSON.stringify(cartState.transactionDiscount)
         : null,
-      subtotal: subtotal.toString(),
-      total: total.toString(),
+      subtotal,
+      total,
       item_count: itemCount,
       held_at: heldAt,
     };

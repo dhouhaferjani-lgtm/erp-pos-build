@@ -144,4 +144,31 @@ describe('holdStore (SQLite-backed)', () => {
     expect(held[0]!.items[0]!.product.name).toBe('Foo');
     expect(held[0]!.total).toBeCloseTo(9.8);
   });
+
+  it('D0-5 round-trip identity: subtotal and total preserve decimal strings across SQLite TEXT round-trip without parseFloat drift', async () => {
+    // Discriminating case: parseFloat('20.30').toString() === '20.3'  (trailing zero lost)
+    // and parseFloat('0.30').toString() === '0.3' — identity MUST hold for '0.10'+'0.20' context.
+    vi.mocked(listHeldTransactions).mockResolvedValue([
+      {
+        id: 'h-rtrip',
+        terminal_id: 'term-1',
+        operator_id: 'op-1',
+        label: 'Round-trip test',
+        items_json: JSON.stringify([]),
+        transaction_discount_json: null,
+        subtotal: '0.30',   // parseFloat → 0.3, .toString() → '0.3' (≠ '0.30')
+        total: '20.30',     // parseFloat → 20.3, .toString() → '20.3' (≠ '20.30')
+        item_count: 0,
+        held_at: '2026-07-01T09:00:00Z',
+      },
+    ]);
+
+    await useHoldStore.getState().loadHeldTransactions();
+
+    const held = useHoldStore.getState().heldTransactions;
+    expect(held).toHaveLength(1);
+    // IDENTITY: exact decimal-string preservation — no parseFloat/Number mutation allowed
+    expect(held[0]!.subtotal).toBe('0.30');   // not '0.3'
+    expect(held[0]!.total).toBe('20.30');     // not '20.3' and not 20.3
+  });
 });

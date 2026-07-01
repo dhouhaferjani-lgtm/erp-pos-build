@@ -124,6 +124,8 @@ interface CartDerived {
   discountAmount: () => number;
   /** Exact transaction-discount amount as a currency-scale decimal string. */
   discountAmountString: () => string;
+  /** Exact cart total (subtotal − discount, clamped ≥ 0) as a currency-scale decimal string. */
+  totalString: () => string;
   total: () => number;
   itemCount: () => number;
   /** Items whose kind is 'return' (or normalised to 'return'). */
@@ -672,10 +674,13 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     return Number(get().discountAmountString());
   },
 
-  total: () => {
+  totalString: () => {
     const decimals = getDecimals();
     const total = bcsub(get().subtotalString(), get().discountAmountString(), decimals);
-    return bccomp(total, '0') < 0 ? 0 : Number(total);
+    return bccomp(total, '0') < 0 ? bcformat('0', decimals) : total;
+  },
+  total: () => {
+    return Number(get().totalString());
   },
 
   itemCount: () => {
