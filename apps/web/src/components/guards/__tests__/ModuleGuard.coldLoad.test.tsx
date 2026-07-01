@@ -17,7 +17,14 @@ import { ModuleGuard } from '../ModuleGuard'
  * We isolate the guard by mocking `useCompanyConfig` so we can drive the exact
  * {config, isLoading, error} triples the provider can produce.
  */
-const mockUseCompanyConfig = vi.fn()
+interface MockCompanyConfig {
+  config: { all_enabled_modules: string[] } | null
+  isLoading: boolean
+  error: Error | null
+  hasModule: (moduleName: string) => boolean
+}
+
+const mockUseCompanyConfig = vi.fn<() => MockCompanyConfig>()
 vi.mock('../../../contexts', () => ({
   useCompanyConfig: () => mockUseCompanyConfig(),
 }))
