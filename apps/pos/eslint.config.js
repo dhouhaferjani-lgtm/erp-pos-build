@@ -4,6 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 import noUntranslatedLiteral from './eslint-rules/no-untranslated-literal.js';
+import noParseFloatOnMoney from './eslint-rules/no-parsefloat-on-money.js';
 
 // Local i18n guard plugin — flags user-facing string literals that bypass
 // react-i18next `t()`. WARN on the legacy surface (ratcheted by
@@ -11,6 +12,17 @@ import noUntranslatedLiteral from './eslint-rules/no-untranslated-literal.js';
 const localPlugin = {
   rules: {
     'no-untranslated-literal': noUntranslatedLiteral,
+  },
+};
+
+// Precision guard plugin (2026-07-01 desktop precision sweep). Flags
+// parseFloat()/Number() coercion of monetary/quantity-named values — float
+// coercion reintroduces the precision drift the sweep eliminated. Money/qty
+// must stay decimal strings and go through lib/decimal (big.js). WARN level so
+// the lint-ratchet counts the remaining legacy debt instead of hard-failing.
+const precisionPlugin = {
+  rules: {
+    'no-parsefloat-on-money': noParseFloatOnMoney,
   },
 };
 
@@ -165,11 +177,15 @@ export default tseslint.config(
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
       local: localPlugin,
+      precision: precisionPlugin,
     },
     rules: {
       // i18n guard — promoted to ERROR for apps/pos (all 7 flagged files
       // translated in the EN/FR sweep). No legacy surface remains.
       'local/no-untranslated-literal': 'error',
+      // Precision guard (desktop precision sweep) — WARN, ratcheted. Keeps
+      // money/qty as decimal strings; blocks new parseFloat()/Number() drift.
+      'precision/no-parsefloat-on-money': 'warn',
       // React Hooks — recommended preset, demoted to warn for the
       // legacy surface (apps/pos has accumulated violations across
       // many files predating this config). New code lands clean
@@ -309,6 +325,27 @@ export default tseslint.config(
             'Never issue BEGIN/COMMIT/ROLLBACK through a pooled DB handle — the tauri-plugin-sql pool splits a transaction across physical connections (self-deadlock + tx poisoning). Use withWriteTransaction() from @/lib/db/writeGate.',
         },
       ],
+    },
+  },
+  {
+    // Precision lock (desktop precision sweep, 2026-07-01): files cleaned by
+    // the sweep are promoted to ERROR so a re-introduced parseFloat()/Number()
+    // on a money/quantity value hard-fails CI and cannot regress. Legacy sites
+    // elsewhere stay WARN (burn-down ratchet). Add files here as they're cleaned.
+    files: [
+      'src/components/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal.tsx',
+      'src/components/organisms/CashPaymentScreen/CashPaymentScreen.tsx',
+      'src/components/pos/CashTenderedModal.tsx',
+      'src/components/pos/TodaySalesPanel.tsx',
+      'src/stores/cartStore.ts',
+      'src/stores/holdStore.ts',
+      'src/stores/refundDraftStore.ts',
+      'src/stores/paymentStore.ts',
+      'src/lib/offline/receiptService.ts',
+    ],
+    plugins: { precision: precisionPlugin },
+    rules: {
+      'precision/no-parsefloat-on-money': 'error',
     },
   },
 );

@@ -70,6 +70,20 @@ Detail: `03-rust-sqlite-fiscal.md`. Highlights:
 
 ---
 
+## 5a. Sweep status — ✅ COMPLETE (2026-07-01)
+
+All P0 float-on-money sites fixed via subagent-driven/inline TDD, per-task reviewed, on `fix/pos-precision-port`:
+- **D0-1** AdvancedPaymentsModal tender state — `755cff86f` + `9845ae7f2`
+- **D0-2** cash tendered path (CashPaymentScreen/CashTenderedModal/processCashCheckout/receiptService) — `d4a2fe345`
+- **D0-3** cart line discount/total — `782814266`
+- **D0-4** paymentStore tender gates (estimateCartTotal→string, bccomp) — `2794085c0`
+- **PaymentLineItem.amount number→string** (modal ripple) — `10068123f`
+- **D0-5** holdStore SQLite round-trip identity (+ cartStore `totalString()`) — `21f1241e0`
+- **P1** refund-draft + dashboard sums — `55a79b6e5`
+- **Guard** `precision/no-parsefloat-on-money` ported to `apps/pos` (WARN global burn-down = 33 legacy; **ERROR-locked** on the 9 cleaned files so re-introduced drift hard-fails CI) — this commit.
+
+Preflight green: `tsc --noEmit` 0 errors; 248 tests across the sweep's 20 test files pass. cartStore display getters left as documented `Number()` boundaries (fiscal paths use the `*String()` variants).
+
 ## 5. Recommended sequencing
 
 1. **D0-1 (P0-5 port) — done in this branch.** Port the web `AdvancedPaymentsModal` precision fix to `apps/pos`'s own modal (float sums → `bcsum`, fully-paid gate → `bccomp`), TDD'd.
