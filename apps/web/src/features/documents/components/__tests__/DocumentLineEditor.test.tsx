@@ -48,6 +48,7 @@ vi.mock('react-i18next', () => ({
         'sales:lineItems.description': 'Description',
         'sales:lineItems.quantity': 'Qty',
         'sales:lineItems.unitPrice': 'Unit Price',
+        'sales:lineItems.discount': 'Discount',
         'sales:lineItems.taxPercent': 'Tax',
         'sales:lineItems.total': 'Total',
         'sales:lineItems.subtotal': 'Subtotal',
@@ -335,8 +336,52 @@ describe('DocumentLineEditor — designation cells', () => {
     expect(onChange).toHaveBeenLastCalledWith([
       expect.objectContaining({
         quantity: 3,
-        line_total: 36,
+        line_total: '36.000',
       }),
     ])
+  })
+
+  it('applies a line discount before calculating tax', async () => {
+    const user = userEvent.setup()
+    const line = makeLine({
+      quantity: 1,
+      unit_price: 100,
+      tax_rate: 20,
+      line_total: 120,
+    })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([line])
+      return (
+        <DocumentLineEditor
+          lines={currentLines}
+          onChange={(nextLines) => {
+            onChange(nextLines)
+            setCurrentLines(nextLines)
+          }}
+        />
+      )
+    }
+
+    render(<ControlledEditor />, {
+      wrapper: createWrapper(),
+    })
+
+    const discountInput = screen.getByRole('spinbutton', { name: 'Discount' })
+    await user.clear(discountInput)
+    await user.type(discountInput, '1')
+    const rerenderedDiscountInput = screen.getByRole('spinbutton', { name: 'Discount' })
+    await user.type(rerenderedDiscountInput, '0')
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        discount_percent: '10',
+        discount_amount: null,
+        line_total: '108.000',
+      }),
+    ])
+    expect(screen.getByText('€90.00')).toBeInTheDocument()
+    expect(screen.getByText('€18.00')).toBeInTheDocument()
+    expect(screen.getAllByText('€108.00')).toHaveLength(2)
   })
 })

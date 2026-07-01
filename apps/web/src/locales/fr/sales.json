@@ -243,6 +243,7 @@
     "description": "Description",
     "quantity": "Qté",
     "unitPrice": "Prix unitaire",
+    "discount": "Remise",
     "tax": "TVA",
     "taxPercent": "TVA %",
     "total": "Total",

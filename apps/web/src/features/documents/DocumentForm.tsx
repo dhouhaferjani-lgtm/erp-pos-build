@@ -201,6 +201,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         product_id: line.product_id,
         quantity: line.quantity,
         unit_price: line.unit_price,
+        discount_percent: line.discount_percent ?? null,
+        discount_amount: line.discount_amount ?? null,
         tax_rate: line.tax_rate || 0,
       })),
     }
@@ -305,6 +307,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       description: l.description,
       quantity: parseFloat(l.quantity),
       unit_price: parseFloat(l.unit_price),
+      discount_percent: l.discount_percent ?? null,
+      discount_amount: l.discount_amount ?? null,
       tax_rate: parseFloat(l.tax_rate ?? '0'),
       line_total: parseFloat(l.line_total),
       quantity_decimals: l.quantity_decimals ?? null,
@@ -388,6 +392,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         description: line.description,
         quantity: line.quantity,
         unit_price: line.unit_price,
+        discount_percent: line.discount_percent ?? null,
+        discount_amount: line.discount_amount ?? null,
         tax_rate: line.tax_rate,
       })),
       // Include external document fields for purchase orders
