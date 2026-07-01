@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Search, X } from 'lucide-react'
 import { api } from '../../../lib/api'
 import { formatCurrency } from '../../../lib/format'
+import { bcadd, bccomp, bcdiv, bcmul, bcsub } from '../../../lib/decimal'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -29,6 +30,42 @@ const DOCUMENT_TYPE_MAP: Record<string, string> = {
 function taxSelectorDocumentType(documentType: string | undefined): string | undefined {
   if (!documentType) return undefined
   return DOCUMENT_TYPE_MAP[documentType]
+}
+
+function decimalValue(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '0'
+  return String(value)
+}
+
+function calculateDiscountedSubtotal(
+  quantity: string | number,
+  unitPrice: string | number,
+  discountPercent?: string | null,
+  discountAmount?: string | null,
+): string {
+  const grossSubtotal = bcmul(decimalValue(quantity), decimalValue(unitPrice))
+  const discount = discountPercent !== undefined && discountPercent !== null && discountPercent !== ''
+    ? bcmul(grossSubtotal, bcdiv(discountPercent, '100', 6))
+    : decimalValue(discountAmount)
+
+  if (bccomp(discount, grossSubtotal) >= 0) return '0.000'
+
+  return bcsub(grossSubtotal, discount)
+}
+
+function calculateLineTax(discountedSubtotal: string, taxRate: string | number): string {
+  return bcmul(discountedSubtotal, bcdiv(decimalValue(taxRate), '100', 6))
+}
+
+function calculateLineTotal(
+  quantity: string | number,
+  unitPrice: string | number,
+  taxRate: string | number,
+  discountPercent?: string | null,
+  discountAmount?: string | null,
+): string {
+  const discountedSubtotal = calculateDiscountedSubtotal(quantity, unitPrice, discountPercent, discountAmount)
+  return bcadd(discountedSubtotal, calculateLineTax(discountedSubtotal, taxRate))
 }
 
 interface Product {
@@ -68,9 +105,11 @@ export interface DocumentLine {
   notes?: string | null
   quantity: number
   unit_price: number
+  discount_percent?: string | null
+  discount_amount?: string | null
   tax_rate: number
   tax_configuration_id?: string | null
-  line_total: number
+  line_total: string | number
   is_service?: boolean
   /** Unit precision (unit decimal_places) → drives the qty input step. */
   quantity_decimals?: number | null
@@ -152,39 +191,36 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
 
   // Calculate totals
   const totals = useMemo(() => {
-    const subtotal = lines.reduce((sum, line) => {
-      const qty = Number(line.quantity) || 0
-      const price = Number(line.unit_price) || 0
-      return sum + qty * price
-    }, 0)
+    const subtotal = lines.reduce(
+      (sum, line) => bcadd(sum, calculateDiscountedSubtotal(
+        line.quantity,
+        line.unit_price,
+        line.discount_percent,
+        line.discount_amount,
+      )),
+      '0.000',
+    )
     const tax = lines.reduce(
       (sum, line) => {
-        const qty = Number(line.quantity) || 0
-        const price = Number(line.unit_price) || 0
-        const rate = Number(line.tax_rate) || 0
-        return sum + qty * price * (rate / 100)
+        const lineSubtotal = calculateDiscountedSubtotal(
+          line.quantity,
+          line.unit_price,
+          line.discount_percent,
+          line.discount_amount,
+        )
+        return bcadd(sum, calculateLineTax(lineSubtotal, line.tax_rate))
       },
-      0
+      '0.000',
     )
     return {
       subtotal,
       tax,
-      total: subtotal + tax,
+      total: bcadd(subtotal, tax),
     }
   }, [lines])
 
   // Generate unique ID for new lines
   const generateId = () => `line-${String(Date.now())}-${Math.random().toString(36).substring(2, 11)}`
-
-  // Calculate line total
-  const calculateLineTotal = (quantity: number, unitPrice: number, taxRate: number) => {
-    const qty = Number(quantity) || 0
-    const price = Number(unitPrice) || 0
-    const rate = Number(taxRate) || 0
-    const subtotal = qty * price
-    const tax = subtotal * (rate / 100)
-    return subtotal + tax
-  }
 
   // Add product to lines
   const handleAddProduct = useCallback(
@@ -199,9 +235,11 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         notes: null,
         quantity: 1,
         unit_price: product.sale_price,
+        discount_percent: null,
+        discount_amount: null,
         tax_rate: product.tax_rate,
         tax_configuration_id: product.default_tax_configuration_id ?? null,
-        line_total: calculateLineTotal(1, product.sale_price, product.tax_rate),
+        line_total: calculateLineTotal(1, product.sale_price, product.tax_rate, null, null),
         quantity_decimals: product.quantity_decimals ?? null,
       }
       onChange([...lines, newLine])
@@ -225,9 +263,11 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         notes: null,
         quantity: 1,
         unit_price: service.base_price,
+        discount_percent: null,
+        discount_amount: null,
         tax_rate: service.tax_rate,
         tax_configuration_id: null,
-        line_total: calculateLineTotal(1, service.base_price, service.tax_rate),
+        line_total: calculateLineTotal(1, service.base_price, service.tax_rate, null, null),
         is_service: true,
       }
       onChange([...lines, newLine])
@@ -246,8 +286,10 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       description: '',
       quantity: 1,
       unit_price: 0,
+      discount_percent: null,
+      discount_amount: null,
       tax_rate: 0,
-      line_total: 0,
+      line_total: '0.000',
     }
     onChange([...lines, newLine])
   }, [lines, onChange])
@@ -259,12 +301,20 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         linesRef.current.map((line) => {
           if (line.id !== lineId) return line
           const updatedLine = { ...line, ...updates }
-          // Recalculate line total if quantity, price, or tax changed
-          if ('quantity' in updates || 'unit_price' in updates || 'tax_rate' in updates) {
+          // Recalculate line total if quantity, price, discount, or tax changed
+          if (
+            'quantity' in updates ||
+            'unit_price' in updates ||
+            'discount_percent' in updates ||
+            'discount_amount' in updates ||
+            'tax_rate' in updates
+          ) {
             updatedLine.line_total = calculateLineTotal(
               updatedLine.quantity,
               updatedLine.unit_price,
-              updatedLine.tax_rate
+              updatedLine.tax_rate,
+              updatedLine.discount_percent,
+              updatedLine.discount_amount,
             )
           }
           return updatedLine
@@ -387,6 +437,33 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
               handleUpdateLine(line.id, { unit_price: parseFloat(value) || 0 })
             }}
             className={`${tokens.input.base} w-28 text-end text-sm`}
+          />
+        )
+      ),
+    },
+    {
+      id: 'discount',
+      header: t('sales:lineItems.discount'),
+      headerClassName: 'w-28 text-end',
+      cellClassName: 'text-end',
+      Cell: ({ line }) => (
+        readonly ? (
+          <span className={`text-sm ${textColors.primary}`}>{line.discount_percent ?? '0'}%</span>
+        ) : (
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            max="100"
+            value={line.discount_percent ?? ''}
+            onChange={(event) => {
+              handleUpdateLine(line.id, {
+                discount_percent: event.target.value === '' ? null : event.target.value,
+                discount_amount: null,
+              })
+            }}
+            aria-label={t('sales:lineItems.discount')}
+            className={`${tokens.input.base} w-20 text-end text-sm`}
           />
         )
       ),

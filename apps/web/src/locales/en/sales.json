@@ -243,6 +243,7 @@
     "description": "Description",
     "quantity": "Qty",
     "unitPrice": "Unit Price",
+    "discount": "Discount",
     "tax": "Tax",
     "taxPercent": "Tax %",
     "total": "Total",
