@@ -9,12 +9,14 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Partner\Domain\Partner;
-use App\Modules\Treasury\Domain\Entities\Payment;
+use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
+use App\Modules\Treasury\Domain\Payment;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
@@ -75,25 +77,41 @@ class DashboardController extends Controller
             ->count();
 
         // Payment stats
-        $paymentsReceived = 0.0;
-        $paymentsPending = 0.0;
+        $paymentsReceived = '0.000';
+        $paymentsPending = '0.000';
 
         if (class_exists(Payment::class)) {
             try {
-                $paymentsReceived = (float) DB::table('payments')
-                    ->where('company_id', $companyId)
-                    ->where('direction', 'inbound')
-                    ->where('created_at', '>=', $currentMonthStart)
-                    ->sum('amount');
+                $incomingPaymentTypes = array_values(array_map(
+                    static fn (PaymentType $type): string => $type->value,
+                    array_filter(
+                        PaymentType::cases(),
+                        static fn (PaymentType $type): bool => $type->isIncoming()
+                    )
+                ));
 
-                // Calculate pending from unpaid posted invoices
-                $paymentsPending = (float) Document::where('company_id', $companyId)
-                    ->where('type', DocumentType::Invoice)
-                    ->where('status', DocumentStatus::Posted)
-                    ->sum('total_amount') - $paymentsReceived;
+                $paymentsReceived = $this->sumDecimalStrings(
+                    Payment::query()
+                        ->where('company_id', $companyId)
+                        ->where('status', PaymentStatus::Completed->value)
+                        ->whereIn('payment_type', $incomingPaymentTypes)
+                        ->where('payment_date', '>=', $currentMonthStart->toDateString())
+                        ->pluck('amount')
+                        ->all()
+                );
 
-                if ($paymentsPending < 0) {
-                    $paymentsPending = 0;
+                $postedInvoiceTotal = $this->sumDecimalStrings(
+                    Document::where('company_id', $companyId)
+                        ->where('type', DocumentType::Invoice)
+                        ->where('status', DocumentStatus::Posted)
+                        ->pluck('total')
+                        ->all()
+                );
+
+                $paymentsPending = bcsub($postedInvoiceTotal, $paymentsReceived, 3);
+
+                if (bccomp($paymentsPending, '0', 3) < 0) {
+                    $paymentsPending = '0.000';
                 }
             } catch (\Exception $e) {
                 // Payments table might not exist yet
@@ -126,5 +144,24 @@ class DashboardController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ]);
+    }
+
+    /**
+     * @param  array<int, string|null>  $amounts
+     * @return numeric-string
+     */
+    private function sumDecimalStrings(array $amounts): string
+    {
+        $total = CurrencyScale::bcformatStrict('0', 3);
+
+        foreach ($amounts as $amount) {
+            if ($amount === null) {
+                continue;
+            }
+
+            $total = bcadd($total, CurrencyScale::bcformatStrict($amount, 3), 3);
+        }
+
+        return CurrencyScale::bcformatStrict($total, 3);
     }
 }
