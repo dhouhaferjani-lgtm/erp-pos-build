@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
+use App\Modules\Document\Application\Services\DocumentLineTaxResolver;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -54,6 +55,7 @@ class QuoteController extends Controller
         private readonly TaxCalculationService $taxCalculationService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly DocumentLineTaxResolver $lineTaxResolver,
     ) {}
 
     private function scale(): int
@@ -147,7 +149,7 @@ class QuoteController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}> $lines */
+        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string|null, tax_configuration_id?: string|null, discount_percent?: string, discount_amount?: string, notes?: string}> $lines */
         $lines = $validated['lines'] ?? [];
         unset($validated['lines']);
 
@@ -169,6 +171,15 @@ class QuoteController extends Controller
         return DB::transaction(function () use ($tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
             // Generate document number
             $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::Quote);
+
+            // Batch-fetch products and services for tax defaults + snapshot capture (1 query each)
+            $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
+            $serviceIds = collect($lines)->pluck('service_id')->filter()->unique()->values()->toArray();
+            /** @var Collection<array-key, Product> $products */
+            $products = Product::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $productIds)->get()->keyBy('id');
+            /** @var Collection<array-key, Service> $services */
+            $services = Service::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $serviceIds)->get()->keyBy('id');
+            $lines = $this->lineTaxResolver->resolve($lines, $company, $products);
 
             // Calculate totals from lines
             $subtotal = '0.00';
@@ -213,14 +224,6 @@ class QuoteController extends Controller
                 'tax_amount' => $taxAmount,
                 'total' => $total,
             ]);
-
-            // Batch-fetch products and services for snapshot capture (1 query each)
-            $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
-            $serviceIds = collect($lines)->pluck('service_id')->filter()->unique()->values()->toArray();
-            /** @var Collection<int, Product> $products */
-            $products = Product::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $productIds)->get()->keyBy('id');
-            /** @var Collection<int, Service> $services */
-            $services = Service::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $serviceIds)->get()->keyBy('id');
 
             // Create lines
             foreach ($lines as $index => $lineData) {
@@ -297,7 +300,7 @@ class QuoteController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string, discount_percent?: string, discount_amount?: string, notes?: string}>|null $lines */
+        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string|null, tax_configuration_id?: string|null, discount_percent?: string, discount_amount?: string, notes?: string}>|null $lines */
         $lines = $validated['lines'] ?? null;
         unset($validated['lines']);
 
@@ -313,7 +316,9 @@ class QuoteController extends Controller
             unset($validated['issue_date']);
         }
 
-        return DB::transaction(function () use ($documentModel, $validated, $lines, $vehicleContext, $hasVehicleContext): JsonResponse {
+        $company = $this->companyContext->requireCompany();
+
+        return DB::transaction(function () use ($documentModel, $validated, $lines, $vehicleContext, $hasVehicleContext, $company): JsonResponse {
             // Update document fields (excluding lines)
             $documentModel->update($validated);
 
@@ -325,10 +330,11 @@ class QuoteController extends Controller
                 // Batch-fetch products and services for snapshot capture (1 query each)
                 $updateProductIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->toArray();
                 $updateServiceIds = collect($lines)->pluck('service_id')->filter()->unique()->values()->toArray();
-                /** @var Collection<int, Product> $updateProducts */
+                /** @var Collection<array-key, Product> $updateProducts */
                 $updateProducts = Product::query()->where('tenant_id', $documentModel->tenant_id)->where('company_id', $documentModel->company_id)->whereIn('id', $updateProductIds)->get()->keyBy('id');
-                /** @var Collection<int, Service> $updateServices */
+                /** @var Collection<array-key, Service> $updateServices */
                 $updateServices = Service::query()->where('tenant_id', $documentModel->tenant_id)->where('company_id', $documentModel->company_id)->whereIn('id', $updateServiceIds)->get()->keyBy('id');
+                $lines = $this->lineTaxResolver->resolve($lines, $company, $updateProducts);
 
                 // Calculate totals from new lines
                 $subtotal = '0.00';

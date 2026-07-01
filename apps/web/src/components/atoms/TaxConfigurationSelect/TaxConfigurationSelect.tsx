@@ -50,6 +50,7 @@ export function TaxConfigurationSelect({
     if (!configs) return []
     return configs.filter((config) => {
       if (!config.is_active) return false
+      if (config.applies_to !== 'LINE_ITEMS') return false
       if (!documentType) return true
       if (config.applicable_document_types.length === 0) return true
       return config.applicable_document_types.includes(documentType)
@@ -65,7 +66,6 @@ export function TaxConfigurationSelect({
       <input
         type="number"
         min="0"
-        step="0.01"
         max="100"
         disabled={disabled}
         className={cn(tokens.select.base, sizeClasses)}

@@ -16,6 +16,12 @@ const companyConfigMock = vi.hoisted(() => ({
   enabledModules: ['Workshop'] as string[],
 }))
 
+const taxSelectMock = vi.hoisted(() =>
+  vi.fn((props: { documentType?: string }) => (
+    <span data-document-type={props.documentType ?? ''} data-testid="tax-select">Tax</span>
+  ))
+)
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
@@ -84,8 +90,8 @@ vi.mock('../../../components/organisms', () => ({
 }))
 
 // Mock TaxConfigurationSelect — brings in TaxConfigFormModal which needs QueryClient + mutations
-vi.mock('../../../components/atoms/TaxConfigurationSelect', () => ({
-  TaxConfigurationSelect: () => <span data-testid="tax-select">Tax</span>,
+vi.mock('../../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSelect', () => ({
+  TaxConfigurationSelect: taxSelectMock,
 }))
 
 // Mock CompanyConfigContext — useLineDesignationFeature calls useCompanyConfig
@@ -276,6 +282,23 @@ describe('DocumentLineEditor — designation cells', () => {
 
     expect(screen.getByRole('button', { name: 'Product' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Service' })).toBeInTheDocument()
+  })
+
+  it('does not pass a dead document-type token to the tax selector for sales orders', () => {
+    render(
+      <DocumentLineEditor
+        documentType="sales_order"
+        lines={[makeLine()]}
+        onChange={onChange}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    expect(screen.getByTestId('tax-select')).toHaveAttribute('data-document-type', '')
+    expect(taxSelectMock).toHaveBeenCalledWith(
+      expect.not.objectContaining({ documentType: 'SALES_ORDER' }),
+      undefined,
+    )
   })
 
   it('recalculates a line total when quantity changes', async () => {
