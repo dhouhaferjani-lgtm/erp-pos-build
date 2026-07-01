@@ -236,7 +236,7 @@ export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
-export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty';
+export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty' | 'sales_stamp_duty_payable';
 }
 declare namespace App.Modules.BatchExpiry.Domain.Enums {
 export type ExpiryStatus = 'ok' | 'approaching' | 'warning' | 'critical' | 'expired';
@@ -587,7 +587,7 @@ declare namespace App.Modules.Document.Application.DTOs {
 export type DocumentData = {
 id: string;
 tenant_id: string;
-partner_id: string;
+partner_id: string | null;
 partner_name: string | null;
 partner_email: string | null;
 vehicle_context: App.Modules.Document.Application.DTOs.VehicleContextData | null;
@@ -1188,6 +1188,7 @@ export type PrintMethod = 'pdf' | 'thermal' | 'escpos';
 export type ReceiptPrintType = 'original' | 'duplicate' | 'reprint';
 export type ReceiptType = 'sale' | 'return';
 export type RefundDestination = 'original_payment' | 'cash' | 'store_voucher' | 'exchange_deferred';
+export type ReturnLineDisposition = 'restock' | 'scrap' | 'not_received';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_changed_mind' | 'other';
 export type ShiftStatus = 'OPEN' | 'CLOSED';
 export type SyncStatus = 'synced' | 'duplicate' | 'failed' | 'chain_broken';
@@ -1556,6 +1557,8 @@ export type EquivalenceType = 'generic' | 'therapeutic' | 'brand_alt';
 export type ParapharmacyCategory = 'supplement' | 'cosmetic' | 'medical_device' | 'herbal' | 'baby_care' | 'sports_nutrition' | 'other';
 export type PlatformLinkStatus = 'linked' | 'unlinked' | 'pending_match' | 'rejected';
 export type ProductType = 'part' | 'service' | 'consumable';
+export type RestockPolicy = 'never' | 'if_sealed' | 'default_allow';
+export type RestockPolicySource = 'product' | 'category' | 'company' | 'default';
 export type VehicleTypeRef = 'pc' | 'cv' | 'mtb' | 'eng' | 'axl' | 'universal';
 }
 declare namespace App.Modules.Progression.Domain.Enums {

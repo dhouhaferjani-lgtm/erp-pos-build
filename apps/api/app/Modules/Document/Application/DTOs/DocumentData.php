@@ -21,7 +21,7 @@ final class DocumentData extends Data
     public function __construct(
         public string $id,
         public string $tenant_id,
-        public string $partner_id,
+        public ?string $partner_id,
         public ?string $partner_name,
         public ?string $partner_email,
         public readonly ?VehicleContextData $vehicle_context,
