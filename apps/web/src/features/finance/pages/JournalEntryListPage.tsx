@@ -5,7 +5,9 @@ import { format } from 'date-fns'
 import { Plus, FileText } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import { textColors } from '../../../lib/designTokens'
+import { documentRouteTypeFromSource } from '../../../lib/entityRoutes'
 import { Button, StatusBadge, statusTone, type StatusTone } from '../../../components/atoms'
+import { EntityLink } from '../../../components/molecules/EntityLink'
 import {
   DataTable,
   type DataTableColumn,
@@ -28,6 +30,47 @@ const journalEntryStatusTones: Record<string, StatusTone> = {
   posted: 'success',
 }
 
+function JournalSourceLink({ entry }: { entry: JournalEntry }) {
+  if (!entry.source_id || !entry.source_type) return null
+
+  const documentType = documentRouteTypeFromSource(entry.source_type)
+  if (documentType) {
+    return (
+      <EntityLink
+        type="document"
+        id={entry.source_id}
+        documentType={documentType}
+        label={entry.source_type}
+        className="text-xs"
+      />
+    )
+  }
+
+  if (entry.source_type === 'payment') {
+    return (
+      <EntityLink
+        type="payment"
+        id={entry.source_id}
+        label={entry.source_type}
+        className="text-xs"
+      />
+    )
+  }
+
+  if (entry.source_type === 'expense') {
+    return (
+      <EntityLink
+        type="expense"
+        id={entry.source_id}
+        label={entry.source_type}
+        className="text-xs"
+      />
+    )
+  }
+
+  return <span className={cn('text-xs', textColors.tertiary)}>{entry.source_type}</span>
+}
+
 export function JournalEntryListPage() {
   const { t } = useTranslation(['finance', 'common'])
   const navigate = useNavigate()
@@ -42,9 +85,12 @@ export function JournalEntryListPage() {
       key: 'entry_number',
       header: t('finance:journalEntry.entryNumber'),
       render: (entry) => (
-        <span className={cn('font-mono', textColors.primary)}>
-          {entry.entry_number}
-        </span>
+        <EntityLink
+          type="journalEntry"
+          id={entry.id}
+          label={entry.entry_number}
+          className="font-mono"
+        />
       ),
     },
     {
@@ -56,7 +102,12 @@ export function JournalEntryListPage() {
       key: 'description',
       header: t('finance:journalEntry.description'),
       cellClassName: 'max-w-xs truncate',
-      render: (entry) => entry.description ?? '-',
+      render: (entry) => (
+        <div className="space-y-1">
+          <div>{entry.description ?? '-'}</div>
+          <JournalSourceLink entry={entry} />
+        </div>
+      ),
     },
     {
       key: 'status',

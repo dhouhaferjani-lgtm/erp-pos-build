@@ -4,6 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import noHardcodedStep from './eslint-rules/no-hardcoded-step.js'
+import noHardcodedEntityRoute from './eslint-rules/no-hardcoded-entity-route.js'
 import noParseFloatOnMoney from './eslint-rules/no-parsefloat-on-money.js'
 import noUntranslatedLiteral from './eslint-rules/no-untranslated-literal.js'
 
@@ -28,6 +29,7 @@ const precisionPlugin = {
 // they can never regress.
 const localPlugin = {
   rules: {
+    'no-hardcoded-entity-route': noHardcodedEntityRoute,
     'no-untranslated-literal': noUntranslatedLiteral,
   },
 }
@@ -76,6 +78,7 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       // i18n guard — WARN on the legacy surface (ratcheted). Cleaned feature
       // dirs promote it to ERROR in the i18n-clean override block at the end.
+      'local/no-hardcoded-entity-route': 'warn',
       'local/no-untranslated-literal': 'warn',
       // Phase-11 precision-guard rules — WARN level (ratcheted, not hard-fail).
       'precision/no-hardcoded-step': 'warn',

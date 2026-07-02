@@ -18,6 +18,7 @@ import { FilterTabs } from '../../components/molecules/FilterTabs'
 import { LocationSelector } from '../location/LocationSelector'
 import { useLocation } from '../../hooks/useLocation'
 import { StatusBadge, type StatusTone } from '../../components/atoms'
+import { EntityLink } from '../../components/molecules/EntityLink'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import {
   DataTable,
@@ -222,12 +223,12 @@ export function StockMovementsPage() {
       key: 'product',
       header: t('movements.columns.product'),
       render: (movement) => (
-        <Link
-          to={`/inventory/products/${movement.product_id}`}
-          className={cn('font-medium', textColors.primary, textColors.hoverPrimary)}
-        >
-          {movement.product_name}
-        </Link>
+        <EntityLink
+          type="product"
+          id={movement.product_id}
+          label={movement.product_name}
+          className={cn('font-medium', textColors.hoverPrimary)}
+        />
       ),
     },
     {

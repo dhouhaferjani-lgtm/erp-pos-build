@@ -1,5 +1,4 @@
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
 import {
   FileText,
   FileCheck,
@@ -10,6 +9,8 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react'
+import { EntityLink } from '@/components/molecules/EntityLink'
+import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
 import { useRelatedDocuments, type RelatedDocument } from '../hooks/useRelatedDocuments'
 import { formatCurrency, formatDate } from '../../../lib/format'
 
@@ -25,16 +26,6 @@ const documentTypeIcons: Record<string, React.ElementType> = {
   delivery_note: FileInput,
   credit_note: FileMinus,
   purchase_order: FileCheck,
-}
-
-const documentTypeRoutes: Record<string, string> = {
-  quote: '/sales/quotes',
-  sales_order: '/sales/orders',
-  invoice: '/sales/invoices',
-  delivery_note: '/inventory/delivery-notes',
-  credit_note: '/sales/credit-notes',
-  purchase_order: '/purchases/orders',
-  return_note: '/sales/return-notes',
 }
 
 function getStatusColor(status: string): string {
@@ -61,53 +52,61 @@ interface DocumentChainItemProps {
 function DocumentChainItem({ document, isCurrent = false, currency }: DocumentChainItemProps) {
   const { t } = useTranslation(['sales'])
   const Icon = documentTypeIcons[document.type] || FileText
-  const route = documentTypeRoutes[document.type] || '/documents'
-
-  return (
-    <Link
-      to={`${route}/${document.id}`}
-      className={`block p-4 rounded-lg border transition-colors ${
-        isCurrent
-          ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-500'
-          : 'border-gray-200 hover:border-primary-300 hover:bg-gray-50'
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={`p-2 rounded-lg ${
-            isCurrent ? 'bg-primary-100 text-primary-600' : 'bg-gray-100 text-gray-600'
-          }`}
-        >
-          <Icon className="h-5 w-5" />
+  const documentType = documentRouteTypeFromSource(document.type)
+  const content = (
+    <div className="flex items-start gap-3">
+      <div
+        className={`p-2 rounded-lg ${
+          isCurrent ? 'bg-primary-100 text-primary-600' : 'bg-gray-100 text-gray-600'
+        }`}
+      >
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-gray-900">
+            {t(`sales:documents.types.${document.type}`, document.type)}
+          </span>
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(
+              document.status
+            )}`}
+          >
+            {t(`sales:documents.statuses.${document.status}`, document.status)}
+          </span>
+          {isCurrent && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-700">
+              {t('sales:relatedDocuments.current')}
+            </span>
+          )}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-gray-900">
-              {t(`sales:documents.types.${document.type}`, document.type)}
-            </span>
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(
-                document.status
-              )}`}
-            >
-              {t(`sales:documents.statuses.${document.status}`, document.status)}
-            </span>
-            {isCurrent && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-700">
-                {t('sales:relatedDocuments.current')}
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-gray-600 mt-1">{document.document_number}</p>
-          <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-            <span>{formatDate(document.document_date)}</span>
-            <span className="font-medium text-gray-700">
-              {formatCurrency(document.total, { currency: currency ?? document.currency })}
-            </span>
-          </div>
+        <p className="text-sm text-gray-600 mt-1">{document.document_number}</p>
+        <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+          <span>{formatDate(document.document_date)}</span>
+          <span className="font-medium text-gray-700">
+            {formatCurrency(document.total, { currency: currency ?? document.currency })}
+          </span>
         </div>
       </div>
-    </Link>
+    </div>
+  )
+
+  const cardClassName = `block p-4 rounded-lg border transition-colors ${
+    isCurrent
+      ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-500'
+      : 'border-gray-200 hover:border-primary-300 hover:bg-gray-50'
+  }`
+
+  return documentType ? (
+    <EntityLink
+      type="document"
+      id={document.id}
+      documentType={documentType}
+      label={content}
+      className={cardClassName}
+    />
+  ) : (
+    <span className={cardClassName}>{content}</span>
   )
 }
 

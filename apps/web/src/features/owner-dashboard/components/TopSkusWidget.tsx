@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { EntityLink } from '@/components/molecules/EntityLink'
 import { borderColors, colors, textColors } from '@/lib/designTokens'
 import { OwnerTableFrame } from './OwnerTableFrame'
 import type { TopSkuReport } from '../api/ownerReportsApi'
@@ -46,7 +47,12 @@ export function TopSkusWidget({ data, sortBy, onSortByChange }: TopSkusWidgetPro
           {data.map((row) => (
             <tr key={`${row.product_id ?? row.product_name}-${row.sku ?? ''}`} className={`border-b last:border-0 ${borderColors.light}`}>
               <td className={`py-2 ${textColors.primary}`}>
-                <span className="block font-medium">{row.product_name}</span>
+                <EntityLink
+                  type="product"
+                  id={row.product_id}
+                  label={row.product_name}
+                  className="block font-medium"
+                />
                 {row.sku ? <span className={textColors.tertiary}>{row.sku}</span> : null}
               </td>
               <td className={`py-2 text-end ${textColors.secondary}`}>{row.quantity}</td>

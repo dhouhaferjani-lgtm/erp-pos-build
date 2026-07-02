@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, it, expect, vi } from 'vitest'
 import type { AgedPayablesData } from '../types'
 import { AgedPayablesPage } from './AgedPayablesPage'
@@ -40,6 +41,14 @@ const fixture: AgedPayablesData = {
 }
 
 describe('AgedPayablesPage', () => {
+  function renderPage() {
+    return render(
+      <MemoryRouter>
+        <AgedPayablesPage />
+      </MemoryRouter>,
+    )
+  }
+
   it('renders exactly one h1', () => {
     mockUseAgedPayables.mockReturnValue({
       data: fixture,
@@ -48,7 +57,7 @@ describe('AgedPayablesPage', () => {
       refetch: vi.fn(),
     })
 
-    const { container } = render(<AgedPayablesPage />)
+    const { container } = renderPage()
 
     expect(container.querySelectorAll('h1').length).toBe(1)
   })
@@ -61,7 +70,7 @@ describe('AgedPayablesPage', () => {
       refetch: vi.fn(),
     })
 
-    render(<AgedPayablesPage />)
+    renderPage()
 
     expect(screen.getByRole('button')).toBeInTheDocument()
   })
@@ -74,7 +83,7 @@ describe('AgedPayablesPage', () => {
       refetch: vi.fn(),
     })
 
-    const { container } = render(<AgedPayablesPage />)
+    const { container } = renderPage()
 
     const moneyCell = Array.from(container.querySelectorAll('td')).find((td) =>
       td.textContent.includes('1,000.00')
@@ -82,5 +91,21 @@ describe('AgedPayablesPage', () => {
     expect(moneyCell).toBeDefined()
     expect(moneyCell).toHaveClass('tabular-nums')
     expect(moneyCell).toHaveClass('text-end')
+  })
+
+  it('links vendor names to supplier detail pages', () => {
+    mockUseAgedPayables.mockReturnValue({
+      data: fixture,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(screen.getByRole('link', { name: 'Supplier Ltd' })).toHaveAttribute(
+      'href',
+      '/purchases/suppliers/00000000-0000-4000-8000-000000000001',
+    )
   })
 })

@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -19,6 +18,8 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge'
 import { statusTone } from '@/components/atoms/StatusBadge/statusTone'
+import { EntityLink } from '@/components/molecules/EntityLink'
+import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
 
 interface DocumentLine {
   id: string
@@ -56,43 +57,37 @@ interface ProductDocumentsTabProps {
 
 const documentTypeConfig: Record<
   string,
-  { label: string; tone: StatusTone; icon: typeof FileText; path: string }
+  { label: string; tone: StatusTone; icon: typeof FileText }
 > = {
   quote: {
     label: 'Quote',
     tone: 'info',
     icon: ClipboardList,
-    path: '/sales/quotes',
   },
   sales_order: {
     label: 'Sales Order',
     tone: 'info',
     icon: ShoppingCart,
-    path: '/sales/orders',
   },
   invoice: {
     label: 'Invoice',
     tone: 'success',
     icon: Receipt,
-    path: '/sales/invoices',
   },
   purchase_order: {
     label: 'Purchase Order',
     tone: 'warning',
     icon: Truck,
-    path: '/purchases/orders',
   },
   credit_note: {
     label: 'Credit Note',
     tone: 'danger',
     icon: FileX,
-    path: '/sales/credit-notes',
   },
   delivery_note: {
     label: 'Delivery Note',
     tone: 'neutral',
     icon: Truck,
-    path: '/sales/delivery-notes',
   },
 }
 
@@ -268,16 +263,22 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
               {documentsWithProductTotals.map((doc) => {
                 const typeConfig = getDocumentConfig(doc.type)
                 const TypeIcon = typeConfig.icon
+                const documentType = documentRouteTypeFromSource(doc.type)
 
                 return (
                   <tr key={doc.id} className={tokens.table.rowHover}>
                     <td className="whitespace-nowrap px-6 py-4">
-                      <Link
-                        to={`${typeConfig.path}/${doc.id}`}
-                        className={`font-medium ${textColors.brand} hover:underline`}
-                      >
-                        {doc.document_number}
-                      </Link>
+                      {documentType ? (
+                        <EntityLink
+                          type="document"
+                          id={doc.id}
+                          documentType={documentType}
+                          label={doc.document_number}
+                          className="font-medium"
+                        />
+                      ) : (
+                        <span className={`font-medium ${textColors.primary}`}>{doc.document_number}</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -292,16 +293,13 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm">
                       {doc.partner_id && doc.partner_name ? (
-                        <Link
-                          to={
-                            doc.type === 'purchase_order'
-                              ? `/purchases/suppliers/${doc.partner_id}`
-                              : `/sales/customers/${doc.partner_id}`
-                          }
-                          className={`${textColors.brand} hover:underline`}
-                        >
-                          {doc.partner_name}
-                        </Link>
+                        <EntityLink
+                          type="partner"
+                          id={doc.partner_id}
+                          partnerType={doc.type === 'purchase_order' ? 'supplier' : 'customer'}
+                          label={doc.partner_name}
+                          className="font-medium"
+                        />
                       ) : (
                         <span className={textColors.disabled}>-</span>
                       )}

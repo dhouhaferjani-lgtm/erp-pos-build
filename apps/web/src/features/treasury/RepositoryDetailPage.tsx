@@ -14,6 +14,7 @@ import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { Button } from '../../components/atoms/Button'
 import { Select } from '../../components/atoms/Select'
 import { StatusBadge, statusTone, type StatusTone } from '../../components/atoms/StatusBadge'
+import { EntityLink } from '../../components/molecules/EntityLink'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { useAccounts } from '../finance/hooks/useAccounts'
 
@@ -39,6 +40,7 @@ interface RepositoryResponse {
 interface Allocation {
   document_id: string
   document_number: string
+  document_type?: 'invoice' | 'sales_order' | 'purchase_order' | 'supplier_invoice'
   amount: string
 }
 
@@ -99,6 +101,16 @@ const typeIconBg: Record<Repository['type'], string> = {
 // map does not cover, so it is supplied as an override.
 const statusToneOverrides: Record<string, StatusTone> = {
   reversed: 'neutral',
+}
+
+function allocationDocumentType(
+  paymentType: Transaction['payment_type'],
+  allocationType: Allocation['document_type'],
+): 'invoice' | 'sales_order' | 'purchase_order' | 'supplier_invoice' {
+  if (allocationType) return allocationType
+  if (paymentType === 'supplier_payment') return 'supplier_invoice'
+  if (paymentType === 'advance') return 'sales_order'
+  return 'invoice'
 }
 
 function GlAccountField({ repository }: { repository: Repository }) {
@@ -418,21 +430,21 @@ export function RepositoryDetailPage() {
                 {transactions.map((transaction) => (
                   <tr key={transaction.id} className={tokens.table.rowHover}>
                     <td className="whitespace-nowrap px-6 py-4">
-                      <Link
-                        to={`/treasury/payments/${transaction.id}`}
-                        className={cn('font-medium', textColors.brand, 'hover:underline')}
-                      >
-                        {transaction.payment_number}
-                      </Link>
+                      <EntityLink
+                        type="payment"
+                        id={transaction.id}
+                        label={transaction.payment_number}
+                        className="font-medium"
+                      />
                     </td>
                     <td className={cn('whitespace-nowrap px-6 py-4 text-sm', textColors.primary)}>
                       {transaction.partner_id ? (
-                        <Link
-                          to={`/sales/customers/${transaction.partner_id}`}
-                          className={cn(textColors.brand, 'hover:underline')}
-                        >
-                          {transaction.partner_name ?? t('common:status.unknown')}
-                        </Link>
+                        <EntityLink
+                          type="partner"
+                          id={transaction.partner_id}
+                          partnerType={transaction.payment_type === 'supplier_payment' ? 'supplier' : 'customer'}
+                          label={transaction.partner_name ?? t('common:status.unknown')}
+                        />
                       ) : (
                         <span className={textColors.tertiary}>{transaction.partner_name ?? t('common:status.unknown')}</span>
                       )}
@@ -455,14 +467,19 @@ export function RepositoryDetailPage() {
                       {transaction.allocations.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {transaction.allocations.slice(0, 2).map((allocation) => (
-                            <Link
+                            <EntityLink
                               key={allocation.document_id}
-                              to={`/sales/invoices/${allocation.document_id}`}
-                              className={cn('inline-flex items-center gap-1', textColors.brand, 'hover:underline')}
-                            >
-                              {allocation.document_number}
-                              <ExternalLink className="h-3 w-3" />
-                            </Link>
+                              type="document"
+                              id={allocation.document_id}
+                              documentType={allocationDocumentType(transaction.payment_type, allocation.document_type)}
+                              label={(
+                                <span className="inline-flex items-center gap-1">
+                                  {allocation.document_number}
+                                  <ExternalLink className="h-3 w-3" />
+                                </span>
+                              )}
+                              className="inline-flex items-center gap-1"
+                            />
                           ))}
                           {transaction.allocations.length > 2 && (
                             <span className={textColors.disabled}>

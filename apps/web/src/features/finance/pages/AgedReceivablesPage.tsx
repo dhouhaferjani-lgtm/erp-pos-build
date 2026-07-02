@@ -4,6 +4,7 @@ import { useAgedReceivables } from '../hooks/useAgedReceivables'
 import { QueryError } from '@/components/QueryError'
 import { PageHeader } from '../../../components/molecules/PageHeader'
 import { Button, FormField, Input } from '../../../components/atoms'
+import { EntityLink } from '../../../components/molecules/EntityLink'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
 import type { AgedReceivablesLine } from '../types'
@@ -116,7 +117,11 @@ export function AgedReceivablesPage() {
               {lines.map((line: AgedReceivablesLine) => (
                 <tr key={line.customer_id}>
                   <td className={nameCell}>
-                    {line.customer_name}
+                    <EntityLink
+                      type="customer"
+                      id={line.customer_id}
+                      label={line.customer_name}
+                    />
                   </td>
                   <td className={numCell}>
                     {formatCurrency(line.current)}

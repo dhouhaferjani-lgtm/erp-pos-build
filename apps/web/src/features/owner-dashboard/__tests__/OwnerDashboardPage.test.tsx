@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { OwnerDashboardPage } from '../OwnerDashboardPage'
 
@@ -83,8 +84,16 @@ vi.mock('../hooks/useOwnerReports', () => ({
 }))
 
 describe('OwnerDashboardPage', () => {
+  function renderPage() {
+    return render(
+      <MemoryRouter>
+        <OwnerDashboardPage />
+      </MemoryRouter>,
+    )
+  }
+
   it('renders all six owner reporting widgets', () => {
-    render(<OwnerDashboardPage />)
+    renderPage()
 
     expect(screen.getByText('reports:ownerDashboard.salesByLocation.title')).toBeInTheDocument()
     expect(screen.getByText('reports:ownerDashboard.topSkus.title')).toBeInTheDocument()
@@ -95,13 +104,20 @@ describe('OwnerDashboardPage', () => {
   })
 
   it('renders chart-backed widgets through the shared owner chart wrapper', () => {
-    render(<OwnerDashboardPage />)
+    renderPage()
 
     expect(screen.getAllByTestId('owner-chart')).toHaveLength(4)
   })
 
   it('renders the KPI summary row', () => {
-    render(<OwnerDashboardPage />)
+    renderPage()
     expect(screen.getByText('reports:ownerDashboard.kpi.totalSales')).toBeInTheDocument()
+  })
+
+  it('links product names in owner widgets to product detail pages', () => {
+    renderPage()
+
+    expect(screen.getByRole('link', { name: 'Brake Pads' })).toHaveAttribute('href', '/inventory/products/prod-1')
+    expect(screen.getByRole('link', { name: 'No Stock' })).toHaveAttribute('href', '/inventory/products/prod-2')
   })
 })

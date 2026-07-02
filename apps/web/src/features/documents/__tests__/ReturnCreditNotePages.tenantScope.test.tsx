@@ -243,6 +243,7 @@ describe('return and credit note page tenant scope', () => {
       }))
       expect(queryClient.getQueryState(['credit-notes', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
       expect(queryClient.getQueryState(['documents', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
+      expect(mockNavigate).toHaveBeenCalledWith('/sales/credit-notes/created-1')
     })
     expect(queryClient.getQueryState(['credit-notes', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
   })
@@ -277,6 +278,7 @@ describe('return and credit note page tenant scope', () => {
         source_invoice_id: 'invoice-1',
       }))
       expect(queryClient.getQueryState(['return-notes', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
+      expect(mockNavigate).toHaveBeenCalledWith('/sales/return-notes/created-1')
     })
     expect(queryClient.getQueryState(['return-notes', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
   })

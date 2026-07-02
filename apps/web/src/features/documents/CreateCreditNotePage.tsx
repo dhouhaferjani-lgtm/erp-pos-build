@@ -15,6 +15,7 @@ import { ArrowLeft, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
+import { entityRoutes } from '@/lib/entityRoutes'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
@@ -229,10 +230,10 @@ export function CreateCreditNotePage() {
         }))
       }
 
-      const response = await api.post('/credit-notes', payload)
+      const response = await api.post<{ data?: { id?: string }; id?: string }>('/credit-notes', payload)
       return response.data
     },
-    onSuccess: async () => {
+    onSuccess: async (createdCreditNote) => {
       toast.success(t('sales:creditNotes.messages.created'))
       await Promise.all([
         queryClient.invalidateQueries({
@@ -242,7 +243,8 @@ export function CreateCreditNotePage() {
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
       ])
-      navigate('/sales/credit-notes')
+      const creditNoteId = createdCreditNote.data?.id ?? createdCreditNote.id
+      navigate(creditNoteId ? entityRoutes.document(creditNoteId, { documentType: 'credit_note' }) : '/sales/credit-notes')
     },
     onError: (error: Error) => {
       toast.error(error.message || t('sales:creditNotes.messages.createFailed'))

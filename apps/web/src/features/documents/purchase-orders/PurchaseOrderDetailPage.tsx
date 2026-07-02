@@ -19,6 +19,7 @@ import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal'
 import { Button, Input, Textarea } from '../../../components/atoms'
+import { EntityLink } from '../../../components/molecules/EntityLink'
 import { tokens } from '../../../lib/designTokens'
 import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
@@ -317,7 +318,12 @@ export function PurchaseOrderDetailPage() {
                 {t('documents.supplier')}
               </dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {purchaseOrder.partner_name || '-'}
+                <EntityLink
+                  type="partner"
+                  id={purchaseOrder.partner_id}
+                  partnerType="supplier"
+                  label={purchaseOrder.partner_name || '-'}
+                />
               </dd>
             </div>
 
@@ -363,7 +369,11 @@ export function PurchaseOrderDetailPage() {
               {purchaseOrder.lines?.map((line) => (
                 <tr key={line.id}>
                   <td className="px-6 py-4 text-sm text-gray-900">
-                    {line.description}
+                    <EntityLink
+                      type="product"
+                      id={line.product_id}
+                      label={line.description}
+                    />
                     {line.notes && (
                       <div className="text-xs text-gray-500 mt-1">{line.notes}</div>
                     )}
