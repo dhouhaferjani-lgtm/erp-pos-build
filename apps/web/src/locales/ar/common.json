@@ -1,6 +1,11 @@
 {
   "appName": "AutoERP",
   "by": "بواسطة",
+  "scope": {
+    "activeScope": "النطاق النشط",
+    "nowViewing": "أنت تعرض {{company}} — {{location}}",
+    "nowViewingCompany": "أنت تعرض {{company}}"
+  },
   "select": "اختر…",
   "selectCountry": "اختر الدولة",
   "actions": {

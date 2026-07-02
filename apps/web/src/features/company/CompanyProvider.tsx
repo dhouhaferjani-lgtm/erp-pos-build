@@ -17,6 +17,7 @@ interface CompanyResponse {
   currency: string
   locale: string
   timezone: string
+  is_primary?: boolean
 }
 
 interface CompaniesApiResponse {
@@ -40,6 +41,7 @@ function mapCompanyResponse(company: CompanyResponse): Company {
     currency: company.currency,
     locale: company.locale,
     timezone: company.timezone,
+    isPrimary: company.is_primary ?? false,
   }
 }
 
@@ -62,7 +64,6 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const setCompanies = useCompanyStore((state) => state.setCompanies)
-  const setCurrentCompany = useCompanyStore((state) => state.setCurrentCompany)
   const setLoading = useCompanyStore((state) => state.setLoading)
   const reset = useCompanyStore((state) => state.reset)
   const companies = useCompanyStore((state) => state.companies)
@@ -82,27 +83,25 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
     enabled: isAuthenticated && tenantId !== null && !isAdminRoute,
   })
 
-  // Update company store when data is fetched
+  // Update company store when data is fetched.
+  //
+  // Auto-selection is now centralized in the store's setCompanies via the
+  // deterministic `resolveCompanySelection` rule (is_primary > persisted >
+  // first). We no longer arbitrarily pick data[0] here — that two-step
+  // (store nulls the selection, provider re-picks the first company) was a
+  // source of the "scope switches on its own" behavior. setCompanies is only
+  // called with a confirmed-successful response (React Query `data`), so a
+  // transient/error state never clears the selection.
   useEffect(() => {
     if (isLoading) {
       setLoading(true)
     } else if (data) {
       setCompanies(data)
-      // After setting companies, default to first if none selected (first time user)
-      // Use setTimeout to ensure persist middleware has completed
-      const defaultTimer = setTimeout(() => {
-        const state = useCompanyStore.getState()
-        if (!state.currentCompanyId && data.length > 0) {
-          setCurrentCompany(data[0].id)
-        }
-      }, 0)
-      return () => { clearTimeout(defaultTimer) }
     } else if (isError) {
       // If we can't fetch companies, log error but don't break the app
       setLoading(false)
     }
-    return undefined
-  }, [data, isLoading, isError, error, setCompanies, setLoading, setCurrentCompany])
+  }, [data, isLoading, isError, error, setCompanies, setLoading])
 
   // Reset company store on logout
   useEffect(() => {

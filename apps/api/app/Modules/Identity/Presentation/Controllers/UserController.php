@@ -703,12 +703,14 @@ class UserController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        // Get company IDs from memberships
-        $companyIds = UserCompanyMembership::where('user_id', $user->id)
-            ->pluck('company_id');
+        // Map each company id -> whether the user's membership is primary.
+        // The client uses `is_primary` as the first tiebreak when deciding which
+        // company to auto-select, so it must be exposed here.
+        $primaryByCompany = UserCompanyMembership::where('user_id', $user->id)
+            ->pluck('is_primary', 'company_id');
 
         // Fetch companies
-        $companies = Company::whereIn('id', $companyIds)
+        $companies = Company::whereIn('id', $primaryByCompany->keys())
             ->orderBy('name')
             ->get();
 
@@ -724,6 +726,7 @@ class UserController extends Controller
             'currency' => $company->currency,
             'locale' => $company->locale,
             'timezone' => $company->timezone,
+            'is_primary' => (bool) ($primaryByCompany[$company->id] ?? false),
         ]);
 
         return response()->json([

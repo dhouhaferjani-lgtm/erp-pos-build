@@ -381,6 +381,11 @@
     "switchCompany": "Switch Company",
     "addCompany": "Add Company"
   },
+  "scope": {
+    "activeScope": "Active scope",
+    "nowViewing": "Now viewing {{company}} — {{location}}",
+    "nowViewingCompany": "Now viewing {{company}}"
+  },
   "table": {
     "actions": "Actions",
     "actionsColumn": "Actions",

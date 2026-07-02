@@ -116,11 +116,20 @@ class CompanyContext
      * FU-2a: a suspended/revoked membership must not grant a default company —
      * `getDefaultCompanyForUser` feeds `CompanyContextMiddleware` and an inactive
      * membership passing here would let a deactivated user keep operating.
+     *
+     * Selection is DETERMINISTIC: prefer the membership flagged `is_primary`,
+     * then fall back to the oldest membership (stable `created_at`, tie-broken by
+     * `id`). A bare `->first()` with no ordering returned an arbitrary row that
+     * could change between requests, silently switching the user's active
+     * company — one of the "scope switches on its own" root causes.
      */
     public function getDefaultCompanyForUser(User $user): ?string
     {
         $membership = UserCompanyMembership::where('user_id', $user->id)
             ->where('status', MembershipStatus::Active->value)
+            ->orderByDesc('is_primary')
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->first();
 
         return $membership?->company_id;

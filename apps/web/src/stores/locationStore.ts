@@ -134,3 +134,56 @@ export const useLocationStore = create<LocationStore>()(
     }
   )
 )
+
+/** Persistence key used by the zustand persist middleware above. */
+const LOCATION_PERSIST_KEY = 'autoerp-location'
+
+/**
+ * Parse the persisted zustand payload (`{ state: { currentLocationId } }`) and
+ * return the stored location id, tolerating malformed JSON.
+ */
+function parsePersistedLocationId(raw: string | null): string | null {
+  if (!raw) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(raw) as { state?: { currentLocationId?: string | null } }
+    return parsed.state?.currentLocationId ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Cross-tab reconciliation for the location scope.
+ *
+ * zustand's persist middleware writes the selection to localStorage but does not
+ * live-sync between tabs, so a location switch in one tab silently diverges from
+ * another until reload. Listening for the `storage` event keeps every tab's
+ * in-memory location consistent; `useScopeChangeNotice` surfaces the notice.
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event: StorageEvent) => {
+    if (event.key !== LOCATION_PERSIST_KEY) {
+      return
+    }
+    const { currentLocationId, locations } = useLocationStore.getState()
+
+    // Key removed entirely (e.g. logout in another tab) — clear here too.
+    if (event.newValue === null || event.newValue === '') {
+      if (currentLocationId) {
+        useLocationStore.setState({ currentLocationId: null })
+      }
+      return
+    }
+
+    // A present-but-malformed payload must NOT clear the selection.
+    const nextId = parsePersistedLocationId(event.newValue)
+    if (nextId) {
+      const isKnown = locations.length === 0 || locations.some((l) => l.id === nextId)
+      if (isKnown && nextId !== currentLocationId) {
+        useLocationStore.setState({ currentLocationId: nextId })
+      }
+    }
+  })
+}

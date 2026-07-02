@@ -368,6 +368,11 @@
     "switchCompany": "Changer d'entreprise",
     "addCompany": "Ajouter une entreprise"
   },
+  "scope": {
+    "activeScope": "Périmètre actif",
+    "nowViewing": "Vous consultez {{company}} — {{location}}",
+    "nowViewingCompany": "Vous consultez {{company}}"
+  },
   "table": {
     "actions": "Actions",
     "actionsColumn": "Actions",

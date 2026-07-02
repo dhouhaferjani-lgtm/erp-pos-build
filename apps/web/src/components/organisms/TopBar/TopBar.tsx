@@ -9,6 +9,8 @@ import { CompanySelector } from '../CompanySelector'
 import { LocationSwitcher } from '../LocationSwitcher'
 import { ConnectionStatusIndicator } from '../../molecules/ConnectionStatusIndicator'
 import { QuickCreateButton } from './QuickCreateButton'
+import { useScopeChangeNotice } from '../../../hooks/useScopeChangeNotice'
+import { borderColors, colors } from '../../../lib/designTokens'
 
 interface TopBarProps {
   onMenuClick?: () => void
@@ -21,6 +23,9 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
   const logout = useLogout()
+
+  // Announce any active-scope change (company/location) with a visible toast.
+  useScopeChangeNotice()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -93,11 +98,19 @@ export function TopBar({ onMenuClick, onSearchClick, showLocationSwitcher = true
 
       {/* Right side actions */}
       <div className="flex items-center gap-2">
-        {/* Company selector for multi-company users */}
-        <CompanySelector />
+        {/* Active scope (company + location) — kept visually distinct and
+            visible at ALL breakpoints so the user always knows which company /
+            location inventory operations will hit. */}
+        <div
+          className={`flex items-center gap-1.5 rounded-lg border ${borderColors.light} ${colors.neutral[50]} p-1`}
+          aria-label={t('common:scope.activeScope', { defaultValue: 'Active scope' })}
+        >
+          {/* Company selector for multi-company users */}
+          <CompanySelector />
 
-        {/* Location selector for multi-location companies */}
-        {showLocationSwitcher && <LocationSwitcher className="hidden lg:block" />}
+          {/* Location selector for multi-location companies */}
+          {showLocationSwitcher && <LocationSwitcher />}
+        </div>
 
         {/* Language selector */}
         <div className="relative" ref={langMenuRef}>
