@@ -9,10 +9,12 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Expense\Application\Exceptions\LinkedCostException;
 use App\Modules\Expense\Application\Services\ExpenseService;
 use App\Modules\Expense\Presentation\Requests\ExpenseRequest;
 use App\Modules\Expense\Presentation\Resources\ExpenseResource;
 use App\Modules\Identity\Domain\User;
+use App\Shared\Contracts\Document\OperationResolverInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -25,7 +27,8 @@ class ExpenseController extends Controller
 {
     public function __construct(
         private readonly ExpenseService $expenseService,
-        private readonly CompanyContext $companyContext
+        private readonly CompanyContext $companyContext,
+        private readonly OperationResolverInterface $operationResolver,
     ) {}
 
     /**
@@ -103,7 +106,11 @@ class ExpenseController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $expense = $this->expenseService->create($data, $user);
+        try {
+            $expense = $this->expenseService->create($data, $user);
+        } catch (LinkedCostException $exception) {
+            return $this->linkedCostError($exception);
+        }
 
         return response()->json([
             'message' => __('messages.created', ['resource' => 'Expense']),
@@ -221,7 +228,11 @@ class ExpenseController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $expense = $this->expenseService->post($expense, $user);
+        try {
+            $expense = $this->expenseService->post($expense, $user);
+        } catch (LinkedCostException $exception) {
+            return $this->linkedCostError($exception);
+        }
 
         return response()->json([
             'message' => __('messages.expense_posted'),
@@ -231,5 +242,81 @@ class ExpenseController extends Controller
                 'expenseMetadata.paymentRepository',
             ])),
         ]);
+    }
+
+    public function reverse(Request $request, string $id): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        $expense = Document::where('type', DocumentType::Expense)
+            ->where('id', $id)
+            ->where('company_id', $companyId)
+            ->with('expenseMetadata.paymentRepository')
+            ->firstOrFail();
+
+        Gate::authorize('post', $expense);
+
+        /** @var User $user */
+        $user = $request->user();
+
+        try {
+            $result = $this->expenseService->reverse($expense, $user);
+        } catch (LinkedCostException $exception) {
+            return $this->linkedCostError($exception);
+        }
+
+        return response()->json(['data' => $result]);
+    }
+
+    public function linkableInvoices(Request $request): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        $invoices = Document::query()
+            ->where('company_id', $companyId)
+            ->whereIn('type', [DocumentType::SupplierInvoice, DocumentType::SupplierCreditNote])
+            ->whereNotNull('source_document_id')
+            ->latest('document_date')
+            ->limit(50)
+            ->get()
+            ->map(fn (Document $document): array => [
+                'id' => $document->id,
+                'document_number' => $document->document_number,
+                'partner_name' => $document->partner?->name,
+                'document_date' => $document->document_date?->toDateString(),
+                'total' => $document->total,
+                'currency' => $document->currency,
+                'side' => 'purchase',
+            ])
+            ->values();
+
+        return response()->json(['data' => $invoices]);
+    }
+
+    public function linkableOperations(Request $request): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $request->validate(['invoice_id' => ['required', 'uuid']]);
+
+        $invoice = Document::query()
+            ->where('company_id', $companyId)
+            ->whereKey($request->string('invoice_id')->toString())
+            ->firstOrFail();
+
+        try {
+            $resolution = $this->operationResolver->resolve($invoice);
+        } catch (LinkedCostException $exception) {
+            return $this->linkedCostError($exception);
+        }
+
+        return response()->json(['data' => $resolution]);
+    }
+
+    private function linkedCostError(LinkedCostException $exception): JsonResponse
+    {
+        return response()->json([
+            'code' => $exception->codeName,
+            'message' => $exception->getMessage(),
+        ], $exception->status);
     }
 }

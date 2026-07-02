@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain;
 
+use App\Modules\Document\Domain\Enums\AdditionalCostType;
+use App\Modules\Document\Domain\Enums\CostApplicationPath;
+use App\Modules\Document\Domain\Enums\LandedCostSplitMethod;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,6 +21,11 @@ use Illuminate\Support\Carbon;
  * @property string|null $description
  * @property string $amount
  * @property string|null $expense_document_id
+ * @property CostApplicationPath $application_path
+ * @property LandedCostSplitMethod $split_method
+ * @property Carbon|null $applied_at
+ * @property Carbon|null $reversed_at
+ * @property string|null $reverses_cost_id
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read Document $document
@@ -35,6 +43,11 @@ class DocumentAdditionalCost extends Model
         'description',
         'amount',
         'expense_document_id',
+        'application_path',
+        'split_method',
+        'applied_at',
+        'reversed_at',
+        'reverses_cost_id',
     ];
 
     /**
@@ -44,6 +57,11 @@ class DocumentAdditionalCost extends Model
     {
         return [
             'amount' => 'decimal:3',
+            'cost_type' => AdditionalCostType::class,
+            'application_path' => CostApplicationPath::class,
+            'split_method' => LandedCostSplitMethod::class,
+            'applied_at' => 'datetime',
+            'reversed_at' => 'datetime',
         ];
     }
 
@@ -72,7 +90,7 @@ class DocumentAdditionalCost extends Model
      */
     public function isTransport(): bool
     {
-        return $this->cost_type === 'transport';
+        return $this->cost_type === AdditionalCostType::Transport;
     }
 
     /**
@@ -80,7 +98,7 @@ class DocumentAdditionalCost extends Model
      */
     public function isShipping(): bool
     {
-        return $this->cost_type === 'shipping';
+        return $this->cost_type === AdditionalCostType::Shipping;
     }
 
     /**
@@ -88,7 +106,7 @@ class DocumentAdditionalCost extends Model
      */
     public function isInsurance(): bool
     {
-        return $this->cost_type === 'insurance';
+        return $this->cost_type === AdditionalCostType::Insurance;
     }
 
     /**
@@ -96,7 +114,7 @@ class DocumentAdditionalCost extends Model
      */
     public function isCustoms(): bool
     {
-        return $this->cost_type === 'customs';
+        return $this->cost_type === AdditionalCostType::Customs;
     }
 
     /**
@@ -104,6 +122,6 @@ class DocumentAdditionalCost extends Model
      */
     public function isHandling(): bool
     {
-        return $this->cost_type === 'handling';
+        return $this->cost_type === AdditionalCostType::Handling;
     }
 }

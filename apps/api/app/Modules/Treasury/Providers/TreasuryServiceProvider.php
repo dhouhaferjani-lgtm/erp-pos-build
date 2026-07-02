@@ -10,11 +10,13 @@ use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
+use App\Modules\Treasury\Application\Services\RepositoryInflowService;
 use App\Modules\Treasury\Application\Services\RepositoryOutflowService;
 use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
 use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
+use App\Shared\Contracts\Treasury\RepositoryInflowInterface;
 use App\Shared\Contracts\Treasury\RepositoryOutflowInterface;
 use Illuminate\Support\ServiceProvider;
 
@@ -48,6 +50,11 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->bind(
             RepositoryOutflowInterface::class,
             RepositoryOutflowService::class,
+        );
+
+        $this->app->bind(
+            RepositoryInflowInterface::class,
+            RepositoryInflowService::class,
         );
 
         // Phase 1 §7.4 / §13 / SoT §13.6/D16 — Treasury-operational projector

@@ -7,48 +7,43 @@ namespace Tests\Unit\Shared;
 use App\Shared\Domain\ProportionalMoneyAllocator;
 use PHPUnit\Framework\TestCase;
 
-class ProportionalMoneyAllocatorTest extends TestCase
+final class ProportionalMoneyAllocatorTest extends TestCase
 {
-    public function test_reconciles_remainder_to_last_positive_base(): void
+    public function test_allocates_exact_total_to_last_positive_base_absorber(): void
     {
         $allocator = new ProportionalMoneyAllocator;
 
-        $shares = $allocator->allocate(
-            total: '0.05',
-            bases: ['1', '1', '1'],
-            scale: 2,
-            workingScale: 6,
-        );
+        $shares = $allocator->allocate('100.001', [
+            '1.000',
+            '1.000',
+            '0.000',
+            '1.000',
+        ], 3, 7);
 
-        $this->assertSame(['0.01', '0.01', '0.03'], $shares);
-        $this->assertSame('0.05', bcadd(bcadd($shares[0], $shares[1], 2), $shares[2], 2));
+        $this->assertSame([
+            '33.333',
+            '33.333',
+            '0.000',
+            '33.335',
+        ], $shares);
+
+        $this->assertSame('100.001', array_reduce(
+            $shares,
+            static fn (string $carry, string $share): string => bcadd($carry, $share, 3),
+            '0.000',
+        ));
     }
 
-    public function test_zero_value_lines_never_absorb_remainder(): void
+    public function test_zero_bases_receive_zero_shares(): void
     {
         $allocator = new ProportionalMoneyAllocator;
 
-        $shares = $allocator->allocate(
-            total: '0.05',
-            bases: ['1', '1', '0'],
-            scale: 2,
-            workingScale: 6,
-        );
-
-        $this->assertSame(['0.02', '0.03', '0.00'], $shares);
-    }
-
-    public function test_single_line_receives_total_exactly(): void
-    {
-        $allocator = new ProportionalMoneyAllocator;
-
-        $shares = $allocator->allocate(
-            total: '123.456',
-            bases: ['9.99'],
-            scale: 3,
-            workingScale: 7,
-        );
-
-        $this->assertSame(['123.456'], $shares);
+        $this->assertSame([
+            '0.000',
+            '0.000',
+        ], $allocator->allocate('17.250', [
+            '0.000',
+            '0.000',
+        ], 3, 7));
     }
 }

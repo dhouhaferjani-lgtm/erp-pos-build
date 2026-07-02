@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Expense\Presentation\Requests;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Enums\AdditionalCostType;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\LandedCostSplitMethod;
+use App\Modules\Expense\Domain\Enums\ExpenseKind;
 use App\Modules\Identity\Domain\User;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -72,6 +75,19 @@ class ExpenseRequest extends FormRequest
             'status' => ['nullable', Rule::enum(DocumentStatus::class)],
             'document_date' => ['nullable', 'date'],
             'idempotency_key' => ['nullable', 'string', 'uuid'],
+            'expense_kind' => ['sometimes', Rule::enum(ExpenseKind::class)],
+            'linked_invoice_id' => [
+                'required_if:expense_kind,linked_cost',
+                'uuid',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
+            'linked_operation_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
+            'cost_type' => ['required_if:expense_kind,linked_cost', Rule::enum(AdditionalCostType::class)],
+            'split_method' => ['sometimes', Rule::enum(LandedCostSplitMethod::class)],
         ];
 
         return $rules;
@@ -109,6 +125,11 @@ class ExpenseRequest extends FormRequest
             'is_paid' => 'paid status',
             'status' => 'status',
             'document_date' => 'document date',
+            'expense_kind' => 'expense kind',
+            'linked_invoice_id' => 'linked invoice',
+            'linked_operation_id' => 'linked operation',
+            'cost_type' => 'cost type',
+            'split_method' => 'split method',
         ];
     }
 }

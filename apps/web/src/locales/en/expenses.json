@@ -56,7 +56,28 @@
     "noPaymentMethods": "No payment methods available",
     "noPaymentMethodsDescription": "Configure payment methods in Treasury settings",
     "noRepositories": "No payment repositories available",
-    "noRepositoriesDescription": "Configure payment repositories in Treasury settings"
+    "noRepositoriesDescription": "Configure payment repositories in Treasury settings",
+    "classification": "Classification",
+    "kindGeneric": "General expense",
+    "kindLinked": "Cost linked to an operation",
+    "linkedInvoice": "Linked invoice",
+    "linkedOperation": "Linked operation",
+    "linkedTo": "Linked to",
+    "downgradeToGeneric": "Record as a general expense",
+    "costType": "Cost type",
+    "splitMethod": "Split method"
+  },
+  "costTypes": {
+    "transport": "Transport",
+    "shipping": "Shipping",
+    "insurance": "Insurance",
+    "customs": "Customs",
+    "handling": "Handling",
+    "other": "Other"
+  },
+  "splitMethods": {
+    "byValue": "Value",
+    "byQuantity": "Quantity"
   },
   "filters": {
     "status": "Status",
