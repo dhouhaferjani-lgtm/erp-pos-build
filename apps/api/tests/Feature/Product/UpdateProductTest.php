@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Product;
 
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -155,6 +160,80 @@ class UpdateProductTest extends TestCase
             'id' => $this->product->id,
             'is_physical' => false,
         ]);
+    }
+
+    public function test_toggling_batch_tracking_on_backfills_default_lot_for_existing_stocked_locations(): void
+    {
+        $primary = Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'WH-BATCH-ON-1',
+            'name' => 'Batch Toggle Primary',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+        $secondary = Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'WH-BATCH-ON-2',
+            'name' => 'Batch Toggle Secondary',
+            'type' => 'warehouse',
+            'is_active' => true,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $primary->id,
+            'quantity' => '12.5000',
+            'reserved' => '0.0000',
+        ]);
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $secondary->id,
+            'quantity' => '3.2500',
+            'reserved' => '0.0000',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/products/{$this->product->id}", [
+                'requires_batch_tracking' => true,
+                'default_shelf_life_days' => 45,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.requires_batch_tracking', true);
+
+        $batch = Batch::where('product_id', $this->product->id)
+            ->where('batch_number', BatchStockService::DEFAULT_BATCH_NUMBER)
+            ->first();
+
+        $this->assertNotNull($batch, 'enabling batch tracking must mint a DEFAULT lot for existing stock');
+        if ($batch === null) {
+            return;
+        }
+
+        $this->assertSame(1, Batch::where('product_id', $this->product->id)->count());
+        $this->assertSame(now()->addDays(45)->toDateString(), $batch->expiry_date->toDateString());
+
+        $this->assertSame(
+            0,
+            bccomp(
+                '12.5000',
+                (string) BatchStock::where('batch_id', $batch->id)->where('location_id', $primary->id)->value('quantity'),
+                4,
+            ),
+        );
+        $this->assertSame(
+            0,
+            bccomp(
+                '3.2500',
+                (string) BatchStock::where('batch_id', $batch->id)->where('location_id', $secondary->id)->value('quantity'),
+                4,
+            ),
+        );
     }
 
     public function test_sku_uniqueness_on_update(): void
