@@ -216,6 +216,14 @@ export function PartnerDetailPage() {
     return null
   }
 
+  const postalCityLine = [partner.postal_code, partner.city].filter(Boolean).join(' ')
+  const addressLines = [
+    partner.street_address,
+    partner.street_address_2,
+    postalCityLine,
+    partner.country,
+  ].filter((line): line is string => typeof line === 'string' && line.trim().length > 0)
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -411,19 +419,15 @@ export function PartnerDetailPage() {
                     </div>
                   </div>
                 )}
-                {(partner.street_address != null || partner.city != null) && (
+                {addressLines.length > 0 && (
                   <div className="flex items-start gap-3">
                     <Building2 className="mt-0.5 h-5 w-5 text-gray-400" />
                     <div>
                       <dt className="text-sm font-medium text-gray-500">{t('fields.address')}</dt>
                       <dd className="text-gray-900">
-                        {partner.street_address && <div>{partner.street_address}</div>}
-                        {(partner.city != null || partner.postal_code != null) && (
-                          <div>
-                            {partner.postal_code} {partner.city}
-                          </div>
-                        )}
-                        {partner.country && <div>{partner.country}</div>}
+                        {addressLines.map((line) => (
+                          <div key={line}>{line}</div>
+                        ))}
                       </dd>
                     </div>
                   </div>

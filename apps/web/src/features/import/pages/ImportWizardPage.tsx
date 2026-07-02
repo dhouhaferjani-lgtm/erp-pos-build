@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight, Upload, Loader2, CheckCircle, XCircle, Download } from 'lucide-react'
@@ -128,8 +128,9 @@ export function ImportWizardPage() {
   const suggestMapping = useSuggestMapping()
 
   // Get real-time progress from WebSocket store
-  const { getImportProgress, updateProgress } = useImportProgressStore()
+  const { getImportProgress, updateProgress, completeImport } = useImportProgressStore()
   const realtimeProgress = jobId ? getImportProgress(jobId) : undefined
+  const completedProgressJobsRef = useRef<Set<string>>(new Set())
 
   // Track if we're actively importing (for polling fallback)
   const [isImporting, setIsImporting] = useState(false)
@@ -164,21 +165,68 @@ export function ImportWizardPage() {
 
   // Initialize real-time progress store when execution starts
   useEffect(() => {
-    if (jobId && apiJobData && executeImport.isSuccess) {
+    if (
+      jobId &&
+      apiJobData &&
+      executeImport.isSuccess &&
+      apiJobData.status !== 'completed' &&
+      apiJobData.status !== 'failed'
+    ) {
       // Seed the progress store with initial data when execution starts
       updateProgress({
         import_job_id: jobId,
-        status: 'importing',
+        status: apiJobData.status,
         total_rows: apiJobData.total_rows ?? 0,
-        processed_rows: 0,
-        successful_rows: 0,
-        failed_rows: 0,
-        progress_percentage: 0,
+        processed_rows: apiJobData.processed_rows ?? 0,
+        successful_rows: apiJobData.successful_rows ?? 0,
+        failed_rows: apiJobData.failed_rows ?? 0,
+        progress_percentage: apiJobData.progress_percentage ?? 0,
         import_type: importType,
         original_filename: selectedFile?.name ?? '',
       })
     }
   }, [jobId, apiJobData, executeImport.isSuccess, updateProgress, importType, selectedFile?.name])
+
+  // Mirror API polling into the global progress widget when WebSocket events are absent.
+  useEffect(() => {
+    if (!jobId || !apiJobData || !executeImport.isSuccess) {
+      return
+    }
+
+    if (apiJobData.status !== 'completed' && apiJobData.status !== 'failed') {
+      updateProgress({
+        import_job_id: jobId,
+        status: apiJobData.status,
+        total_rows: apiJobData.total_rows,
+        processed_rows: apiJobData.processed_rows,
+        successful_rows: apiJobData.successful_rows,
+        failed_rows: apiJobData.failed_rows,
+        progress_percentage: apiJobData.progress_percentage,
+        import_type: apiJobData.type,
+        original_filename: apiJobData.original_filename,
+      })
+      return
+    }
+
+    if (completedProgressJobsRef.current.has(jobId)) {
+      return
+    }
+    completedProgressJobsRef.current.add(jobId)
+
+    completeImport({
+      import_job_id: jobId,
+      status: apiJobData.status,
+      total_rows: apiJobData.total_rows,
+      successful_rows: apiJobData.successful_rows,
+      failed_rows: apiJobData.failed_rows,
+      import_type: apiJobData.type,
+      original_filename: apiJobData.original_filename,
+      completed_at: apiJobData.completed_at ?? new Date().toISOString(),
+      is_success: apiJobData.status === 'completed' && apiJobData.failed_rows === 0,
+      is_partial_success: apiJobData.status === 'completed' && apiJobData.successful_rows > 0 && apiJobData.failed_rows > 0,
+      ...(apiJobData.error_message ? { error_message: apiJobData.error_message } : {}),
+    })
+  }, [apiJobData, completeImport, executeImport.isSuccess, jobId, updateProgress])
 
   // Auto-navigate to complete step when import is completed (from API or WebSocket)
   useEffect(() => {
