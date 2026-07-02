@@ -150,6 +150,6 @@ describe('CreateStockTransferPage batch allocations', () => {
     await user.click(screen.getByRole('button', { name: /create transfer/i }))
 
     expect(mockCreate).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith('Select lots for every batch-tracked product.')
+    expect(toast.error).toHaveBeenCalledWith('FEFO could not cover every batch-tracked line. Allocate lots manually.')
   })
 })
