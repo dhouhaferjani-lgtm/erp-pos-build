@@ -1,4 +1,14 @@
 {
+  "documents": {
+    "statuses": {
+      "draft": "مسودة",
+      "confirmed": "مؤكَّد",
+      "posted": "مُرحَّل",
+      "paid": "مدفوع",
+      "received": "مُستلَم",
+      "cancelled": "مُلغى"
+    }
+  },
   "partners": {
     "title": "الشركاء",
     "new": "إضافة شريك",
