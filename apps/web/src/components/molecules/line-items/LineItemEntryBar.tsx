@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -40,6 +40,7 @@ export function LineItemEntryBar({
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const listboxId = useId()
   const { enqueueScan } = useProductLineLookup()
 
   const trimmedQuery = query.trim()
@@ -159,6 +160,7 @@ export function LineItemEntryBar({
           type="text"
           role="combobox"
           aria-expanded={isOpen}
+          aria-controls={isOpen && trimmedQuery !== '' ? listboxId : undefined}
           aria-label={t('sales:lineItems.entry.placeholder')}
           placeholder={t('sales:lineItems.entry.placeholder')}
           value={query}
@@ -202,7 +204,7 @@ export function LineItemEntryBar({
           ) : products.length === 0 ? (
             <div className={`p-3 text-sm ${textColors.disabled}`}>{t('sales:lineItems.noProductsFound')}</div>
           ) : (
-            <ul className={`divide-y ${borderColors.divideLight}`} role="listbox">
+            <ul id={listboxId} className={`divide-y ${borderColors.divideLight}`}>
               {products.map((product, index) => (
                 <li key={product.id}>
                   <button
