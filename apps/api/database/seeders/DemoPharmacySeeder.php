@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\LocationType;
@@ -25,6 +26,9 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\PurchaseOrderService;
+use App\Modules\Expense\Application\Services\ExpenseService;
+use App\Modules\Expense\Domain\ExpenseCategory;
+use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
@@ -40,9 +44,12 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\BankReconciliationService;
+use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -412,6 +419,10 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             // last 30 days so the dashboard revenue / invoices / payments KPIs and
             // "Documents récents" show plausible numbers instead of zeros.
             $this->seedTunisiaSalesInvoices($this->company, $this->shops);
+
+            $this->seedTunisiaExpenses($this->company);
+
+            $this->seedTunisiaBankReconciliation($this->company);
         });
     }
 
@@ -914,6 +925,11 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         ]);
         $po3 = $poService->confirm($po3);
         $firstLine = $po3->lines->first();
+        if ($firstLine === null) {
+            $this->command->warn('DEMO-PO-0003 has no lines — skipping partial receipt.');
+
+            return;
+        }
         $grService->receiveGoods($po3, [$firstLine->id => '20.0000']);
         $this->command->info('✓ DEMO-PO-0003 — partially received (stays confirmed)');
 
@@ -972,8 +988,9 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             ->where('is_physical', true)
             ->where('requires_batch_tracking', false)
             ->whereDoesntHave('activeVariants')
-            ->whereHas('stockLevels', fn ($q) => $q->where('location_id', $warehouse->id)
-                ->where('quantity', '>', 0))
+            ->whereHas('stockLevels', fn ($q) => $q
+                ->whereRaw('location_id = ?', [$warehouse->id])
+                ->whereRaw('quantity > ?', ['0']))
             ->take(6)
             ->get();
 
@@ -1061,6 +1078,229 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         $transferService->initiate($data3);
         // Intentionally NOT completed — status remains in_transit.
         $this->command->info('✓ DEMO-TR-0003 — warehouse → '.$shop2->code.' (in_transit)');
+    }
+
+    /**
+     * Seed paid operating expenses through the real ExpenseService path.
+     */
+    protected function seedTunisiaExpenses(Company $company): void
+    {
+        if (ExpenseMetadata::query()->where('idempotency_key', 'like', 'DEMO-EXP-%')->exists()) {
+            $this->command->info('Expenses already seeded — skipping seedTunisiaExpenses().');
+
+            return;
+        }
+
+        /** @var CompanyContext $companyCtx */
+        $companyCtx = $this->container->make(CompanyContext::class);
+        $companyCtx->setCompanyId($company->id);
+
+        $domain = $this->localeUserEmailDomain();
+        $owner = User::query()->where('email', "owner@{$domain}")->first();
+        if ($owner === null) {
+            $this->command->warn('Owner user missing — skipping seedTunisiaExpenses().');
+
+            return;
+        }
+
+        $repository = PaymentRepository::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'CASH-01')
+            ->where('is_active', true)
+            ->first()
+            ?? PaymentRepository::query()
+                ->where('company_id', $company->id)
+                ->where('is_active', true)
+                ->orderBy('code')
+                ->first();
+
+        $paymentMethod = PaymentMethod::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'CASH')
+            ->where('is_active', true)
+            ->first()
+            ?? PaymentMethod::query()
+                ->where('company_id', $company->id)
+                ->where('is_active', true)
+                ->orderBy('code')
+                ->first();
+
+        if ($repository === null || $paymentMethod === null) {
+            $this->command->warn('Cash repository/payment method missing — skipping seedTunisiaExpenses().');
+
+            return;
+        }
+
+        // Large expenses are paid from the bank: CASH-01 opens at 500.000 and
+        // RepositoryOutflowService has no insufficient-funds guard, so routing
+        // everything through the till would leave it negative on the dashboard.
+        $bankRepository = PaymentRepository::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'BANK-01')
+            ->where('is_active', true)
+            ->first()
+            ?? PaymentRepository::query()
+                ->where('company_id', $company->id)
+                ->where('type', RepositoryType::BankAccount)
+                ->where('is_active', true)
+                ->orderBy('code')
+                ->first()
+            ?? $repository;
+
+        /** @var ExpenseService $expenseService */
+        $expenseService = $this->container->make(ExpenseService::class);
+
+        // Last element: paying repository — 'bank' for large expenses, 'cash'
+        // for small ones (cash total 273.150 stays within CASH-01's 500.000).
+        $expenseSpecs = [
+            ['Loyer', '1250.000', 29, 'Loyer local Tunis Lac', 'Gestion Immobilière Carthage', 'bank'],
+            ['Entretien & Réparations', '185.500', 26, 'Réparation climatisation', 'Service Froid Tunis', 'bank'],
+            ['Assurances', '320.000', 23, 'Assurance multirisque', 'Assurances Maghrebia', 'bank'],
+            ['Transport', '94.250', 20, 'Livraison inter-boutiques', 'Transport Express Sahel', 'cash'],
+            ['Frais postaux & Télécom', '148.750', 17, 'Facture fibre et mobile', 'Tunisie Telecom', 'bank'],
+            ['Fournitures & Divers', '76.300', 14, 'Fournitures caisse', 'Librairie Centrale', 'cash'],
+            ['Entretien & Réparations', '210.000', 11, 'Maintenance enseigne', 'Néon Services', 'bank'],
+            ['Transport', '132.600', 8, 'Courses urgentes fournisseurs', 'Coursier Pro', 'bank'],
+            ['Frais postaux & Télécom', '58.900', 5, 'Affranchissement colis', 'La Poste Tunisienne', 'cash'],
+            ['Fournitures & Divers', '43.700', 2, 'Consommables bureau', 'Bureau Plus', 'cash'],
+        ];
+
+        $createdCount = 0;
+        foreach ($expenseSpecs as $index => [$categoryName, $amount, $daysAgo, $notes, $vendorName, $paySource]) {
+            $category = ExpenseCategory::query()
+                ->where('company_id', $company->id)
+                ->where('name', $categoryName)
+                ->first();
+
+            if ($category === null) {
+                $this->command->warn("Expense category {$categoryName} missing — skipping seedTunisiaExpenses().");
+
+                return;
+            }
+
+            $sequence = str_pad((string) ($index + 1), 4, '0', STR_PAD_LEFT);
+            $expense = $expenseService->create([
+                'company_id' => $company->id,
+                'total' => $amount,
+                'expense_category_id' => $category->id,
+                'payment_method_id' => $paymentMethod->id,
+                'payment_repository_id' => $paySource === 'bank' ? $bankRepository->id : $repository->id,
+                'payment_date' => now()->subDays($daysAgo)->toDateString(),
+                'is_paid' => true,
+                'receipt_number' => 'DEMO-EXP-'.$sequence,
+                'vendor_name' => $vendorName,
+                'notes' => $notes,
+                'idempotency_key' => 'DEMO-EXP-'.$sequence,
+            ], $owner);
+
+            if ($expense->status === DocumentStatus::Draft) {
+                $expenseService->post($expense, $owner);
+            }
+
+            $createdCount++;
+        }
+
+        $this->command->info("✓ Expenses seeded: {$createdCount} paid posted expenses.");
+    }
+
+    /**
+     * Seed one completed and one draft bank reconciliation for BANK-01.
+     */
+    protected function seedTunisiaBankReconciliation(Company $company): void
+    {
+        if (BankReconciliation::query()
+            ->where('company_id', $company->id)
+            ->where('notes', 'like', 'DEMO-BANK-REC-%')
+            ->exists()) {
+            $this->command->info('Bank reconciliations already seeded — skipping seedTunisiaBankReconciliation().');
+
+            return;
+        }
+
+        /** @var CompanyContext $companyCtx */
+        $companyCtx = $this->container->make(CompanyContext::class);
+        $companyCtx->setCompanyId($company->id);
+
+        $domain = $this->localeUserEmailDomain();
+        $owner = User::query()->where('email', "owner@{$domain}")->first();
+        if ($owner === null) {
+            $this->command->warn('Owner user missing — skipping seedTunisiaBankReconciliation().');
+
+            return;
+        }
+
+        $repository = PaymentRepository::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'BANK-01')
+            ->where('is_active', true)
+            ->first();
+
+        if ($repository === null) {
+            $this->command->warn('BANK-01 repository missing — skipping seedTunisiaBankReconciliation().');
+
+            return;
+        }
+
+        $payments = Payment::query()
+            ->where('company_id', $company->id)
+            ->where('repository_id', $repository->id)
+            ->where('is_reconciled', false)
+            ->orderBy('payment_date')
+            ->orderBy('reference')
+            ->get();
+
+        if ($payments->count() < 3) {
+            $this->command->warn('Fewer than 3 unreconciled BANK-01 payments — skipping seedTunisiaBankReconciliation().');
+
+            return;
+        }
+
+        /** @var BankReconciliationService $service */
+        $service = $this->container->make(BankReconciliationService::class);
+
+        $scale = CurrencyScale::for((string) $company->currency);
+        $matchedTotal = '0.000';
+        $completedPayments = $payments->take(2);
+        foreach ($completedPayments as $payment) {
+            $matchedTotal = bcadd($matchedTotal, $payment->amount, $scale);
+        }
+
+        $completed = $service->startReconciliation(
+            companyId: $company->id,
+            tenantId: $company->tenant_id,
+            userId: $owner->id,
+            data: [
+                'repository_id' => $repository->id,
+                'statement_date' => now()->subDays(1)->toDateString(),
+                'statement_balance' => $matchedTotal,
+                'notes' => 'DEMO-BANK-REC-COMPLETED',
+            ],
+        );
+
+        foreach ($completedPayments as $payment) {
+            $service->matchItem(
+                reconciliationId: $completed->id,
+                paymentId: $payment->id,
+                userId: $owner->id,
+                bankReference: 'DEMO-MATCH-'.$payment->reference,
+                notes: 'Matched by demo seed',
+            );
+        }
+        $service->completeReconciliation($completed->id, $owner->id);
+
+        $service->startReconciliation(
+            companyId: $company->id,
+            tenantId: $company->tenant_id,
+            userId: $owner->id,
+            data: [
+                'repository_id' => $repository->id,
+                'statement_date' => now()->toDateString(),
+                'statement_balance' => (string) $repository->balance,
+                'notes' => 'DEMO-BANK-REC-DRAFT',
+            ],
+        );
+
+        $this->command->info('✓ Bank reconciliations seeded: 1 completed + 1 draft.');
     }
 
     /**
@@ -1162,6 +1402,10 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         if (! $canRecordPayments) {
             $this->command->warn('Owner/repository/payment-method missing — seeding invoices unpaid only.');
         }
+
+        $glService = $owner !== null
+            ? $this->container->make(GeneralLedgerService::class)
+            : null;
 
         // Four dedicated demo customers (kept apart from CUST-DEBTOR-01).
         $customerDefs = [
@@ -1297,6 +1541,10 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                 ]);
             }
 
+            if ($owner !== null && $glService instanceof GeneralLedgerService) {
+                $this->postSalesInvoiceJournalEntry($invoice, $owner, $glService);
+            }
+
             if ($status === DocumentStatus::Paid) {
                 $paidCount++;
             } else {
@@ -1331,6 +1579,10 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                     'amount' => $paidAmount,
                 ]);
 
+                if ($glService instanceof GeneralLedgerService) {
+                    $this->postSalesPaymentJournalEntry($payment, $repository, $owner, $glService);
+                }
+
                 $paymentSeq++;
                 $paymentCount++;
             }
@@ -1340,6 +1592,55 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
 
         $this->command->info(
             "✓ Sales invoices seeded: {$postedCount} Posted + {$paidCount} Paid, {$paymentCount} payments."
+        );
+    }
+
+    private function postSalesInvoiceJournalEntry(
+        Document $invoice,
+        User $owner,
+        GeneralLedgerService $glService,
+    ): void {
+        if (JournalEntry::query()
+            ->where('source_type', 'invoice')
+            ->where('source_id', $invoice->id)
+            ->exists()) {
+            return;
+        }
+
+        $entry = $glService->createFromInvoice($invoice, $owner);
+        $glService->postEntry($entry, $owner, (string) $invoice->currency);
+    }
+
+    private function postSalesPaymentJournalEntry(
+        Payment $payment,
+        PaymentRepository $repository,
+        User $owner,
+        GeneralLedgerService $glService,
+    ): void {
+        if (JournalEntry::query()
+            ->where('source_type', 'customer_payment')
+            ->where('source_id', $payment->id)
+            ->exists()) {
+            return;
+        }
+
+        $accountId = $repository->account_id ?? $repository->gl_account_id;
+        if ($accountId === null) {
+            $this->command->warn("Payment repository {$repository->code} has no account_id — skipping payment GL.");
+
+            return;
+        }
+
+        $glService->createPaymentReceivedJournalEntry(
+            companyId: $payment->company_id,
+            partnerId: $payment->partner_id,
+            paymentId: $payment->id,
+            amount: $payment->amount,
+            paymentMethodAccountId: $accountId,
+            date: $payment->payment_date,
+            description: 'Payment '.$payment->reference,
+            user: $owner,
+            currencyCode: $payment->currency,
         );
     }
 }

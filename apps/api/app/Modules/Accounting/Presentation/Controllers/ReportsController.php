@@ -19,6 +19,7 @@ use App\Modules\Accounting\Application\Services\Reports\ProfitLossService;
 use App\Modules\Accounting\Application\Services\Reports\SalesReportService;
 use App\Modules\Accounting\Application\Services\Reports\StockAlertReportService;
 use App\Modules\Accounting\Application\Services\Reports\TrialBalanceService;
+use App\Modules\Accounting\Application\Services\Reports\UpcomingPaymentsService;
 use App\Modules\Accounting\Presentation\Requests\GetAgedPayablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetAgedReceivablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetBalanceSheetRequest;
@@ -27,6 +28,7 @@ use App\Modules\Accounting\Presentation\Requests\GetOwnerSalesReportRequest;
 use App\Modules\Accounting\Presentation\Requests\GetOwnerStockAlertsRequest;
 use App\Modules\Accounting\Presentation\Requests\GetProfitLossRequest;
 use App\Modules\Accounting\Presentation\Requests\GetTrialBalanceRequest;
+use App\Modules\Accounting\Presentation\Requests\GetUpcomingPaymentsRequest;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use Carbon\Carbon;
@@ -78,6 +80,7 @@ class ReportsController extends Controller
         private readonly BalanceSheetService $balanceSheetService,
         private readonly AgedReceivablesService $agedReceivablesService,
         private readonly AgedPayablesService $agedPayablesService,
+        private readonly UpcomingPaymentsService $upcomingPaymentsService,
         private readonly OwnerReportScope $ownerReportScope,
         private readonly SalesReportService $salesReportService,
         private readonly StockAlertReportService $stockAlertReportService,
@@ -742,6 +745,35 @@ class ReportsController extends Controller
                 'error' => [
                     'code' => 'REPORT_GENERATION_ERROR',
                     'message' => 'Failed to generate aged payables report: '.$e->getMessage(),
+                ],
+            ], 500);
+        }
+    }
+
+    public function upcomingPayments(GetUpcomingPaymentsRequest $request): JsonResponse
+    {
+        try {
+            $companyId = $this->companyContext->requireCompanyId();
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COMPANY_CONTEXT_REQUIRED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 401);
+        }
+
+        try {
+            $reportData = $this->upcomingPaymentsService->generate($companyId, $request->days());
+
+            return response()->json([
+                'data' => $reportData->toArray(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'REPORT_GENERATION_ERROR',
+                    'message' => 'Failed to generate upcoming payments report: '.$e->getMessage(),
                 ],
             ], 500);
         }

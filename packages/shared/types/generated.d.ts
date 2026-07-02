@@ -229,6 +229,24 @@ credit: string;
 level: number;
 is_parent: boolean;
 };
+export type UpcomingPaymentLineData = {
+partner_name: string;
+document_number: string;
+type: string;
+due_date: string;
+balance_due: string;
+days_until_due: number;
+overdue: boolean;
+};
+export type UpcomingPaymentsData = {
+in: Array<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentLineData>;
+out: Array<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentLineData>;
+total_in: string;
+total_out: string;
+net: string;
+days: number;
+as_of_date: string;
+};
 }
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
