@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { defaultCompanyConfig } from '@/test/fixtures/companyConfig'
@@ -128,8 +128,8 @@ vi.mock('@/contexts/ProductConfigContext', async () => {
 })
 
 vi.mock('@/hooks/useCurrency', () => ({
-  useCurrency: () => ({ currency: 'EUR', locale: 'en', decimals: 2 }),
-  getDecimals: () => 2,
+  useCurrency: () => ({ currency: 'TND', locale: 'en', decimals: 3 }),
+  getDecimals: () => 3,
 }))
 
 vi.mock('@/hooks/useTaxConfigName', () => ({
@@ -270,12 +270,9 @@ describe('ProductForm opening-stock section gate', () => {
       expect(screen.getAllByDisplayValue('Opening Test Product').length).toBeGreaterThan(0)
     })
 
-    // Section must be visible (product is physical)
-    expect(screen.getByTestId('opening-section')).toBeInTheDocument()
-
-    // Inputs must be disabled (locked: can_enter_opening = false)
-    expect(screen.getByTestId('opening-qty-input')).toBeDisabled()
-    expect(screen.getByTestId('opening-cost-input')).toBeDisabled()
+    expect(screen.getByTestId('ready-to-sell-strip')).toBeInTheDocument()
+    expect(screen.queryByTestId('opening-section')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('opening-qty-input')).not.toBeInTheDocument()
 
     // Reset button must be present (has_active_opening && !has_downstream_movements)
     expect(screen.getByTestId('opening-reset-btn')).toBeInTheDocument()
@@ -302,13 +299,98 @@ describe('ProductForm opening-stock section gate', () => {
       expect(screen.getAllByDisplayValue('Opening Test Product').length).toBeGreaterThan(0)
     })
 
-    // Section must be visible
-    expect(screen.getByTestId('opening-section')).toBeInTheDocument()
+    expect(screen.getByTestId('ready-to-sell-strip')).toBeInTheDocument()
+    expect(screen.queryByTestId('opening-section')).not.toBeInTheDocument()
 
     // Qty input must be enabled (can_enter_opening = true)
     expect(screen.getByTestId('opening-qty-input')).not.toBeDisabled()
 
     // Reset button must NOT be present (not locked)
     expect(screen.queryByTestId('opening-reset-btn')).not.toBeInTheDocument()
+  })
+
+  it('moves opening controls into the ready-to-sell strip and removes the opening card', async () => {
+    mockHasPermission.mockImplementation((p: string) => p === 'inventory.adjust')
+
+    renderWithProviders(<ProductForm />, {
+      route: '/inventory/products/new',
+      companyConfig: defaultCompanyConfig,
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('inventory:products.readyToSell')).toBeInTheDocument()
+    })
+
+    const strip = screen.getByTestId('ready-to-sell-strip')
+    expect(within(strip).getByTestId('opening-qty-input')).toBeEnabled()
+    expect(within(strip).getByLabelText('inventory:products.costHt')).toBeInTheDocument()
+    expect(screen.queryByTestId('opening-section')).not.toBeInTheDocument()
+  })
+
+  it('keeps stored TTC authoritative while recalculating HT and margin with cost markup math', async () => {
+    mockHasPermission.mockImplementation((p: string) => p === 'inventory.adjust')
+
+    renderWithProviders(<ProductForm />, {
+      route: '/inventory/products/new',
+      companyConfig: defaultCompanyConfig,
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ready-to-sell-strip')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByLabelText('inventory:products.costHt'), {
+      target: { value: '8.500' },
+    })
+    fireEvent.change(screen.getByLabelText('inventory:products.priceTtc'), {
+      target: { value: '14.280' },
+    })
+
+    expect(screen.getByLabelText('inventory:products.priceHt')).toHaveValue(14.28)
+    expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue('68.00')
+
+    fireEvent.change(screen.getByLabelText('inventory:products.marginPercent'), {
+      target: { value: '41.2' },
+    })
+
+    expect(screen.getByLabelText('inventory:products.priceHt')).toHaveValue(12.002)
+    expect(screen.getByLabelText('inventory:products.priceTtc')).toHaveValue(12.002)
+  })
+
+  it('renders edit hero primary image with md variant and accepted enrichment state', async () => {
+    routeParams.id = PRODUCT_ID
+    currentProductData = {
+      ...makeProduct(),
+      primary_image_url: '/media/tenant/attachment/serve?signature=abc',
+      enrichment_status: null,
+      latest_enrichment_result: { status: 'accepted' },
+      brand: { id: 'brand-1', name: 'Avène', source: 'enriched' },
+      category: { id: 'category-1', name: 'Soin solaire' },
+    } as ReturnType<typeof makeProduct> & {
+      primary_image_url: string
+      enrichment_status: null
+      latest_enrichment_result: { status: string }
+      brand: { id: string; name: string; source: string }
+      category: { id: string; name: string }
+    }
+    mockHasPermission.mockImplementation((p: string) => p === 'inventory.adjust')
+
+    renderWithProviders(<ProductForm />, {
+      route: `/inventory/products/${PRODUCT_ID}`,
+      companyConfig: defaultCompanyConfig,
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByDisplayValue('Opening Test Product').length).toBeGreaterThan(0)
+    })
+
+    expect(screen.getByRole('img', { name: 'Opening Test Product' })).toHaveAttribute(
+      'src',
+      '/media/tenant/attachment/serve?signature=abc&variant=md',
+    )
+    expect(screen.getByText('catalog:editor.hero.statusEnriched')).toBeInTheDocument()
+    expect(screen.getByText('Avène ✦')).toBeInTheDocument()
+    expect(screen.getByText('Soin solaire')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'catalog:editor.hero.replacePhoto' })).toBeInTheDocument()
   })
 })

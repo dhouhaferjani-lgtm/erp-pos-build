@@ -7,12 +7,19 @@ namespace Tests\Feature\Modules\Product;
 use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Product\Application\DTOs\EnrichedProductData;
+use App\Modules\Product\Domain\EnrichmentResult;
+use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Enums\EnrichmentStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -502,5 +509,65 @@ final class ProductEditorContractTest extends TestCase
         $product->refresh();
         $this->assertSame(12, $product->units_per_pack);
         $this->assertSame('5.0000', (string) $product->reorder_point);
+    }
+
+    public function test_show_exposes_editor_hero_enrichment_and_stock_contract(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Hero Contract Product',
+            'sku' => 'EDITOR-HERO-001',
+            'enrichment_status' => EnrichmentStatus::Completed,
+        ]);
+
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Hero Contract Store',
+            'type' => LocationType::Shop,
+            'is_active' => true,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '24.0000',
+            'reserved' => '0.0000',
+        ]);
+
+        EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => 'trk-editor-hero-001',
+            'status' => EnrichmentReviewStatus::PendingReview,
+            'enriched_data' => new EnrichedProductData(
+                name: 'Hero Contract Product',
+                brand: null,
+                description: null,
+                classification: [],
+                ingredients: [],
+                images: [],
+                confidence_score: 91,
+                enrichment_tier: 'high',
+                field_confidence: null,
+                enrichment_sources: null,
+                assigned_barcode: null,
+                assigned_barcode_type: null,
+            ),
+            'enrichment_quality' => 'full',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/products/{$product->id}")
+            ->assertOk();
+
+        $data = $response->json('data');
+
+        $this->assertSame('completed', $data['enrichment_status']);
+        $this->assertSame('pending_review', $data['latest_enrichment_result']['status']);
+        $this->assertSame('24.0000', $data['stock_quantity']);
     }
 }

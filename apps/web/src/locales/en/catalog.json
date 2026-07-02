@@ -10,7 +10,17 @@
       "enrichmentSuccess": "Synerivia · {{count}} fields",
       "enrichmentFields": "{{count}} fields",
       "enrichmentUnavailable": "Synerivia · unavailable",
-      "helper": "Auto-fetches shortly after you stop typing the barcode (falls back to the product name when there is no barcode). Refresh re-runs it manually."
+      "helper": "Auto-fetches shortly after you stop typing the barcode (falls back to the product name when there is no barcode). Refresh re-runs it manually.",
+      "replacePhoto": "Replace photo",
+      "addPhoto": "Add photo",
+      "statusPending": "Enriching…",
+      "statusReview": "Ready for review",
+      "statusEnriched": "Enriched · Synerivia",
+      "statusUnavailable": "Unavailable",
+      "refreshNothing": "Nothing to refresh",
+      "equivalentsCount": "+{{count}} equivalents",
+      "complementsCount": "+{{count}} complements",
+      "routineSteps": "Routine · {{count}} steps"
     },
     "subtitle": "Scan a barcode to auto-fill from Synerivia, or type by hand.",
     "sectionLabels": {
