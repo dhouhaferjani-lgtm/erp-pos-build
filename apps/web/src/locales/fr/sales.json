@@ -220,6 +220,7 @@
       "confirmed": "Confirmé",
       "posted": "Comptabilisé",
       "paid": "Payé",
+      "received": "Réceptionné",
       "cancelled": "Annulé",
       "partiallyPaid": "Partiellement payé",
       "partial": "Partiel",
@@ -280,12 +281,19 @@
       "addBlankLine": "Ajouter une ligne vide",
       "close": "Fermer"
     },
+    "entry": {
+      "placeholder": "Rechercher ou scanner un produit…",
+      "browseCatalog": "Parcourir le catalogue",
+      "productNotFound": "Produit introuvable : {{code}}",
+      "requiresVariant": "Choisissez une variante avant d'ajouter ce produit"
+    },
     "loading": "Chargement…",
     "noProductsFound": "Aucun produit trouvé correspondant à votre recherche",
     "noProductsAvailable": "Aucun produit disponible",
     "noServicesFound": "Aucun service trouvé correspondant à votre recherche",
     "noServicesAvailable": "Aucun service disponible",
     "product": "Produit",
+    "productImagePlaceholder": "Aucune image produit",
     "price": "Prix"
   },
   "orders": {

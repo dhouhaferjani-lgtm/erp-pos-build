@@ -1,302 +1,280 @@
-import { useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { PackageSearch, Search } from 'lucide-react'
-import { apiGet } from '@/lib/api'
-import { useDebouncedValue } from '@/lib/hooks'
-import { tenantScopedKey } from '@/lib/tenantScopedKey'
-import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
-import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
-import type { ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
+import { Search, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { api } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
+import { borderColors, colors, textColors, tokens } from '../../../lib/designTokens'
+import { useBarcodeScanner } from '../../../hooks/useBarcodeScanner'
+import { ProductCell } from './ProductCell'
+import { useProductLineLookup, type ProductLineLookupOutcome, type ProductLineProduct } from './useProductLineLookup'
 
-export interface LineEntryVariantValue {
-  id: string
-  sku?: string | null
-  name_suffix?: string | null
+interface ProductsResponse {
+  data: ProductLineProduct[]
 }
 
-export interface LineEntryAddRequest {
-  product: ProductPickerValue
-  variantId: string | null
-  source: 'search' | 'scan' | 'variant-chooser'
-  code?: string | undefined
-  matchedCodeType?: string | undefined
-}
+export type LineEntryMatchedCodeType = 'product_barcode' | 'product_sku' | 'variant_barcode' | 'variant_sku'
 
-export interface LineEntryVariantChoiceRequest {
-  product: ProductPickerValue
-  variants: LineEntryVariantValue[]
-  code?: string | undefined
-  matchedCodeType?: string | undefined
-}
-
-type ResolveCodeResponse =
-  | {
-      kind: 'product'
-      product: ProductPickerValue
-      matched_code_type?: string
-    }
-  | {
-      kind: 'variant'
-      product: ProductPickerValue
-      variant: LineEntryVariantValue
-      matched_code_type?: string
-    }
-  | {
-      kind: 'requires_variant'
-      product: ProductPickerValue
-      variants: LineEntryVariantValue[]
-      matched_code_type?: string
-    }
-  | {
-      kind: 'multiple'
-      candidates?: ProductPickerValue[]
-      matched_code_type?: string
-    }
-  | {
-      kind: 'not_found'
-      matched_code_type?: string
-    }
-
-interface ProductListResponse {
-  data: ProductPickerValue[]
-}
-
-export interface LineItemEntryBarLabels {
-  search: string
-  browseCatalog: string
-  loading: string
-  empty: string
+export interface LineItemEntryAddMeta {
+  source: 'search' | 'scan'
+  incrementBy: number
+  variantId?: string | null
+  code?: string
+  matchedCodeType?: LineEntryMatchedCodeType
 }
 
 export interface LineItemEntryBarProps {
-  labels: LineItemEntryBarLabels
-  context?: 'document' | 'transfer'
-  sourceLocationId?: string
-  productType?: 'part' | 'consumable' | 'good' | 'all'
-  onAddProduct: (request: LineEntryAddRequest) => void
-  onRequiresVariant?: (request: LineEntryVariantChoiceRequest) => void
-  onBeforeAdd?: (source: LineEntryAddRequest['source']) => boolean
-  onBrowseCatalog?: () => void
+  onAddProduct: (product: ProductLineProduct, meta: LineItemEntryAddMeta) => void
+  onCreateFromCode?: (code: string) => void
+  onRequiresVariant?: (product: ProductLineProduct, code: string) => void
+  onMultipleMatches?: (outcome: ProductLineLookupOutcome) => void
+  /**
+   * Fired when a scanned code resolves to nothing. Distinct from
+   * `onCreateFromCode`: consumers that cannot create products in-context (e.g.
+   * stock transfers) use this to surface an error instead of a create modal.
+   */
   onNotFound?: (code: string) => void
-}
-
-function productLabel(product: ProductPickerValue): string {
-  return `${product.sku} ${product.name}`
+  /**
+   * Transfer-specific guard grafted for the stock-transfer flow: return `false`
+   * to veto a search-add or scan before it happens (e.g. no source location
+   * selected yet). Returning `true`/`undefined` allows the add.
+   */
+  onBeforeAdd?: (source: LineItemEntryAddMeta['source']) => boolean
+  disabled?: boolean
 }
 
 export function LineItemEntryBar({
-  labels,
-  context = 'document',
-  sourceLocationId,
-  productType = 'all',
   onAddProduct,
+  onCreateFromCode,
   onRequiresVariant,
-  onBeforeAdd,
-  onBrowseCatalog,
+  onMultipleMatches,
   onNotFound,
+  onBeforeAdd,
+  disabled = false,
 }: LineItemEntryBarProps) {
-  const inputId = useId()
-  const listboxId = useId()
-  const inputRef = useRef<HTMLInputElement>(null)
+  const { t } = useTranslation(['sales'])
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
-  const [activeIndex, setActiveIndex] = useState(0)
-  const debouncedQuery = useDebouncedValue(query, 250)
-  const trimmedQuery = debouncedQuery.trim()
+  const [highlightedIndex, setHighlightedIndex] = useState(0)
+  const [message, setMessage] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const listboxId = useId()
+  const { enqueueScan } = useProductLineLookup()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
-  const productsQuery = useQuery({
-    queryKey: tenantScopedKey(['line-entry', 'products', productType, trimmedQuery]),
-    enabled: isOpen && trimmedQuery.length > 0,
-    queryFn: () => apiGet<ProductListResponse>('/products', {
-      search: trimmedQuery,
-      per_page: '20',
-      is_active: 'true',
-      ...(productType !== 'all' ? { type: productType } : {}),
-    }),
+  const trimmedQuery = query.trim()
+  const { data: productsData, isLoading } = useQuery({
+    queryKey: tenantScopedKey(['line-entry-products', trimmedQuery]),
+    queryFn: async () => {
+      const response = await api.get<ProductsResponse>('/products', {
+        params: trimmedQuery !== '' ? { search: trimmedQuery } : undefined,
+      })
+      return response.data
+    },
+    enabled: !disabled && isOpen && trimmedQuery !== '' && tenantId !== null && companyId !== null,
+    staleTime: 30000,
   })
 
-  const results = useMemo(() => productsQuery.data?.data ?? [], [productsQuery.data])
+  const products = productsData?.data ?? []
 
-  const resetAfterAdd = (): void => {
+  const focusInput = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus()
+    })
+  }, [])
+
+  const resetAfterAdd = useCallback(() => {
     setQuery('')
     setIsOpen(false)
-    setActiveIndex(0)
-    window.setTimeout(() => inputRef.current?.focus(), 0)
-  }
+    setMessage(null)
+    focusInput()
+  }, [focusInput])
 
-  const addSearchProduct = (product: ProductPickerValue): void => {
+  const addProduct = useCallback((
+    product: ProductLineProduct,
+    source: LineItemEntryAddMeta['source'],
+    incrementBy = 1,
+    variantId: string | null = null,
+    extra: { code?: string; matchedCodeType?: LineEntryMatchedCodeType } = {},
+  ) => {
+    onAddProduct(product, { source, incrementBy, variantId, ...extra })
+    resetAfterAdd()
+  }, [onAddProduct, resetAfterAdd])
+
+  // Search-add commit path. Grafted `onBeforeAdd('search')` guard vetoes the add
+  // (e.g. transfer without a source location) and simply resets the field.
+  const commitSearchAdd = useCallback((product: ProductLineProduct) => {
     if (onBeforeAdd?.('search') === false) {
       resetAfterAdd()
       return
     }
-    onAddProduct({ product, variantId: null, source: 'search' })
-    resetAfterAdd()
-  }
+    addProduct(product, 'search')
+  }, [addProduct, onBeforeAdd, resetAfterAdd])
 
-  const handleScan = async (code: string): Promise<void> => {
-    if (onBeforeAdd?.('scan') === false) {
+  const handleLookupOutcome = useCallback((outcome: ProductLineLookupOutcome, code: string) => {
+    const incrementBy = outcome.incrementBy ?? 1
+
+    if (outcome.kind === 'product') {
+      if (outcome.product.has_variants === true) {
+        setMessage(t('sales:lineItems.entry.requiresVariant'))
+        onRequiresVariant?.(outcome.product, code)
+        return
+      }
+      addProduct(outcome.product, 'scan', incrementBy, null, { code, matchedCodeType: outcome.matched_code_type })
       return
     }
 
-    const response = await apiGet<ResolveCodeResponse>('/line-entry/resolve-code', {
-      code,
-      context,
-      ...(sourceLocationId !== undefined && sourceLocationId !== '' ? { source_location_id: sourceLocationId } : {}),
+    if (outcome.kind === 'variant') {
+      addProduct(outcome.product, 'scan', incrementBy, outcome.variant.id, { code, matchedCodeType: outcome.matched_code_type })
+      return
+    }
+
+    if (outcome.kind === 'multiple') {
+      onMultipleMatches?.(outcome)
+      return
+    }
+
+    setMessage(t('sales:lineItems.entry.productNotFound', { code: outcome.code }))
+    onNotFound?.(outcome.code)
+    onCreateFromCode?.(outcome.code)
+  }, [addProduct, onCreateFromCode, onMultipleMatches, onNotFound, onRequiresVariant, t])
+
+  const resolveScan = useCallback((code: string) => {
+    const trimmed = code.trim()
+    if (trimmed === '') return
+
+    // Grafted scan guard: veto before we ever hit the code resolver so a
+    // transfer without a source never fires a resolve-code request.
+    if (onBeforeAdd?.('scan') === false) return
+
+    void enqueueScan(trimmed).then((outcome) => {
+      handleLookupOutcome(outcome, trimmed)
     })
-
-    if (response.kind === 'product') {
-      onAddProduct({
-        product: response.product,
-        variantId: null,
-        source: 'scan',
-        code,
-        matchedCodeType: response.matched_code_type,
-      })
-      return
-    }
-
-    if (response.kind === 'variant') {
-      onAddProduct({
-        product: response.product,
-        variantId: response.variant.id,
-        source: 'scan',
-        code,
-        matchedCodeType: response.matched_code_type,
-      })
-      return
-    }
-
-    if (response.kind === 'requires_variant') {
-      onRequiresVariant?.({
-        product: response.product,
-        variants: response.variants,
-        code,
-        matchedCodeType: response.matched_code_type,
-      })
-      return
-    }
-
-    if (response.kind === 'not_found') {
-      onNotFound?.(code)
-    }
-  }
+  }, [enqueueScan, handleLookupOutcome, onBeforeAdd])
 
   useBarcodeScanner({
-    onScan: (code) => {
-      void handleScan(code)
-    },
+    enabled: !disabled,
+    ignoreInputElements: true,
+    onScan: resolveScan,
   })
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setIsOpen(true)
-      setActiveIndex((index) => Math.min(index + 1, Math.max(results.length - 1, 0)))
+      setHighlightedIndex((current) => Math.min(current + 1, Math.max(products.length - 1, 0)))
       return
     }
+
     if (event.key === 'ArrowUp') {
       event.preventDefault()
-      setActiveIndex((index) => Math.max(index - 1, 0))
+      setHighlightedIndex((current) => Math.max(current - 1, 0))
       return
     }
+
     if (event.key === 'Escape') {
       event.preventDefault()
       setIsOpen(false)
       return
     }
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      if (results.length > 0) {
-        const product = results[Math.min(activeIndex, results.length - 1)]
-        addSearchProduct(product)
-      }
+
+    if (event.key !== 'Enter' && event.key !== 'Tab') return
+
+    if (trimmedQuery === '') {
+      if (event.key === 'Enter') event.preventDefault()
+      return
     }
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (isOpen && products.length > 0) {
+      commitSearchAdd(products[highlightedIndex] ?? products[0])
+      return
+    }
+
+    resolveScan(trimmedQuery)
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-col gap-2 md:flex-row">
-        <div className="relative flex-1">
-          <label htmlFor={inputId} className="sr-only">
-            {labels.search}
-          </label>
-          <Search className={`pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 ${textColors.tertiary}`} />
-          <input
-            ref={inputRef}
-            id={inputId}
-            type="text"
-            role="combobox"
-            aria-label={labels.search}
-            aria-autocomplete="list"
-            aria-controls={listboxId}
-            aria-expanded={isOpen}
-            className={`${tokens.input.base} ps-9`}
-            placeholder={labels.search}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value)
-              setIsOpen(true)
+    <div className="relative w-full">
+      <div className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colors.white} px-3 py-2`}>
+        <Search className={`h-4 w-4 shrink-0 ${textColors.disabled}`} aria-hidden="true" />
+        <input
+          ref={inputRef}
+          type="text"
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-controls={isOpen && trimmedQuery !== '' ? listboxId : undefined}
+          aria-label={t('sales:lineItems.entry.placeholder')}
+          placeholder={t('sales:lineItems.entry.placeholder')}
+          value={query}
+          disabled={disabled}
+          onFocus={() => {
+            setIsOpen(true)
+          }}
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setIsOpen(true)
+            setHighlightedIndex(0)
+            setMessage(null)
+          }}
+          onKeyDown={handleKeyDown}
+          className={`min-w-0 flex-1 border-0 bg-transparent p-0 text-sm ${textColors.primary} placeholder:${textColors.disabled} focus:outline-none focus:ring-0`}
+        />
+        {query !== '' && (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery('')
+              setMessage(null)
+              focusInput()
             }}
-            onFocus={() => {
-              if (query.trim() !== '') {
-                setIsOpen(true)
-              }
-            }}
-            onKeyDown={handleKeyDown}
-          />
-          {isOpen ? (
-            <div
-              id={listboxId}
-              role="listbox"
-              className={`absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
-            >
-              {productsQuery.isLoading ? (
-                <div className={`px-3 py-2 text-sm ${textColors.tertiary}`}>{labels.loading}</div>
-              ) : results.length === 0 ? (
-                <div className={`px-3 py-2 text-sm ${textColors.tertiary}`}>{labels.empty}</div>
-              ) : (
-                results.map((product, index) => {
-                  const active = index === activeIndex
-                  return (
-                    <button
-                      key={product.id}
-                      type="button"
-                      role="option"
-                      aria-selected={active}
-                      aria-label={productLabel(product)}
-                      className={`flex w-full items-center gap-3 px-3 py-2 text-start ${
-                        active ? colors.primary[50] : `${colors.white} ${colors.hover.gray50}`
-                      }`}
-                      onMouseEnter={() => {
-                        setActiveIndex(index)
-                      }}
-                      onClick={() => {
-                        addSearchProduct(product)
-                      }}
-                    >
-                      <span className={`${tokens.table.cellMonoBadge} max-w-28 truncate whitespace-nowrap`}>
-                        {product.sku}
-                      </span>
-                      <span className={`min-w-0 flex-1 truncate text-sm font-medium ${textColors.primary}`}>
-                        {product.name}
-                      </span>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          disabled={onBrowseCatalog === undefined}
-          onClick={onBrowseCatalog}
-          className={`inline-flex items-center justify-center rounded-md border ${borderColors.default} bg-white px-3 py-2 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50} disabled:cursor-not-allowed disabled:opacity-50`}
-        >
-          <PackageSearch className="me-2 h-4 w-4" aria-hidden />
-          {labels.browseCatalog}
-        </button>
+            className={`${textColors.disabled} ${textColors.hoverSecondary}`}
+            aria-label={t('common:clear')}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
+
+      {message !== null && (
+        <p className={tokens.helperText.base}>{message}</p>
+      )}
+
+      {isOpen && trimmedQuery !== '' && (
+        <div className={`absolute start-0 top-full z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-md border ${borderColors.light} ${colors.white} shadow-lg`}>
+          {isLoading ? (
+            <div className={`p-3 text-sm ${textColors.disabled}`}>{t('sales:lineItems.loading')}</div>
+          ) : products.length === 0 ? (
+            <div className={`p-3 text-sm ${textColors.disabled}`}>{t('sales:lineItems.noProductsFound')}</div>
+          ) : (
+            <ul id={listboxId} className={`divide-y ${borderColors.divideLight}`}>
+              {products.map((product, index) => (
+                <li key={product.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={index === highlightedIndex}
+                    aria-label={`${product.sku ?? ''} ${product.name}`.trim()}
+                    onMouseEnter={() => {
+                      setHighlightedIndex(index)
+                    }}
+                    onClick={() => {
+                      commitSearchAdd(product)
+                    }}
+                    className={`w-full px-3 py-2 ${index === highlightedIndex ? colors.neutral[50] : colors.white} ${colors.hover.gray50}`}
+                  >
+                    <ProductCell product={product} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 }

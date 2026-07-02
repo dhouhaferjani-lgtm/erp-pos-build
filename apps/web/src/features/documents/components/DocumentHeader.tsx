@@ -89,7 +89,7 @@ export function DocumentHeader({
 
   // Helper functions for translated labels
   const getTypeLabel = (type: string) => t(`documents.types.${type}`, type)
-  const getStatusLabel = (status: string) => t(`documents.statuses.${status}`, status)
+  const getStatusLabel = (status: string) => t(`sales:documents.statuses.${status}`, status)
 
   // Determine if document has been converted
   const isAlreadyConverted = document.converted_to_order_id != null

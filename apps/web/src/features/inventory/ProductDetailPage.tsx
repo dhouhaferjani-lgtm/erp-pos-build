@@ -25,10 +25,14 @@ import {
 import { ProductMovementsTab } from './components/ProductMovementsTab'
 import { ProductDocumentsTab } from './components/ProductDocumentsTab'
 import { useProductRealtime } from '../products/hooks/useProductRealtime'
-import { ProductPrimaryImageDisplay } from '../products/components'
 import { ProductStockLevels } from './components'
 import { useTaxConfigName } from '../../hooks/useTaxConfigName'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
+import { ProductHero } from '../products/editor/components/ProductHero'
+import {
+  PRODUCT_DETAIL_SECTIONS,
+  type EditorSectionRendererRegistry,
+} from '../products/editor/viewSections'
 
 interface Product {
   id: string
@@ -44,6 +48,10 @@ interface Product {
   unit: string | null
   barcode: string | null
   is_active: boolean
+  primary_image_url?: string | null
+  stock_quantity?: string | null
+  brand?: { id?: string; name: string; source?: string | null } | null
+  category?: { id?: string; name: string } | null
   oem_numbers: string[] | null
   cross_references: { brand: string; reference: string }[] | null
   created_at: string
@@ -100,7 +108,7 @@ export function ProductDetailPage() {
 
   // Subscribe to real-time product cost/price updates
   useProductRealtime({
-    productId: id || '',
+    productId: id ?? '',
     enabled: !!id,
   })
 
@@ -175,16 +183,166 @@ export function ProductDetailPage() {
   }
 
   const product = data
-  const productMargin = product.sale_price && product.cost_price
+  const productMargin = product.sale_price !== null && product.cost_price !== null
     ? bcsub(product.sale_price, product.cost_price, 3)
     : null
-  const productMarginPercent = product.sale_price && product.cost_price && bccomp(product.cost_price, '0') > 0
+  const productMarginPercent = product.sale_price !== null && product.cost_price !== null && bccomp(product.cost_price, '0') > 0
     ? bcmul(
       bcdiv(bcsub(product.sale_price, product.cost_price, 4), product.cost_price, 4),
       '100',
       1,
     )
     : null
+  const hasAutomotiveData = (product.oem_numbers?.length ?? 0) > 0 || (product.cross_references?.length ?? 0) > 0
+  const sectionGateCtx = { isOtospex, hasAutomotiveData }
+  const metadataSection = (
+    <div className={cn('rounded-lg border bg-white', borderColors.light)}>
+      <div className={cn('border-b px-6 py-4', borderColors.light)}>
+        <h3 className={cn('text-base font-semibold', textColors.primary)}>{t('products.sections.metadata')}</h3>
+      </div>
+      <div className={cn('divide-y px-6', borderColors.divideLight)}>
+        <div className="grid grid-cols-2 gap-x-6 py-3">
+          <div>
+            <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.created')}</div>
+            <div className={cn('mt-1 text-sm', textColors.primary)}>{formatDate(product.created_at)}</div>
+          </div>
+          {product.updated_at && (
+            <div>
+              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.lastUpdated')}</div>
+              <div className={cn('mt-1 text-sm', textColors.primary)}>{formatDate(product.updated_at)}</div>
+            </div>
+          )}
+        </div>
+        <div className="py-3">
+          <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.productId')}</div>
+          <div className={cn('mt-1 font-mono text-xs', textColors.tertiary)}>{product.id}</div>
+        </div>
+      </div>
+    </div>
+  )
+  const sectionRenderers: EditorSectionRendererRegistry<typeof sectionGateCtx> = {
+    'product-information': () => (
+      <div className={cn('rounded-lg border bg-white', borderColors.light)}>
+        <div className={cn('border-b px-6 py-4', borderColors.light)}>
+          <h2 className={cn('text-base font-semibold', textColors.primary)}>{t('products.productInformation')}</h2>
+        </div>
+        <div className={cn('divide-y', borderColors.divideLight)}>
+          {product.description && (
+            <div className="px-6 py-3">
+              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.description')}</div>
+              <div className={cn('mt-1 text-sm', textColors.primary)}>{product.description}</div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-x-6 px-6 py-3">
+            <div>
+              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.unit')}</div>
+              <div className={cn('mt-1 text-sm font-medium', textColors.primary)}>{product.unit ?? '-'}</div>
+            </div>
+            {product.barcode && (
+              <div>
+                <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.barcode')}</div>
+                <div className={cn('mt-1 font-mono text-sm font-medium', textColors.primary)}>{product.barcode}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    ),
+    pricing: () => (
+      <div className={cn('rounded-lg border bg-white', borderColors.light)}>
+        <div className={cn('border-b px-6 py-4', borderColors.light)}>
+          <h2 className={cn('text-base font-semibold', textColors.primary)}>{t('products.sections.pricing')}</h2>
+        </div>
+        <div className={cn('divide-y', borderColors.divideLight)}>
+          <div className="grid grid-cols-3 gap-x-6 px-6 py-3">
+            <div>
+              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.salePrice')}</div>
+              <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{formatAmount(product.sale_price)}</div>
+            </div>
+            <div>
+              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.costWac')}</div>
+              <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{formatAmount(product.cost_price)}</div>
+            </div>
+            <div>
+              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.fields.taxRate')}</div>
+              <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{taxConfigName ?? (product.tax_rate ? `${product.tax_rate}%` : '-')}</div>
+            </div>
+          </div>
+          {productMargin !== null && (
+            <div className="px-6 py-3">
+              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.margin')}</div>
+              <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>
+                {formatAmount(productMargin)}
+                {productMarginPercent !== null && (
+                  <span className={cn('ms-2 text-sm font-normal', textColors.tertiary)}>
+                    ({productMarginPercent}%)
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    ),
+    'stock-levels': () => (
+      <ProductStockLevels
+        productId={product.id}
+        costPrice={product.cost_price}
+        currency={companyCurrency}
+        locale={companyLocale}
+      />
+    ),
+    automotive: () => (
+      <div className={tokens.card.base}>
+        <h3 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
+          <Tag className={cn('h-5 w-5', textColors.disabled)} />
+          {t('products.sections.automotiveInfo')}
+        </h3>
+        <div className="space-y-4">
+          {product.oem_numbers && product.oem_numbers.length > 0 && (
+            <div>
+              <label className={cn('text-sm font-medium', textColors.tertiary)}>{t('products.oemNumbers')}</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {product.oem_numbers.map((oem) => (
+                  <span key={oem} className={cn(tokens.table.cellMonoBadge, 'font-normal', textColors.secondary)}>
+                    {oem}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {product.cross_references && product.cross_references.length > 0 && (
+            <div>
+              <label className={cn('text-sm font-medium', textColors.tertiary)}>{t('products.crossReferences')}</label>
+              <div className={cn('mt-2 overflow-hidden rounded-lg border', borderColors.light)}>
+                <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+                  <thead className={tokens.table.header}>
+                    <tr>
+                      <th className={cn('px-4 py-2 text-start text-xs font-medium uppercase', textColors.tertiary)}>
+                        {t('products.brand')}
+                      </th>
+                      <th className={cn('px-4 py-2 text-start text-xs font-medium uppercase', textColors.tertiary)}>
+                        {t('products.reference')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className={cn('divide-y', borderColors.divideDefault)}>
+                    {product.cross_references.map((ref, index) => (
+                      <tr key={index}>
+                        <td className={cn('px-4 py-2 text-sm', textColors.primary)}>{ref.brand}</td>
+                        <td className={cn('px-4 py-2 text-sm font-mono', textColors.tertiary)}>{ref.reference}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    ),
+    metadata: () => metadataSection,
+  }
 
   const backLink = (
     <Link
@@ -246,197 +404,22 @@ export function ProductDetailPage() {
 
         {/* Details Tab */}
         <TabsContent value="details" className="mt-6">
-          {/* Top Section: Image + Key Info */}
-          <div className="mb-6 grid gap-6 lg:grid-cols-[280px_1fr]">
-            {/* Left: Product Image */}
-            <div>
-              <ProductPrimaryImageDisplay productId={product.id} />
-            </div>
-
-            {/* Right: Essential Info - Clean Data Table */}
+          <div className="space-y-6">
+            <ProductHero
+              product={product}
+              currency={companyCurrency}
+              locale={companyLocale}
+            />
             <div className="space-y-6">
-              {/* Product Information */}
-              <div className={cn('rounded-lg border bg-white', borderColors.light)}>
-                <div className={cn('border-b px-6 py-4', borderColors.light)}>
-                  <h2 className={cn('text-base font-semibold', textColors.primary)}>{t('products.productInformation')}</h2>
-                </div>
-                <div className={cn('divide-y', borderColors.divideLight)}>
-                  {product.description && (
-                    <div className="px-6 py-3">
-                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.description')}</div>
-                      <div className={cn('mt-1 text-sm', textColors.primary)}>{product.description}</div>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-x-6 px-6 py-3">
-                    <div>
-                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.unit')}</div>
-                      <div className={cn('mt-1 text-sm font-medium', textColors.primary)}>{product.unit ?? '-'}</div>
-                    </div>
-                    {product.barcode && (
-                      <div>
-                        <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.barcode')}</div>
-                        <div className={cn('mt-1 font-mono text-sm font-medium', textColors.primary)}>{product.barcode}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Pricing */}
-              <div className={cn('rounded-lg border bg-white', borderColors.light)}>
-                <div className={cn('border-b px-6 py-4', borderColors.light)}>
-                  <h2 className={cn('text-base font-semibold', textColors.primary)}>{t('products.sections.pricing')}</h2>
-                </div>
-                <div className={cn('divide-y', borderColors.divideLight)}>
-                  <div className="grid grid-cols-3 gap-x-6 px-6 py-3">
-                    <div>
-                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.salePrice')}</div>
-                      <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{formatAmount(product.sale_price)}</div>
-                    </div>
-                    <div>
-                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.costWac')}</div>
-                      <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{formatAmount(product.cost_price)}</div>
-                    </div>
-                    <div>
-                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.fields.taxRate')}</div>
-                      <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{taxConfigName ?? (product.tax_rate ? `${product.tax_rate}%` : '-')}</div>
-                    </div>
-                  </div>
-                  {productMargin !== null && (
-                    <div className="px-6 py-3">
-                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.margin')}</div>
-                      <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>
-                        {formatAmount(productMargin)}
-                        {productMarginPercent !== null && (
-                          <span className={cn('ml-2 text-sm font-normal', textColors.tertiary)}>
-                            ({productMarginPercent}%)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Stock Levels */}
-              <ProductStockLevels
-                productId={product.id}
-                costPrice={product.cost_price}
-                currency={companyCurrency}
-                locale={companyLocale}
-              />
+              {PRODUCT_DETAIL_SECTIONS
+                .filter((section) => section.when?.(sectionGateCtx) ?? true)
+                .map((section) => (
+                  <section key={section.id} id={section.id}>
+                    {sectionRenderers[section.component](sectionGateCtx)}
+                  </section>
+                ))}
             </div>
           </div>
-
-          {/* Secondary Sections - Below the fold */}
-          {isOtospex && (product.oem_numbers?.length || product.cross_references?.length) ? (
-            <div className="grid gap-6 lg:grid-cols-3">
-              {/* Automotive Info */}
-              <div className="lg:col-span-2">
-                <div className={tokens.card.base}>
-                  <h3 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
-                    <Tag className={cn('h-5 w-5', textColors.disabled)} />
-                    {t('products.sections.automotiveInfo')}
-                  </h3>
-                  <div className="space-y-4">
-                    {product.oem_numbers && product.oem_numbers.length > 0 && (
-                      <div>
-                        <label className={cn('text-sm font-medium', textColors.tertiary)}>{t('products.oemNumbers')}</label>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {product.oem_numbers.map((oem, index) => (
-                            <span
-                              key={index}
-                              className={cn(tokens.table.cellMonoBadge, 'font-normal', textColors.secondary)}
-                            >
-                              {oem}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {product.cross_references && product.cross_references.length > 0 && (
-                      <div>
-                        <label className={cn('text-sm font-medium', textColors.tertiary)}>{t('products.crossReferences')}</label>
-                        <div className={cn('mt-2 overflow-hidden rounded-lg border', borderColors.light)}>
-                          <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
-                            <thead className={tokens.table.header}>
-                              <tr>
-                                <th className={cn('px-4 py-2 text-start text-xs font-medium uppercase', textColors.tertiary)}>
-                                  {t('products.brand')}
-                                </th>
-                                <th className={cn('px-4 py-2 text-start text-xs font-medium uppercase', textColors.tertiary)}>
-                                  {t('products.reference')}
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className={cn('divide-y', borderColors.divideDefault)}>
-                              {product.cross_references.map((ref, index) => (
-                                <tr key={index}>
-                                  <td className={cn('px-4 py-2 text-sm', textColors.primary)}>{ref.brand}</td>
-                                  <td className={cn('px-4 py-2 text-sm font-mono', textColors.tertiary)}>
-                                    {ref.reference}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Metadata Sidebar */}
-              <div className={cn('rounded-lg border bg-white', borderColors.light)}>
-                <div className={cn('border-b px-6 py-4', borderColors.light)}>
-                  <h3 className={cn('text-base font-semibold', textColors.primary)}>{t('products.sections.metadata')}</h3>
-                </div>
-                <div className={cn('divide-y px-6', borderColors.divideLight)}>
-                  <div className="grid grid-cols-1 gap-y-3 py-3">
-                    <div>
-                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.created')}</div>
-                      <div className={cn('mt-1 text-sm', textColors.primary)}>{formatDate(product.created_at)}</div>
-                    </div>
-                    {product.updated_at && (
-                      <div>
-                        <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.lastUpdated')}</div>
-                        <div className={cn('mt-1 text-sm', textColors.primary)}>{formatDate(product.updated_at)}</div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="py-3">
-                    <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.productId')}</div>
-                    <div className={cn('mt-1 font-mono text-xs', textColors.tertiary)}>{product.id}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className={cn('rounded-lg border bg-white', borderColors.light)}>
-              <div className={cn('border-b px-6 py-4', borderColors.light)}>
-                <h3 className={cn('text-base font-semibold', textColors.primary)}>{t('products.sections.metadata')}</h3>
-              </div>
-              <div className={cn('divide-y px-6', borderColors.divideLight)}>
-                <div className="grid grid-cols-2 gap-x-6 py-3">
-                  <div>
-                    <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.created')}</div>
-                    <div className={cn('mt-1 text-sm', textColors.primary)}>{formatDate(product.created_at)}</div>
-                  </div>
-                  {product.updated_at && (
-                    <div>
-                      <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.lastUpdated')}</div>
-                      <div className={cn('mt-1 text-sm', textColors.primary)}>{formatDate(product.updated_at)}</div>
-                    </div>
-                  )}
-                </div>
-                <div className="py-3">
-                  <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.productId')}</div>
-                  <div className={cn('mt-1 font-mono text-xs', textColors.tertiary)}>{product.id}</div>
-                </div>
-              </div>
-            </div>
-          )}
         </TabsContent>
 
         {/* Inventory Movements Tab */}

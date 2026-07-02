@@ -40,6 +40,13 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
+use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
+use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Domain\CurrencyScale;
 use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Support\Collection;
@@ -400,6 +407,11 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             $this->seedTunisiaPurchaseOrders($this->company, $this->location);
 
             $this->seedTunisiaTransfers($this->company, $this->location, $this->shops);
+
+            // Recent trading activity: customer sales invoices + payments over the
+            // last 30 days so the dashboard revenue / invoices / payments KPIs and
+            // "Documents récents" show plausible numbers instead of zeros.
+            $this->seedTunisiaSalesInvoices($this->company, $this->shops);
         });
     }
 
@@ -704,6 +716,11 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                     'status' => UserStatus::Active,
                     'email_verified_at' => now(),
                     'preferences' => [],
+                    // POS discount authority — mirrors the parent's cashier
+                    // (createTestUsers): limited 10% discount, anything higher
+                    // requires a manager-PIN override at the terminal.
+                    'can_discount' => true,
+                    'max_discount_percent' => '10.00',
                 ],
             );
 
@@ -724,7 +741,14 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                 $user->assignRole($cashierRole);
             }
 
-            $user->update(['pos_pin' => Hash::make($def['pin'])]);
+            // Also set on update so a re-run backfills the discount authority
+            // onto cashier rows created before this field was seeded
+            // (firstOrCreate does not touch existing rows).
+            $user->update([
+                'pos_pin' => Hash::make($def['pin']),
+                'can_discount' => true,
+                'max_discount_percent' => '10.00',
+            ]);
         }
     }
 
@@ -1037,5 +1061,285 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         $transferService->initiate($data3);
         // Intentionally NOT completed — status remains in_transit.
         $this->command->info('✓ DEMO-TR-0003 — warehouse → '.$shop2->code.' (in_transit)');
+    }
+
+    /**
+     * Seed recent customer SALES INVOICES + payments for the Tunisia demo.
+     *
+     * WHY: the rest of the seeder provisions catalogue, partners, POs, transfers
+     * and a GL-consistent partner balance set — but NO sales invoices or customer
+     * payments. That leaves the dashboard revenue / invoices / payments KPIs and
+     * the "Documents récents" list at zero, contradicting the seeded GL trial
+     * balance (which already shows sales). This method fills that gap with ~10
+     * customer invoices spread over the last 30 days.
+     *
+     * SHAPE — driven by DashboardController::stats() which reads:
+     *   - revenue      = SUM(total) of Invoices with status=Posted, per document_date month.
+     *   - payments     = SUM(amount) of completed INCOMING payments, per payment_date month.
+     *   So a fully-PAID invoice (status Paid) drops OUT of the revenue KPI; only
+     *   Posted invoices count. We therefore seed a realistic MIX: most invoices stay
+     *   Posted (unpaid or partially paid → drive revenue + AR) and a few are fully
+     *   Paid (→ drive payments-received). At least one Posted invoice is dated in the
+     *   current month and one before it, so both the current and previous revenue
+     *   figures are non-zero; the current-month partial payments light up
+     *   payments-received.
+     *
+     * COHERENCE: uses four DEDICATED demo customers (CUST-SALE-0{1..4}) so the
+     * GL-consistent CUST-DEBTOR-01 / SUPP-PAYABLE-01 balances seeded by
+     * {@see seedTunisiaBalances()} are never touched.
+     *
+     * PATTERN: mirrors {@see seedTunisiaPurchaseOrders()} — documents and lines are
+     * hand-built via Eloquent with all money/quantity as scale-3/scale-4 strings and
+     * bcmath arithmetic (no floats). Payments mirror the columns
+     * the Treasury `PaymentController::store()`
+     * writes (status Completed, incoming DocumentPayment, ledgered repository) plus a
+     * PaymentAllocation row linking payment → invoice. balance_due and Paid status are
+     * set explicitly here so the fixture is deterministic on both PostgreSQL (where a
+     * trigger also maintains balance_due) and the SQLite test database (no trigger).
+     *
+     * Additive guard: skips entirely if any DEMO-INV-* documents already exist so
+     * double-run / CI re-runs are safe no-ops.
+     *
+     * @param  Location[]  $shops
+     */
+    protected function seedTunisiaSalesInvoices(Company $company, array $shops): void
+    {
+        // Additive guard — skip if already seeded.
+        if (Document::where('document_number', 'like', 'DEMO-INV-%')->exists()) {
+            $this->command->info('Sales invoices already seeded — skipping seedTunisiaSalesInvoices().');
+
+            return;
+        }
+
+        if (count($shops) < 1) {
+            $this->command->warn('No shops found — skipping seedTunisiaSalesInvoices().');
+
+            return;
+        }
+
+        $tenantId = $company->tenant_id;
+        $companyId = $company->id;
+
+        // Bind CompanyContext so any downstream scale resolution has the TND company
+        // (canonical seeder pattern — same as seedTunisiaPurchaseOrders / Transfers).
+        /** @var CompanyContext $companyCtx */
+        $companyCtx = $this->container->make(CompanyContext::class);
+        $companyCtx->setCompanyId($companyId);
+
+        // Products that carry a sale price, deterministic order for reproducibility.
+        /** @var Collection<int, Product> $catalog */
+        $catalog = Product::where('company_id', $companyId)
+            ->where('is_physical', true)
+            ->whereNotNull('sale_price')
+            ->where('sale_price', '>', 0)
+            ->orderBy('id')
+            ->take(24)
+            ->get();
+
+        if ($catalog->count() < 1) {
+            $this->command->warn('No priced products — skipping seedTunisiaSalesInvoices().');
+
+            return;
+        }
+
+        // Owner user records the payments (created_by).
+        $domain = $this->localeUserEmailDomain();
+        $owner = User::where('email', "owner@{$domain}")->first();
+
+        // Ledgered cash repository + a payment method for the real payment path.
+        $repository = PaymentRepository::where('company_id', $companyId)
+            ->whereNotNull('gl_account_id')
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->first();
+
+        $paymentMethod = PaymentMethod::where('company_id', $companyId)
+            ->where('is_active', true)
+            ->orderByRaw("CASE WHEN code = 'CASH' THEN 0 ELSE 1 END")
+            ->first();
+
+        $canRecordPayments = $owner !== null && $repository !== null && $paymentMethod !== null;
+        if (! $canRecordPayments) {
+            $this->command->warn('Owner/repository/payment-method missing — seeding invoices unpaid only.');
+        }
+
+        // Four dedicated demo customers (kept apart from CUST-DEBTOR-01).
+        $customerDefs = [
+            ['code' => 'CUST-SALE-01', 'name' => 'Parapharmacie El Manar'],
+            ['code' => 'CUST-SALE-02', 'name' => 'Clinique Ennasr'],
+            ['code' => 'CUST-SALE-03', 'name' => 'Cabinet Dr. Ben Salah'],
+            ['code' => 'CUST-SALE-04', 'name' => 'Résidence Les Oliviers'],
+        ];
+        $customers = [];
+        foreach ($customerDefs as $i => $def) {
+            $customers[] = Partner::firstOrCreate(
+                ['company_id' => $companyId, 'code' => $def['code']],
+                [
+                    'tenant_id' => $tenantId,
+                    'name' => $def['name'],
+                    'type' => PartnerType::Customer,
+                    'email' => 'contact'.($i + 1).'@demo-clients.tn',
+                    'country_code' => 'TN',
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        // Invoice plan: [daysAgo, lineCount, state]. state ∈ unpaid|partial|paid.
+        // daysAgo 0/1 land in the current month (today 02/07) → current-month revenue;
+        // the rest land in the previous month → previous-month revenue.
+        $plan = [
+            [0, 2, 'unpaid'],
+            [0, 3, 'partial'],
+            [1, 1, 'partial'],
+            [4, 2, 'unpaid'],
+            [7, 4, 'paid'],
+            [10, 2, 'partial'],
+            [14, 3, 'paid'],
+            [18, 1, 'unpaid'],
+            [23, 2, 'paid'],
+            [28, 3, 'unpaid'],
+        ];
+
+        $stampAmount = '1.000';       // Tunisia commercial-invoice timbre fiscal (Art. 117-6°).
+        $vatRate = '0.190';           // TVA 19% (standard rate).
+        $productCursor = 0;
+        $invoiceSeq = 1;
+        $paymentSeq = 1;
+        $postedCount = 0;
+        $paidCount = 0;
+        $paymentCount = 0;
+
+        foreach ($plan as [$daysAgo, $lineCount, $state]) {
+            $documentDate = now()->subDays($daysAgo);
+            $customer = $customers[($invoiceSeq - 1) % count($customers)];
+
+            // --- Build lines from priced catalogue products (deterministic) ---
+            $subtotal = '0.000';
+            $lineTax = '0.000';
+            $lineSpecs = [];
+            for ($l = 0; $l < $lineCount; $l++) {
+                /** @var Product $product */
+                $product = $catalog[$productCursor % $catalog->count()];
+                $productCursor++;
+
+                $qty = (string) (1 + ($l % 3)).'.0000';                 // 1–3 units, scale 4.
+                $unitPrice = CurrencyScale::bcformat((string) $product->sale_price, 3);
+                $lineTotal = bcmul($qty, $unitPrice, 3);                 // net/HT line total.
+                $subtotal = bcadd($subtotal, $lineTotal, 3);
+                $lineTax = bcadd($lineTax, bcmul($lineTotal, $vatRate, 3), 3);
+
+                $lineSpecs[] = [$product, $qty, $unitPrice, $lineTotal];
+            }
+
+            $taxAmount = bcadd($lineTax, $stampAmount, 3);              // line VAT + stamp.
+            $total = bcadd($subtotal, $taxAmount, 3);
+
+            // Payment amount + resulting invoice state.
+            if (! $canRecordPayments) {
+                $state = 'unpaid';
+            }
+            $paidAmount = match ($state) {
+                'paid' => $total,
+                'partial' => bcmul($total, '0.500', 3),
+                default => '0.000',
+            };
+            $balanceDue = bcsub($total, $paidAmount, 3);
+            $status = ($state === 'paid')
+                ? DocumentStatus::Paid
+                : DocumentStatus::Posted;
+
+            $documentNumber = 'DEMO-INV-'.str_pad((string) $invoiceSeq, 4, '0', STR_PAD_LEFT);
+            $locationId = $shops[($invoiceSeq - 1) % count($shops)]->id;
+
+            /** @var Document $invoice */
+            $invoice = Document::create([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'location_id' => $locationId,
+                'partner_id' => $customer->id,
+                'type' => DocumentType::Invoice,
+                'fiscal_category' => FiscalCategory::TaxInvoice,
+                'fiscal_status' => FiscalStatus::Draft,
+                'status' => $status,
+                'document_number' => $documentNumber,
+                'document_date' => $documentDate->toDateString(),
+                'due_date' => $documentDate->copy()->addDays(30)->toDateString(),
+                'currency' => 'TND',
+                'subtotal' => $subtotal,
+                'discount_amount' => CurrencyScale::bcformat(0, 3),
+                'line_tax_amount' => $lineTax,
+                'stamp_duty_amount' => $stampAmount,
+                'tax_amount' => $taxAmount,
+                'total' => $total,
+                'balance_due' => $balanceDue,
+                'is_historical' => false,
+            ]);
+
+            $lineNumber = 1;
+            foreach ($lineSpecs as [$product, $qty, $unitPrice, $lineTotal]) {
+                /** @var Product $product */
+                DocumentLine::create([
+                    'id' => Str::uuid()->toString(),
+                    'document_id' => $invoice->id,
+                    'product_id' => $product->id,
+                    'product_code' => $product->sku ?? $product->barcode,
+                    'line_number' => $lineNumber++,
+                    'description' => $product->name,
+                    'quantity' => $qty,
+                    'quantity_delivered' => '0.0000',
+                    'quantity_received' => '0.0000',
+                    'unit_price' => $unitPrice,
+                    'line_total' => $lineTotal,
+                    'allocated_costs' => CurrencyScale::bcformat(0, 6),
+                    'tax_rate' => '19.00',
+                ]);
+            }
+
+            if ($status === DocumentStatus::Paid) {
+                $paidCount++;
+            } else {
+                $postedCount++;
+            }
+
+            // --- Payment (real Payment + PaymentAllocation rows) ---
+            if ($canRecordPayments && bccomp($paidAmount, '0', 3) === 1) {
+                $paymentReference = 'DEMO-PAY-'.str_pad((string) $paymentSeq, 4, '0', STR_PAD_LEFT);
+
+                /** @var Payment $payment */
+                $payment = Payment::create([
+                    'tenant_id' => $tenantId,
+                    'company_id' => $companyId,
+                    'partner_id' => $customer->id,
+                    'payment_method_id' => $paymentMethod->id,
+                    'repository_id' => $repository->id,
+                    'amount' => $paidAmount,
+                    'currency' => 'TND',
+                    'payment_date' => $documentDate->toDateString(),
+                    'status' => PaymentStatus::Completed,
+                    'payment_type' => PaymentType::DocumentPayment,
+                    'origin' => PaymentOrigin::WebAdmin,
+                    'reference' => $paymentReference,
+                    'notes' => 'Règlement '.$documentNumber,
+                    'created_by' => $owner->id,
+                ]);
+
+                PaymentAllocation::create([
+                    'payment_id' => $payment->id,
+                    'document_id' => $invoice->id,
+                    'amount' => $paidAmount,
+                ]);
+
+                $paymentSeq++;
+                $paymentCount++;
+            }
+
+            $invoiceSeq++;
+        }
+
+        $this->command->info(
+            "✓ Sales invoices seeded: {$postedCount} Posted + {$paidCount} Paid, {$paymentCount} payments."
+        );
     }
 }

@@ -7,12 +7,14 @@ import { useWebSocketConnection } from '../../hooks/useWebSocketConnection'
  * - Green (hidden by default): connected
  * - Amber + pulse: connecting
  * - Red (always visible): disconnected
+ * - Hidden: after we give up reaching an unreachable realtime endpoint, so
+ *   the dot never spins forever when WSS is down (e.g. local dev without Reverb).
  */
 export function ConnectionStatusIndicator() {
   const { t } = useTranslation()
-  const { isConnected, isConnecting } = useWebSocketConnection()
+  const { isConnected, isConnecting, hasGivenUp } = useWebSocketConnection()
 
-  if (isConnected) {
+  if (isConnected || hasGivenUp) {
     return null
   }
 

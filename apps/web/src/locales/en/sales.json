@@ -220,6 +220,7 @@
       "confirmed": "Confirmed",
       "posted": "Posted",
       "paid": "Paid",
+      "received": "Received",
       "cancelled": "Cancelled",
       "partiallyPaid": "Partially Paid",
       "partial": "Partial",
@@ -280,12 +281,19 @@
       "addBlankLine": "Add Blank Line",
       "close": "Close"
     },
+    "entry": {
+      "placeholder": "Search or scan a product…",
+      "browseCatalog": "Browse catalog",
+      "productNotFound": "Product not found: {{code}}",
+      "requiresVariant": "Choose a variant before adding this product"
+    },
     "loading": "Loading…",
     "noProductsFound": "No products found matching your search",
     "noProductsAvailable": "No products available",
     "noServicesFound": "No services found matching your search",
     "noServicesAvailable": "No services available",
     "product": "Product",
+    "productImagePlaceholder": "No product image",
     "price": "Price"
   },
   "orders": {

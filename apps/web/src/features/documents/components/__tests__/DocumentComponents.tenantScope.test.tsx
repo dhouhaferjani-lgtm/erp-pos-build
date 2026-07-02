@@ -14,6 +14,7 @@ import { AdditionalCostsForm } from '../costing/AdditionalCostsForm'
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
 const mockApiDelete = vi.hoisted(() => vi.fn())
+const mockResolveCode = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -24,6 +25,10 @@ vi.mock('@/lib/api', async () => {
       post: mockApiPost,
       delete: mockApiDelete,
     },
+    // The redesigned LineItemEntryBar resolves scanned/typed codes through the
+    // apiGet('/line-entry/resolve-code') wrapper (useProductLineLookup). Stub it so
+    // the "code not found -> open the create-product modal" path is deterministic.
+    apiGet: mockResolveCode,
   }
 })
 
@@ -41,7 +46,9 @@ vi.mock('@/hooks/useCurrency', async () => {
   }
 })
 
-vi.mock('@/components/organisms', () => ({
+// DocumentLineEditor imports AddQuickProductModal via its deep module path (not the
+// barrel), so the mock must target that exact module to intercept it.
+vi.mock('@/components/organisms/AddQuickProductModal/AddQuickProductModal', () => ({
   AddQuickProductModal: ({
     isOpen,
     onSuccess,
@@ -141,18 +148,23 @@ beforeEach(() => {
   vi.clearAllMocks()
   setTenant('tenant-A', 'company-1')
   vi.stubGlobal('confirm', vi.fn(() => true))
-  mockApiGet.mockImplementation(async (url: string) => {
+  mockApiGet.mockImplementation(async (url: string, config?: { params?: { search?: string } }) => {
     if (url.startsWith('/products')) {
+      // The entry bar sends the typed text as params.search. Returning an empty
+      // result set for the sentinel code drives the "not found" scan path below.
+      if (config?.params?.search === 'UNKNOWN-CODE') {
+        return { data: { data: [] } }
+      }
       return { data: { data: [{ id: 'product-1', name: 'Product 1', sku: 'P1', sale_price: 10, tax_rate: 0 }] } }
     }
-    if (url.startsWith('/services')) {
-      return { data: { data: [{ id: 'service-1', name: 'Service 1', code: 'S1', base_price: 20, tax_rate: 0 }] } }
-    }
+    // NOTE: the standalone /services line search was removed from DocumentLineEditor
+    // in the entry-bar redesign, so no /services branch is exercised any more.
     if (url.startsWith('/documents/doc-1/additional-costs')) {
       return { data: { data: [{ id: 'cost-1', cost_type: 'shipping', amount: 5 }] } }
     }
     return { data: { data: [] } }
   })
+  mockResolveCode.mockResolvedValue({ kind: 'not_found', code: 'UNKNOWN-CODE' })
   mockApiPost.mockResolvedValue({ data: { ok: true } })
   mockApiDelete.mockResolvedValue({ data: { ok: true } })
 })
@@ -172,26 +184,42 @@ describe('document component tenant scope', () => {
 
     render(<DocumentLineEditor lines={[]} onChange={onChange} />, { wrapper: wrapper(queryClient) })
 
-    await user.click(screen.getByRole('button', { name: 'sales:lineItems.actions.searchProducts' }))
+    // The old "search products" toggle + product/service dropdown was replaced by the
+    // persistent LineItemEntryBar combobox. Typing into it fires the product read.
+    const searchInput = screen.getByRole('combobox', { name: 'sales:lineItems.entry.placeholder' })
+    await user.type(searchInput, 'Product')
 
+    // A real product fetch fires from the typed query, and the redesigned entry bar
+    // now tenant-scopes its read key: ['line-entry-products', <query>, tenant, company].
     await waitFor(() => {
-      expect(queryClient.getQueryData(['products', '', 'tenant-A', 'company-1'])).toEqual({
+      expect(mockApiGet).toHaveBeenCalledWith('/products', expect.objectContaining({ params: { search: 'Product' } }))
+    })
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['line-entry-products', 'Product', 'tenant-A', 'company-1'])).toEqual({
         data: [{ id: 'product-1', name: 'Product 1', sku: 'P1', sale_price: 10, tax_rate: 0 }],
       })
     })
 
-    await user.click(screen.getByRole('button', { name: 'sales:lineItems.tabs.service' }))
+    // SEMANTIC CHANGE: standalone service line search was removed from
+    // DocumentLineEditor in the entry-bar redesign (no service tab / no /services
+    // read), so the former tenant-scoped ['services', '', tenant, company] read
+    // assertion can no longer be exercised through the new UI.
 
+    // Create-new-product now opens via the entry bar's "code not found" path: type an
+    // unknown code, get an empty result set, press Enter to resolve the code, which
+    // reports not_found and opens the AddQuickProductModal.
+    await user.clear(searchInput)
+    await user.type(searchInput, 'UNKNOWN-CODE')
     await waitFor(() => {
-      expect(queryClient.getQueryData(['services', '', 'tenant-A', 'company-1'])).toEqual({
-        data: [{ id: 'service-1', name: 'Service 1', code: 'S1', base_price: 20, tax_rate: 0 }],
-      })
+      expect(screen.getByText('sales:lineItems.noProductsFound')).toBeInTheDocument()
     })
+    await user.keyboard('{Enter}')
 
-    await user.click(screen.getByRole('button', { name: 'sales:lineItems.tabs.product' }))
-    await user.click(screen.getByRole('button', { name: 'sales:lineItems.actions.createNewProduct' }))
-    await user.click(screen.getByRole('button', { name: 'create-product-success' }))
+    const createButton = await screen.findByRole('button', { name: 'create-product-success' })
+    await user.click(createButton)
 
+    // Product invalidation is still EXACTLY tenant/company scoped (unchanged in the
+    // redesign): only tenant-A/company-1 keys are invalidated, tenant-B/company-2 are not.
     await waitFor(() => {
       expect(queryClient.getQueryState(['products', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
     })
@@ -212,7 +240,8 @@ describe('document component tenant scope', () => {
 
     await user.clear(screen.getByPlaceholderText('0.00'))
     await user.type(screen.getByPlaceholderText('0.00'), '7')
-    await user.click(screen.getByRole('button', { name: /Add Cost/ }))
+    // The previously-hardcoded "Add Cost" label is now a t() key (identity-mocked).
+    await user.click(screen.getByRole('button', { name: /additionalCosts\.addButton/ }))
 
     await waitFor(() => {
       expect(mockApiPost).toHaveBeenCalledWith('/documents/doc-1/additional-costs', expect.objectContaining({ amount: 7 }))
@@ -229,12 +258,25 @@ describe('document component tenant scope', () => {
 
   it('does not fetch document component data without tenant/company state', async () => {
     resetTenant()
+    const user = userEvent.setup()
     const queryClient = createClient()
 
-    render(<DocumentLineEditor lines={[]} onChange={vi.fn()} />, { wrapper: wrapper(queryClient) })
-    await userEvent.click(screen.getByRole('button', { name: 'sales:lineItems.actions.searchProducts' }))
-    render(<AdditionalCostsForm documentId="doc-1" />, { wrapper: wrapper(createClient()) })
+    // AdditionalCostsForm still tenant-gates its read (enabled: tenant && company).
+    // Its query fires on mount if the gate is broken, so mounting it without
+    // tenant/company is the meaningful exercise of "no fetch without tenant/company".
+    render(<AdditionalCostsForm documentId="doc-1" />, { wrapper: wrapper(queryClient) })
 
-    expect(mockApiGet).not.toHaveBeenCalled()
+    // The redesigned LineItemEntryBar product read is now tenant-gated again
+    // (enabled requires tenant !== null && company !== null), so typing into it with
+    // no tenant/company must NOT fire /products.
+    render(<DocumentLineEditor lines={[]} onChange={vi.fn()} />, { wrapper: wrapper(createClient()) })
+
+    const searchInput = screen.getByRole('combobox', { name: 'sales:lineItems.entry.placeholder' })
+    await user.type(searchInput, 'Product')
+
+    // Let any (incorrectly) eager query flush before asserting silence.
+    await waitFor(() => {
+      expect(mockApiGet).not.toHaveBeenCalled()
+    })
   })
 })

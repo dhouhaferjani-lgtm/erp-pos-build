@@ -116,6 +116,7 @@ import arPickers from '../locales/ar/pickers.json'
 import arMenu from '../locales/ar/menu.json'
 import arPartsCatalog from '../locales/ar/parts-catalog.json'
 import arDocuments from '../locales/ar/documents.json'
+import arPos from '../locales/ar/pos.json'
 import arVouchers from '../locales/ar/vouchers.json'
 import arChannels from '../locales/ar/channels.json'
 import arReports from '../locales/ar/reports.json'
@@ -242,6 +243,14 @@ const resources = {
     sales: {
       ...enSales,
       ...arSales,
+      documents: {
+        ...enSales.documents,
+        ...arSales.documents,
+        statuses: {
+          ...enSales.documents.statuses,
+          ...arSales.documents.statuses,
+        },
+      },
       partners: {
         ...enSales.partners,
         ...arSales.partners,
@@ -279,7 +288,11 @@ const resources = {
     products: { ...enProducts, ...arProducts },
     parapharmacy: enParapharmacy,
     batches: enBatches,
-    pos: enPos,
+    pos: {
+      ...enPos,
+      ...arPos,
+      transactions: { ...enPos.transactions, ...arPos.transactions },
+    },
     catalog: enCatalog,
     menu: arMenu,
     promotions: enPromotions,

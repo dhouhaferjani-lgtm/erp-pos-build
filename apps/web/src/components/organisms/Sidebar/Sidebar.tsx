@@ -213,7 +213,9 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       icon: Store,
       permission: 'pos',
       children: [
-        { key: 'openPos', href: '/pos/transactions', icon: Store, permission: 'pos' },
+        // Web new-sale POS is retired — checkout runs in the IziPOS desktop app.
+        // The /pos/transactions route stays registered as a translated info page
+        // for deep links, but is intentionally not surfaced in the web nav.
         { key: 'posOrders', href: '/pos/orders', icon: ClipboardList, permission: 'pos' },
         { key: 'tables', href: '/pos/tables', icon: LayoutGrid, module: 'Tables', permission: 'pos' },
         { key: 'kitchen', href: '/pos/kitchen', icon: ChefHat, module: 'Menu', permission: 'pos' },

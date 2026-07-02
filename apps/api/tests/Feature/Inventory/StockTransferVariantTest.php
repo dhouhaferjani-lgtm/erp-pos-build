@@ -497,6 +497,35 @@ class StockTransferVariantTest extends TestCase
         $this->assertNotSame((int) $batchB->id, (int) $scoped->json('data.0.id'));
     }
 
+    public function test_product_batch_stock_endpoint_returns_per_location_batch_stock(): void
+    {
+        // Regression: the stock-transfer batch picker reads per-source
+        // availability from `batch_stock`. If getByProduct does not eager-load
+        // the batchStock relation, BatchResource omits the array, every source
+        // reads as 0 available, and FEFO can never allocate — silently blocking
+        // batch-tracked transfers.
+        $product = $this->makeBatchProduct();
+        $vA = $this->makeVariantFor($product, 'A');
+        $batch = $this->seedVariantBatch($product, $vA, $this->warehouse, 'LOT-A', now()->addMonths(6)->toDateString(), '5');
+
+        $response = $this->actingAs($this->user)
+            ->getJson("/api/v1/products/{$product->id}/batch-stock");
+
+        $response->assertStatus(200);
+        $this->assertSame((int) $batch->id, (int) $response->json('data.0.id'));
+
+        $batchStock = $response->json('data.0.batch_stock');
+        $this->assertIsArray($batchStock, 'batch_stock array must be present for the transfer picker');
+        $this->assertNotEmpty($batchStock, 'batch_stock must contain the seeded per-location row');
+
+        $warehouseRow = collect($batchStock)->firstWhere('location_id', $this->warehouse->id);
+        $this->assertNotNull($warehouseRow, 'batch_stock must expose the warehouse location row');
+        $this->assertTrue(
+            bccomp((string) $warehouseRow['available_quantity'], '0', 4) > 0,
+            'warehouse batch_stock must report positive available_quantity for FEFO',
+        );
+    }
+
     public function test_product_stock_levels_endpoint_filters_by_variant(): void
     {
         $this->seedVariantStock($this->variantA, $this->warehouse, '10');

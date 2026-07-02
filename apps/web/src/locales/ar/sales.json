@@ -1,4 +1,36 @@
 {
+  "lineItems": {
+    "title": "بنود المستند",
+    "article": "الصنف",
+    "description": "الوصف",
+    "quantity": "الكمية",
+    "unitPrice": "سعر الوحدة",
+    "discount": "الخصم",
+    "tax": "الضريبة",
+    "taxPercent": "نسبة الضريبة",
+    "total": "المجموع",
+    "subtotal": "المجموع الفرعي",
+    "empty": {
+      "title": "لم تتم إضافة أي بنود بعد.",
+      "description": "أضف منتجًا أو خدمة."
+    },
+    "actions": {
+      "dragToReorder": "اسحب لإعادة الترتيب",
+      "clickToEdit": "انقر للتعديل",
+      "removeLine": "حذف البند",
+      "addBlankLine": "إضافة بند فارغ"
+    },
+    "entry": {
+      "placeholder": "ابحث عن منتج أو امسح الرمز…",
+      "browseCatalog": "تصفح الكتالوج",
+      "productNotFound": "لم يتم العثور على المنتج: {{code}}",
+      "requiresVariant": "اختر متغيرًا قبل إضافة هذا المنتج"
+    },
+    "loading": "جارٍ التحميل…",
+    "noProductsFound": "لم يتم العثور على منتجات مطابقة",
+    "productImagePlaceholder": "لا توجد صورة للمنتج",
+    "serviceBadge": "خدمة"
+  },
   "partners": {
     "title": "الشركاء",
     "new": "إضافة شريك",
@@ -68,6 +100,16 @@
     "empty": {
       "title": "لا يوجد شركاء بعد",
       "description": "ابدأ بإضافة أول شريك."
+    }
+  },
+  "documents": {
+    "statuses": {
+      "draft": "مسودة",
+      "confirmed": "مؤكَّد",
+      "posted": "مُرحَّل",
+      "paid": "مدفوع",
+      "received": "مُستلَم",
+      "cancelled": "مُلغى"
     }
   }
 }

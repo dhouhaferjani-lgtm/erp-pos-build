@@ -27,6 +27,7 @@ vi.mock('react-i18next', () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       const originalName = params?.['originalName']
       const originalNameText = typeof originalName === 'string' ? originalName : ''
+      const code = typeof params?.['code'] === 'string' ? params['code'] : ''
       const map: Record<string, string> = {
         // DesignationCell keys
         'documents:lines.designation.editAriaLabel': 'Edit designation',
@@ -58,6 +59,10 @@ vi.mock('react-i18next', () => ({
         'sales:lineItems.actions.searchProducts': 'Search products',
         'sales:lineItems.actions.addBlankLine': 'Add blank line',
         'sales:lineItems.actions.clickToEdit': 'Click to edit',
+        'sales:lineItems.entry.placeholder': 'Search or scan a product',
+        'sales:lineItems.entry.productNotFound': `Product not found: ${code}`,
+        'sales:lineItems.entry.requiresVariant': 'Choose a variant before adding this product',
+        'sales:lineItems.productImagePlaceholder': 'No product image',
         'sales:lineItems.tabs.product': 'Product',
         'sales:lineItems.tabs.service': 'Service',
         'sales:lineItems.serviceBadge': 'Service',
@@ -253,36 +258,29 @@ describe('DocumentLineEditor — designation cells', () => {
       { wrapper: createWrapper() },
     )
 
-    expect(screen.getByText('€35.00')).toBeInTheDocument()
-    expect(screen.getByText('€5.50')).toBeInTheDocument()
-    expect(screen.getByText('€40.50')).toBeInTheDocument()
+    expect(screen.getByText('EUR 35.00')).toBeInTheDocument()
+    expect(screen.getByText('EUR 5.50')).toBeInTheDocument()
+    expect(screen.getByText('EUR 40.50')).toBeInTheDocument()
   })
 
-  it('hides the service search tab when Workshop module is disabled', async () => {
+  it('renders the persistent line-entry bar when Workshop module is disabled', () => {
     companyConfigMock.enabledModules = []
-    const user = userEvent.setup()
 
     render(<DocumentLineEditor lines={[]} onChange={onChange} />, {
       wrapper: createWrapper(),
     })
 
-    await user.click(screen.getByRole('button', { name: 'Search products' }))
-
-    expect(screen.getByRole('button', { name: 'Product' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Search or scan a product' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Service' })).not.toBeInTheDocument()
   })
 
-  it('shows the service search tab when Workshop module is enabled', async () => {
-    const user = userEvent.setup()
-
+  it('renders one persistent line-entry bar when Workshop module is enabled', () => {
     render(<DocumentLineEditor lines={[]} onChange={onChange} />, {
       wrapper: createWrapper(),
     })
 
-    await user.click(screen.getByRole('button', { name: 'Search products' }))
-
-    expect(screen.getByRole('button', { name: 'Product' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Service' })).toBeInTheDocument()
+    expect(screen.getAllByRole('combobox', { name: 'Search or scan a product' })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Add blank line' })).toBeInTheDocument()
   })
 
   it('does not pass a dead document-type token to the tax selector for sales orders', () => {
@@ -380,8 +378,8 @@ describe('DocumentLineEditor — designation cells', () => {
         line_total: '108.000',
       }),
     ])
-    expect(screen.getByText('€90.00')).toBeInTheDocument()
-    expect(screen.getByText('€18.00')).toBeInTheDocument()
-    expect(screen.getAllByText('€108.00')).toHaveLength(2)
+    expect(screen.getByText('EUR 90.00')).toBeInTheDocument()
+    expect(screen.getByText('EUR 18.00')).toBeInTheDocument()
+    expect(screen.getAllByText('EUR 108.00')).toHaveLength(2)
   })
 })

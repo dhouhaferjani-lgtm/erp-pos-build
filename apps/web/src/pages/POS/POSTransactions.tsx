@@ -35,13 +35,13 @@ export function POSTransactions() {
         <AlertCircle className="h-16 w-16 text-amber-500 mx-auto mb-4" />
         <h2 className={`text-xl font-bold ${textColors.primary} mb-2`}>
           {t('pos:transactions.disposition.title', {
-            defaultValue: 'POS new-sale flow temporarily disabled',
+            defaultValue: 'Point of sale runs in the desktop app',
           })}
         </h2>
         <p className={textColors.tertiary}>
           {t('pos:transactions.disposition.body', {
             defaultValue:
-              'New-sale receipt authoring is being rebuilt on a device-authoritative fiscal chain. Read-only receipt browsing, returns, and PDF downloads remain available from the shop-management screens.',
+              'Sales are now rung up in the IziPOS desktop checkout app. From the web you can browse receipts, process returns, and download PDFs from the shop-management screens.',
           })}
         </p>
       </div>

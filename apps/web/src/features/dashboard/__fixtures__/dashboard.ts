@@ -35,7 +35,7 @@ export interface RecentDocument {
   document_number: string
   type: string
   partner_name: string
-  total_amount: number | string | null
+  total: number | string | null
   status: string
   created_at: string
 }
@@ -69,7 +69,7 @@ export function makeRecentDocument(
     document_number: 'INV-2025-0001',
     type: 'invoice',
     partner_name: 'Acme Corp',
-    total_amount: 1500,
+    total: 1500,
     status: 'posted',
     created_at: '2025-01-15T10:00:00Z',
     ...overrides,

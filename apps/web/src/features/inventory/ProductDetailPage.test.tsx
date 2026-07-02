@@ -153,7 +153,15 @@ describe('ProductDetailPage', () => {
 
     renderProductDetail()
 
-    const badge = await screen.findByText('common:status.active')
+    await waitFor(() => {
+      expect(screen.getAllByText('common:status.active').length).toBeGreaterThan(0)
+    })
+
+    const badge = screen
+      .getAllByText('common:status.active')
+      .find((element) => element.className.includes('rounded-full'))
+
+    if (!badge) throw new Error('Expected the header status badge to render as a rounded pill')
     expect(badge.tagName).toBe('SPAN')
     expect(badge.className).toContain('rounded-full')
   })

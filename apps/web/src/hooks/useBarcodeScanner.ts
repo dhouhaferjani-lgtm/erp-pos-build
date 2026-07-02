@@ -18,6 +18,8 @@ interface UseBarcodeScannerOptions {
   onScan: (barcode: string) => void
   /** Whether the scanner detection is active (default: true) */
   enabled?: boolean
+  /** Let focused inputs handle their own completed value instead of raw key buffering. */
+  ignoreInputElements?: boolean
 }
 
 /**
@@ -31,13 +33,14 @@ interface UseBarcodeScannerOptions {
  * element has focus, which is important for POS workflows where the cashier
  * should not need to click on a specific input before scanning.
  */
-export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerOptions): void {
+export function useBarcodeScanner({ onScan, enabled = true, ignoreInputElements = false }: UseBarcodeScannerOptions): void {
   const bufferRef = useRef<string>('')
   const lastKeystrokeRef = useRef<number>(0)
   const onScanRef = useRef(onScan)
 
-  // Keep callback ref current without causing effect re-runs
-  onScanRef.current = onScan
+  useEffect(() => {
+    onScanRef.current = onScan
+  }, [onScan])
 
   const resetBuffer = useCallback(() => {
     bufferRef.current = ''
@@ -50,6 +53,17 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (ignoreInputElements) {
+        const target = e.target
+        if (
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          (target instanceof HTMLElement && target.isContentEditable)
+        ) {
+          return
+        }
+      }
+
       // Ignore modifier keys and special key combos (Ctrl+K, etc.)
       if (e.ctrlKey || e.metaKey || e.altKey) {
         return
@@ -93,5 +107,5 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
     return () => {
       window.removeEventListener('keydown', handleKeyDown, { capture: true })
     }
-  }, [enabled, resetBuffer])
+  }, [enabled, ignoreInputElements, resetBuffer])
 }

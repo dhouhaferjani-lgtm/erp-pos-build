@@ -26,6 +26,7 @@ final readonly class AuthUserData
         public array $roles,
         public array $permissions,
         public bool $emailVerified,
+        public ?string $emailVerifiedAt,
     ) {}
 
     public static function fromUser(User $user): self
@@ -51,6 +52,7 @@ final readonly class AuthUserData
             roles: $roles,
             permissions: $permissions,
             emailVerified: $user->hasVerifiedEmail(),
+            emailVerifiedAt: $user->email_verified_at?->toIso8601String(),
         );
     }
 }

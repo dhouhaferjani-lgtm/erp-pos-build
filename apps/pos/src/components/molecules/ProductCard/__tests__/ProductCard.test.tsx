@@ -152,6 +152,43 @@ describe('ProductCard layout regressions', () => {
     expect(stockRow?.className).toMatch(/\bshrink-0\b/);
   });
 
+  it('stacks visual-mode price and stock so narrow Caisse columns do not clip the badge', () => {
+    const { container } = render(
+      <I18nextProvider i18n={i18n}>
+        <ProductCard product={longNameProduct} onAddToCart={vi.fn()} displayMode="visual" />
+      </I18nextProvider>,
+    );
+    const priceStockBlock = container.querySelector('[data-testid="price-stock-block"]');
+    expect(priceStockBlock).not.toBeNull();
+    expect(priceStockBlock?.className).toMatch(/\bflex-col\b/);
+  });
+
+  it('positions the visual-mode eye button inside the full-width mock image tile', () => {
+    const { container } = render(
+      <I18nextProvider i18n={i18n}>
+        <ProductCard
+          product={longNameProduct}
+          onAddToCart={vi.fn()}
+          onViewDetails={vi.fn()}
+          displayMode="visual"
+        />
+      </I18nextProvider>,
+    );
+
+    const eye = screen.getByTestId('view-details-button');
+    const tile = container.querySelector('[data-testid="product-visual-tile"]');
+    expect(tile).not.toBeNull();
+    expect(tile?.className).toContain('w-full');
+    expect(tile?.className).toContain('h-[88px]');
+    expect(tile).toContainElement(eye);
+    expect(eye.className).toContain('left-[7px]');
+    expect(eye.className).toContain('top-[7px]');
+    expect(eye.className).toContain('h-[29px]');
+    expect(eye.className).toContain('w-[29px]');
+    expect(eye.className).toContain('rounded-sm');
+    expect(eye.className).toContain('border');
+  });
+
   it('renders the outer card as role="button" rather than a <button> so the inner customize button is not nested', () => {
     const productWithModifiers: POSProduct = {
       ...longNameProduct,

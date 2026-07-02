@@ -7,10 +7,19 @@ export {
   type QuantityCellProps,
 } from './LineItemsTable'
 export {
+  ProductCell,
+  type ProductCellProduct,
+  type ProductCellProps,
+} from './ProductCell'
+export {
   LineItemEntryBar,
-  type LineEntryAddRequest,
-  type LineEntryVariantChoiceRequest,
-  type LineEntryVariantValue,
-  type LineItemEntryBarLabels,
+  type LineEntryMatchedCodeType,
+  type LineItemEntryAddMeta,
   type LineItemEntryBarProps,
 } from './LineItemEntryBar'
+export {
+  useProductLineLookup,
+  type ProductLineLookupOutcome,
+  type ProductLineProduct,
+  type ProductLineVariant,
+} from './useProductLineLookup'

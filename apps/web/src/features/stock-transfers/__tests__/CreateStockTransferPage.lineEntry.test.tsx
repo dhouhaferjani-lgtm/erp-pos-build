@@ -2,15 +2,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import { CreateStockTransferPage } from '../pages/CreateStockTransferPage'
 import type { CreateStockTransferInput } from '../types'
 import type { ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 const mockCreate = vi.hoisted(() => vi.fn<(input: CreateStockTransferInput) => Promise<{ id: string }>>())
 const mockFetchLocations = vi.hoisted(() => vi.fn())
+// The unified LineItemEntryBar reads the product SEARCH via `api.get` (paginated,
+// tenant-scoped) and resolves SCAN codes via `apiGet('/line-entry/resolve-code')`.
 const mockApiGet = vi.hoisted(() => vi.fn<(...args: unknown[]) => unknown>())
+const mockApiClientGet = vi.hoisted(() => vi.fn<(...args: unknown[]) => unknown>())
 const mockUseProductBatches = vi.hoisted(() => vi.fn())
 const mockUseProductVariants = vi.hoisted(() => vi.fn())
 
@@ -27,6 +32,7 @@ vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
   return {
     ...actual,
+    api: { ...actual.api, get: (...args: unknown[]): unknown => mockApiClientGet(...args) },
     apiGet: (...args: unknown[]): unknown => mockApiGet(...args),
   }
 })
@@ -152,20 +158,55 @@ function scan(code: string): void {
 describe('CreateStockTransferPage line entry bar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The entry-bar product search is tenant/company gated (non-negotiable
+    // tenant scoping); seed both stores so the search dropdown can open.
+    useAuthStore.setState({
+      user: {
+        id: 'user-1',
+        name: 'Test User',
+        email: 'test@example.com',
+        tenant_id: 'tenant-A',
+        roles: [],
+        email_verified_at: null,
+      },
+      token: 'test-token',
+      isAuthenticated: true,
+      isLoading: false,
+    })
+    useCompanyStore.setState({
+      currentCompanyId: 'company-1',
+      companies: [
+        {
+          id: 'company-1',
+          name: 'Test Company',
+          legalName: 'Test Company LLC',
+          taxId: null,
+          countryCode: 'TN',
+          currency: 'TND',
+          locale: 'en_US',
+          timezone: 'Africa/Tunis',
+        },
+      ],
+      isLoading: false,
+    })
     mockFetchLocations.mockResolvedValue([
       { id: 'source-location', name: 'Main Warehouse' },
       { id: 'destination-location', name: 'Downtown Shop' },
     ])
     mockCreate.mockResolvedValue({ id: 'transfer-1' })
+    // Default product-search response for the entry bar (paginated envelope).
+    mockApiClientGet.mockResolvedValue({ data: { data: [product(BATCH_PRODUCT_ID)] } })
     mockUseProductBatches.mockReturnValue({ data: [batch(101, '6.0000', '2026-08-31')], isLoading: false, isFetching: false })
     mockUseProductVariants.mockReturnValue({ data: [], isLoading: false })
   })
 
+  afterEach(() => {
+    useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+    useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+  })
+
   it('rejects entry-bar scan/add when no source location is selected', async () => {
     const user = userEvent.setup()
-    mockApiGet.mockResolvedValue({
-      data: [product(BATCH_PRODUCT_ID)],
-    })
 
     renderPage()
 
@@ -180,7 +221,9 @@ describe('CreateStockTransferPage line entry bar', () => {
     scan('123456')
 
     expect(toast.error).toHaveBeenCalledWith('Select a source location before adding transfer lines.')
-    expect(mockApiGet).toHaveBeenCalledTimes(1)
+    // The source guard vetoes both the search-add and the scan BEFORE the code
+    // resolver is ever hit — no /line-entry/resolve-code request fires.
+    expect(mockApiGet).not.toHaveBeenCalled()
   })
 
   it('auto-allocates FEFO lots and opens the batch panel for a batch-tracked scan', async () => {
@@ -332,17 +375,20 @@ describe('CreateStockTransferPage line entry bar', () => {
           },
         }
       }
+      // Parent-with-variants scan: the real /line-entry/resolve-code backend
+      // returns kind:'product' with has_variants — the entry bar routes it to
+      // the variant chooser, whose options come from useProductVariants.
       return {
-        kind: 'requires_variant',
+        kind: 'product',
         matched_code_type: 'product_barcode',
-        product: product(VARIANT_PRODUCT_ID, {
-          sku: 'TSHIRT',
-          name: 'Variant product',
-          requires_batch_tracking: false,
-        }),
-        variants: [
-          { id: VARIANT_ID, sku: 'TSHIRT-RED', name_suffix: 'Red' },
-        ],
+        product: {
+          ...product(VARIANT_PRODUCT_ID, {
+            sku: 'TSHIRT',
+            name: 'Variant product',
+            requires_batch_tracking: false,
+          }),
+          has_variants: true,
+        },
       }
     })
 

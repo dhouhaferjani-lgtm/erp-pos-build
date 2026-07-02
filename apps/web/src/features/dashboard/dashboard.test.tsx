@@ -33,7 +33,7 @@ const mockRecentDocuments = [
     document_number: 'INV-2025-0001',
     type: 'invoice',
     partner_name: 'Acme Corp',
-    total_amount: 1500,
+    total: 4321,
     status: 'posted',
     created_at: '2025-01-15T10:00:00Z',
   }),
@@ -42,7 +42,7 @@ const mockRecentDocuments = [
     document_number: 'QUO-2025-0001',
     type: 'quote',
     partner_name: 'Client Inc',
-    total_amount: 2500,
+    total: 8765,
     status: 'draft',
     created_at: '2025-01-14T10:00:00Z',
   }),
@@ -139,6 +139,12 @@ describe('Dashboard', () => {
       expect(screen.getByText(/recent documents/i)).toBeInTheDocument()
       expect(screen.getByText('INV-2025-0001')).toBeInTheDocument()
     })
+
+    // Regression guard: the widget must render each document's real `total`
+    // (the API emits `total`, not `total_amount`). Reading the wrong field
+    // formatted every PO/invoice as 0 on the dashboard.
+    expect(screen.getByText(/4[\s,.]?321/)).toBeInTheDocument()
+    expect(screen.getByText(/8[\s,.]?765/)).toBeInTheDocument()
   })
 
   it('displays recent payments section', async () => {

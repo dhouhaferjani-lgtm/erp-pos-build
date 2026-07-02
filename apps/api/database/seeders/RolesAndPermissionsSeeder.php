@@ -68,6 +68,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'catalog.variants.delete',
             'catalog.labels.print',
 
+            // Pricing (price lists, pricing rules, partner pricing, margin check)
+            'pricing.view',
+            'pricing.manage',
+
             // Workshop Service Bundles (automotive menu pricing)
             'workshop-bundles.view',
             'workshop-bundles.manage',
@@ -456,6 +460,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'catalog.variants.view', 'catalog.variants.create', 'catalog.variants.update', 'catalog.variants.delete',
             'catalog.labels.print',
             'workshop-bundles.view', 'workshop-bundles.manage',
+            'pricing.view', 'pricing.manage',
             'menus.view', 'menus.manage',
             'promotions.view', 'promotions.manage',
             'coupons.view', 'coupons.manage',
@@ -548,6 +553,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'promotions.view',
             'coupons.view',
             'loyalty.view',
+            'pricing.view',
             'marketplace.browse',
             'catalog_cart.view',
         ]);

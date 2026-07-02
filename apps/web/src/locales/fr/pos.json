@@ -230,6 +230,10 @@
     },
     "toasts": {
       "transactionCompleted": "Transaction terminée - Ticket #{{number}}"
+    },
+    "disposition": {
+      "title": "La caisse fonctionne dans l'application de bureau",
+      "body": "Les ventes sont désormais encaissées dans l'application de caisse IziPOS pour ordinateur. Depuis le web, vous pouvez consulter les tickets, effectuer les retours et télécharger les PDF depuis les écrans de gestion de la boutique."
     }
   },
   "shiftHistory": {

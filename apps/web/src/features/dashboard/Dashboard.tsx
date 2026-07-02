@@ -50,7 +50,7 @@ interface RecentDocument {
   document_number: string
   type: string
   partner_name: string
-  total_amount: number | string | null
+  total: number | string | null
   status: string
   created_at: string
 }
@@ -328,9 +328,11 @@ export function Dashboard() {
                     </div>
                     <div className="text-end">
                       <p className="font-medium text-gray-900">
-                        {formatAmount(doc.total_amount)}
+                        {formatAmount(doc.total)}
                       </p>
-                      <p className="text-sm text-gray-500 capitalize">{doc.status}</p>
+                      <p className="text-sm text-gray-500 capitalize">
+                        {t(`sales:documents.statuses.${doc.status}`, doc.status)}
+                      </p>
                     </div>
                   </>
                 )

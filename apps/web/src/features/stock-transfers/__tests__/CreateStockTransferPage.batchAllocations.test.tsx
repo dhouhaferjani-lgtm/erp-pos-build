@@ -111,7 +111,7 @@ describe('CreateStockTransferPage batch allocations', () => {
     await user.selectOptions(await screen.findByLabelText(/source location/i), 'source-location')
     await user.selectOptions(screen.getByLabelText(/destination location/i), 'destination-location')
     await user.click(screen.getByRole('button', { name: /select batch tracked product/i }))
-    await user.click(await screen.findByRole('button', { name: /lots and expiry/i }))
+    await user.click(await screen.findByRole('button', { name: /lots and expiry|1 lot/i }))
     await screen.findByText('LOT-2026-A')
     await user.click(screen.getByRole('button', { name: /create transfer/i }))
 
@@ -133,6 +133,113 @@ describe('CreateStockTransferPage batch allocations', () => {
     })
   })
 
+  it('re-runs FEFO when the line quantity changes after the panel is opened, and submits the displayed allocation', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<CreateStockTransferPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('option', { name: 'Main Warehouse' }).length).toBeGreaterThan(0)
+    })
+    await user.selectOptions(await screen.findByLabelText(/source location/i), 'source-location')
+    await user.selectOptions(screen.getByLabelText(/destination location/i), 'destination-location')
+    await user.click(screen.getByRole('button', { name: /select batch tracked product/i }))
+    // Open the batch panel — FEFO auto-allocates 1.0000 from LOT-2026-A.
+    await user.click(await screen.findByRole('button', { name: /lots and expiry|1 lot/i }))
+    await screen.findByText('LOT-2026-A')
+
+    // Change the LINE quantity AFTER the panel was opened. The old flow wiped
+    // the allocation and never re-ran FEFO, so submit silently blocked.
+    const quantityInput = screen.getByLabelText('Quantity', { exact: true })
+    await user.clear(quantityInput)
+    await user.type(quantityInput, '3')
+
+    // The panel batch input must now display the re-allocated FEFO quantity.
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Quantity from LOT-2026-A/i)).toHaveValue(3)
+    })
+
+    await user.click(screen.getByRole('button', { name: /create transfer/i }))
+
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+        lines: [
+          expect.objectContaining({
+            product_id: '11111111-1111-4111-8111-111111111111',
+            quantity: '3',
+            batch_allocations: [
+              { batch_id: 101, quantity: '3.0000' },
+            ],
+          }),
+        ],
+      }))
+    })
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('auto-allocates FEFO for a batch line even when the panel is never opened', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<CreateStockTransferPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('option', { name: 'Main Warehouse' }).length).toBeGreaterThan(0)
+    })
+    await user.selectOptions(await screen.findByLabelText(/source location/i), 'source-location')
+    await user.selectOptions(screen.getByLabelText(/destination location/i), 'destination-location')
+    await user.click(screen.getByRole('button', { name: /select batch tracked product/i }))
+
+    // Never open the panel — submit straight away. FEFO should have been applied.
+    await user.click(await screen.findByRole('button', { name: /create transfer/i }))
+
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+        lines: [
+          expect.objectContaining({
+            batch_allocations: [
+              { batch_id: 101, quantity: '1.0000' },
+            ],
+          }),
+        ],
+      }))
+    })
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('keeps the displayed allocation consistent across collapse and re-expand', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<CreateStockTransferPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('option', { name: 'Main Warehouse' }).length).toBeGreaterThan(0)
+    })
+    await user.selectOptions(await screen.findByLabelText(/source location/i), 'source-location')
+    await user.selectOptions(screen.getByLabelText(/destination location/i), 'destination-location')
+    await user.click(screen.getByRole('button', { name: /select batch tracked product/i }))
+
+    const toggle = await screen.findByRole('button', { name: /lots and expiry|1 lot/i })
+    await user.click(toggle) // expand
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Quantity from LOT-2026-A/i)).toHaveValue(1)
+    })
+    await user.click(screen.getByRole('button', { name: /1 lot/i })) // collapse
+    await user.click(screen.getByRole('button', { name: /1 lot/i })) // re-expand
+
+    // Same allocation still displayed — not wiped by the collapse/expand cycle.
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Quantity from LOT-2026-A/i)).toHaveValue(1)
+    })
+
+    await user.click(screen.getByRole('button', { name: /create transfer/i }))
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+        lines: [
+          expect.objectContaining({
+            batch_allocations: [{ batch_id: 101, quantity: '1.0000' }],
+          }),
+        ],
+      }))
+    })
+  })
+
   it('clears selected batch allocations when the source location changes', async () => {
     const user = userEvent.setup()
     renderWithProviders(<CreateStockTransferPage />)
@@ -143,7 +250,7 @@ describe('CreateStockTransferPage batch allocations', () => {
     await user.selectOptions(await screen.findByLabelText(/source location/i), 'source-location')
     await user.selectOptions(screen.getByLabelText(/destination location/i), 'destination-location')
     await user.click(screen.getByRole('button', { name: /select batch tracked product/i }))
-    await user.click(await screen.findByRole('button', { name: /lots and expiry/i }))
+    await user.click(await screen.findByRole('button', { name: /lots and expiry|1 lot/i }))
     await screen.findByRole('button', { name: /1 lot/i })
 
     await user.selectOptions(screen.getByLabelText(/source location/i), 'backup-source')

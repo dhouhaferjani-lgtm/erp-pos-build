@@ -245,7 +245,7 @@ export function PurchaseOrderDetailPage() {
                 purchaseOrder.status === 'received' ? 'bg-green-100 text-green-800' :
                 'bg-red-100 text-red-800'
               }`}>
-                {t(`documents.statuses.${purchaseOrder.status}`)}
+                {t(`sales:documents.statuses.${purchaseOrder.status}`, purchaseOrder.status)}
               </span>
               {purchaseOrder.status === 'confirmed' && (
                 <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${receiptStatusColors[receiptStatus as keyof typeof receiptStatusColors]}`}>
