@@ -31,7 +31,7 @@ const documentTypeRoutes: Record<string, string> = {
   quote: '/sales/quotes',
   sales_order: '/sales/orders',
   invoice: '/sales/invoices',
-  delivery_note: '/sales/delivery-notes',
+  delivery_note: '/inventory/delivery-notes',
   credit_note: '/sales/credit-notes',
   purchase_order: '/purchases/orders',
   return_note: '/sales/return-notes',

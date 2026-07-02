@@ -203,14 +203,22 @@ describe('ProductDocumentsTab', () => {
     })
   })
 
-  it('renders partner name as link to partner page', async () => {
+  it('renders partner name as type-aware link to partner detail page', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: { data: mockDocuments } })
 
     renderWithProviders(<ProductDocumentsTab productId="prod-1" />)
 
     await waitFor(() => {
-      const partnerLink = screen.getByRole('link', { name: 'Acme Corp' })
-      expect(partnerLink).toHaveAttribute('href', '/partners/partner-1')
+      // Sales document partner → customer detail
+      const customerLink = screen.getByRole('link', { name: 'Acme Corp' })
+      expect(customerLink).toHaveAttribute('href', '/sales/customers/partner-1')
+
+      const quotePartnerLink = screen.getByRole('link', { name: 'Tech Solutions' })
+      expect(quotePartnerLink).toHaveAttribute('href', '/sales/customers/partner-2')
+
+      // Purchase order partner → supplier detail
+      const supplierLink = screen.getByRole('link', { name: 'Supplier Inc' })
+      expect(supplierLink).toHaveAttribute('href', '/purchases/suppliers/partner-3')
     })
   })
 
