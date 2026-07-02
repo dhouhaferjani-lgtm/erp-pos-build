@@ -1,18 +1,16 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, Search, X } from 'lucide-react'
-import { api } from '../../../lib/api'
+import { Plus, Trash2 } from 'lucide-react'
 import { formatCurrency } from '../../../lib/format'
 import { bcadd, bccomp, bcdiv, bcmul, bcsub } from '../../../lib/decimal'
-import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms/AddQuickProductModal/AddQuickProductModal'
 import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSelect'
 import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
 import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '../../../components/molecules/line-items/LineItemsTable'
-import { useCompanyConfig } from '../../../contexts/CompanyConfigContext'
+import { LineItemEntryBar, ProductCell, type LineItemEntryAddMeta, type ProductLineProduct } from '../../../components/molecules/line-items'
 import { DesignationCell } from './DesignationCell'
 import { NotesCell } from './NotesCell'
 import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
@@ -71,35 +69,26 @@ function calculateLineTotal(
 interface Product {
   id: string
   name: string
-  sku: string
-  sale_price: number
-  tax_rate: number
+  sku?: string | null
+  barcode?: string | null
+  sale_price?: string | number | null
+  tax_rate?: string | number | null
   default_tax_configuration_id?: string | null
   quantity_decimals?: number | null
-}
-
-interface Service {
-  id: string
-  name: string
-  code: string
-  base_price: number
-  tax_rate: number
-}
-
-interface ProductsResponse {
-  data: Product[]
-}
-
-interface ServicesResponse {
-  data: Service[]
+  primary_image_url?: string | null
+  has_variants?: boolean
+  requires_batch_tracking?: boolean
 }
 
 export interface DocumentLine {
   id: string
   product_id: string
+  variant_id?: string | null
   service_id?: string
   product_code?: string
+  product_barcode?: string | null
   product_name: string
+  primary_image_url?: string | null
   description: string
   designation_default_snapshot?: string | null
   notes?: string | null
@@ -114,8 +103,6 @@ export interface DocumentLine {
   /** Unit precision (unit decimal_places) → drives the qty input step. */
   quantity_decimals?: number | null
 }
-
-type SearchTab = 'product' | 'service'
 
 interface DocumentLineEditorProps {
   lines: DocumentLine[]
@@ -146,48 +133,18 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
-  const { hasModule } = useCompanyConfig()
   const designationFeatureEnabled = useLineDesignationFeature()
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchTab, setSearchTab] = useState<SearchTab>('product')
-  const [showProductSearch, setShowProductSearch] = useState(false)
   const [showProductModal, setShowProductModal] = useState(false)
   const linesRef = useRef(lines)
-  linesRef.current = lines
+
+  useEffect(() => {
+    linesRef.current = lines
+  }, [lines])
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
-  const canSearchServices = hasModule('Workshop')
-  const activeSearchTab: SearchTab = canSearchServices ? searchTab : 'product'
   const taxDocumentType = taxSelectorDocumentType(documentType)
-
-  // Fetch products for search
-  const { data: productsData, isLoading: isLoadingProducts } = useQuery({
-    queryKey: tenantScopedKey(['products', searchQuery]),
-    queryFn: async () => {
-      const params = searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : ''
-      const response = await api.get<ProductsResponse>(`/products${params}`)
-      return response.data
-    },
-    enabled: tenantId !== null && companyId !== null && showProductSearch, // Always fetch when dropdown is open
-    staleTime: 30000, // Cache for 30 seconds
-  })
-
-  // Fetch services for search
-  const { data: servicesData, isLoading: isLoadingServices } = useQuery({
-    queryKey: tenantScopedKey(['services', searchQuery]),
-    queryFn: async () => {
-      const params = searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : ''
-      const response = await api.get<ServicesResponse>(`/services${params}`)
-      return response.data
-    },
-    enabled: tenantId !== null && companyId !== null && showProductSearch && canSearchServices && activeSearchTab === 'service',
-    staleTime: 30000,
-  })
-
-  const products = productsData?.data ?? []
-  const services = servicesData?.data ?? []
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -224,57 +181,61 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
 
   // Add product to lines
   const handleAddProduct = useCallback(
-    (product: Product) => {
+    (product: Product | ProductLineProduct, meta?: Partial<LineItemEntryAddMeta>) => {
+      const variantId = meta?.variantId ?? null
+      const incrementBy = meta?.incrementBy ?? 1
+      const existingLine = linesRef.current.find((line) =>
+        !line.is_service &&
+        line.product_id === product.id &&
+        (line.variant_id ?? null) === variantId
+      )
+
+      if (existingLine !== undefined) {
+        onChange(
+          linesRef.current.map((line) => {
+            if (line.id !== existingLine.id) return line
+            const quantity = line.quantity + incrementBy
+            return {
+              ...line,
+              quantity,
+              line_total: calculateLineTotal(
+                quantity,
+                line.unit_price,
+                line.tax_rate,
+                line.discount_percent,
+                line.discount_amount,
+              ),
+            }
+          })
+        )
+        return
+      }
+
+      const salePrice = Number(product.sale_price ?? 0) || 0
+      const taxRate = Number(product.tax_rate ?? 0) || 0
       const newLine: DocumentLine = {
         id: generateId(),
         product_id: product.id,
-        product_code: product.sku,
+        variant_id: variantId,
+        product_code: product.sku ?? '',
+        product_barcode: product.barcode ?? null,
         product_name: product.name,
+        primary_image_url: product.primary_image_url ?? null,
         description: product.name,
         designation_default_snapshot: product.name,
         notes: null,
-        quantity: 1,
-        unit_price: product.sale_price,
+        quantity: incrementBy,
+        unit_price: salePrice,
         discount_percent: null,
         discount_amount: null,
-        tax_rate: product.tax_rate,
+        tax_rate: taxRate,
         tax_configuration_id: product.default_tax_configuration_id ?? null,
-        line_total: calculateLineTotal(1, product.sale_price, product.tax_rate, null, null),
+        line_total: calculateLineTotal(incrementBy, salePrice, taxRate, null, null),
         quantity_decimals: product.quantity_decimals ?? null,
       }
-      onChange([...lines, newLine])
-      setShowProductSearch(false)
-      setSearchQuery('')
+      onChange([...linesRef.current, newLine])
     },
-    [lines, onChange]
-  )
-
-  // Add service to lines
-  const handleAddService = useCallback(
-    (service: Service) => {
-      const newLine: DocumentLine = {
-        id: generateId(),
-        product_id: '',
-        service_id: service.id,
-        product_code: service.code,
-        product_name: service.name,
-        description: service.name,
-        designation_default_snapshot: service.name,
-        notes: null,
-        quantity: 1,
-        unit_price: service.base_price,
-        discount_percent: null,
-        discount_amount: null,
-        tax_rate: service.tax_rate,
-        tax_configuration_id: null,
-        line_total: calculateLineTotal(1, service.base_price, service.tax_rate, null, null),
-        is_service: true,
-      }
-      onChange([...lines, newLine])
-      setShowProductSearch(false)
-      setSearchQuery('')
-    },
-    [lines, onChange]
+    [onChange]
   )
 
   // Add blank line
@@ -345,11 +306,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
 
   // Format currency using company settings
   const formatAmount = useCallback((amount: string | number) => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    if (isNaN(num)) {
-      return formatCurrency(0, { currency: companyCurrency, locale: companyLocale })
-    }
-    return formatCurrency(num, {
+    return formatCurrency(amount, {
       currency: companyCurrency,
       locale: companyLocale,
     })
@@ -359,14 +316,20 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     {
       id: 'article',
       header: t('sales:lineItems.article'),
-      headerClassName: 'w-32',
+      headerClassName: 'min-w-56',
       Cell: ({ line }) => (
-        <div className="flex items-center gap-1.5">
-          <span className={`font-mono text-sm ${textColors.tertiary}`}>
-            {line.product_code === undefined || line.product_code === '' ? '-' : line.product_code}
-          </span>
+        <div className="min-w-56">
+          <ProductCell
+            size="sm"
+            product={{
+              name: line.product_name || line.description || '-',
+              sku: line.product_code ?? null,
+              barcode: line.product_barcode ?? null,
+              primary_image_url: line.primary_image_url ?? null,
+            }}
+          />
           {line.is_service && (
-            <span className={`inline-flex rounded-full ${colors.neutral[100]} px-1.5 py-0.5 text-[10px] font-medium ${textColors.secondary}`}>
+            <span className={`mt-1 inline-flex rounded-full ${colors.neutral[100]} px-1.5 py-0.5 text-[10px] font-medium ${textColors.secondary}`}>
               {t('sales:lineItems.serviceBadge')}
             </span>
           )}
@@ -482,7 +445,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
             onChange={(configId, taxRate) => {
               handleUpdateLine(line.id, {
                 tax_configuration_id: configId,
-                tax_rate: parseFloat(taxRate) || 0,
+                tax_rate: Number(taxRate) || 0,
               })
             }}
             {...(taxDocumentType !== undefined ? { documentType: taxDocumentType } : {})}
@@ -566,187 +529,30 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
           onReorder: handleReorderLines,
         }}
         addControls={(
-          <div className="flex gap-2">
-          <div className="relative">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start">
+            <div className="min-w-0 flex-1">
+              <LineItemEntryBar
+                onAddProduct={(product, meta) => {
+                  handleAddProduct(product, meta)
+                }}
+                onCreateFromCode={() => {
+                  setShowProductModal(true)
+                }}
+                onRequiresVariant={() => {
+                  // Phase 1 blocks parent-with-variants scans rather than adding
+                  // an ambiguous document line. Variant chooser lands in Phase 1B.
+                }}
+              />
+            </div>
             <button
               type="button"
-              onClick={() => {
-                setShowProductSearch(!showProductSearch)
-              }}
-              className={`inline-flex items-center gap-2 rounded-lg border ${borderColors.default} ${colors.white} px-4 py-2 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50} transition-colors`}
+              onClick={handleAddBlankLine}
+              className={`inline-flex items-center justify-center gap-2 rounded-lg border ${borderColors.default} ${colors.white} px-4 py-2 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50} transition-colors`}
             >
-              <Search className="h-4 w-4" />
-              {t('sales:lineItems.actions.searchProducts')}
+              <Plus className="h-4 w-4" />
+              {t('sales:lineItems.actions.addBlankLine')}
             </button>
-
-            {/* Product/Service Search Dropdown */}
-            {showProductSearch && (
-              <div className={`absolute left-0 top-full z-10 mt-1 w-80 rounded-lg border ${borderColors.light} ${colors.white} shadow-lg`}>
-                {/* Tab Toggle */}
-                <div className={`flex border-b ${borderColors.light}`}>
-                  <button
-                    type="button"
-                    onClick={() => { setSearchTab('product'); setSearchQuery('') }}
-                    className={`flex-1 px-4 py-2 text-sm font-medium ${activeSearchTab === 'product' ? `border-b-2 ${borderColors.primary} ${textColors.brand}` : `${textColors.disabled} ${textColors.hoverSecondary}`}`}
-                  >
-                    {t('sales:lineItems.tabs.product')}
-                  </button>
-                  {canSearchServices && (
-                    <button
-                      type="button"
-                      onClick={() => { setSearchTab('service'); setSearchQuery('') }}
-                      className={`flex-1 px-4 py-2 text-sm font-medium ${activeSearchTab === 'service' ? `border-b-2 ${borderColors.primary} ${textColors.brand}` : `${textColors.disabled} ${textColors.hoverSecondary}`}`}
-                    >
-                      {t('sales:lineItems.tabs.service')}
-                    </button>
-                  )}
-                </div>
-                <div className="p-3">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value)
-                      }}
-                      placeholder={activeSearchTab === 'product' ? t('sales:lineItems.actions.searchProductsPlaceholder') : t('sales:lineItems.actions.searchServicesPlaceholder')}
-                      className={`${tokens.input.base} pe-10 ps-3 text-sm`}
-                      autoFocus
-                    />
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearchQuery('')
-                        }}
-                        className={`absolute inset-y-0 end-0 flex items-center pe-3 ${textColors.disabled} ${textColors.hoverSecondary}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className={`max-h-60 overflow-y-auto border-t ${borderColors.light}`}>
-                  {activeSearchTab === 'product' ? (
-                    <>
-                      {isLoadingProducts ? (
-                        <div className={`p-4 text-center text-sm ${textColors.disabled}`}>
-                          {t('sales:lineItems.loading')}
-                        </div>
-                      ) : products.length === 0 ? (
-                        <div className="p-4 text-center text-sm">
-                          <p className={textColors.disabled}>
-                            {searchQuery ? t('sales:lineItems.noProductsFound') : t('sales:lineItems.noProductsAvailable')}
-                          </p>
-                        </div>
-                      ) : (
-                        <ul className={`divide-y ${borderColors.divideLight}`}>
-                          {products.map((product) => (
-                            <li key={product.id}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleAddProduct(product)
-                                }}
-                                className={`flex w-full items-center justify-between px-4 py-3 text-start ${colors.hover.gray50}`}
-                              >
-                                <div>
-                                  <div className={`text-sm font-medium ${textColors.primary}`}>
-                                    {product.name}
-                                  </div>
-                                  <div className={`text-xs ${textColors.disabled}`}>{product.sku}</div>
-                                </div>
-                                <div className={`text-sm font-medium ${textColors.primary}`}>
-                                  {formatAmount(product.sale_price)}
-                                </div>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {isLoadingServices ? (
-                        <div className={`p-4 text-center text-sm ${textColors.disabled}`}>
-                          {t('sales:lineItems.loading')}
-                        </div>
-                      ) : services.length === 0 ? (
-                        <div className="p-4 text-center text-sm">
-                          <p className={textColors.disabled}>
-                            {searchQuery ? t('sales:lineItems.noServicesFound') : t('sales:lineItems.noServicesAvailable')}
-                          </p>
-                        </div>
-                      ) : (
-                        <ul className={`divide-y ${borderColors.divideLight}`}>
-                          {services.map((service) => (
-                            <li key={service.id}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleAddService(service)
-                                }}
-                                className={`flex w-full items-center justify-between px-4 py-3 text-start ${colors.hover.gray50}`}
-                              >
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-sm font-medium ${textColors.primary}`}>
-                                      {service.name}
-                                    </span>
-                                    <span className={`inline-flex rounded-full ${colors.neutral[100]} px-1.5 py-0.5 text-[10px] font-medium ${textColors.secondary}`}>
-                                      {t('sales:lineItems.serviceBadge')}
-                                    </span>
-                                  </div>
-                                  <div className={`text-xs ${textColors.disabled}`}>{service.code}</div>
-                                </div>
-                                <div className={`text-sm font-medium ${textColors.primary}`}>
-                                  {formatAmount(service.base_price)}
-                                </div>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </>
-                  )}
-                </div>
-                <div className={`space-y-1 border-t ${borderColors.light} p-2`}>
-                  {activeSearchTab === 'product' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowProductSearch(false)
-                        setShowProductModal(true)
-                      }}
-                      className={`flex w-full items-center justify-center gap-2 rounded px-3 py-2 text-sm font-medium ${textColors.brand} ${colors.primary[50]} transition-colors`}
-                    >
-                      <Plus className="h-4 w-4" />
-                      {t('sales:lineItems.actions.createNewProduct')}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowProductSearch(false)
-                    }}
-                    className={`w-full rounded px-3 py-1.5 text-sm ${textColors.tertiary} ${colors.hover.gray100}`}
-                  >
-                    {t('sales:lineItems.actions.close')}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
-
-          <button
-            type="button"
-            onClick={handleAddBlankLine}
-            className={`inline-flex items-center gap-2 rounded-lg border ${borderColors.default} ${colors.white} px-4 py-2 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50} transition-colors`}
-          >
-            <Plus className="h-4 w-4" />
-            {t('sales:lineItems.actions.addBlankLine')}
-          </button>
-        </div>
         )}
       />
 
