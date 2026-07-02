@@ -24,8 +24,8 @@ interface CountryConfig {
 }
 
 const COUNTRIES: CountryConfig[] = [
+  { name: 'Tunisia', code: 'TN', currency: 'TND', locale: 'fr_TN', timezone: 'Africa/Tunis' },
   { name: 'France', code: 'FR', currency: 'EUR', locale: 'fr_FR', timezone: 'Europe/Paris' },
-  { name: 'Tunisia', code: 'TN', currency: 'TND', locale: 'ar_TN', timezone: 'Africa/Tunis' },
   { name: 'United Kingdom', code: 'GB', currency: 'GBP', locale: 'en_GB', timezone: 'Europe/London' },
   { name: 'Italy', code: 'IT', currency: 'EUR', locale: 'it_IT', timezone: 'Europe/Rome' },
   { name: 'Morocco', code: 'MA', currency: 'MAD', locale: 'ar_MA', timezone: 'Africa/Casablanca' },
@@ -37,14 +37,14 @@ const COUNTRIES: CountryConfig[] = [
  * Modal for adding a new company
  */
 export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
-  const { t } = useTranslation(['settings', 'common'])
+  const { t } = useTranslation(['settings', 'common', 'countries'])
   const invalidateCompanies = useInvalidateCompanies()
   const setCurrentCompany = useCompanyStore((state) => state.setCurrentCompany)
 
   const [formData, setFormData] = useState({
     name: '',
     legalName: '',
-    countryCode: 'FR',
+    countryCode: 'TN',
     taxId: '',
     email: '',
     phone: '',
@@ -72,7 +72,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
       setFormData({
         name: '',
         legalName: '',
-        countryCode: 'FR',
+        countryCode: 'TN',
         taxId: '',
         email: '',
         phone: '',
@@ -116,6 +116,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
+  const usesTunisiaDefaults = selectedCountry.code === 'TN'
 
   if (!isOpen) return null
 
@@ -158,7 +159,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
             >
               {COUNTRIES.map((country) => (
                 <option key={country.code} value={country.code}>
-                  {country.name}
+                  {t(`countries:${country.code}`, { defaultValue: country.name })}
                 </option>
               ))}
             </select>
@@ -198,7 +199,9 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               name="legalName"
               value={formData.legalName}
               onChange={handleChange}
-              placeholder={t('settings:company.modal.legalNamePlaceholder')}
+              placeholder={usesTunisiaDefaults
+                ? t('settings:company.modal.tunisiaLegalNamePlaceholder')
+                : t('settings:company.modal.legalNamePlaceholder')}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -214,7 +217,9 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               name="taxId"
               value={formData.taxId}
               onChange={handleChange}
-              placeholder={t('settings:company.modal.taxIdPlaceholder')}
+              placeholder={usesTunisiaDefaults
+                ? t('settings:company.modal.tunisiaTaxIdPlaceholder')
+                : t('settings:company.modal.taxIdPlaceholder')}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -245,7 +250,9 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
                 name="phone"
                 value={formData.phone}
                 onChange={handleChange}
-                placeholder={t('settings:company.modal.phonePlaceholder')}
+                placeholder={usesTunisiaDefaults
+                  ? t('settings:company.modal.tunisiaPhonePlaceholder')
+                  : t('settings:company.modal.phonePlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -262,7 +269,9 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               name="addressStreet"
               value={formData.addressStreet}
               onChange={handleChange}
-              placeholder={t('settings:company.modal.streetPlaceholder')}
+              placeholder={usesTunisiaDefaults
+                ? t('settings:company.modal.tunisiaStreetPlaceholder')
+                : t('settings:company.modal.streetPlaceholder')}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -278,7 +287,9 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
                 name="addressCity"
                 value={formData.addressCity}
                 onChange={handleChange}
-                placeholder={t('settings:company.modal.cityPlaceholder')}
+                placeholder={usesTunisiaDefaults
+                  ? t('settings:company.modal.tunisiaCityPlaceholder')
+                  : t('settings:company.modal.cityPlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -292,7 +303,9 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
                 name="addressPostalCode"
                 value={formData.addressPostalCode}
                 onChange={handleChange}
-                placeholder={t('settings:company.modal.postalCodePlaceholder')}
+                placeholder={usesTunisiaDefaults
+                  ? t('settings:company.modal.tunisiaPostalCodePlaceholder')
+                  : t('settings:company.modal.postalCodePlaceholder')}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>

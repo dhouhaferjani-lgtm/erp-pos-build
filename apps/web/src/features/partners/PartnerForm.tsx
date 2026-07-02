@@ -134,7 +134,9 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
   const isEditing = id.length > 0
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const hasTenantScope = tenantId !== null && companyId !== null
+  const defaultCountryCode = currentCompany?.countryCode ?? 'TN'
 
   // Determine partner type from props or URL
   const isCustomerContext = partnerType === 'customer' || location.pathname.includes('/sales/customers')
@@ -187,8 +189,8 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       city: '',
       state: '',
       postal_code: '',
-      country: '',
-      country_code: '',
+      country: defaultCountryCode,
+      country_code: defaultCountryCode,
       vat_number: '',
       tax_status: 'REGISTERED',
       exemption_reason: '',
@@ -199,6 +201,9 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
   const taxStatus = watch('tax_status')
   const customerCategory = watch('customer_category')
+  const addressCountry = watch('country')
+  const taxCountry = watch('country_code')
+  const usesTunisiaLabels = addressCountry === 'TN' || taxCountry === 'TN' || defaultCountryCode === 'TN'
 
   // Fetch countries for dropdown
   const { data: countries = [] } = useQuery({
@@ -446,7 +451,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
             {/* VAT Number */}
             <FormField
-              label={t('sales:partners.vatNumber')}
+              label={usesTunisiaLabels ? t('sales:partners.taxRegistrationNumber') : t('sales:partners.vatNumber')}
               htmlFor="vat_number"
               error={errors.vat_number?.message}
             >
@@ -603,7 +608,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
 
             {/* State */}
             <FormField
-              label={t('sales:partners.state')}
+              label={usesTunisiaLabels ? t('sales:partners.governorate') : t('sales:partners.state')}
               htmlFor="state"
               error={errors.state?.message}
             >
