@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '../../../lib/designTokens'
 import { useBarcodeScanner } from '../../../hooks/useBarcodeScanner'
 import { ProductCell } from './ProductCell'
@@ -42,17 +45,19 @@ export function LineItemEntryBar({
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listboxId = useId()
   const { enqueueScan } = useProductLineLookup()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const trimmedQuery = query.trim()
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['line-entry-products', trimmedQuery],
+    queryKey: tenantScopedKey(['line-entry-products', trimmedQuery]),
     queryFn: async () => {
       const response = await api.get<ProductsResponse>('/products', {
         params: trimmedQuery !== '' ? { search: trimmedQuery } : undefined,
       })
       return response.data
     },
-    enabled: !disabled && isOpen && trimmedQuery !== '',
+    enabled: !disabled && isOpen && trimmedQuery !== '' && tenantId !== null && companyId !== null,
     staleTime: 30000,
   })
 
