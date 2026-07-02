@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import type { CSSProperties } from 'react';
 
 /**
  * ProductThumb — the tinted-initials product tile used across the grid, cart,
@@ -62,11 +63,20 @@ export interface ProductThumbProps {
   imageUrl?: string | null;
   /** Square edge in px. Default 88 (visual card). */
   size?: number;
+  /** Render as the full-width POS image tile from the Caisse mock. */
+  fullWidth?: boolean;
   className?: string;
 }
 
-export function ProductThumb({ name, category, imageUrl, size = 88, className }: ProductThumbProps) {
-  const dim = { width: size, height: size };
+export function ProductThumb({
+  name,
+  category,
+  imageUrl,
+  size = 88,
+  fullWidth = false,
+  className,
+}: ProductThumbProps) {
+  const dim: CSSProperties = { width: fullWidth ? '100%' : size, height: size };
   if (imageUrl) {
     return (
       <img
@@ -78,8 +88,9 @@ export function ProductThumb({ name, category, imageUrl, size = 88, className }:
     );
   }
   const tint = tintForCategory(category);
-  // Scale the initials with the tile; ~36% of the edge reads well.
-  const fontSize = Math.round(size * 0.34);
+  // Square thumbs use large initials; full-width POS tiles match the mock's
+  // compact 20px initials centered in an 88px-high image area.
+  const fontSize = fullWidth ? 20 : Math.round(size * 0.34);
   return (
     <div
       style={dim}

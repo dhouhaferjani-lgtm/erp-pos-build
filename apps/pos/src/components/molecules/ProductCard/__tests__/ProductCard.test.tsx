@@ -163,8 +163,8 @@ describe('ProductCard layout regressions', () => {
     expect(priceStockBlock?.className).toMatch(/\bflex-col\b/);
   });
 
-  it('positions the visual-mode eye button at the mock thumbnail inset', () => {
-    render(
+  it('positions the visual-mode eye button inside the full-width mock image tile', () => {
+    const { container } = render(
       <I18nextProvider i18n={i18n}>
         <ProductCard
           product={longNameProduct}
@@ -176,6 +176,11 @@ describe('ProductCard layout regressions', () => {
     );
 
     const eye = screen.getByTestId('view-details-button');
+    const tile = container.querySelector('[data-testid="product-visual-tile"]');
+    expect(tile).not.toBeNull();
+    expect(tile?.className).toContain('w-full');
+    expect(tile?.className).toContain('h-[88px]');
+    expect(tile).toContainElement(eye);
     expect(eye.className).toContain('left-[7px]');
     expect(eye.className).toContain('top-[7px]');
     expect(eye.className).toContain('h-[29px]');

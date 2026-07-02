@@ -281,14 +281,18 @@ function ProductCardInner({
 
       {/* Visual mode: ProductThumb on top. Compact (grid) mode: no thumb. */}
       {displayMode === 'visual' && (
-        <div className="relative mb-2 shrink-0">
+        <div
+          data-testid="product-visual-tile"
+          className="relative mb-2 h-[88px] w-full shrink-0 overflow-hidden rounded-tile"
+        >
           <ProductThumb
             name={product.name}
             category={product.category}
             imageUrl={imageSrc}
             size={88}
+            fullWidth
           />
-          {/* Eye overlay on the thumb (mock: top-left 7px inset). */}
+          {/* Eye overlay on the full image tile (mock: top-left 7px inset). */}
           {onViewDetails && (
             <ViewDetailsButton
               className="absolute left-[7px] top-[7px] h-[29px] w-[29px] border border-subtle"
