@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
 import { Calendar, Package, FileText } from 'lucide-react'
-import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
+import { ProductLineSelect } from '@/components/molecules/line-items'
 import type { Batch } from '../types'
 
 const batchFormSchema = z.object({
@@ -73,7 +73,7 @@ export function BatchForm({ batch, onSubmit, isSubmitting = false, submitLabel }
           {t('batches:fields.product')}
           <span className="text-red-500">*</span>
         </label>
-        <ProductSearchSelect
+        <ProductLineSelect
           value={selectedProductId}
           onChange={(productId) => { setValue('product_id', productId, { shouldValidate: true }) }}
           disabled={isSubmitting || !!batch}

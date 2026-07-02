@@ -357,6 +357,7 @@
   "clearAll": "مسح الكل",
   "activeFilters": "{{count}} عامل تصفية نشط",
   "remove": "إزالة",
+  "clearSearch": "مسح البحث",
   "sort": "ترتيب",
   "sortBy": "ترتيب حسب",
   "ascending": "تصاعدي",

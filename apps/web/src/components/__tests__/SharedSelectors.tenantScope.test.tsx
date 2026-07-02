@@ -11,7 +11,7 @@ import { AddVehicleModal } from '../organisms/AddVehicleModal/AddVehicleModal'
 import { LocationSwitcher } from '../organisms/LocationSwitcher/LocationSwitcher'
 import { LocationField } from '../ui/LocationField'
 import { PartnerSearchSelect } from '../ui/PartnerSearchSelect'
-import { ProductSearchSelect } from '../ui/ProductSearchSelect'
+import { ProductLineSelect } from '../molecules/line-items'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
@@ -154,9 +154,9 @@ describe('shared selector tenant scope', () => {
 
     render(<AddVehicleModal isOpen={true} onClose={vi.fn()} partnerId="partner-1" />, { wrapper: wrapper(queryClient) })
 
-    await user.type(screen.getByPlaceholderText('AB-123-CD'), 'AB-123-CD')
-    await user.type(screen.getByPlaceholderText('Renault'), 'Renault')
-    await user.type(screen.getByPlaceholderText('Clio'), 'Clio')
+    await user.type(screen.getByLabelText(/vehicles:licensePlate/i), 'AB-123-CD')
+    await user.type(screen.getByLabelText(/vehicles:brand/i), 'Renault')
+    await user.type(screen.getByLabelText(/vehicles:model/i), 'Clio')
     await user.click(screen.getByRole('button', { name: 'common:actions.create' }))
 
     await waitFor(() => {
@@ -181,7 +181,7 @@ describe('shared selector tenant scope', () => {
 
     render(<LocationSwitcher />, { wrapper: wrapper(queryClient) })
 
-    await user.click(screen.getByRole('button', { name: 'Select location' }))
+    await user.click(screen.getByRole('button', { name: 'common:locations.selectLocation' }))
     await user.click(screen.getByRole('button', { name: /Warehouse/ }))
 
     expect(mockSwitchLocation).toHaveBeenCalledWith('loc-2')
@@ -198,7 +198,7 @@ describe('shared selector tenant scope', () => {
       <div>
         <LocationField value="loc-1" onChange={vi.fn()} />
         <PartnerSearchSelect value="partner-1" onChange={vi.fn()} partnerType="customer" />
-        <ProductSearchSelect value="product-1" onChange={vi.fn()} />
+        <ProductLineSelect value="product-1" onChange={vi.fn()} />
       </div>,
       { wrapper: wrapper(queryClient) },
     )
@@ -206,7 +206,7 @@ describe('shared selector tenant scope', () => {
     await waitFor(() => {
       expect(queryClient.getQueryData(['location', 'loc-1', 'tenant-A', 'company-1'])).toEqual({ id: 'loc-1', name: 'Shop', code: 'S1' })
       expect(queryClient.getQueryData(['partner', 'partner-1', 'tenant-A', 'company-1'])).toEqual({ id: 'partner-1', name: 'Partner A', type: 'customer' })
-      expect(queryClient.getQueryData(['product', 'product-1', 'tenant-A', 'company-1'])).toEqual({ id: 'product-1', name: 'Product A', sku: 'P1', price: 10 })
+      expect(queryClient.getQueryData(['line-entry-product-select', 'product-1', 'tenant-A', 'company-1'])).toEqual({ id: 'product-1', name: 'Product A', sku: 'P1', price: 10 })
     })
 
     await user.click(screen.getByText(/Shop/))
@@ -225,7 +225,7 @@ describe('shared selector tenant scope', () => {
 
     await user.click(screen.getByText(/Product A/))
     await waitFor(() => {
-      expect(queryClient.getQueryData(['products-search', '', 'tenant-A', 'company-1'])).toEqual({
+      expect(queryClient.getQueryData(['line-entry-product-select-search', '', 'tenant-A', 'company-1'])).toEqual({
         data: [{ id: 'product-1', name: 'Product A', sku: 'P1', price: 10 }],
       })
     })
@@ -234,7 +234,7 @@ describe('shared selector tenant scope', () => {
   it('does not fetch shared selector reads without tenant/company state', async () => {
     resetTenant()
 
-    render(<ProductSearchSelect value="product-1" onChange={vi.fn()} />, { wrapper: wrapper(createClient()) })
+    render(<ProductLineSelect value="product-1" onChange={vi.fn()} />, { wrapper: wrapper(createClient()) })
     await userEvent.click(screen.getByText('common:actions.select'))
 
     expect(mockApiGet).not.toHaveBeenCalled()

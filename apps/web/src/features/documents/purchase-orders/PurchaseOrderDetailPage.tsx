@@ -20,7 +20,9 @@ import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentM
 import { Modal } from '../../../components/organisms/Modal'
 import { Button, Input, Textarea } from '../../../components/atoms'
 import { EntityLink } from '../../../components/molecules/EntityLink'
+import { ProductCell } from '../../../components/molecules/line-items'
 import { tokens } from '../../../lib/designTokens'
+import { entityRoutes } from '../../../lib/entityRoutes'
 import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -369,11 +371,29 @@ export function PurchaseOrderDetailPage() {
               {purchaseOrder.lines?.map((line) => (
                 <tr key={line.id}>
                   <td className="px-6 py-4 text-sm text-gray-900">
-                    <EntityLink
-                      type="product"
-                      id={line.product_id}
-                      label={line.description}
-                    />
+                    {line.product_id ? (
+                      <Link to={entityRoutes.product(line.product_id)} className="block hover:underline">
+                        <ProductCell
+                          product={{
+                            name: line.product_name || line.description,
+                            sku: line.product_code ?? null,
+                            barcode: line.product_barcode ?? null,
+                            primary_image_url: line.primary_image_url ?? null,
+                          }}
+                          size="sm"
+                        />
+                      </Link>
+                    ) : (
+                      <ProductCell
+                        product={{
+                          name: line.product_name || line.description,
+                          sku: line.product_code ?? null,
+                          barcode: line.product_barcode ?? null,
+                          primary_image_url: line.primary_image_url ?? null,
+                        }}
+                        size="sm"
+                      />
+                    )}
                     {line.notes && (
                       <div className="text-xs text-gray-500 mt-1">{line.notes}</div>
                     )}
