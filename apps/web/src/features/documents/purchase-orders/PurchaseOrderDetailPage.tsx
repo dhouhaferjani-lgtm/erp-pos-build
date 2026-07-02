@@ -22,9 +22,10 @@ import { tokens } from '../../../lib/designTokens'
 import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
+import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from '@/features/purchases/components/ReceiveGoodsDialog'
 import type { Document } from '../../../types/document'
 
-type ConfirmAction = 'confirm' | 'receive' | null
+type ConfirmAction = 'confirm' | null
 type ActiveTab = 'related' | 'attachments' | 'landedCosts' | 'payments'
 
 const receiptStatusColors = {
@@ -58,6 +59,7 @@ export function PurchaseOrderDetailPage() {
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
+  const [showReceiveDialog, setShowReceiveDialog] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [activeTab, setActiveTab] = useState<ActiveTab>('related')
@@ -103,7 +105,8 @@ export function PurchaseOrderDetailPage() {
 
   // Receive goods mutation
   const receiveGoodsMutation = useMutation({
-    mutationFn: () => apiPost<{ message: string }>(`/purchase-orders/${id}/receive`, {}),
+    mutationFn: (request: ReceiveGoodsRequest) =>
+      apiPost<{ message: string }>(`/purchase-orders/${id}/receive`, request),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
@@ -114,6 +117,7 @@ export function PurchaseOrderDetailPage() {
           predicate: scopedNamespacePredicate('stock-levels', tenantId, companyId),
         }),
       ])
+      setShowReceiveDialog(false)
       toast.success(t('documents.messages.goodsReceived'))
     },
     onError: (error) => {
@@ -129,9 +133,8 @@ export function PurchaseOrderDetailPage() {
     setConfirmAction(null)
   }
 
-  const handleReceiveGoods = () => {
-    receiveGoodsMutation.mutate()
-    setConfirmAction(null)
+  const handleReceiveGoods = (request: ReceiveGoodsRequest) => {
+    receiveGoodsMutation.mutate(request)
   }
 
   const handleDownloadPdf = () => {
@@ -267,7 +270,7 @@ export function PurchaseOrderDetailPage() {
             basePath="/purchases/orders"
             isActionPending={isActionPending}
             onConfirm={() => { setConfirmAction('confirm'); }}
-            onReceiveGoods={() => { setConfirmAction('receive'); }}
+            onReceiveGoods={() => { setShowReceiveDialog(true); }}
             onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
             onDownloadPdf={handleDownloadPdf}
             onPreviewPdf={handlePreviewPdf}
@@ -506,14 +509,13 @@ export function PurchaseOrderDetailPage() {
         isLoading={confirmMutation.isPending}
       />
 
-      <ConfirmDialog
-        isOpen={confirmAction === 'receive'}
-        onClose={() => { setConfirmAction(null); }}
-        onConfirm={handleReceiveGoods}
-        title={t('purchaseOrders.receiveGoodsTitle')}
-        message={t('purchaseOrders.receiveGoodsMessage')}
-        confirmText={t('purchaseOrders.receiveGoods')}
+      <ReceiveGoodsDialog
+        key={showReceiveDialog ? `receive-open-${purchaseOrder.id}` : `receive-closed-${purchaseOrder.id}`}
+        isOpen={showReceiveDialog}
+        purchaseOrder={purchaseOrder}
         isLoading={receiveGoodsMutation.isPending}
+        onClose={() => { setShowReceiveDialog(false); }}
+        onConfirm={handleReceiveGoods}
       />
 
       {/* Record Payment Modal */}

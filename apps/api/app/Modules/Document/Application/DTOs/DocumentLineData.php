@@ -27,6 +27,7 @@ final class DocumentLineData extends Data
         public ?string $notes,
         public ?string $designation_default_snapshot,
         public int $quantity_decimals,
+        public bool $requires_batch_tracking,
     ) {}
 
     public static function fromModel(DocumentLine $line, int $scale = 3): self
@@ -46,6 +47,7 @@ final class DocumentLineData extends Data
             notes: $line->notes,
             designation_default_snapshot: $line->designation_default_snapshot,
             quantity_decimals: self::resolveQuantityDecimals($line),
+            requires_batch_tracking: self::requiresBatchTracking($line),
         );
     }
 
@@ -65,5 +67,20 @@ final class DocumentLineData extends Data
         }
 
         return 4;
+    }
+
+    private static function requiresBatchTracking(DocumentLine $line): bool
+    {
+        if ($line->product_id === null) {
+            return false;
+        }
+
+        if (! $line->relationLoaded('product')) {
+            $line->load('product');
+        }
+
+        return $line->relationLoaded('product')
+            && $line->product !== null
+            && $line->product->requires_batch_tracking === true;
     }
 }

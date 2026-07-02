@@ -156,4 +156,43 @@ final class DocumentLineQuantityDecimalsTest extends TestCase
         $this->assertSame(0, $lines->firstWhere('product_id', $piecesProduct->id)['quantity_decimals']);
         $this->assertSame(3, $lines->firstWhere('product_id', $kgProduct->id)['quantity_decimals']);
     }
+
+    #[Test]
+    public function purchase_order_show_marks_batch_tracked_lines(): void
+    {
+        $supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Batch Lines Supplier',
+            'type' => 'supplier',
+            'code' => 'QTYLINES-SUP',
+        ]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Tracked Stock',
+            'unit_id' => $this->makeUnit('box', 0)->id,
+            'requires_batch_tracking' => true,
+        ]);
+
+        $create = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/purchase-orders', [
+                'partner_id' => $supplier->id,
+                'document_date' => now()->format('Y-m-d'),
+                'lines' => [
+                    ['product_id' => $product->id, 'description' => 'Tracked Stock', 'quantity' => 4, 'unit_price' => 8.50],
+                ],
+            ])->assertStatus(201);
+
+        $purchaseOrderId = $create->json('data.id');
+
+        $show = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/purchase-orders/{$purchaseOrderId}")
+            ->assertOk();
+
+        $line = collect($show->json('data.lines'))->firstWhere('product_id', $product->id);
+
+        $this->assertIsArray($line);
+        $this->assertTrue($line['requires_batch_tracking']);
+    }
 }

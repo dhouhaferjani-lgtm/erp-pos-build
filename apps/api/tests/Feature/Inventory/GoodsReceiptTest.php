@@ -91,6 +91,7 @@ class GoodsReceiptTest extends TestCase
             'inventory.adjust',
             'inventory.transfer',
             'inventory.receive',
+            'purchase-orders.receive',
         ]);
 
         UserCompanyMembership::create([
@@ -525,6 +526,51 @@ class GoodsReceiptTest extends TestCase
 
         $this->assertNotNull($batchStock);
         $this->assertEquals(0, bccomp('6.0000', (string) $batchStock->quantity, 4));
+    }
+
+    public function test_receive_endpoint_accepts_partial_quantities_and_batch_payload(): void
+    {
+        $this->tenant->update(['vertical' => Vertical::Pharmacy]);
+
+        $product = $this->createProduct('PROD-API-BATCH', 'API Batch Product');
+        $this->assertTrue($product->requires_batch_tracking);
+
+        $po = $this->createConfirmedPO([
+            ['product' => $product, 'quantity' => '6.0000', 'unit_price' => '5.000'],
+        ]);
+        $line = $po->lines->firstOrFail();
+        $expiryDate = now()->addDays(45)->toDateString();
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/purchase-orders/{$po->id}/receive", [
+                'quantities' => [
+                    $line->id => '2.5000',
+                ],
+                'batches' => [
+                    $line->id => [
+                        'batch_number' => 'API-BATCH-GR-001',
+                        'expiry_date' => $expiryDate,
+                    ],
+                ],
+            ])
+            ->assertOk();
+
+        $line->refresh();
+        $this->assertEquals(0, bccomp('2.5000', (string) $line->quantity_received, 4));
+
+        $batch = Batch::where('product_id', $product->id)
+            ->where('batch_number', 'API-BATCH-GR-001')
+            ->first();
+
+        $this->assertNotNull($batch);
+        $this->assertSame($expiryDate, $batch->expiry_date->toDateString());
+
+        $batchStock = BatchStock::where('batch_id', $batch->id)
+            ->where('location_id', $this->warehouse->id)
+            ->first();
+
+        $this->assertNotNull($batchStock);
+        $this->assertEquals(0, bccomp('2.5000', (string) $batchStock->quantity, 4));
     }
 
     public function test_batch_tracked_product_requires_batch_data_on_receipt(): void

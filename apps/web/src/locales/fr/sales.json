@@ -304,6 +304,13 @@
     "receiveGoodsTitle": "Réceptionner les marchandises",
     "receiveGoodsMessage": "Cela créera des mouvements de stock pour réceptionner les marchandises de ce bon d'achat. Continuer ?",
     "goodsReceived": "Marchandises réceptionnées",
+    "receive": {
+      "remaining": "Restant",
+      "quantity": "Quantité à réceptionner",
+      "batchNumber": "Numéro de lot",
+      "expiryDate": "Date d'expiration",
+      "submit": "Réceptionner"
+    },
     "receiptStatus": {
       "not_received": "Non réceptionné",
       "partially_received": "Partiellement réceptionné",

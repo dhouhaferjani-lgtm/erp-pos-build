@@ -647,6 +647,7 @@ line_total: string;
 notes: string | null;
 designation_default_snapshot: string | null;
 quantity_decimals: number;
+requires_batch_tracking: boolean;
 };
 export type VehicleContextData = {
 vehicle_id: string;
