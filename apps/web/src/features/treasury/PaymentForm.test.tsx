@@ -304,6 +304,36 @@ describe('PaymentForm repository scoping by method', () => {
     expect(options.join('|')).not.toContain('Cash Register')
     expect(options.join('|')).not.toContain('Main Safe')
   })
+
+  it('scopes a check/draft (has_maturity) method to bank accounts, not the cash drawer', async () => {
+    // Checks are physically held but deposited toward a bank account — they
+    // must NOT offer the cash register / safe when a bank repository exists.
+    mockLookups([CHECK_METHOD], [CASH_REPO, SAFE_REPO, BANK_REPO])
+    render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await selectMethod(CHECK_METHOD.id)
+
+    const repository = await screen.findByLabelText('treasury:payments.form.repository *')
+    const options = within(repository).getAllByRole('option').map((o) => o.textContent)
+    expect(options.join('|')).toContain('Bank Account')
+    expect(options.join('|')).not.toContain('Cash Register')
+    expect(options.join('|')).not.toContain('Main Safe')
+  })
+
+  it('falls back to the safe for a check/draft method when no bank repository exists', async () => {
+    // A tenant with no bank_account repository yet still needs somewhere to
+    // deposit the check: the safe is the sanctioned fallback (never the cash
+    // register).
+    mockLookups([CHECK_METHOD], [CASH_REPO, SAFE_REPO])
+    render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await selectMethod(CHECK_METHOD.id)
+
+    const repository = await screen.findByLabelText('treasury:payments.form.repository *')
+    const options = within(repository).getAllByRole('option').map((o) => o.textContent)
+    expect(options.join('|')).toContain('Main Safe')
+    expect(options.join('|')).not.toContain('Cash Register')
+  })
 })
 
 describe('PaymentForm check payment persistence', () => {

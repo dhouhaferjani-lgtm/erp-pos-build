@@ -245,7 +245,7 @@ export function ProductListPage() {
     is_active: { label: t('inventory:products.filters.active'), type: 'boolean' as const },
     price_min: { label: t('inventory:products.filters.priceMin'), type: 'range' as const },
     price_max: { label: t('inventory:products.filters.priceMax'), type: 'range' as const },
-    search: { label: t('common:search'), type: 'text' as const },
+    search: { label: t('common:actions.search'), type: 'text' as const },
     has_stock: { label: t('inventory:products.filters.hasStock'), type: 'boolean' as const },
   }), [t])
 

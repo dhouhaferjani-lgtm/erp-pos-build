@@ -97,11 +97,16 @@ interface PaymentFormData {
   withholding_override_reason?: string
 }
 
-// Repository types compatible with each kind of payment method. Physical methods
-// (cash, checks held in a drawer/portfolio) map to cash-type repositories;
-// electronic methods (cards, transfers) map to bank-type repositories.
+// Repository types compatible with each kind of payment method.
+//  - Pure cash (is_physical && !has_maturity): cash_register / safe.
+//  - Checks & drafts/traites (has_maturity): deposited toward a bank account,
+//    never held in the cash drawer. Prefer bank_account; the safe is only a
+//    fallback when the tenant has not configured a bank repository yet.
+//  - Electronic (cards, transfers, e-wallets): bank_account / virtual.
 const CASH_REPOSITORY_TYPES = ['cash_register', 'safe'] as const
 const BANK_REPOSITORY_TYPES = ['bank_account', 'virtual'] as const
+const CHECK_REPOSITORY_TYPES = ['bank_account'] as const
+const CHECK_FALLBACK_REPOSITORY_TYPES = ['safe'] as const
 
 /**
  * Mirror of the backend PaymentMethod::calculateFee() (bcmath, strings only).
@@ -393,9 +398,20 @@ export function PaymentForm() {
   // list rather than blocking the user.
   const compatibleRepositories = useMemo(() => {
     if (!selectedMethod) return repositories
-    const allowed: readonly string[] = selectedMethod.is_physical
-      ? CASH_REPOSITORY_TYPES
-      : BANK_REPOSITORY_TYPES
+
+    let allowed: readonly string[]
+    if (selectedMethod.has_maturity) {
+      // Checks / drafts are deposited toward a bank account. Prefer
+      // bank_account; fall back to the safe only when no bank repository
+      // exists yet (never the cash drawer).
+      const hasBankRepository = repositories.some((repo) => repo.type === 'bank_account')
+      allowed = hasBankRepository ? CHECK_REPOSITORY_TYPES : CHECK_FALLBACK_REPOSITORY_TYPES
+    } else if (selectedMethod.is_physical) {
+      allowed = CASH_REPOSITORY_TYPES
+    } else {
+      allowed = BANK_REPOSITORY_TYPES
+    }
+
     const filtered = repositories.filter((repo) => allowed.includes(repo.type))
     return filtered.length > 0 ? filtered : repositories
   }, [selectedMethod, repositories])
