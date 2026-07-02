@@ -3,35 +3,26 @@
 /**
  * Single source of truth for product-card and product-grid sizing.
  *
- * The virtualizer's row height MUST equal CARD_MIN_H_* + GAP for the grid
- * to avoid clipping the bottom of cards on long product names.
+ * Cards are CONTENT-SIZED (they match the mock, which pins no card height).
+ * The virtualizer measures each row's real height at runtime
+ * (`virtualizer.measureElement`), so the `CARD_MIN_H_*` values below are only
+ * the INITIAL estimate used before the first measurement — they no longer
+ * have to match the rendered height exactly (an off estimate just causes a
+ * one-frame scrollbar correction, never clipping).
  */
 export const GAP = 12;
 
-/** Grid mode (text-first card): name (2 lines) + price + stock + p-4. */
-export const CARD_MIN_H_GRID = 140;
+/** Grid/compact card estimate: brand + 2-line name + price/stock row + padding. */
+export const CARD_MIN_H_GRID = 104;
 
-/** Grid mode, dense density — tighter vertical rhythm. */
-export const CARD_MIN_H_GRID_DENSE = 112;
+/** Grid mode, dense — same content, narrower; estimate unchanged. */
+export const CARD_MIN_H_GRID_DENSE = 104;
 
-/** Visual mode (image card): image (80px) + name (2 lines) + price + stock + p-4.
- *  Kept at 220 to match the existing virtualizer estimate — do NOT lower without
- *  visual verification at 1366×768, 1280×720, and 1024×600. */
-export const CARD_MIN_H_VISUAL = 220;
+/** Visual card estimate: 88 thumb + gap + brand + 2-line name + price/stock + padding. */
+export const CARD_MIN_H_VISUAL = 192;
 
-/** Visual mode, dense density — reduced image area for tighter layout. */
-export const CARD_MIN_H_VISUAL_DENSE = 176;
-
-export const ROW_HEIGHT_GRID = CARD_MIN_H_GRID;
-export const ROW_HEIGHT_VISUAL = CARD_MIN_H_VISUAL;
-
-/**
- * Tailwind JIT class literals — kept here so a single string-literal
- * appears in the source for the scanner to extract. Never compute these
- * at runtime from CARD_MIN_H_*; the JIT will not pick up dynamic strings.
- */
-export const CARD_MIN_H_CLASS_GRID = 'min-h-[140px]';
-export const CARD_MIN_H_CLASS_VISUAL = 'min-h-[220px]';
+/** Visual mode, dense — same card content, narrower columns; estimate unchanged. */
+export const CARD_MIN_H_VISUAL_DENSE = 192;
 
 /**
  * Deterministic two-line slot for the product name.
@@ -76,10 +67,9 @@ export function getColumns(
 }
 
 /**
- * Density-aware card min-height for the virtualizer row estimate.
- *
- * Use this wherever `CARD_MIN_H_GRID` / `CARD_MIN_H_VISUAL` was used so that
- * dense layouts get a tighter row estimate, reducing wasted space.
+ * Density-aware initial row-height ESTIMATE for the virtualizer. The real row
+ * height is measured at runtime (see file header); this only seeds the first
+ * paint.
  */
 export function getCardMinH(
   displayMode: 'grid' | 'visual',

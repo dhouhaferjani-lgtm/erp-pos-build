@@ -9,8 +9,6 @@ import { bccomp, bcsum } from '@/lib/decimal';
 import { formatAvailableQty } from '@/lib/stock/stockGate';
 import { ProductThumb, StockBadge } from '@/components/ui';
 import {
-  CARD_MIN_H_CLASS_GRID,
-  CARD_MIN_H_CLASS_VISUAL,
   CARD_NAME_MIN_H_CLASS_GRID,
   CARD_NAME_MIN_H_CLASS_VISUAL,
 } from './cardSizing';
@@ -123,7 +121,6 @@ function ProductCardInner({
     }
   }
 
-  const minHClass = displayMode === 'grid' ? CARD_MIN_H_CLASS_GRID : CARD_MIN_H_CLASS_VISUAL;
   const nameMinHClass =
     displayMode === 'grid' ? CARD_NAME_MIN_H_CLASS_GRID : CARD_NAME_MIN_H_CLASS_VISUAL;
 
@@ -186,9 +183,12 @@ function ProductCardInner({
       onClick={activate}
       onKeyDown={onKeyDown}
       className={cn(
-        'relative flex flex-col rounded-xl border-2 p-4 text-left outline-none',
-        minHClass,
-        'transition-all duration-150 active:scale-[0.95] focus-visible:ring-2 focus-visible:ring-action',
+        // Card is CONTENT-SIZED (mock has no fixed height); `h-full` makes it
+        // fill the grid track so cards in a row equalize (align-items:stretch)
+        // and the virtualizer measures the real row height — no clipping.
+        'relative flex h-full flex-col rounded-card border-[1.5px] text-left outline-none',
+        displayMode === 'visual' ? 'p-2.5' : 'px-3 py-2.5',
+        'transition-all duration-150 active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-action',
         displayMode === 'visual' ? 'items-center text-center' : 'items-start',
         cardSurface,
       )}
@@ -261,7 +261,7 @@ function ProductCardInner({
 
       {/* Visual mode: ProductThumb on top. Compact (grid) mode: no thumb. */}
       {displayMode === 'visual' && (
-        <div className="mb-3 shrink-0">
+        <div className="mb-2 shrink-0">
           <ProductThumb
             name={product.name}
             category={product.category}
@@ -298,26 +298,30 @@ function ProductCardInner({
         {product.name}
       </h3>
 
-      <p
-        data-testid="price-row"
-        className={cn(
-          'shrink-0 pt-2 text-lg font-mono tabular-nums',
-          isOutOfStock ? 'text-ink-faint' : 'text-ink',
-        )}
-      >
-        {format(product.sale_price ?? '0')}
-      </p>
-
-      {/* StockBadge replaces the inline stock label — stock-* token family. */}
-      {stockLabel !== null && (
-        <StockBadge
-          data-testid="stock-row"
-          status={isOutOfStock ? 'out' : isLowStock ? 'low' : 'ok'}
-          className="shrink-0 mt-1"
+      {/* Price + stock share ONE row (mock layout: space-between), anchored to
+          the card bottom via mt-auto so prices align across a row. */}
+      <div className="mt-auto flex w-full items-center justify-between gap-2 pt-2">
+        <p
+          data-testid="price-row"
+          className={cn(
+            'shrink-0 text-lg font-mono tabular-nums',
+            isOutOfStock ? 'text-ink-faint' : 'text-ink',
+          )}
         >
-          {stockLabel}
-        </StockBadge>
-      )}
+          {format(product.sale_price ?? '0')}
+        </p>
+
+        {/* StockBadge replaces the inline stock label — stock-* token family. */}
+        {stockLabel !== null && (
+          <StockBadge
+            data-testid="stock-row"
+            status={isOutOfStock ? 'out' : isLowStock ? 'low' : 'ok'}
+            className="shrink-0"
+          >
+            {stockLabel}
+          </StockBadge>
+        )}
+      </div>
 
       {incomingTotal !== null && (
         <p

@@ -1,7 +1,7 @@
 /* eslint-disable local/no-untranslated-literal -- DEV-only token/atom gallery
  * (not a production surface); the French demo labels and token names are
  * intentional fixed content, not user-facing copy to translate. */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Button,
   IconButton,
@@ -22,11 +22,85 @@ import {
 } from '@/components/ui';
 import { NavRail } from '@/components/NavRail';
 import { CartLineItem } from '@/components/molecules/CartLineItem';
-import { ACCENTS, type AccentName } from '@/lib/theme';
+import { ProductGrid } from '@/components/organisms/ProductGrid';
+import { ACCENTS, type AccentName, type Density } from '@/lib/theme';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useProductStore } from '@/stores/productStore';
 import { formatCurrency } from '@/lib/currency';
 import { Search, Printer, ShoppingCart, Users, BarChart3, Wallet } from 'lucide-react';
 import type { CartItem } from '@/types/cart';
+import type { POSProduct } from '@/types/product';
+import type { FiltresFilters } from '@/components/organisms/FiltresDrawer';
+
+// ---------------------------------------------------------------------------
+// Seeded sell-screen fixtures — realistic parapharmacy catalog for verifying
+// ProductGrid/ProductCard sizing without a full POS bootstrap. Prices are
+// STRINGS (precision contract); names vary in length to exercise the 1- vs
+// 2-line name slot; stock states cover ok / low / out; categories map to the
+// tint families in ProductThumb.
+// ---------------------------------------------------------------------------
+const SELL_CATEGORIES = ['Visage', 'Solaire', 'Corps', 'Cheveux', 'Bebe', 'Complements', 'Hygiene'];
+
+function seedProduct(
+  i: number,
+  name: string,
+  brand: string,
+  category: string,
+  price: string,
+  stock: number,
+  skin?: string,
+): POSProduct {
+  return {
+    id: `seed-${i}`,
+    name,
+    sku: `SKU-${1000 + i}`,
+    sale_price: price,
+    stock_quantity: stock,
+    category,
+    brand_name: brand,
+    ...(skin
+      ? {
+          parapharmacy_metadata: {
+            suitable_skin_types: [skin],
+            equivalent_product_ids: [],
+            complement_product_ids: [],
+            routine_refs: [],
+          },
+        }
+      : {}),
+  } as unknown as POSProduct;
+}
+
+const SELL_PRODUCTS: POSProduct[] = [
+  seedProduct(1, 'Effaclar Gel Moussant Purifiant 200ml', 'La Roche-Posay', 'Visage', '38.500', 24, 'oily'),
+  seedProduct(2, 'Cicaplast Baume B5', 'La Roche-Posay', 'Visage', '29.900', 6),
+  seedProduct(3, 'Eau Thermale 300ml', 'Avène', 'Visage', '45.500', 40, 'sensitive'),
+  seedProduct(4, 'Crème Hydratante Visage', 'CeraVe', 'Visage', '52.000', 0, 'dry'),
+  seedProduct(5, 'Sérum Vitamine C Éclat Anti-Taches Intense', 'Vichy', 'Visage', '89.000', 3, 'normal'),
+  seedProduct(6, 'Anthelios UVMune 400 SPF50+', 'La Roche-Posay', 'Solaire', '48.900', 18, 'oily'),
+  seedProduct(7, 'Photoderm MAX Crème SPF50+', 'Bioderma', 'Solaire', '54.500', 12),
+  seedProduct(8, 'Lait Après-Soleil Réparateur', 'Nuxe', 'Solaire', '33.000', 9),
+  seedProduct(9, 'Lait Corporel Nourrissant Karité', 'Mixa', 'Corps', '14.900', 60, 'dry'),
+  seedProduct(10, 'Huile Prodigieuse Multi-Fonctions', 'Nuxe', 'Corps', '76.000', 21),
+  seedProduct(11, 'Atoderm Intensive Baume', 'Bioderma', 'Corps', '41.500', 5, 'sensitive'),
+  seedProduct(12, 'Shampooing Doux Usage Fréquent', 'Klorane', 'Cheveux', '19.900', 33),
+  seedProduct(13, 'Dercos Anti-Pelliculaire', 'Vichy', 'Cheveux', '37.000', 0),
+  seedProduct(14, 'Élution Shampooing Rééquilibrant', 'Ducray', 'Cheveux', '28.500', 14),
+  seedProduct(15, 'Liniment Oléo-Calcaire Bio', 'Gilbert', 'Bebe', '12.000', 48),
+  seedProduct(16, 'Crème Change 1 2 3', 'Mustela', 'Bebe', '22.900', 7),
+  seedProduct(17, 'Magnésium Marin B6 Fatigue', 'Nutergia', 'Complements', '31.000', 26),
+  seedProduct(18, 'Vitamine D3 1000 UI Gouttes', 'ZymaD', 'Complements', '9.500', 2),
+  seedProduct(19, 'Oméga 3 EPA DHA 60 caps', 'Arkopharma', 'Complements', '44.000', 15),
+  seedProduct(20, 'Gel Hydroalcoolique 500ml', 'Aniosgel', 'Hygiene', '11.500', 80),
+  seedProduct(21, 'Bain de Bouche Sans Alcool', 'Elmex', 'Hygiene', '16.900', 4),
+  seedProduct(22, 'Dentifrice Protection Caries', 'Sensodyne', 'Hygiene', '13.500', 0),
+  seedProduct(23, 'Tolériane Sensitive Fluide', 'La Roche-Posay', 'Visage', '39.900', 11, 'sensitive'),
+  seedProduct(24, 'Hydrance Aqua-Gel', 'Avène', 'Visage', '42.500', 19, 'combination'),
+  seedProduct(25, 'Sébium Hydra Crème Compensatrice', 'Bioderma', 'Visage', '35.000', 8, 'oily'),
+  seedProduct(26, 'Nutritic Intense Riche', 'La Roche-Posay', 'Visage', '46.000', 22, 'dry'),
+  seedProduct(27, 'Capital Soleil Brume Invisible SPF50', 'Vichy', 'Solaire', '43.500', 17),
+  seedProduct(28, 'Cold Cream Corps', 'Avène', 'Corps', '24.900', 30, 'dry'),
+];
 
 /**
  * DEV-ONLY visual gallery for the Caisse redesign token system + atoms.
@@ -74,6 +148,17 @@ export function ThemePreviewPage() {
   const [nav, setNav] = useState('caisse');
   const [expandedLine, setExpandedLine] = useState<string | null>('l2');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Sell-screen preview state
+  const displayMode = useSettingsStore((s) => s.displayMode);
+  const setDisplayMode = useSettingsStore((s) => s.setDisplayMode);
+  const density = useSettingsStore((s) => s.density);
+  const setDensity = useSettingsStore((s) => s.setDensity);
+  const [gridFilters, setGridFilters] = useState<FiltresFilters>({ brands: [], categories: [], skinTypes: [] });
+  const [gridCart, setGridCart] = useState<string[]>(['seed-3']);
+  // Enable the Merchandising surface (skin-advice bar + Filtres) in the harness.
+  useEffect(() => {
+    useProductStore.setState({ companyConfig: { all_enabled_modules: ['Merchandising'] } });
+  }, []);
   const mockCart: CartItem[] = [
     { id: 'l1', quantity: 2, unit_price: '45.500', line_total: '91.000', product: { id: 'p1', name: 'Avène Eau Thermale 300ml', sku: 'AV1', price: '45.500' } } as unknown as CartItem,
     { id: 'l2', quantity: 1, unit_price: '120.000', line_total: '108.000', discount_amount: '12.000', discount_type: 'percentage', discount_percent: 10, product: { id: 'p2', name: 'CeraVe Crème Hydratante', sku: 'CV1', price: '120.000' } } as unknown as CartItem,
@@ -108,6 +193,18 @@ export function ThemePreviewPage() {
             />
           ))}
         </div>
+        <SegmentedControl
+          ariaLabel="density"
+          value={density}
+          onChange={(d) => setDensity(d as Density)}
+          options={[{ value: 'comfortable', label: 'Confort' }, { value: 'dense', label: 'Dense' }]}
+        />
+        <SegmentedControl
+          ariaLabel="displayMode"
+          value={displayMode}
+          onChange={(m) => setDisplayMode(m as 'grid' | 'visual')}
+          options={[{ value: 'visual', label: 'Vignettes' }, { value: 'grid', label: 'Liste' }]}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -303,6 +400,25 @@ export function ThemePreviewPage() {
                   </div>
                 </div>
               </div>
+            </div>
+          </Section>
+        </div>
+
+        <div className="lg:col-span-2">
+          <Section title="Écran de vente — grille produits (données de test)">
+            <div data-testid="sell-preview" className="h-[640px] overflow-hidden rounded-panel border border-border-subtle bg-surface-canvas">
+              <ProductGrid
+                products={SELL_PRODUCTS}
+                categories={SELL_CATEGORIES}
+                onAddToCart={(p) =>
+                  setGridCart((prev) =>
+                    prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id],
+                  )
+                }
+                cartProductIds={gridCart}
+                filters={gridFilters}
+                onFiltersChange={setGridFilters}
+              />
             </div>
           </Section>
         </div>

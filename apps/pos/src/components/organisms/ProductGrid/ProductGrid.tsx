@@ -662,18 +662,19 @@ export function ProductGrid({
               return (
                 <div
                   key={virtualRow.key}
-                  className="absolute left-0 top-0 grid w-full gap-3"
+                  ref={virtualizer.measureElement}
+                  data-index={virtualRow.index}
+                  className="absolute left-0 top-0 grid w-full gap-2.5"
                   style={{
                     // gridTemplateColumns is computed from JS (density-aware),
                     // replacing the old responsive Tailwind grid-cols-* classes.
                     gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                    height: `${virtualRow.size}px`,
-                    // Pin the single grid track to exactly rowHeight so the
-                    // leftover space below each card equals GAP (12px) — the
-                    // same as the `gap-3` column gap. Without this, cards whose
-                    // content exceeds rowHeight shrink the vertical gutter and
-                    // it no longer matches the horizontal one.
-                    gridAutoRows: `${rowHeight}px`,
+                    // Rows are DYNAMICALLY MEASURED (measureElement ref above):
+                    // no fixed height / gridAutoRows pin. Cards are content-sized
+                    // and equalize within a row via the grid's default
+                    // align-items:stretch. paddingBottom supplies the row gutter
+                    // (measured into the row height so the next row sits below it).
+                    paddingBottom: `${GAP}px`,
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
