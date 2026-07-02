@@ -2146,14 +2146,14 @@ final class GeneralLedgerService
             $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
             $paymentAccount = $this->expensePaymentAccount($expense);
             $scale = $this->scaleResolver->getScale((string) $expense->currency);
-            $inventoryTotal = CurrencyScale::bcformatStrict($application['inventory_total'] ?? '0', $scale);
-            $cogsTotal = CurrencyScale::bcformatStrict($application['cogs_total'] ?? '0', $scale);
+            $inventoryTotal = CurrencyScale::bcformatStrict($application['inventory_total'], $scale);
+            $cogsTotal = CurrencyScale::bcformatStrict($application['cogs_total'], $scale);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $expense->tenant_id,
                 'company_id' => $companyId,
                 'entry_number' => $this->generateEntryNumber($companyId),
-                'entry_date' => $metadata?->payment_date ?? $expense->document_date,
+                'entry_date' => $metadata->payment_date ?? $expense->document_date,
                 'description' => "Linked cost capitalization: {$expense->document_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'linked_cost_capitalization',
@@ -2224,8 +2224,8 @@ final class GeneralLedgerService
             $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
             $paymentAccount = $this->expensePaymentAccount($expense);
             $scale = $this->scaleResolver->getScale((string) $expense->currency);
-            $inventoryTotal = CurrencyScale::bcformatStrict($application['inventory_total'] ?? '0', $scale);
-            $cogsTotal = CurrencyScale::bcformatStrict($application['cogs_total'] ?? '0', $scale);
+            $inventoryTotal = CurrencyScale::bcformatStrict($application['inventory_total'], $scale);
+            $cogsTotal = CurrencyScale::bcformatStrict($application['cogs_total'], $scale);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $expense->tenant_id,

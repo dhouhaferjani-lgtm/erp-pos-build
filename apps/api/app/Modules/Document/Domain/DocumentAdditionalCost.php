@@ -17,9 +17,9 @@ use Illuminate\Support\Carbon;
  *
  * @property string $id
  * @property string $document_id
- * @property string $cost_type (transport, shipping, insurance, customs, handling, other)
+ * @property AdditionalCostType $cost_type
  * @property string|null $description
- * @property string $amount
+ * @property numeric-string $amount
  * @property string|null $expense_document_id
  * @property CostApplicationPath $application_path
  * @property LandedCostSplitMethod $split_method

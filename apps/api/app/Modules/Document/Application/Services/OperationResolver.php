@@ -54,7 +54,7 @@ final class OperationResolver implements OperationResolverInterface
             'document_id' => $operation->id,
             'kind' => 'purchase_order',
             'number' => $operation->document_number,
-            'date' => $operation->document_date?->toDateString(),
+            'date' => $operation->document_date->toDateString(),
             'status' => $operation->status->value,
             'received_at' => $operation->payload['goods_received_at'] ?? null,
             'line_count' => $operation->lines->count(),

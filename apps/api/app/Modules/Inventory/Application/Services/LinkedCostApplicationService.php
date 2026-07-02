@@ -68,7 +68,7 @@ final class LinkedCostApplicationService implements LinkedCostApplicatorInterfac
         $operation = $cost->document()->with('lines.product')->firstOrFail();
         $lines = $this->receivedProductLines($operation);
         $bases = $this->bases($lines, $cost->split_method, (string) $expense->currency);
-        $shares = $this->moneyAllocator->allocate($amount, $bases, $scale, $working);
+        $shares = $this->moneyAllocator->allocate(CurrencyScale::bcformatStrict($amount, $scale), $bases, $scale, $working);
 
         $inventoryByProduct = [];
         $cogsTotal = CurrencyScale::bcformatStrict('0', $scale);
@@ -77,8 +77,9 @@ final class LinkedCostApplicationService implements LinkedCostApplicatorInterfac
         foreach ($lines->values() as $index => $line) {
             $lineShare = $shares[$index];
             $soldQty = $this->soldSinceReceipt($operation, $line, $working);
-            $receivedQty = CurrencyScale::bcformatStrict((string) $line->quantity_received, 4);
-            $soldRatio = bccomp($receivedQty, '0', 4) > 0
+            $quantityScale = 4;
+            $receivedQty = CurrencyScale::bcformatStrict((string) $line->quantity_received, $quantityScale);
+            $soldRatio = bccomp($receivedQty, '0', $quantityScale) > 0
                 ? bcdiv($soldQty, $receivedQty, $working)
                 : '0';
 
@@ -136,6 +137,7 @@ final class LinkedCostApplicationService implements LinkedCostApplicatorInterfac
                     'cogs_portion' => $portion,
                     'stock_movement_id' => null,
                 ];
+
                 continue;
             }
 
@@ -163,8 +165,9 @@ final class LinkedCostApplicationService implements LinkedCostApplicatorInterfac
      */
     private function receivedProductLines(Document $operation): Collection
     {
+        $scale = $this->scaleResolver->getScale((string) $operation->currency);
         $lines = $operation->lines
-            ->filter(fn (DocumentLine $line): bool => $line->product_id !== null && bccomp((string) $line->line_total, '0', 3) > 0)
+            ->filter(fn (DocumentLine $line): bool => $line->product_id !== null && bccomp((string) $line->line_total, '0', $scale) > 0)
             ->values();
 
         if ($lines->isEmpty()) {
@@ -225,6 +228,7 @@ final class LinkedCostApplicationService implements LinkedCostApplicatorInterfac
                 if (str_starts_with($quantity, '-')) {
                     $quantity = substr($quantity, 1);
                 }
+                $quantity = CurrencyScale::bcformatStrict($quantity, $working);
                 $sold = bcadd($sold, $quantity, $working);
             });
 

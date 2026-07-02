@@ -14,13 +14,15 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\LandedCostSplitMethod;
 use App\Modules\Expense\Application\Exceptions\LinkedCostException;
-use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Expense\Domain\Enums\ExpenseKind;
+use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\User;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Document\OperationResolverInterface;
 use App\Shared\Contracts\Inventory\LinkedCostApplicatorInterface;
 use App\Shared\Contracts\Treasury\RepositoryInflowInterface;
 use App\Shared\Contracts\Treasury\RepositoryOutflowInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -36,6 +38,7 @@ final class ExpenseService
         private readonly CompanyContext $companyContext,
         private readonly OperationResolverInterface $operationResolver,
         private readonly LinkedCostApplicatorInterface $linkedCostApplicator,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -92,12 +95,12 @@ final class ExpenseService
                 DocumentAdditionalCost::create([
                     'id' => Str::uuid()->toString(),
                     'document_id' => $linked['operation']->id,
-                    'cost_type' => $data['cost_type'] ?? AdditionalCostType::Other->value,
+                    'cost_type' => $this->costType($data['cost_type'] ?? null),
                     'description' => $data['notes'] ?? null,
                     'amount' => $data['total'],
                     'expense_document_id' => $expense->id,
-                    'application_path' => CostApplicationPath::WacAdjustment->value,
-                    'split_method' => $data['split_method'] ?? LandedCostSplitMethod::ByValue->value,
+                    'application_path' => CostApplicationPath::WacAdjustment,
+                    'split_method' => $this->splitMethod($data['split_method'] ?? null),
                 ]);
             }
 
@@ -169,7 +172,12 @@ final class ExpenseService
                 $application = $this->linkedCostApplicator->apply($expense, $cost, $user);
                 $expense->payload = array_merge($expense->payload ?? [], ['linked_cost_application' => $application]);
                 $expense->save();
-                $this->glService->createLinkedCostCapitalizationEntry($expense->loadMissing('expenseMetadata.paymentRepository'), $cost, $application, $user);
+                $this->glService->createLinkedCostCapitalizationEntry(
+                    $expense->loadMissing('expenseMetadata.paymentRepository'),
+                    $cost,
+                    $this->ledgerApplication($application, (string) $expense->currency),
+                    $user,
+                );
             } else {
                 // Create GL entry
                 $this->glService->createFromExpense($expense, $user);
@@ -212,6 +220,7 @@ final class ExpenseService
         }
 
         return DB::transaction(function () use ($expense, $user): array {
+            $metadata = $expense->expenseMetadata;
             $originalCost = DocumentAdditionalCost::query()
                 ->where('expense_document_id', $expense->id)
                 ->whereNull('reverses_cost_id')
@@ -238,24 +247,25 @@ final class ExpenseService
 
             ExpenseMetadata::create([
                 'document_id' => $reversalExpense->id,
-                'expense_category_id' => $expense->expenseMetadata->expense_category_id,
-                'payment_method_id' => $expense->expenseMetadata->payment_method_id,
-                'payment_repository_id' => $expense->expenseMetadata->payment_repository_id,
+                'expense_category_id' => $metadata->expense_category_id,
+                'payment_method_id' => $metadata->payment_method_id,
+                'payment_repository_id' => $metadata->payment_repository_id,
                 'payment_date' => now()->toDateString(),
-                'is_paid' => $expense->expenseMetadata->is_paid,
-                'vendor_name' => $expense->expenseMetadata->vendor_name,
+                'is_paid' => $metadata->is_paid,
+                'vendor_name' => $metadata->vendor_name,
                 'expense_kind' => ExpenseKind::LinkedCost,
             ]);
 
+            $scale = $this->scaleResolver->getScale((string) $expense->currency);
             $reversalCost = DocumentAdditionalCost::create([
                 'id' => Str::uuid()->toString(),
                 'document_id' => $originalCost->document_id,
-                'cost_type' => $originalCost->cost_type->value,
+                'cost_type' => $originalCost->cost_type,
                 'description' => "Reversal of {$originalCost->description}",
-                'amount' => bcmul((string) $originalCost->amount, '-1', 3),
+                'amount' => bcmul($originalCost->amount, '-1', $scale),
                 'expense_document_id' => $reversalExpense->id,
-                'application_path' => $originalCost->application_path->value,
-                'split_method' => $originalCost->split_method->value,
+                'application_path' => $originalCost->application_path,
+                'split_method' => $originalCost->split_method,
                 'reverses_cost_id' => $originalCost->id,
                 'applied_at' => now(),
             ]);
@@ -264,7 +274,7 @@ final class ExpenseService
             $entry = $this->glService->createLinkedCostCapitalizationReversalEntry(
                 $expense->loadMissing('expenseMetadata.paymentRepository'),
                 $reversalCost,
-                $application,
+                $this->ledgerApplication($application, (string) $expense->currency),
                 $user,
             );
 
@@ -272,9 +282,9 @@ final class ExpenseService
             $originalCost->save();
 
             $cashReversed = false;
-            if ($expense->expenseMetadata->is_paid === true && $expense->expenseMetadata->payment_repository_id !== null && $expense->total !== null) {
+            if ($metadata->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
                 $this->inflow->applyInflow(
-                    $expense->expenseMetadata->payment_repository_id,
+                    $metadata->payment_repository_id,
                     $expense->tenant_id,
                     $expense->company_id,
                     $expense->total,
@@ -296,6 +306,7 @@ final class ExpenseService
     }
 
     /**
+     * @param  array<string, mixed>  $data
      * @return array{operation: Document}|null
      */
     private function prepareLinkedCost(array $data, string $tenantId, string $companyId, string $expenseCurrency): ?array
@@ -340,8 +351,9 @@ final class ExpenseService
 
     private function assertPhaseOneReceived(Document $operation): void
     {
+        $scale = $this->scaleResolver->getScale((string) $operation->currency);
         $lines = $operation->lines
-            ->filter(fn ($line): bool => $line->product_id !== null && bccomp((string) $line->line_total, '0', 3) > 0);
+            ->filter(fn ($line): bool => $line->product_id !== null && bccomp((string) $line->line_total, '0', $scale) > 0);
 
         if ($lines->isEmpty()) {
             throw new LinkedCostException('OPERATION_NOT_RECEIVED', 'The linked purchase operation has no product lines.');
@@ -377,5 +389,45 @@ final class ExpenseService
         }
 
         return sprintf('EXP-%s-%06d', $year, $nextNumber);
+    }
+
+    private function costType(mixed $value): AdditionalCostType
+    {
+        if ($value instanceof AdditionalCostType) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            return AdditionalCostType::tryFrom($value) ?? AdditionalCostType::Other;
+        }
+
+        return AdditionalCostType::Other;
+    }
+
+    private function splitMethod(mixed $value): LandedCostSplitMethod
+    {
+        if ($value instanceof LandedCostSplitMethod) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            return LandedCostSplitMethod::tryFrom($value) ?? LandedCostSplitMethod::ByValue;
+        }
+
+        return LandedCostSplitMethod::ByValue;
+    }
+
+    /**
+     * @param  array<string, mixed>  $application
+     * @return array{inventory_total: numeric-string, cogs_total: numeric-string}
+     */
+    private function ledgerApplication(array $application, string $currency): array
+    {
+        $scale = $this->scaleResolver->getScale($currency);
+
+        return [
+            'inventory_total' => CurrencyScale::bcformatStrict((string) ($application['inventory_total'] ?? '0'), $scale),
+            'cogs_total' => CurrencyScale::bcformatStrict((string) ($application['cogs_total'] ?? '0'), $scale),
+        ];
     }
 }

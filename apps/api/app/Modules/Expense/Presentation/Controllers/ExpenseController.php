@@ -282,8 +282,8 @@ class ExpenseController extends Controller
             ->map(fn (Document $document): array => [
                 'id' => $document->id,
                 'document_number' => $document->document_number,
-                'partner_name' => $document->partner?->name,
-                'document_date' => $document->document_date?->toDateString(),
+                'partner_name' => $document->partner->name,
+                'document_date' => $document->document_date->toDateString(),
                 'total' => $document->total,
                 'currency' => $document->currency,
                 'side' => 'purchase',

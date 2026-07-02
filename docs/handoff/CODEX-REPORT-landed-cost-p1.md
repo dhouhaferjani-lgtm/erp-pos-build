@@ -159,3 +159,48 @@ php -l passed for changed services, controller/request/resource, providers, cont
 - Phase 1 did not add a supplier-invoice-backed fee spine, fee TVA/AP/retenue, pre-receipt/mixed-path handling, sales-side profit-only flow, or multi-currency support, per §13/§14.
 - The linked invoice id is not persisted as a new column; Phase 1 persists the resolved operation through `document_additional_costs.document_id` and the cost-bearing expense through `expense_document_id`, matching §6.
 - No git commit was made.
+
+## PHPStan Fix Pass
+
+Per-theme resolution:
+
+- `DocumentAdditionalCost` enum coherence: kept the enum casts as canonical. Updated the model PHPDoc so `cost_type`, `application_path`, and `split_method` are treated as enum-backed fields, changed linked-cost creation and reversal to pass enum objects instead of raw values, and left enum comparisons/accesses on enum cases.
+- Currency-scale discipline: injected `CurrencyScaleResolverInterface` into `ExpenseService`, resolved scale from the expense/operation currency, and replaced hardcoded monetary bcmath scales in linked-cost expense paths with runtime currency scale. Linked-cost application now formats allocator input as a numeric string and uses currency scale for monetary line checks.
+- Ledger application array shape: normalized generic applicator payloads at the `ExpenseService` boundary into `array{inventory_total: numeric-string, cogs_total: numeric-string}` before calling `GeneralLedgerService`; removed redundant `??` fallbacks inside ledger methods once the shape is guaranteed.
+- Nullsafe/coalesce cleanup: removed nullsafe access on non-nullable dates/relationships and removed nullable fallback on non-nullable enum fields. Reused narrowed `ExpenseMetadata` in reversal instead of repeatedly accessing a nullable relation.
+- Inventory applicator numeric-string fixes: canonicalized movement quantities before `bcadd`, formatted allocator totals with `CurrencyScale::bcformatStrict()`, and used resolved currency scale for monetary comparisons.
+
+Final verification:
+
+```bash
+cd apps/api
+./vendor/bin/phpstan analyse app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Document/Application/Services/OperationResolver.php app/Modules/Document/Domain/DocumentAdditionalCost.php app/Modules/Expense/Application/Services/ExpenseService.php app/Modules/Expense/Presentation/Controllers/ExpenseController.php app/Modules/Expense/Presentation/Resources/ExpenseResource.php app/Modules/Inventory/Application/Services/LinkedCostApplicationService.php
+```
+
+Output:
+
+```text
+[OK] No errors
+```
+
+```bash
+cd apps/api
+./vendor/bin/phpunit tests/Feature/Expense/LinkedCostExpenseTest.php tests/Unit/Shared/ProportionalMoneyAllocatorTest.php
+```
+
+Output:
+
+```text
+OK (5 tests, 35 assertions)
+```
+
+```bash
+cd apps/api
+./vendor/bin/pint --test app/Modules/Document/Domain/DocumentAdditionalCost.php app/Modules/Expense/Application/Services/ExpenseService.php app/Modules/Accounting/Domain/Services/GeneralLedgerService.php app/Modules/Document/Application/Services/OperationResolver.php app/Modules/Expense/Presentation/Controllers/ExpenseController.php app/Modules/Expense/Presentation/Resources/ExpenseResource.php app/Modules/Inventory/Application/Services/LinkedCostApplicationService.php
+```
+
+Output:
+
+```json
+{"result":"pass"}
+```
