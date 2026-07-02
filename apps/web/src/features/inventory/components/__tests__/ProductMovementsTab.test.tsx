@@ -75,6 +75,8 @@ const mockMovements = [
     quantity_before: '0',
     quantity_after: '10',
     reference: 'PO-2024-001',
+    source_document_id: 'po-1',
+    source_document_type: 'purchase_order',
     notes: null,
     user_id: 'user-1',
     user_name: 'John Doe',
@@ -91,6 +93,8 @@ const mockMovements = [
     quantity_before: '10',
     quantity_after: '5',
     reference: 'INV-2024-001',
+    source_document_id: 'inv-1',
+    source_document_type: 'invoice',
     notes: 'Sale',
     user_id: 'user-1',
     user_name: 'John Doe',
@@ -107,6 +111,8 @@ const mockMovements = [
     quantity_before: '5',
     quantity_after: '7',
     reference: 'ADJ-001',
+    source_document_id: null,
+    source_document_type: null,
     notes: 'Inventory correction',
     user_id: 'user-1',
     user_name: 'John Doe',
@@ -195,15 +201,44 @@ describe('ProductMovementsTab', () => {
       const poLink = screen.getByRole('link', { name: 'PO-2024-001' })
       expect(poLink).toHaveAttribute(
         'href',
-        '/purchases/orders?search=PO-2024-001'
+        '/purchases/orders/po-1'
       )
 
       // INV reference should be a link
       const invLink = screen.getByRole('link', { name: 'INV-2024-001' })
       expect(invLink).toHaveAttribute(
         'href',
-        '/sales/invoices?search=INV-2024-001'
+        '/sales/invoices/inv-1'
       )
+    })
+  })
+
+  it('requests the selected server page when pagination is used', async () => {
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({
+        data: {
+          data: mockMovements.slice(0, 1),
+          meta: { current_page: 1, last_page: 2, per_page: 1, total: 2, from: 1, to: 1 },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: mockMovements.slice(1, 2),
+          meta: { current_page: 2, last_page: 2, per_page: 1, total: 2, from: 2, to: 2 },
+        },
+      })
+    const user = userEvent.setup()
+
+    renderWithProviders(<ProductMovementsTab productId="prod-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Warehouse A')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith(expect.stringContaining('page=2'))
     })
   })
 
@@ -258,7 +293,7 @@ describe('ProductMovementsTab', () => {
 
     await waitFor(() => {
       // Match the actual error text from translation
-      expect(screen.getByText(/error.*loading/i)).toBeInTheDocument()
+      expect(screen.getByText(/failed to load data/i)).toBeInTheDocument()
     })
   })
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -85,6 +85,11 @@ const mockPartnerDetailAcme = makePartnerDetail({
   phone: '+1234567890',
   created_at: '2025-01-01T00:00:00Z',
 })
+
+function LocationSearchProbe() {
+  const location = useLocation()
+  return <div data-testid="location-search">{location.search}</div>
+}
 
 /** Full partner data matching the Partner interface for edit tests */
 const mockFullPartner = {
@@ -283,8 +288,13 @@ describe('Partner Management', () => {
         if (/^\/partners\/[^/]+(\?|$)/.test(url)) {
           return Promise.resolve({ data: { data: partner } })
         }
-        // documents, payments — array payloads
-        return Promise.resolve({ data: { data: [] } })
+        // documents, payments — paginated array payloads
+        return Promise.resolve({
+          data: {
+            data: [],
+            meta: { current_page: 1, last_page: 1, per_page: 10, total: 0, from: null, to: null },
+          },
+        })
       })
     }
 
@@ -363,9 +373,12 @@ describe('Partner Management', () => {
       )
 
       renderWithProviders(
-        <Routes>
-          <Route path="/sales/customers/:id" element={<PartnerDetailPage />} />
-        </Routes>,
+        <>
+          <LocationSearchProbe />
+          <Routes>
+            <Route path="/sales/customers/:id" element={<PartnerDetailPage />} />
+          </Routes>
+        </>,
         { route: '/sales/customers/1' }
       )
 
@@ -413,6 +426,50 @@ describe('Partner Management', () => {
       })
 
       expect(screen.getByRole('tab', { name: /vehicles/i })).toBeInTheDocument()
+    })
+
+    it('reads the active tab from the tab search param', async () => {
+      routeDetailMock(makePartnerDetail({ id: '1', name: 'Acme Corp', type: 'customer' }))
+
+      renderWithProviders(
+        <>
+          <LocationSearchProbe />
+          <Routes>
+            <Route path="/sales/customers/:id" element={<PartnerDetailPage />} />
+          </Routes>
+        </>,
+        { route: '/sales/customers/1?tab=payments' }
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText('Acme Corp')).toBeInTheDocument()
+      })
+
+      expect(screen.getByRole('tab', { name: /payments/i })).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('heading', { name: /no payments/i })).toBeInTheDocument()
+    })
+
+    it('writes the active tab to the tab search param when changed', async () => {
+      routeDetailMock(makePartnerDetail({ id: '1', name: 'Acme Corp', type: 'customer' }))
+      const user = userEvent.setup()
+
+      renderWithProviders(
+        <>
+          <LocationSearchProbe />
+          <Routes>
+            <Route path="/sales/customers/:id" element={<PartnerDetailPage />} />
+          </Routes>
+        </>,
+        { route: '/sales/customers/1' }
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText('Acme Corp')).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole('tab', { name: /payments/i }))
+
+      expect(screen.getByTestId('location-search')).toHaveTextContent('?tab=payments')
     })
   })
 

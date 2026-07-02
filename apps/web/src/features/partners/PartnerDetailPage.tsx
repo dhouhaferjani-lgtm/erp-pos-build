@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useParams, useLocation } from 'react-router-dom'
+import { Link, useParams, useLocation, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -32,6 +32,7 @@ import { VehiclesTab } from '../vehicles/components/organisms/VehiclesTab'
 import { usePartnerVehicles } from '../vehicles/hooks/usePartnerVehicles'
 import { partnerVehiclesInvalidationPredicate } from './_invalidation'
 import { useCompanyConfig } from '@/contexts'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
 
 interface PartnerAccountBalance {
   partner_id: string
@@ -70,6 +71,25 @@ interface Payment {
   unallocated_amount: string
 }
 
+interface OffsetMeta {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+  from?: number | null
+  to?: number | null
+}
+
+interface DocumentsResponse {
+  data: Document[]
+  meta?: Partial<OffsetMeta>
+}
+
+interface PaymentsResponse {
+  data: Payment[]
+  meta?: Partial<OffsetMeta>
+}
+
 const typeColors = {
   customer: 'bg-blue-100 text-blue-800',
   supplier: 'bg-purple-100 text-purple-800',
@@ -91,19 +111,39 @@ const statusColors: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-800',
 }
 
+const PARTNER_DETAIL_TABS = ['overview', 'documents', 'payments', 'vehicles', 'deposits'] as const
+type PartnerDetailTab = typeof PARTNER_DETAIL_TABS[number]
+
+function isPartnerDetailTab(value: string | null): value is PartnerDetailTab {
+  return value !== null && (PARTNER_DETAIL_TABS as readonly string[]).includes(value)
+}
+
 export function PartnerDetailPage() {
   usePartnerBalanceRealtime()
   const { t } = useTranslation(['common', 'deposits', 'treasury'])
   const queryClient = useQueryClient()
   const { id = '' } = useParams<{ id: string }>()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [showVehicleModal, setShowVehicleModal] = useState(false)
   const [showDepositModal, setShowDepositModal] = useState(false)
+  const [documentsPage, setDocumentsPage] = useState(1)
+  const [documentsPerPage, setDocumentsPerPage] = useState(10)
+  const [paymentsPage, setPaymentsPage] = useState(1)
+  const [paymentsPerPage, setPaymentsPerPage] = useState(10)
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const { hasModule } = useCompanyConfig()
   const hasTenantScope = tenantId !== null && companyId !== null
+  const tabParam = searchParams.get('tab')
+  const activeTab: PartnerDetailTab = isPartnerDetailTab(tabParam) ? tabParam : 'overview'
+
+  const handleTabChange = (tab: string) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', tab)
+    setSearchParams(next)
+  }
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
@@ -132,21 +172,31 @@ export function PartnerDetailPage() {
 
   // Fetch related documents (both sales docs for customers and purchase orders for suppliers)
   const { data: documentsData } = useQuery({
-    queryKey: tenantScopedKey(['partner-documents', id, isSupplierContext]),
+    queryKey: tenantScopedKey(['partner-documents', id, isSupplierContext, documentsPage, documentsPerPage]),
     queryFn: async () => {
-      const typeFilter = isSupplierContext ? '&type=purchase_order' : ''
-      const response = await api.get<{ data: Document[] }>(`/documents?partner_id=${id}${typeFilter}`)
-      return response.data.data
+      const params = new URLSearchParams({
+        partner_id: id,
+        page: String(documentsPage),
+        per_page: String(documentsPerPage),
+      })
+      if (isSupplierContext) params.set('type', 'purchase_order')
+      const response = await api.get<DocumentsResponse>(`/documents?${params.toString()}`)
+      return response.data
     },
     enabled: id.length > 0 && hasTenantScope && (isCustomerContext || isSupplierContext),
   })
 
   // Fetch related payments
   const { data: paymentsData } = useQuery({
-    queryKey: tenantScopedKey(['partner-payments', id]),
+    queryKey: tenantScopedKey(['partner-payments', id, paymentsPage, paymentsPerPage]),
     queryFn: async () => {
-      const response = await api.get<{ data: Payment[] }>(`/payments?partner_id=${id}`)
-      return response.data.data
+      const params = new URLSearchParams({
+        partner_id: id,
+        page: String(paymentsPage),
+        per_page: String(paymentsPerPage),
+      })
+      const response = await api.get<PaymentsResponse>(`/payments?${params.toString()}`)
+      return response.data
     },
     enabled: id.length > 0 && hasTenantScope,
   })
@@ -173,8 +223,10 @@ export function PartnerDetailPage() {
     enabled: id.length > 0 && hasTenantScope,
   })
 
-  const documents = documentsData ?? []
-  const payments = paymentsData ?? []
+  const documents = documentsData?.data ?? []
+  const payments = paymentsData?.data ?? []
+  const documentsMeta = documentsData?.meta
+  const paymentsMeta = paymentsData?.meta
   const vehicleCount = partnerVehiclesData?.meta.total ?? partnerVehiclesData?.data.length ?? 0
 
   // Format currency using company settings
@@ -291,7 +343,7 @@ export function PartnerDetailPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue="overview" value={activeTab} onChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="overview">{t('tabs.overview')}</TabsTrigger>
           {(isCustomerContext || isSupplierContext) && (
@@ -572,6 +624,21 @@ export function PartnerDetailPage() {
                     })}
                   </tbody>
                 </table>
+                {documentsMeta?.current_page && documentsMeta.last_page && documentsMeta.last_page > 1 && (
+                  <OffsetPagination
+                    currentPage={documentsMeta.current_page}
+                    lastPage={documentsMeta.last_page}
+                    total={documentsMeta.total ?? documents.length}
+                    perPage={documentsMeta.per_page ?? documentsPerPage}
+                    from={documentsMeta.from ?? null}
+                    to={documentsMeta.to ?? null}
+                    onPageChange={setDocumentsPage}
+                    onPerPageChange={(nextPerPage) => {
+                      setDocumentsPerPage(nextPerPage)
+                      setDocumentsPage(1)
+                    }}
+                  />
+                )}
               </div>
             )}
           </TabsContent>
@@ -654,6 +721,21 @@ export function PartnerDetailPage() {
                   ))}
                 </tbody>
               </table>
+              {paymentsMeta?.current_page && paymentsMeta.last_page && paymentsMeta.last_page > 1 && (
+                <OffsetPagination
+                  currentPage={paymentsMeta.current_page}
+                  lastPage={paymentsMeta.last_page}
+                  total={paymentsMeta.total ?? payments.length}
+                  perPage={paymentsMeta.per_page ?? paymentsPerPage}
+                  from={paymentsMeta.from ?? null}
+                  to={paymentsMeta.to ?? null}
+                  onPageChange={setPaymentsPage}
+                  onPerPageChange={(nextPerPage) => {
+                    setPaymentsPerPage(nextPerPage)
+                    setPaymentsPage(1)
+                  }}
+                />
+              )}
             </div>
           )}
         </TabsContent>

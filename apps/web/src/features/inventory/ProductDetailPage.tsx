@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Edit, Trash2, Tag } from 'lucide-react'
@@ -54,6 +54,13 @@ interface ProductResponse {
   data: Product
 }
 
+const PRODUCT_DETAIL_TABS = ['details', 'movements', 'financialOperations'] as const
+type ProductDetailTab = typeof PRODUCT_DETAIL_TABS[number]
+
+function isProductDetailTab(value: string | null): value is ProductDetailTab {
+  return value !== null && (PRODUCT_DETAIL_TABS as readonly string[]).includes(value)
+}
+
 export function ProductDetailPage() {
   const { t } = useTranslation(['inventory', 'common', 'products'])
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
@@ -69,8 +76,17 @@ export function ProductDetailPage() {
 
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const tabParam = searchParams.get('tab')
+  const activeTab: ProductDetailTab = isProductDetailTab(tabParam) ? tabParam : 'details'
+
+  const handleTabChange = (tab: string) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', tab)
+    setSearchParams(next)
+  }
 
   const { data, isLoading, error } = useQuery({
     queryKey: tenantScopedKey(['product', id]),
@@ -221,7 +237,7 @@ export function ProductDetailPage() {
       />
 
       {/* Tabs */}
-      <Tabs defaultValue="details">
+      <Tabs defaultValue="details" value={activeTab} onChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="details">{t('products.tabs.details')}</TabsTrigger>
           <TabsTrigger value="movements">{t('products.tabs.movements')}</TabsTrigger>

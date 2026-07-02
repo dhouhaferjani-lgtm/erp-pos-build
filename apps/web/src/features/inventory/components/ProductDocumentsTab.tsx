@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -19,6 +19,7 @@ import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge'
 import { statusTone } from '@/components/atoms/StatusBadge/statusTone'
 import { EntityLink } from '@/components/molecules/EntityLink'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
 
 interface DocumentLine {
@@ -47,7 +48,12 @@ interface Document {
 interface DocumentsResponse {
   data: Document[]
   meta?: {
+    current_page?: number
+    last_page?: number
+    per_page?: number
     total?: number
+    from?: number | null
+    to?: number | null
   }
 }
 
@@ -114,16 +120,23 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
   const currentCompany = useCompanyStore((state) =>
     state.companies.find((company) => company.id === state.currentCompanyId) ?? null
   )
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['product-documents', productId]),
+    queryKey: tenantScopedKey(['product-documents', productId, page, perPage]),
     queryFn: async () => {
+      const params = new URLSearchParams({
+        product_id: productId,
+        page: String(page),
+        per_page: String(perPage),
+      })
       const response = await api.get<DocumentsResponse>(
-        `/documents?product_id=${productId}`
+        `/documents?${params.toString()}`
       )
       return response.data
     },
@@ -331,6 +344,21 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
               })}
             </tbody>
           </table>
+          {data?.meta?.current_page && data.meta.last_page && data.meta.last_page > 1 && (
+            <OffsetPagination
+              currentPage={data.meta.current_page}
+              lastPage={data.meta.last_page}
+              total={data.meta.total ?? documents.length}
+              perPage={data.meta.per_page ?? perPage}
+              from={data.meta.from ?? null}
+              to={data.meta.to ?? null}
+              onPageChange={setPage}
+              onPerPageChange={(nextPerPage) => {
+                setPerPage(nextPerPage)
+                setPage(1)
+              }}
+            />
+          )}
         </div>
       )}
     </div>

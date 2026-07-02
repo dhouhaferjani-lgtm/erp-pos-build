@@ -19,6 +19,7 @@ import { LocationSelector } from '../location/LocationSelector'
 import { useLocation } from '../../hooks/useLocation'
 import { StatusBadge, type StatusTone } from '../../components/atoms'
 import { EntityLink } from '../../components/molecules/EntityLink'
+import { documentRouteTypeFromSource } from '../../lib/entityRoutes'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import {
   DataTable,
@@ -46,6 +47,8 @@ interface StockMovement {
   quantity_before: string
   quantity_after: string
   reference: string
+  source_document_id: string | null
+  source_document_type: string | null
   notes: string | null
   user_id: string
   user_name: string | null
@@ -268,9 +271,23 @@ export function StockMovementsPage() {
       key: 'reference',
       header: t('products.movementsTab.columns.reference'),
       cellClassName: cn('text-sm max-w-xs truncate', textColors.tertiary),
-      render: (movement) => (
-        <span title={movement.reference}>{movement.reference}</span>
-      ),
+      render: (movement) => {
+        const documentType = documentRouteTypeFromSource(movement.source_document_type)
+        return (
+          <span title={movement.reference}>
+            {documentType ? (
+              <EntityLink
+                type="document"
+                id={movement.source_document_id}
+                documentType={documentType}
+                label={movement.reference}
+              />
+            ) : (
+              movement.reference
+            )}
+          </span>
+        )
+      },
     },
     {
       key: 'user',

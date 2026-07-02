@@ -1,5 +1,9 @@
 export type PartnerRouteType = 'customer' | 'supplier' | 'both' | null | undefined
 
+export interface EntityRouteTabOption {
+  tab?: string | null | undefined
+}
+
 export type DocumentRouteType =
   | 'quote'
   | 'sales_order'
@@ -13,13 +17,14 @@ export type DocumentRouteType =
 
 export interface VariantRouteOptions {
   productId: string | null | undefined
+  tab?: string | null
 }
 
-export interface PartnerRouteOptions {
+export interface PartnerRouteOptions extends EntityRouteTabOption {
   partnerType?: PartnerRouteType
 }
 
-export interface DocumentRouteOptions {
+export interface DocumentRouteOptions extends EntityRouteTabOption {
   documentType: DocumentRouteType
 }
 
@@ -27,47 +32,64 @@ export interface GoodsReceiptRouteOptions {
   purchaseOrderId: string | null | undefined
 }
 
-function customerRoute(id: string): string {
-  return `/sales/customers/${id}`
+function withTab(path: string, tab?: string | null): string {
+  if (!tab) return path
+  const params = new URLSearchParams({ tab })
+  return `${path}?${params.toString()}`
 }
 
-function supplierRoute(id: string): string {
-  return `/purchases/suppliers/${id}`
+function customerRoute(id: string, options: EntityRouteTabOption = {}): string {
+  return withTab(`/sales/customers/${id}`, options.tab)
+}
+
+function supplierRoute(id: string, options: EntityRouteTabOption = {}): string {
+  return withTab(`/purchases/suppliers/${id}`, options.tab)
 }
 
 export const entityRoutes = {
-  product: (id: string): string => `/inventory/products/${id}`,
+  product: (id: string, options: EntityRouteTabOption = {}): string =>
+    withTab(`/inventory/products/${id}`, options.tab),
 
   variant: (_id: string, options: VariantRouteOptions): string | null =>
-    options.productId ? `/inventory/products/${options.productId}` : null,
+    options.productId ? entityRoutes.product(options.productId, { tab: options.tab }) : null,
 
   customer: customerRoute,
 
   supplier: supplierRoute,
 
   partner: (id: string, options: PartnerRouteOptions = {}): string =>
-    options.partnerType === 'supplier' ? supplierRoute(id) : customerRoute(id),
+    options.partnerType === 'supplier' ? supplierRoute(id, options) : customerRoute(id, options),
 
   document: (id: string, options: DocumentRouteOptions): string => {
+    let path: string
     switch (options.documentType) {
       case 'quote':
-        return `/sales/quotes/${id}`
+        path = `/sales/quotes/${id}`
+        break
       case 'sales_order':
       case 'order':
-        return `/sales/orders/${id}`
+        path = `/sales/orders/${id}`
+        break
       case 'invoice':
-        return `/sales/invoices/${id}`
+        path = `/sales/invoices/${id}`
+        break
       case 'credit_note':
-        return `/sales/credit-notes/${id}`
+        path = `/sales/credit-notes/${id}`
+        break
       case 'return_note':
-        return `/sales/return-notes/${id}`
+        path = `/sales/return-notes/${id}`
+        break
       case 'purchase_order':
-        return `/purchases/orders/${id}`
+        path = `/purchases/orders/${id}`
+        break
       case 'delivery_note':
-        return `/inventory/delivery-notes/${id}`
+        path = `/inventory/delivery-notes/${id}`
+        break
       case 'supplier_invoice':
-        return `/purchases/supplier-invoices/${id}`
+        path = `/purchases/supplier-invoices/${id}`
+        break
     }
+    return withTab(path, options.tab)
   },
 
   payment: (id: string): string => `/treasury/payments/${id}`,

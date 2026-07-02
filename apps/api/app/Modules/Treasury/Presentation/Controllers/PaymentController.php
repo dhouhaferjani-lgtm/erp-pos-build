@@ -89,10 +89,28 @@ class PaymentController extends Controller
             });
         }
 
-        $payments = $query->orderByDesc('payment_date')->get();
+        if (! $request->has('page')) {
+            $payments = $query->orderByDesc('payment_date')->get();
+
+            return response()->json([
+                'data' => $payments->map(fn (Payment $payment) => $this->formatPayment($payment))->values(),
+            ]);
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $payments = $query->orderByDesc('payment_date')->paginate($perPage, ['*'], 'page', $page);
 
         return response()->json([
-            'data' => $payments->map(fn (Payment $payment) => $this->formatPayment($payment)),
+            'data' => $payments->getCollection()->map(fn (Payment $payment) => $this->formatPayment($payment))->values(),
+            'meta' => [
+                'current_page' => $payments->currentPage(),
+                'last_page' => $payments->lastPage(),
+                'per_page' => $payments->perPage(),
+                'total' => $payments->total(),
+                'from' => $payments->firstItem(),
+                'to' => $payments->lastItem(),
+            ],
         ]);
     }
 

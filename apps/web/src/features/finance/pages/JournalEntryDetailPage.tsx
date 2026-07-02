@@ -50,15 +50,13 @@ function JournalSourceLink({
     )
   }
 
-  if (sourceType === 'payment') {
-    return <EntityLink type="payment" id={sourceId} label={sourceType} className="font-semibold" />
-  }
-
-  if (sourceType === 'expense') {
-    return <EntityLink type="expense" id={sourceId} label={sourceType} className="font-semibold" />
-  }
-
-  return <span>{sourceType}</span>
+  return (
+    <span data-testid="journal-source-badge">
+      <StatusBadge tone="neutral">
+        {sourceType}
+      </StatusBadge>
+    </span>
+  )
 }
 
 export function JournalEntryDetailPage() {
