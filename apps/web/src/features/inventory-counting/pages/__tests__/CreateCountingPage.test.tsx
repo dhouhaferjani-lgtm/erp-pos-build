@@ -52,6 +52,42 @@ vi.mock('@/features/products/components/ProductSelector', () => ({
   ),
 }))
 
+vi.mock('@/components/molecules/line-items', () => ({
+  LineItemEntryBar: ({ onAddProduct }: {
+    onAddProduct: (product: {
+      id: string
+      name: string
+      sku: string
+      barcode: string
+      primary_image_url: null
+    }) => void
+  }) => (
+    <div data-testid="counting-line-entry-bar">
+      <button
+        type="button"
+        onClick={() => {
+          onAddProduct({
+            id: 'p1',
+            name: 'Counted serum',
+            sku: 'CNT-001',
+            barcode: '619000111222',
+            primary_image_url: null,
+          })
+        }}
+      >
+        Add Counted Product
+      </button>
+    </div>
+  ),
+  ProductCell: ({ product }: { product: { name: string; sku?: string | null; barcode?: string | null } }) => (
+    <div data-testid="counting-product-cell">
+      <span>{product.name}</span>
+      <span>{product.sku}</span>
+      <span>{product.barcode}</span>
+    </div>
+  ),
+}))
+
 vi.mock('@/features/locations/components/LocationSelectorMulti', () => ({
   LocationSelectorMulti: ({ onChange }: { onChange: (ids: string[]) => void }) => (
     <div data-testid="location-selector-multi">
@@ -139,14 +175,32 @@ describe('CreateCountingPage', () => {
     expect(screen.getByTestId('category-selector')).toBeInTheDocument()
   })
 
-  it('shows product selector for product scope', async () => {
+  it('shows line entry bar for product scope', async () => {
     const user = userEvent.setup()
     renderPage()
 
     await user.click(screen.getByText('counting.scopeTypes.product'))
     await user.click(screen.getByText('next'))
 
-    expect(screen.getByTestId('product-selector')).toBeInTheDocument()
+    expect(screen.getByTestId('counting-line-entry-bar')).toBeInTheDocument()
+  })
+
+  it('uses the standardized entry bar and ProductCell rows for product-count scope selection', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByText('counting.scopeTypes.product'))
+    await user.click(screen.getByText('next'))
+
+    expect(screen.getByTestId('counting-line-entry-bar')).toBeInTheDocument()
+    expect(screen.queryByTestId('product-selector')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Add Counted Product' }))
+
+    expect(screen.getByTestId('counting-product-cell')).toBeInTheDocument()
+    expect(screen.getByText('Counted serum')).toBeInTheDocument()
+    expect(screen.getByText('CNT-001')).toBeInTheDocument()
+    expect(screen.getByText('619000111222')).toBeInTheDocument()
   })
 
   it('shows location selector for location scope', async () => {

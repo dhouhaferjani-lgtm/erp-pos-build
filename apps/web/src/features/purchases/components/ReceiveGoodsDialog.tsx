@@ -2,6 +2,7 @@ import { type FormEvent, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Input, QuantityInput } from '@/components/atoms'
+import { ProductCell } from '@/components/molecules/line-items'
 import { Modal } from '@/components/organisms/Modal'
 import { bccomp, bcsub } from '@/lib/decimal'
 import { tokens } from '@/lib/designTokens'
@@ -21,6 +22,9 @@ export interface ReceivableLine {
   id: string
   description: string
   product_name?: string | null
+  product_code?: string | null
+  product_barcode?: string | null
+  primary_image_url?: string | null
   quantity: string | number
   quantity_received?: string | number | null
   free_quantity?: string | number | null
@@ -214,7 +218,15 @@ export function ReceiveGoodsDialog({
             <div key={line.id} className={tokens.card.base}>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
-                  <div className={tokens.label.base}>{label}</div>
+                  <ProductCell
+                    product={{
+                      name: label,
+                      sku: line.product_code ?? null,
+                      barcode: line.product_barcode ?? null,
+                      primary_image_url: line.primary_image_url ?? null,
+                    }}
+                    size="sm"
+                  />
                   <div className={tokens.helperText.base}>
                     {t('purchaseOrders.receive.remaining')}: {remaining}
                   </div>

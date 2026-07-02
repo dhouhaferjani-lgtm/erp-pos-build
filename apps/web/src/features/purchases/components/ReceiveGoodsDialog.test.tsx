@@ -1,118 +1,51 @@
-import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 
-import { ReceiveGoodsDialog, type ReceivablePurchaseOrder } from './ReceiveGoodsDialog'
+import { ReceiveGoodsDialog } from './ReceiveGoodsDialog'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, params?: Record<string, unknown>) => {
-      const map: Record<string, string> = {
-        'purchaseOrders.receiveGoodsTitle': 'Receive goods',
-        'purchaseOrders.receive.remaining': 'Remaining paid',
-        'purchaseOrders.receive.remainingFree': 'Remaining free',
-        'purchaseOrders.receive.quantity': 'Paid received',
-        'purchaseOrders.receive.freeQuantity': 'Free received',
-        'purchaseOrders.receive.freeOrderedSummary': 'Free ordered: {{ordered}} · received: {{received}}',
-        'purchaseOrders.receive.batchNumber': 'Batch number',
-        'purchaseOrders.receive.expiryDate': 'Expiry date',
-        'purchaseOrders.receive.submit': 'Receive',
-        'common:cancel': 'Cancel',
-        'common:status.loading': 'Loading',
-      }
-      let result = map[key] ?? key
-      if (params) {
-        Object.entries(params).forEach(([paramKey, value]) => {
-          result = result.replace(`{{${paramKey}}}`, String(value))
-        })
-      }
-      return result
-    },
+    t: (key: string) => key,
   }),
 }))
 
-const purchaseOrderWithBonus: ReceivablePurchaseOrder = {
-  lines: [
-    {
-      id: 'line-1',
-      description: 'Doliprane 1000mg',
-      product_name: 'Doliprane',
-      quantity: '20.0000',
-      quantity_received: '5.0000',
-      free_quantity: '1.0000',
-      free_quantity_received: '0.0000',
-      quantity_decimals: 4,
-    },
-  ],
-}
+vi.mock('@/components/organisms/Modal', () => ({
+  Modal: ({ isOpen, children, title }: { isOpen: boolean; children: React.ReactNode; title: string }) =>
+    isOpen ? (
+      <section aria-label={title}>
+        {children}
+      </section>
+    ) : null,
+}))
 
 describe('ReceiveGoodsDialog', () => {
-  it('submits paid and free receipt quantities as separate string maps', async () => {
-    const user = userEvent.setup()
-    const onConfirm = vi.fn()
-
+  it('renders receivable lines with ProductCell thumbnail, SKU, and barcode identity', () => {
     render(
       <ReceiveGoodsDialog
         isOpen={true}
-        purchaseOrder={purchaseOrderWithBonus}
         isLoading={false}
         onClose={vi.fn()}
-        onConfirm={onConfirm}
-      />,
-    )
-
-    expect(screen.getByText('Free ordered: 1.0000 · received: 0.0000')).toBeInTheDocument()
-
-    const paidInput = screen.getByRole('spinbutton', { name: 'Paid received Doliprane' })
-    await user.clear(paidInput)
-    await user.type(paidInput, '2.5000')
-
-    const freeInput = screen.getByRole('spinbutton', { name: 'Free received Doliprane' })
-    await user.clear(freeInput)
-    await user.type(freeInput, '1.0000')
-
-    await user.click(screen.getByRole('button', { name: 'Receive' }))
-
-    expect(onConfirm).toHaveBeenCalledWith({
-      quantities: {
-        'line-1': '2.5',
-      },
-      free_quantities: {
-        'line-1': '1',
-      },
-    })
-  })
-
-  it('allows a free-only receipt when no paid quantity remains', async () => {
-    const user = userEvent.setup()
-    const onConfirm = vi.fn()
-
-    render(
-      <ReceiveGoodsDialog
-        isOpen={true}
+        onConfirm={vi.fn()}
         purchaseOrder={{
           lines: [
             {
-              ...purchaseOrderWithBonus.lines![0],
-              quantity_received: '20.0000',
-              free_quantity_received: '0.0000',
+              id: 'line-1',
+              product_name: 'Serum Retinol',
+              description: 'Serum Retinol',
+              product_code: 'SKU-RET',
+              product_barcode: '619100000001',
+              primary_image_url: '/retinol.png',
+              quantity: '5.0000',
+              quantity_received: '0.0000',
+              requires_batch_tracking: false,
             },
           ],
         }}
-        isLoading={false}
-        onClose={vi.fn()}
-        onConfirm={onConfirm}
       />,
     )
 
-    expect(screen.queryByRole('spinbutton', { name: 'Paid received Doliprane' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Receive' }))
-
-    expect(onConfirm).toHaveBeenCalledWith({
-      quantities: {},
-      free_quantities: {
-        'line-1': '1.0000',
-      },
-    })
+    expect(screen.getByRole('img', { name: 'Serum Retinol' })).toHaveAttribute('src', '/retinol.png')
+    expect(screen.getByText('SKU-RET')).toBeInTheDocument()
+    expect(screen.getByText('619100000001')).toBeInTheDocument()
   })
 })

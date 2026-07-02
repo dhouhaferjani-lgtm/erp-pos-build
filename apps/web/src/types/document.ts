@@ -20,6 +20,9 @@ export interface DocumentLineData {
   document_id: string
   product_id: string | null
   product_name: string
+  product_code?: string | null
+  product_barcode?: string | null
+  primary_image_url?: string | null
   line_number: number
   description: string
   quantity: string  // Formatted number string from backend
