@@ -33,8 +33,7 @@ export async function listReconciliations(filters?: {
   }
   const queryString = params.toString()
   const url = queryString ? `/bank-reconciliations?${queryString}` : '/bank-reconciliations'
-  const response = await apiGet<{ data: BankReconciliation[] }>(url)
-  return response.data
+  return apiGet<BankReconciliation[]>(url)
 }
 
 /**
@@ -43,8 +42,7 @@ export async function listReconciliations(filters?: {
  * GET /api/v1/bank-reconciliations/{id}
  */
 export async function getReconciliation(id: string): Promise<BankReconciliation> {
-  const response = await apiGet<{ data: BankReconciliation }>(`/bank-reconciliations/${id}`)
-  return response.data
+  return apiGet<BankReconciliation>(`/bank-reconciliations/${id}`)
 }
 
 /**
@@ -53,8 +51,7 @@ export async function getReconciliation(id: string): Promise<BankReconciliation>
  * GET /api/v1/bank-reconciliations/{id}/summary
  */
 export async function getReconciliationSummary(id: string): Promise<ReconciliationSummary> {
-  const response = await apiGet<{ data: ReconciliationSummary }>(`/bank-reconciliations/${id}/summary`)
-  return response.data
+  return apiGet<ReconciliationSummary>(`/bank-reconciliations/${id}/summary`)
 }
 
 /**
@@ -65,8 +62,7 @@ export async function getReconciliationSummary(id: string): Promise<Reconciliati
 export async function startReconciliation(
   request: StartReconciliationRequest
 ): Promise<BankReconciliation> {
-  const response = await apiPost<{ data: BankReconciliation }>('/bank-reconciliations', request)
-  return response.data
+  return apiPost<BankReconciliation>('/bank-reconciliations', request)
 }
 
 /**
@@ -79,11 +75,10 @@ export async function matchItem(
   paymentId: string,
   request?: MatchItemRequest
 ): Promise<BankReconciliationItem> {
-  const response = await apiPost<{ data: BankReconciliationItem }>(
+  return apiPost<BankReconciliationItem>(
     `/bank-reconciliations/${reconciliationId}/match/${paymentId}`,
     request ?? {}
   )
-  return response.data
 }
 
 /**
@@ -95,11 +90,10 @@ export async function unmatchItem(
   reconciliationId: string,
   paymentId: string
 ): Promise<BankReconciliationItem> {
-  const response = await apiPost<{ data: BankReconciliationItem }>(
+  return apiPost<BankReconciliationItem>(
     `/bank-reconciliations/${reconciliationId}/unmatch/${paymentId}`,
     {}
   )
-  return response.data
 }
 
 /**
@@ -108,11 +102,10 @@ export async function unmatchItem(
  * POST /api/v1/bank-reconciliations/{id}/complete
  */
 export async function completeReconciliation(id: string): Promise<BankReconciliation> {
-  const response = await apiPost<{ data: BankReconciliation }>(
+  return apiPost<BankReconciliation>(
     `/bank-reconciliations/${id}/complete`,
     {}
   )
-  return response.data
 }
 
 /**
@@ -121,11 +114,10 @@ export async function completeReconciliation(id: string): Promise<BankReconcilia
  * POST /api/v1/bank-reconciliations/{id}/cancel
  */
 export async function cancelReconciliation(id: string): Promise<BankReconciliation> {
-  const response = await apiPost<{ data: BankReconciliation }>(
+  return apiPost<BankReconciliation>(
     `/bank-reconciliations/${id}/cancel`,
     {}
   )
-  return response.data
 }
 
 /**
@@ -134,6 +126,5 @@ export async function cancelReconciliation(id: string): Promise<BankReconciliati
  * GET /api/v1/payment-repositories
  */
 export async function listRepositories(): Promise<PaymentRepository[]> {
-  const response = await apiGet<{ data: PaymentRepository[] }>('/payment-repositories')
-  return response.data
+  return apiGet<PaymentRepository[]>('/payment-repositories')
 }
