@@ -8,6 +8,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { fetchPaymentHistory, type PaymentHistory } from '../api/paymentHistory'
 import { formatCurrency } from '../../../lib/format'
 import { format } from 'date-fns'
+import { bcadd } from '@/lib/decimal'
 
 export interface PaymentHistorySectionProps {
   documentId: string
@@ -87,8 +88,8 @@ export function PaymentHistorySection({
 
   // Calculate total paid
   const totalPaid = paymentHistory.payment_allocations.reduce(
-    (sum, allocation) => sum + parseFloat(allocation.amount),
-    0
+    (sum, allocation) => bcadd(sum, allocation.amount, 3),
+    '0'
   )
 
   return (
@@ -134,7 +135,7 @@ export function PaymentHistorySection({
               {/* Right side: Amount */}
               <div className="text-end">
                 <div className="text-base font-semibold text-green-600 font-mono">
-                  {formatCurrency(parseFloat(allocation.amount), { currency })}
+                  {formatCurrency(allocation.amount, { currency })}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
                   {t('sales:invoices.paymentHistory.allocated')}

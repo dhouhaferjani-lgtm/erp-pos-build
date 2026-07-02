@@ -19,7 +19,7 @@ import { useCurrency } from '../../hooks/useCurrency'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePaymentAllocationPreview } from './hooks/useSmartPayment'
-import { bccomp, bcsub } from '../../lib/decimal'
+import { bccomp, bcdiv, bcmul, bcsub } from '../../lib/decimal'
 
 interface PaymentMethod {
   id: string
@@ -256,9 +256,11 @@ export function PaymentForm() {
   // Pre-fill form when document data is loaded
   useEffect(() => {
     if (invoiceData) {
-      const amountResidual = invoiceData.amount_residual ?? parseFloat(invoiceData.total)
+      const amountResidual = invoiceData.amount_residual == null
+        ? invoiceData.total
+        : invoiceData.amount_residual.toString()
       reset({
-        amount: amountResidual.toString(),
+        amount: amountResidual,
         payment_method_id: '',
         partner_id: invoiceData.partner_id,
         payment_date: new Date().toISOString().split('T')[0],
@@ -360,7 +362,7 @@ export function PaymentForm() {
   const allocationPreviewMutation = usePaymentAllocationPreview()
 
   useEffect(() => {
-    if (selectedPartnerId && paymentAmount && parseFloat(paymentAmount) > 0) {
+    if (selectedPartnerId && paymentAmount && bccomp(paymentAmount, '0') > 0) {
       withholdingPreviewMutation.mutate({
         partner_id: selectedPartnerId,
         amount: paymentAmount,
@@ -371,6 +373,11 @@ export function PaymentForm() {
   }, [selectedPartnerId, paymentAmount, withholdingTransactionType])
 
   const withholdingPreview = withholdingPreviewMutation.data
+  const paymentAmountValue = paymentAmount || '0'
+  const withholdingAmount = withholdingRate
+    ? bcdiv(bcmul(paymentAmountValue, withholdingRate, decimals + 2), '100', decimals)
+    : '0'
+  const netPaymentAmount = bcsub(paymentAmountValue, withholdingAmount, decimals)
 
   // Update withholding rate when preview changes
   useEffect(() => {
@@ -783,7 +790,7 @@ export function PaymentForm() {
               {/* Override Reason (if rate differs from suggested) */}
               {withholdingRate &&
                 withholdingPreview?.calculation &&
-                parseFloat(withholdingRate) !== withholdingPreview.calculation.rate_percentage && (
+                bccomp(withholdingRate, withholdingPreview.calculation.rate_percentage.toString()) !== 0 && (
                   <FormField
                     className="sm:col-span-2"
                     label={t('withholding:form.overrideReason')}
@@ -814,19 +821,19 @@ export function PaymentForm() {
                   <div className="flex justify-between text-sm">
                     <span className={textColors.tertiary}>{t('withholding:form.grossAmount')}</span>
                     <span className={cn('font-mono font-semibold', textColors.primary)}>
-                      {formatCurrency(parseFloat(paymentAmount || '0'))}
+                      {formatCurrency(paymentAmountValue)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className={textColors.tertiary}>{t('withholding:form.withholdingAmount')}</span>
                     <span className={cn('font-mono font-semibold', textColors.error)}>
-                      - {formatCurrency(parseFloat(paymentAmount || '0') * parseFloat(withholdingRate) / 100)}
+                      - {formatCurrency(withholdingAmount)}
                     </span>
                   </div>
                   <div className={cn('flex justify-between border-t pt-2 text-sm', borderColors.default)}>
                     <span className={cn('font-semibold', textColors.primary)}>{t('withholding:form.netPayment')}</span>
                     <span className={cn('font-mono text-lg font-bold', textColors.primary)}>
-                      {formatCurrency(parseFloat(paymentAmount || '0') * (1 - parseFloat(withholdingRate) / 100))}
+                      {formatCurrency(netPaymentAmount)}
                     </span>
                   </div>
                 </div>

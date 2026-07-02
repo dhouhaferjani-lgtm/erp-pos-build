@@ -8,7 +8,8 @@
  */
 
 import Big from 'big.js'
-import { getDecimals } from '../hooks/useCurrency'
+import { getDecimals, getLocale } from './currencyMeta'
+import { formatCurrency as formatLocaleCurrency } from './format'
 
 // Round half-up (matches PHP round() and PostgreSQL behavior)
 Big.RM = 1
@@ -171,9 +172,9 @@ export function applyDiscount(
  * @returns Formatted currency string
  *
  * @example
- * formatCurrency('123.456') // '123.456 EUR'
- * formatCurrency('123.456', false) // '123.456'
- * formatCurrency('123.45', true, 'EUR', 2) // '123.45 EUR'
+ * formatCurrency('123.456', true, 'TND') // '123,456 TND'
+ * formatCurrency('123.456', false, 'TND') // '123,456'
+ * formatCurrency('123.45', true, 'EUR', 2) // '123,45 EUR'
  */
 export function formatCurrency(
   amount: string | number,
@@ -182,14 +183,13 @@ export function formatCurrency(
   scale?: number
 ): string {
   const decimals = scale ?? getDecimals(currency)
-  let big: Big
-  try {
-    big = typeof amount === 'number' ? new Big(amount) : safeBig(amount)
-  } catch {
-    big = new Big(0)
-  }
-  const formatted = big.toFixed(decimals)
-  return includeCurrency ? `${formatted} ${currency}` : formatted
+  return formatLocaleCurrency(amount, {
+    currency,
+    locale: getLocale(currency),
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    includeCurrency,
+  })
 }
 
 /**

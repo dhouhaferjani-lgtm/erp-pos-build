@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { Calendar, Building2, FileText, Car, Truck } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
-import { formatCurrency } from '../../../lib/format'
+import { formatCurrency, formatQuantity } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
@@ -377,18 +377,18 @@ export function SalesOrderDetailPage() {
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {parseFloat(line.quantity)}
+                    {formatQuantity(line.quantity)}
                   </td>
                   {order.status === 'confirmed' && (
                     <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                      {parseFloat(line.quantity_delivered || '0')}
+                      {formatQuantity(line.quantity_delivered || '0')}
                     </td>
                   )}
                   <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {formatCurrency(parseFloat(line.unit_price), { currency: currentCompany?.currency ?? 'EUR' })}
+                    {formatCurrency(line.unit_price, { currency: currentCompany?.currency ?? 'EUR' })}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
-                    {formatCurrency(parseFloat(line.line_total), { currency: currentCompany?.currency ?? 'EUR' })}
+                    {formatCurrency(line.line_total, { currency: currentCompany?.currency ?? 'EUR' })}
                   </td>
                 </tr>
               ))}

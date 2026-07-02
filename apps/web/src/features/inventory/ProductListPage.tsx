@@ -233,7 +233,7 @@ export function ProductListPage() {
   // Format currency using company settings
   const formatAmount = (amount: string | null) => {
     if (!amount) return '-'
-    return formatCurrency(parseFloat(amount), {
+    return formatCurrency(amount, {
       currency: companyCurrency,
       locale: companyLocale,
     })

@@ -6,10 +6,14 @@ import { PageHeader } from '../../../components/molecules/PageHeader'
 import { Button, FormField, Input } from '../../../components/atoms'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
+import { formatCurrency } from '../../../lib/format'
+import { bccomp } from '../../../lib/decimal'
+import { useCompany } from '../../../hooks/useCompany'
 import type { TrialBalanceLine } from '../types'
 
 export function TrialBalancePage() {
   const { t } = useTranslation(['finance'])
+  const { currentCompany } = useCompany()
   const [asOfDate, setAsOfDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   )
@@ -19,14 +23,16 @@ export function TrialBalancePage() {
   })
 
   const lines = trialBalanceData?.lines ?? []
-  const totalDebit = parseFloat(trialBalanceData?.total_debit ?? '0')
-  const totalCredit = parseFloat(trialBalanceData?.total_credit ?? '0')
+  const totalDebit = trialBalanceData?.total_debit ?? '0'
+  const totalCredit = trialBalanceData?.total_credit ?? '0'
+  const currency = currentCompany?.currency ?? 'EUR'
+  const locale = currentCompany?.locale.replace('_', '-')
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
+  const formatMoney = (amount: string) => {
+    return formatCurrency(amount, {
+      currency,
+      ...(locale ? { locale } : {}),
+    })
   }
 
   const numericCell = cn('whitespace-nowrap px-6 py-4 text-end text-sm tabular-nums', textColors.primary)
@@ -115,10 +121,10 @@ export function TrialBalancePage() {
                     {line.account_type}
                   </td>
                   <td className={numericCell}>
-                    {parseFloat(line.debit) > 0 ? formatCurrency(parseFloat(line.debit)) : ''}
+                    {bccomp(line.debit, '0') > 0 ? formatMoney(line.debit) : ''}
                   </td>
                   <td className={numericCell}>
-                    {parseFloat(line.credit) > 0 ? formatCurrency(parseFloat(line.credit)) : ''}
+                    {bccomp(line.credit, '0') > 0 ? formatMoney(line.credit) : ''}
                   </td>
                 </tr>
               ))}
@@ -128,10 +134,10 @@ export function TrialBalancePage() {
                   {t('finance:reports.common.total')}
                 </td>
                 <td className={numericCell}>
-                  {formatCurrency(totalDebit)}
+                  {formatMoney(totalDebit)}
                 </td>
                 <td className={numericCell}>
-                  {formatCurrency(totalCredit)}
+                  {formatMoney(totalCredit)}
                 </td>
               </tr>
             </tbody>

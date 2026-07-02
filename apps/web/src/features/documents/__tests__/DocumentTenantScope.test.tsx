@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
@@ -224,5 +224,53 @@ describe('document tenant scope', () => {
     expect(mockApiGet).not.toHaveBeenCalled()
     expect(mockFetchTaxBreakdown).not.toHaveBeenCalled()
     expect(mockFetchPaymentHistory).not.toHaveBeenCalled()
+  })
+
+  it('formats related document totals with tenant TND currency instead of EUR', async () => {
+    const queryClient = createClient()
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/documents/doc-1/related') {
+        return Promise.resolve({
+          data: {
+            data: {
+              source_documents: [],
+              derived_documents: [
+                {
+                  id: 'doc-2',
+                  type: 'delivery_note',
+                  document_number: 'DN-001',
+                  document_date: '2026-05-12',
+                  status: 'posted',
+                  total: '15.600',
+                  currency: 'TND',
+                },
+              ],
+              credit_notes: [],
+              return_notes: [],
+              document_chain: [
+                {
+                  id: 'doc-1',
+                  type: 'invoice',
+                  document_number: 'INV-001',
+                  document_date: '2026-05-11',
+                  status: 'posted',
+                  total: '15.600',
+                  currency: 'TND',
+                },
+              ],
+            },
+          },
+        })
+      }
+
+      return Promise.resolve({ data: { data: [] } })
+    })
+
+    render(<RelatedDocumentsPanel documentId="doc-1" />, { wrapper: wrapper(queryClient) })
+
+    await waitFor(() => {
+      expect(screen.getByText('15,600 TND')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/€/)).not.toBeInTheDocument()
   })
 })

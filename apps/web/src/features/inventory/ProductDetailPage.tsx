@@ -9,6 +9,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { formatCurrency } from '../../lib/format'
+import { bccomp, bcdiv, bcmul, bcsub } from '../../lib/decimal'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { Button } from '../../components/atoms/Button'
@@ -119,7 +120,7 @@ export function ProductDetailPage() {
   // Format currency using company settings
   const formatAmount = (amount: string | null) => {
     if (!amount) return '-'
-    return formatCurrency(parseFloat(amount), {
+    return formatCurrency(amount, {
       currency: companyCurrency,
       locale: companyLocale,
     })
@@ -158,6 +159,16 @@ export function ProductDetailPage() {
   }
 
   const product = data
+  const productMargin = product.sale_price && product.cost_price
+    ? bcsub(product.sale_price, product.cost_price, 3)
+    : null
+  const productMarginPercent = product.sale_price && product.cost_price && bccomp(product.cost_price, '0') > 0
+    ? bcmul(
+      bcdiv(bcsub(product.sale_price, product.cost_price, 4), product.cost_price, 4),
+      '100',
+      1,
+    )
+    : null
 
   const backLink = (
     <Link
@@ -275,20 +286,14 @@ export function ProductDetailPage() {
                       <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{taxConfigName ?? (product.tax_rate ? `${product.tax_rate}%` : '-')}</div>
                     </div>
                   </div>
-                  {product.sale_price && product.cost_price && (
+                  {productMargin !== null && (
                     <div className="px-6 py-3">
                       <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.margin')}</div>
                       <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>
-                        {formatAmount(
-                          String(parseFloat(product.sale_price) - parseFloat(product.cost_price))
-                        )}
-                        {parseFloat(product.cost_price) > 0 && (
+                        {formatAmount(productMargin)}
+                        {productMarginPercent !== null && (
                           <span className={cn('ml-2 text-sm font-normal', textColors.tertiary)}>
-                            ({(
-                              ((parseFloat(product.sale_price) - parseFloat(product.cost_price)) /
-                                parseFloat(product.cost_price)) *
-                              100
-                            ).toFixed(1)}%)
+                            ({productMarginPercent}%)
                           </span>
                         )}
                       </div>

@@ -7,6 +7,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { colors, textColors, borderColors } from '@/lib/designTokens'
+import { bccomp, bcmul } from '@/lib/decimal'
 
 interface ProductStockLevelsProps {
   productId: string
@@ -29,7 +30,7 @@ export function ProductStockLevels({
   // Helper to format currency
   const formatAmount = (value: string | null) => {
     if (!value) return '-'
-    return formatCurrency(parseFloat(value), { currency, locale })
+    return formatCurrency(value, { currency, locale })
   }
 
   const { data, isLoading } = useQuery({
@@ -70,8 +71,8 @@ export function ProductStockLevels({
 
   // Calculate stock value (quantity × WAC)
   const stockValue = costPrice
-    ? parseFloat(totals.quantity) * parseFloat(costPrice)
-    : 0
+    ? bcmul(totals.quantity, costPrice, decimals)
+    : '0'
 
   return (
     <div className={`rounded-lg border ${borderColors.light} bg-white`}>
@@ -82,13 +83,13 @@ export function ProductStockLevels({
       {/* Summary Totals */}
       <div className={`divide-y ${borderColors.divideLight}`}>
         {/* Stock Value - Prominent Display */}
-        {costPrice && parseFloat(totals.quantity) > 0 && (
+        {costPrice && bccomp(totals.quantity, '0') > 0 && (
           <div className={`${colors.primary[50]} px-6 py-4`}>
             <div className={`text-xs font-medium uppercase tracking-wide ${textColors.brand}`}>
               {t('stock.stockValue')}
             </div>
             <div className={`mt-1 text-xl font-bold ${textColors.brand}`}>
-              {formatAmount(stockValue.toFixed(decimals))}
+              {formatAmount(stockValue)}
             </div>
             <div className={`mt-1 text-xs ${textColors.brand}`}>
               {/* eslint-disable-next-line local/no-untranslated-literal -- WAC is a canonical accounting acronym, not translatable prose */}

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, Car, FileText, Lock, MinusCircle } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
-import { formatCurrency } from '../../../lib/format'
+import { formatCurrency, formatQuantity } from '../../../lib/format'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { Button } from '../../../components/atoms/Button/Button'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
@@ -268,13 +268,13 @@ export function CreditNoteDetailPage() {
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {parseFloat(line.quantity)}
+                    {formatQuantity(line.quantity)}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {formatCurrency(parseFloat(line.unit_price), { currency: currentCompany?.currency ?? 'EUR' })}
+                    {formatCurrency(line.unit_price, { currency: currentCompany?.currency ?? 'EUR' })}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
-                    {formatCurrency(parseFloat(line.line_total), { currency: currentCompany?.currency ?? 'EUR' })}
+                    {formatCurrency(line.line_total, { currency: currentCompany?.currency ?? 'EUR' })}
                   </td>
                 </tr>
               ))}

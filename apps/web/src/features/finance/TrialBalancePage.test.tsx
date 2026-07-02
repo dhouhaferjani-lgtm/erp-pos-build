@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { seedAuth, resetAuth } from '@/test/seedAuth'
+import { useCompanyStore } from '@/stores/companyStore'
 import { TrialBalancePage } from './pages/TrialBalancePage'
 import {
   makeTrialBalanceLine,
@@ -26,6 +27,22 @@ describe('TrialBalancePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     seedAuth()
+    useCompanyStore.setState({
+      currentCompanyId: 'test-company-id',
+      companies: [
+        {
+          id: 'test-company-id',
+          name: 'PharmaBio Tunisie',
+          legalName: 'PharmaBio Tunisie',
+          taxId: null,
+          countryCode: 'TN',
+          currency: 'TND',
+          locale: 'fr_TN',
+          timezone: 'Africa/Tunis',
+        },
+      ],
+      isLoading: false,
+    })
   })
 
   afterEach(() => {
@@ -112,10 +129,35 @@ describe('TrialBalancePage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Total')).toBeInTheDocument()
-      // Total debits and credits should both be 5000.00
-      const amounts = screen.getAllByText('5,000.00')
+      // Total debits and credits should both use the tenant TND formatter.
+      const amounts = screen.getAllByText('5 000,000 TND')
       expect(amounts.length).toBeGreaterThanOrEqual(2)
     })
+  })
+
+  it('formats trial balance amounts with the tenant TND formatter', async () => {
+    mockApiGet.mockResolvedValue(
+      makeTrialBalanceReport({
+        lines: [
+          makeTrialBalanceLine({
+            account_code: '1000',
+            account_name: 'Cash',
+            account_type: 'asset',
+            debit: '6607.60',
+            credit: '0.00',
+          }),
+        ],
+        total_debit: '6607.60',
+        total_credit: '0.00',
+      }),
+    )
+
+    renderWithProviders(<TrialBalancePage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByText('6 607,600 TND').length).toBeGreaterThanOrEqual(2)
+    })
+    expect(screen.queryByText('6,607.60')).not.toBeInTheDocument()
   })
 
   it('has export button', () => {
