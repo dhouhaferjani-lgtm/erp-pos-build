@@ -17,12 +17,17 @@
 
 Scan-to-add currently works ONLY in POS; documents have no key handling. GS1/weighted barcodes are an explicit v1 non-goal. Two open owner questions are flagged in the doc — implement the doc's stated defaults, don't block on them.
 
-## Task 2 — Product VIEW screen on the new editor design
+## Task 2 — Product VIEW screen on the new editor design + ProductHero
 
-Rebuild the **Details tab** of `src/features/inventory/ProductDetailPage.tsx` read-optimized on the izipos editor design language:
-- Keep route + Movements/Financial tabs untouched.
-- Read-only hero (image, name, barcode, SKU, status, key prices) echoing `BarcodeHero`'s language without dark inputs (build sibling `ProductHero` if needed), `EditorSectionCard` sections in a single-scroll 2-column layout: General, Pricing (cost vs sale + margin), Stock (`ProductStockLevels`), vertical-gated sections as today (`ProductDetailPage.tsx:311`).
-- Prominent Edit button → editor.
+**Second source of truth: `docs/superpowers/specs/2026-07-02-product-page-hero-redesign-design.md`** (§2 geometry, §7 read-only variant, §4 descriptor system, §6 enrichment display rules, §8 i18n keys). Rebuild the **Details tab** of `src/features/inventory/ProductDetailPage.tsx`:
+
+- Build the read-only **`ProductHero`** per spec §2/§7: 176px primary image (`?variant=md` on the signed media URL), name/barcode/SKU/status stack, enrichment status + brand/category chips (+ Parapharmacy-gated merchandising chips), and the 5-value ready-to-sell strip (on-hand · CMP/WAC · marge % · Prix de vente HT · Prix de vente TTC) — margin off cost, HT derived from the stored TTC `sale_price` via `tax_rate`, all bc* string math, never parseFloat.
+- The section stack MUST be driven by an ordered `EditorSectionDef[]` config array + renderer registry (spec §4), defined in `features/products/editor/` — no hand-placed card order. No drag-drop builder. This is the shared foundation the edit page adopts in Phase 2.
+- Do NOT render enriched-but-unaccepted values as product data (spec §6 table); the category chip never gets the enriched affix.
+- New i18n keys per spec §8 (fr/en/ar — all three locale files; logical RTL properties).
+- Keep route + Movements/Financial tabs untouched; vertical-gated sections as today (`ProductDetailPage.tsx:311`); prominent Edit button → editor.
+
+**Still do NOT touch `ProductForm.tsx`** — the edit-mode hero (image upload overlay, opening fields moved into the strip, bidirectional margin/HT/TTC) is Phase 2 in a separate session per the spec's phasing; destabilizing the create/edit form hours before the demo is the risk being avoided.
 
 ## Rules (binding — repo CLAUDE.md)
 
