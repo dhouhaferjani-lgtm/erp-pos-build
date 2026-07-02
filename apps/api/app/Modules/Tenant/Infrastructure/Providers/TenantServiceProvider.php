@@ -8,6 +8,7 @@ use App\Modules\Tenant\Application\Commands\BackupTenantCommand;
 use App\Modules\Tenant\Application\Commands\CreateTenantCommand;
 use App\Modules\Tenant\Application\Commands\DeprovisionTenantCommand;
 use App\Modules\Tenant\Application\Commands\ReconcileIdentitiesCommand;
+use App\Modules\Tenant\Application\Commands\ReconcileModulesCommand;
 use App\Modules\Tenant\Application\Commands\ResetTenantCommand;
 use App\Modules\Tenant\Application\Commands\RestoreTenantCommand;
 use App\Modules\Tenant\Application\Commands\RollingTenantMigrationCommand;
@@ -37,6 +38,7 @@ class TenantServiceProvider extends ServiceProvider
                 CreateTenantCommand::class,
                 DeprovisionTenantCommand::class,
                 ReconcileIdentitiesCommand::class,
+                ReconcileModulesCommand::class,
                 ResetTenantCommand::class,
                 RestoreTenantCommand::class,
                 RollingTenantMigrationCommand::class,

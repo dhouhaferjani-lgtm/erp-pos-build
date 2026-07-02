@@ -255,7 +255,14 @@
     "item": "Item",
     "description": "Description",
     "quantity": "Qty",
+    "freeQuantity": "Free qty",
     "unitPrice": "Unit Price",
+    "priceEntryMode": {
+      "unit": "PU",
+      "total": "Total"
+    },
+    "effectiveUnitCost": "Effective unit cost: {{amount}}",
+    "bonusSavings": "Bonus savings: {{amount}}",
     "discount": "Discount",
     "tax": "Tax",
     "taxPercent": "Tax %",
@@ -327,7 +334,10 @@
     "received": "Received",
     "receive": {
       "remaining": "Remaining",
+      "remainingFree": "Remaining free",
       "quantity": "Quantity to receive",
+      "freeQuantity": "Free quantity to receive",
+      "freeOrderedSummary": "Free ordered: {{ordered}} · received: {{received}}",
       "batchNumber": "Batch number",
       "expiryDate": "Expiry date",
       "submit": "Receive"

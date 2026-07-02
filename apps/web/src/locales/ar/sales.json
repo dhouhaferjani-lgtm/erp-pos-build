@@ -4,7 +4,14 @@
     "article": "الصنف",
     "description": "الوصف",
     "quantity": "الكمية",
+    "freeQuantity": "الكمية المجانية",
     "unitPrice": "سعر الوحدة",
+    "priceEntryMode": {
+      "unit": "سعر الوحدة",
+      "total": "المجموع"
+    },
+    "effectiveUnitCost": "الكلفة الفعلية للوحدة: {{amount}}",
+    "bonusSavings": "قيمة المجاني: {{amount}}",
     "discount": "الخصم",
     "tax": "الضريبة",
     "taxPercent": "نسبة الضريبة",
@@ -110,6 +117,18 @@
       "paid": "مدفوع",
       "received": "مُستلَم",
       "cancelled": "مُلغى"
+    }
+  },
+  "purchaseOrders": {
+    "receive": {
+      "remaining": "المتبقي",
+      "remainingFree": "المتبقي المجاني",
+      "quantity": "الكمية المستلمة المدفوعة",
+      "freeQuantity": "الكمية المجانية المستلمة",
+      "freeOrderedSummary": "المجاني المطلوب: {{ordered}} · المستلم: {{received}}",
+      "batchNumber": "رقم الدفعة",
+      "expiryDate": "تاريخ انتهاء الصلاحية",
+      "submit": "استلام"
     }
   }
 }

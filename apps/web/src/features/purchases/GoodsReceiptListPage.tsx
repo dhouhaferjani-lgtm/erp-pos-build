@@ -28,6 +28,8 @@ interface PurchaseOrderLine {
   description: string
   quantity: number
   quantity_received: number
+  free_quantity?: string | number | null
+  free_quantity_received?: string | number | null
   quantity_decimals?: number
   requires_batch_tracking?: boolean
   unit_price: number

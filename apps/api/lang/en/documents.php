@@ -18,4 +18,8 @@ return [
     'discount' => [
         'below_tolerance' => 'Discount must exceed the tolerance margin (:margin). For smaller residuals, use payment-tolerance write-off at settlement.',
     ],
+    'bonus_quantity' => [
+        'sub_row' => 'including bonus: +:quantity free unit',
+        'line_total' => 'Line total: :quantity expected delivered units',
+    ],
 ];
