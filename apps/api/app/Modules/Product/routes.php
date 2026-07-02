@@ -9,6 +9,7 @@ use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Product\Presentation\Controllers\CategoryController;
 use App\Modules\Product\Presentation\Controllers\CertificationController;
+use App\Modules\Product\Presentation\Controllers\EnrichmentRefreshController;
 use App\Modules\Product\Presentation\Controllers\EnrichmentReviewController;
 use App\Modules\Product\Presentation\Controllers\HealthClaimController;
 use App\Modules\Product\Presentation\Controllers\IngredientController;
@@ -119,6 +120,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::middleware('can:enrichment.view')->group(function () {
         Route::get('/enrichment-results', [EnrichmentReviewController::class, 'index'])->name('enrichment.index');
         Route::get('/enrichment-results/{id}', [EnrichmentReviewController::class, 'show'])->name('enrichment.show');
+
+        // Operator-triggered synchronous re-fetch of a submitted product's
+        // enrichment status (wires the ProductForm "refresh" affordance).
+        Route::post('/products/{productId}/enrichment/refresh', EnrichmentRefreshController::class)
+            ->whereUuid('productId')
+            ->name('enrichment.refresh');
     });
     Route::middleware('can:enrichment.review')->group(function () {
         Route::post('/enrichment-results/{id}/accept', [EnrichmentReviewController::class, 'accept'])->name('enrichment.accept');
