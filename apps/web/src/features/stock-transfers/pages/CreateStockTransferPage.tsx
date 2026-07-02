@@ -205,16 +205,37 @@ function BatchToggleCell({ line, sourceLocationId, expanded, onToggle, onAllocat
   const batchesQuery = useProductBatches(product?.id ?? '', line.variantId)
   const batches = useMemo(() => batchesQuery.data ?? [], [batchesQuery.data])
 
+  // Single source of truth for batch allocations. Whenever a driver of the
+  // FEFO split changes — product, variant, source location, or line quantity —
+  // re-derive the allocation so the panel always DISPLAYS exactly what will be
+  // SUBMITTED. This runs even while the panel is collapsed, so a batch line is
+  // never silently unallocated and the submit guard only trips when FEFO
+  // genuinely has nothing to offer. Manual edits inside the panel keep the same
+  // signature and are therefore preserved until one of the drivers changes.
+  const productId = product?.id ?? ''
+  const requiresBatch = product?.requires_batch_tracking ?? false
+  const fefoSignatureRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!requiresBatch || sourceLocationId === '' || batches.length === 0) {
+      return
+    }
+    const signature = `${productId}|${line.variantId ?? ''}|${sourceLocationId}|${line.quantity}`
+    if (fefoSignatureRef.current === signature) {
+      return
+    }
+    fefoSignatureRef.current = signature
+    onAllocationsChange(buildFefoAllocations(batches, sourceLocationId, line.quantity))
+  }, [requiresBatch, productId, line.variantId, line.quantity, sourceLocationId, batches, onAllocationsChange])
+
   if (!product?.requires_batch_tracking) {
     return <span className={`text-sm ${textColors.tertiary}`}>—</span>
   }
 
   const isLoading = batchesQuery.isLoading || batchesQuery.isFetching
 
+  // FEFO re-allocation is owned by the reconciliation effect above; the toggle
+  // only opens/closes the panel.
   const handleToggle = (): void => {
-    if (!expanded && line.batchAllocations.length === 0 && sourceLocationId !== '' && batches.length > 0) {
-      onAllocationsChange(buildFefoAllocations(batches, sourceLocationId, line.quantity))
-    }
     onToggle()
   }
 
@@ -546,8 +567,10 @@ export function CreateStockTransferPage() {
         <QuantityCell
           value={line.quantity}
           onChange={(value) => {
-            // Quantity change invalidates the FEFO split; user re-opens to re-allocate.
-            updateLine(line.uid, { quantity: value, batchAllocations: [] })
+            // Quantity change re-derives the FEFO split via the reconciliation
+            // effect in BatchToggleCell — no manual wipe, so the panel and the
+            // submit payload stay in sync with the new quantity.
+            updateLine(line.uid, { quantity: value })
           }}
           decimalPlaces={getQuantityDecimals(line.product)}
           min="0"
