@@ -45,13 +45,14 @@ final class CompanyContextActiveMembershipTest extends TestCase
         return Company::factory()->create(['tenant_id' => $this->tenant->id]);
     }
 
-    private function membership(Company $company, MembershipStatus $status): void
+    private function membership(Company $company, MembershipStatus $status, bool $isPrimary = false): void
     {
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
             'company_id' => $company->id,
             'role' => 'admin',
             'status' => $status->value,
+            'is_primary' => $isPrimary,
         ]);
     }
 
@@ -103,5 +104,35 @@ final class CompanyContextActiveMembershipTest extends TestCase
         $this->membership($company, MembershipStatus::Suspended);
 
         $this->assertNull($this->context->getDefaultCompanyForUser($this->user));
+    }
+
+    public function test_get_default_company_prefers_the_primary_active_membership(): void
+    {
+        // A non-primary membership created first, then the primary one — the
+        // primary must win regardless of creation order.
+        $secondary = $this->company();
+        $this->membership($secondary, MembershipStatus::Active, isPrimary: false);
+        $primary = $this->company();
+        $this->membership($primary, MembershipStatus::Active, isPrimary: true);
+
+        $this->assertSame($primary->id, $this->context->getDefaultCompanyForUser($this->user));
+    }
+
+    public function test_get_default_company_is_deterministic_across_repeated_calls(): void
+    {
+        // No primary flag anywhere: the oldest active membership must win, and
+        // the result must be stable across calls (no arbitrary ->first()).
+        $first = $this->company();
+        $this->membership($first, MembershipStatus::Active);
+        $second = $this->company();
+        $this->membership($second, MembershipStatus::Active);
+        $third = $this->company();
+        $this->membership($third, MembershipStatus::Active);
+
+        $resolved = $this->context->getDefaultCompanyForUser($this->user);
+
+        $this->assertSame($first->id, $resolved);
+        $this->assertSame($resolved, $this->context->getDefaultCompanyForUser($this->user));
+        $this->assertSame($resolved, $this->context->getDefaultCompanyForUser($this->user));
     }
 }
