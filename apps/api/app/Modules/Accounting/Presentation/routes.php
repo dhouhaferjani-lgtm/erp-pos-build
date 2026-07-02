@@ -179,6 +179,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:reports.view')
         ->name('reports.aged-payables');
 
+    Route::get('/reports/upcoming-payments', [ReportsController::class, 'upcomingPayments'])
+        ->middleware('can:reports.view')
+        ->name('reports.upcoming-payments');
+
     // Owner Reporting MVP
     Route::get('/reports/sales/by-location', [ReportsController::class, 'salesByLocation'])
         ->middleware('can:dashboard.owner')
