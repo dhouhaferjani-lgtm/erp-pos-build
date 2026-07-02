@@ -11,6 +11,7 @@ use App\Modules\Import\Presentation\Controllers\ImportController;
 use App\Modules\Import\Presentation\Controllers\MigrationWizardController;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\MigrationWizardService;
+use App\Modules\Import\Services\NumericFieldNormalizer;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
@@ -38,7 +39,8 @@ class ImportServiceProvider extends ServiceProvider
                 $app->make(InventoryServiceInterface::class),
                 $app->make(LocationServiceInterface::class),
                 $app->make(AccountingServiceInterface::class),
-                $app->make(CompositeItemServiceInterface::class)
+                $app->make(CompositeItemServiceInterface::class),
+                $app->make(NumericFieldNormalizer::class)
             );
         });
 
@@ -71,6 +73,7 @@ class ImportServiceProvider extends ServiceProvider
                 Route::get('/migration-wizard/order', [MigrationWizardController::class, 'order']);
                 Route::get('/migration-wizard/dependencies/{type}', [MigrationWizardController::class, 'dependencies']);
                 Route::post('/migration-wizard/suggest-mapping', [MigrationWizardController::class, 'suggestMapping']);
+                Route::post('/migration-wizard/parse-headers', [MigrationWizardController::class, 'parseHeaders']);
                 Route::get('/migration-wizard/template/{type}', [MigrationWizardController::class, 'template']);
                 Route::get('/migration-wizard/status', [MigrationWizardController::class, 'status']);
             });

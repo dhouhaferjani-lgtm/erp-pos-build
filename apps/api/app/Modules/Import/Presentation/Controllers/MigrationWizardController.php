@@ -9,8 +9,11 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Services\MigrationWizardService;
+use App\Modules\Import\Services\SpreadsheetParserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
 class MigrationWizardController extends Controller
@@ -18,7 +21,45 @@ class MigrationWizardController extends Controller
     public function __construct(
         private readonly MigrationWizardService $wizardService,
         private readonly CompanyContext $companyContext,
+        private readonly SpreadsheetParserService $spreadsheetParser,
     ) {}
+
+    /**
+     * Parse an uploaded spreadsheet (CSV any delimiter, XLSX, XLS) and return
+     * its header row, so the mapping step works for files the browser cannot
+     * parse client-side.
+     */
+    public function parseHeaders(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:10240'],
+        ]);
+
+        /** @var UploadedFile $file */
+        $file = $request->file('file');
+
+        $path = $file->store('imports/header-preview', 'local');
+        if ($path === false) {
+            return response()->json(['error' => 'Failed to store file'], 500);
+        }
+
+        try {
+            $result = $this->spreadsheetParser->parse(Storage::disk('local')->path($path));
+
+            return response()->json([
+                'data' => [
+                    'headers' => $result['headers'],
+                    'row_count' => count($result['rows']),
+                ],
+            ]);
+        } catch (\Throwable) {
+            return response()->json([
+                'error' => 'Could not parse file. Please upload a valid CSV or Excel file.',
+            ], 422);
+        } finally {
+            Storage::disk('local')->delete($path);
+        }
+    }
 
     /**
      * Get recommended import order

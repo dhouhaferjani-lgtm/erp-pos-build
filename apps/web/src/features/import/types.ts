@@ -116,6 +116,14 @@ export interface CreateImportResponse {
   }
 }
 
+export interface ImportResult {
+  imported_count: number
+  skipped_count: number
+  execution_error_count: number
+  total_rows: number
+  failed_rows_csv_url: string | null
+}
+
 export interface ImportPreviewRow {
   row_number: number
   data: Record<string, string>

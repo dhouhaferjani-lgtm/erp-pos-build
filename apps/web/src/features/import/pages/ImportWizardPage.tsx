@@ -19,6 +19,7 @@ import {
   useImportErrors,
   useImportPreview,
 } from '../api/queries'
+import { toast } from 'sonner'
 import { importApi } from '../api/importApi'
 import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
@@ -218,11 +219,11 @@ export function ImportWizardPage() {
   const handleFileSelect = useCallback(async (file: File) => {
     setSelectedFile(file)
 
-    // Parse CSV headers
-    const text = await file.text()
-    const lines = text.split('\n')
-    if (lines.length > 0) {
-      const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''))
+    // Parse headers server-side: handles XLSX/XLS and any CSV delimiter
+    // (semicolon is the default Excel CSV export in French/European locales),
+    // which the browser cannot split as plain comma-separated text.
+    try {
+      const { headers } = await importApi.parseHeaders(file)
       setSourceColumns(headers)
 
       // Get mapping suggestions
@@ -234,8 +235,12 @@ export function ImportWizardPage() {
           },
         }
       )
+    } catch {
+      toast.error(t('wizard.upload.parseError'))
+      setSelectedFile(null)
+      setSourceColumns([])
     }
-  }, [importType, suggestMapping])
+  }, [importType, suggestMapping, t])
 
   // Handle upload step completion
   const handleUploadComplete = useCallback(() => {

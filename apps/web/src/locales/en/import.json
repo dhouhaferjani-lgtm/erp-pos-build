@@ -99,7 +99,8 @@
       "maxSize": "Maximum file size: {{size}}MB",
       "downloadTemplate": "Download template",
       "fileReady": "File ready: {{name}}",
-      "columnsDetected": "{{count}} columns detected"
+      "columnsDetected": "{{count}} columns detected",
+      "parseError": "Could not read the file. Please upload a valid CSV or Excel file."
     },
     "mapping": {
       "title": "Map your columns",
