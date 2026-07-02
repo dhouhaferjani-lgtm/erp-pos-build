@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
@@ -27,16 +28,30 @@ class StockTransferController extends Controller
     public function __construct(
         private readonly StockTransferService $service,
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
         $company = $this->companyContext->requireCompany();
+        /** @var User $user */
+        $user = $request->user();
 
         $query = StockTransfer::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch']);
+
+        // Location scoping: a restricted user only sees transfers whose source
+        // OR destination is in their allowed set (so incoming transfers from
+        // elsewhere remain visible). NULL allowed set = unrestricted (all).
+        $allowedLocationIds = $this->locationContext->getAllowedLocationIds($company->id, $user);
+        if ($allowedLocationIds !== null) {
+            $query->where(function ($q) use ($allowedLocationIds): void {
+                $q->whereIn('source_location_id', $allowedLocationIds)
+                    ->orWhereIn('destination_location_id', $allowedLocationIds);
+            });
+        }
 
         if ($request->filled('status')) {
             $status = TransferStatus::tryFrom((string) $request->input('status'));
@@ -75,9 +90,11 @@ class StockTransferController extends Controller
         ]);
     }
 
-    public function show(string $transfer): JsonResponse
+    public function show(Request $request, string $transfer): JsonResponse
     {
         $company = $this->companyContext->requireCompany();
+        /** @var User $user */
+        $user = $request->user();
 
         if (! Str::isUuid($transfer)) {
             abort(404);
@@ -90,6 +107,12 @@ class StockTransferController extends Controller
             ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'completedBy', 'cancelledBy', 'lines.product', 'lines.variant', 'lines.batchAllocations.batch'])
             ->findOrFail($transfer);
 
+        // A transfer the user cannot see (neither endpoint in their allowed set)
+        // is treated as not found, consistent with the index visibility filter.
+        if (! $this->canSeeTransfer($model, $company->id, $user)) {
+            abort(404);
+        }
+
         return response()->json([
             'data' => $this->formatTransfer($model, includeLines: true),
         ]);
@@ -100,6 +123,14 @@ class StockTransferController extends Controller
         $company = $this->companyContext->requireCompany();
         /** @var User $user */
         $user = $request->user();
+
+        // Initiating a transfer moves stock OUT of the source location, so the
+        // user must have access to the SOURCE. The destination may be anywhere
+        // (you can send stock to places you cannot act at).
+        $sourceLocationId = (string) $request->input('source_location_id');
+        if (! $this->locationContext->canAccessLocation($sourceLocationId, $company->id, $user)) {
+            return $this->locationAccessDeniedResponse($sourceLocationId, $user->id);
+        }
 
         /** @var array<int, array{product_id: string, variant_id?: string|null, quantity: string|int|float, batch_allocations?: array<int, array{batch_id: int|string, quantity: string|int|float}>}> $rawLines */
         $rawLines = $request->input('lines', []);
@@ -186,6 +217,11 @@ class StockTransferController extends Controller
             ->where('company_id', $company->id)
             ->findOrFail($transfer);
 
+        // Completing = receiving into the DESTINATION, so require destination access.
+        if (! $this->locationContext->canAccessLocation($existing->destination_location_id, $company->id, $user)) {
+            return $this->locationAccessDeniedResponse($existing->destination_location_id, $user->id);
+        }
+
         try {
             $completed = $this->service->complete($existing->id, $user->id);
         } catch (TransferStateException $e) {
@@ -213,6 +249,11 @@ class StockTransferController extends Controller
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->findOrFail($transfer);
+
+        // Cancelling restocks the SOURCE location, so require source access.
+        if (! $this->locationContext->canAccessLocation($existing->source_location_id, $company->id, $user)) {
+            return $this->locationAccessDeniedResponse($existing->source_location_id, $user->id);
+        }
 
         $validated = $request->validate([
             'reason' => ['nullable', 'string', 'max:5000'],
@@ -292,6 +333,36 @@ class StockTransferController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * A transfer is visible when the user is unrestricted (NULL allowed set) or
+     * either endpoint is in their allowed locations.
+     */
+    private function canSeeTransfer(StockTransfer $transfer, string $companyId, User $user): bool
+    {
+        $allowed = $this->locationContext->getAllowedLocationIds($companyId, $user);
+
+        if ($allowed === null) {
+            return true;
+        }
+
+        return in_array($transfer->source_location_id, $allowed, true)
+            || in_array($transfer->destination_location_id, $allowed, true);
+    }
+
+    private function locationAccessDeniedResponse(string $locationId, string $userId): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'LOCATION_ACCESS_DENIED',
+                'message' => 'You do not have permission to act on this location.',
+                'details' => [
+                    'location_id' => $locationId,
+                    'user_id' => $userId,
+                ],
+            ],
+        ], 403);
     }
 
     private function insufficientStockResponse(InsufficientStockException $e): JsonResponse
