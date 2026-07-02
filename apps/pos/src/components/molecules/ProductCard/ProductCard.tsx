@@ -173,6 +173,39 @@ function ProductCardInner({
       ? 'cursor-pointer border-accent bg-accent-tint shadow-sm'
       : 'cursor-pointer border-subtle bg-surface-raised hover:border-action hover:shadow-md';
 
+  // View-details ("eye") button — rendered on the thumbnail in visual mode and
+  // inline in the price row in compact mode (mock layout). Kept OFF the card
+  // bottom-right so it never overlaps the price/stock row. Shared handlers here
+  // avoid duplicating the stopPropagation/keydown guards across placements.
+  const renderViewDetails = (className: string) =>
+    onViewDetails ? (
+      <button
+        type="button"
+        data-testid="view-details-button"
+        aria-label={t('products.viewDetails')}
+        onClick={(e) => {
+          e.stopPropagation();
+          onViewDetails(product);
+        }}
+        onKeyDown={(e) => {
+          // The card root is role=button (onKeyDown=activate); Enter/Space on
+          // this inner button must NOT bubble up and add the product to cart.
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.stopPropagation();
+            e.preventDefault();
+            onViewDetails(product);
+          }
+        }}
+        className={cn(
+          'flex items-center justify-center rounded-full bg-surface-raised/90 text-ink-muted shadow-sm backdrop-blur-sm transition-colors hover:text-ink active:bg-surface-sunken',
+          className,
+        )}
+        title={t('products.viewDetails')}
+      >
+        <Eye className="h-4 w-4" />
+      </button>
+    ) : null;
+
   return (
     <div
       ref={cardRef}
@@ -215,30 +248,6 @@ function ProductCardInner({
         </span>
       )}
 
-      {onViewDetails && (
-        <button
-          type="button"
-          data-testid="view-details-button"
-          aria-label={t('products.viewDetails')}
-          onClick={(e) => {
-            e.stopPropagation();
-            onViewDetails(product);
-          }}
-          onKeyDown={(e) => {
-            // H1: the card root is role=button with onKeyDown=activate; Enter/Space
-            // on this inner button must NOT bubble up and add the product to cart.
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.stopPropagation();
-              e.preventDefault();
-              onViewDetails(product);
-            }
-          }}
-          className="absolute bottom-1.5 right-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-surface-sunken text-ink-faint shadow-sm transition-colors hover:bg-surface-sunken hover:text-ink active:bg-surface-sunken"
-          title={t('products.viewDetails')}
-        >
-          <Eye className="h-4 w-4" />
-        </button>
-      )}
       {hasModifiers && onCustomize && (
         <button
           type="button"
@@ -261,13 +270,15 @@ function ProductCardInner({
 
       {/* Visual mode: ProductThumb on top. Compact (grid) mode: no thumb. */}
       {displayMode === 'visual' && (
-        <div className="mb-2 shrink-0">
+        <div className="relative mb-2 shrink-0">
           <ProductThumb
             name={product.name}
             category={product.category}
             imageUrl={imageSrc}
             size={88}
           />
+          {/* Eye overlay on the thumb (mock: top-left of the tile). */}
+          {renderViewDetails('absolute left-1 top-1 h-7 w-7')}
         </div>
       )}
 
@@ -311,16 +322,20 @@ function ProductCardInner({
           {format(product.sale_price ?? '0')}
         </p>
 
-        {/* StockBadge replaces the inline stock label — stock-* token family. */}
-        {stockLabel !== null && (
-          <StockBadge
-            data-testid="stock-row"
-            status={isOutOfStock ? 'out' : isLowStock ? 'low' : 'ok'}
-            className="shrink-0"
-          >
-            {stockLabel}
-          </StockBadge>
-        )}
+        {/* Right group: stock badge + (compact-mode) eye. In visual mode the eye
+            lives on the thumb, so only the badge shows here. */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {stockLabel !== null && (
+            <StockBadge
+              data-testid="stock-row"
+              status={isOutOfStock ? 'out' : isLowStock ? 'low' : 'ok'}
+              className="shrink-0"
+            >
+              {stockLabel}
+            </StockBadge>
+          )}
+          {displayMode === 'grid' && renderViewDetails('h-7 w-7')}
+        </div>
       </div>
 
       {incomingTotal !== null && (

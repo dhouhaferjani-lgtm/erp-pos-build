@@ -418,6 +418,7 @@ export function ThemePreviewPage() {
                 cartProductIds={gridCart}
                 filters={gridFilters}
                 onFiltersChange={setGridFilters}
+                onViewDetails={() => undefined}
               />
             </div>
           </Section>
