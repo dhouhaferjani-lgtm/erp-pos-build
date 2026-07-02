@@ -13,6 +13,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { useOpeningBatchStatus } from '../api/queries'
+import { openingBatchTypeKey } from '../i18nKeys'
 import type { OpeningBatchType, OpeningBatchStatusInfo, OpeningBatchStatus } from '../types'
 
 interface BatchTypeConfig {
@@ -98,7 +99,7 @@ function BatchTypeCard({
 }) {
   const { t } = useTranslation()
 
-  const typeKey = config.type.toLowerCase().replace('_', '')
+  const typeKey = openingBatchTypeKey(config.type)
 
   return (
     <Link

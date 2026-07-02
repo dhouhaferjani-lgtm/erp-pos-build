@@ -157,6 +157,7 @@
     "issueDate": "Date d'émission",
     "dueDate": "Date d'échéance",
     "customer": "Client",
+    "supplier": "Fournisseur",
     "description": "Description",
     "quantity": "Quantité",
     "unitPrice": "Prix unitaire",
@@ -306,6 +307,7 @@
     "receiveGoodsTitle": "Réceptionner les marchandises",
     "receiveGoodsMessage": "Cela créera des mouvements de stock pour réceptionner les marchandises de ce bon d'achat. Continuer ?",
     "goodsReceived": "Marchandises réceptionnées",
+    "received": "Reçu",
     "receive": {
       "remaining": "Restant",
       "quantity": "Quantité à réceptionner",
@@ -367,6 +369,7 @@
       "overpaid": "Surpayée"
     },
     "paymentHistory": {
+      "label": "Historique des paiements",
       "noPayments": "Aucun paiement enregistré",
       "allocated": "Alloué",
       "totalPaid": "Total Payé"

@@ -107,7 +107,7 @@ export function DocumentHeader({
         className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
       >
         <ArrowLeft className="h-4 w-4" />
-        {t('actions.back')}
+        {t('common:actions.back')}
       </Link>
 
       {/* Row: identity + actions */}

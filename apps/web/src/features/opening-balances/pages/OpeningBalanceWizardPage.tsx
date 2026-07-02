@@ -24,6 +24,7 @@ import { FileUpload } from '../components/FileUpload'
 import { ValidationResults } from '../components/ValidationResults'
 import { BatchPreview } from '../components/BatchPreview'
 import { LockConfirmation } from '../components/LockConfirmation'
+import { openingBatchTypeKey } from '../i18nKeys'
 import type { OpeningBatchType } from '../types'
 
 type WizardStep = 'setup' | 'upload' | 'validate' | 'preview' | 'post' | 'lock' | 'complete'
@@ -247,7 +248,7 @@ export function OpeningBalanceWizardPage() {
     }
   }, [batchId, existingStatus?.batch?.id, lockBatch])
 
-  const typeKey = batchType?.toLowerCase().replace('_', '') ?? ''
+  const typeKey = batchType ? openingBatchTypeKey(batchType) : ''
 
   // Render step content
   const renderStepContent = () => {

@@ -157,6 +157,7 @@
     "issueDate": "Issue Date",
     "dueDate": "Due Date",
     "customer": "Customer",
+    "supplier": "Supplier",
     "description": "Description",
     "quantity": "Quantity",
     "unitPrice": "Unit Price",
@@ -306,6 +307,7 @@
     "receiveGoodsTitle": "Receive Goods",
     "receiveGoodsMessage": "This will create stock movements to receive the goods from this purchase order. Continue?",
     "goodsReceived": "Goods Received",
+    "received": "Received",
     "receive": {
       "remaining": "Remaining",
       "quantity": "Quantity to receive",
@@ -367,6 +369,7 @@
       "overpaid": "Overpaid"
     },
     "paymentHistory": {
+      "label": "Payment History",
       "noPayments": "No payments recorded yet",
       "allocated": "Allocated",
       "totalPaid": "Total Paid"

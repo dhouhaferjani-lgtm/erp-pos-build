@@ -129,7 +129,7 @@ export function CountingDashboardPage() {
             to="/inventory/counting/list?status=active"
             className="text-sm text-blue-600 hover:text-blue-700"
           >
-            {t('viewAll')}
+            {t('counting.viewAll')}
           </Link>
         </div>
 
@@ -158,7 +158,7 @@ export function CountingDashboardPage() {
             to="/inventory/counting/list?status=pending_review"
             className="text-sm text-blue-600 hover:text-blue-700"
           >
-            {t('viewAll')}
+            {t('counting.viewAll')}
           </Link>
         </div>
 

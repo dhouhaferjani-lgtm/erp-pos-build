@@ -165,6 +165,17 @@
     }
   },
   "terminal": {
+    "terminal": "Terminal",
+    "pageDescription": "Gérer les terminaux de caisse et les appareils d'encaissement",
+    "addTerminal": "Ajouter un terminal",
+    "editTerminal": "Modifier le terminal",
+    "name": "Nom",
+    "namePlaceholder": "ex. Caisse principale",
+    "description": "Description",
+    "descriptionPlaceholder": "Notes optionnelles sur ce terminal",
+    "status": "Statut",
+    "active": "Actif",
+    "inactive": "Inactif",
     "selectTitle": "Sélectionner un Terminal",
     "selectDescription": "Choisissez un terminal pour démarrer votre session POS",
     "code": "Code",
@@ -172,7 +183,29 @@
     "noTerminals": "Aucun terminal actif trouvé",
     "noTerminalsDescription": "Demandez à votre administrateur de configurer les terminaux POS.",
     "loadingTerminals": "Chargement des terminaux...",
-    "lastUsed": "Dernier utilisé"
+    "lastUsed": "Dernier utilisé",
+    "trainingMode": "Formation",
+    "activate": "Activer",
+    "deactivate": "Désactiver",
+    "deactivateTerminal": "Désactiver le terminal",
+    "deactivationReasonPrompt": "Vous pouvez indiquer pourquoi ce terminal est désactivé.",
+    "deactivationReasonPlaceholder": "Motif de désactivation",
+    "archive": "Archiver",
+    "enableTraining": "Activer le mode formation",
+    "disableTraining": "Désactiver le mode formation",
+    "cannotDeleteHasHistory": "Impossible de supprimer un terminal avec historique",
+    "confirmArchiveTitle": "Archiver le terminal",
+    "confirmArchive": "Archiver {{resource}} ? Il ne sera plus disponible pour les nouvelles sessions."
+  },
+  "messages": {
+    "terminalCreated": "Terminal créé",
+    "terminalUpdated": "Terminal mis à jour",
+    "terminalArchived": "Terminal archivé",
+    "terminalDeleted": "Terminal supprimé",
+    "terminalActivated": "Terminal activé",
+    "terminalDeactivated": "Terminal désactivé",
+    "trainingModeEnabled": "Mode formation activé",
+    "trainingModeDisabled": "Mode formation désactivé"
   },
   "transactions": {
     "noLocation": "Aucun emplacement sélectionné",

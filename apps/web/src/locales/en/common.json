@@ -145,6 +145,7 @@
     "totalPayable": "Total Payable",
     "description": "Description",
     "currency": "Currency",
+    "total": "Total",
     "basicInfo": "Basic Information"
   },
   "partner": {
@@ -381,6 +382,7 @@
     "addCompany": "Add Company"
   },
   "table": {
+    "actions": "Actions",
     "actionsColumn": "Actions",
     "noData": "No data available"
   },
@@ -521,6 +523,28 @@
     "progressOverview": "Progress Overview",
     "batchesLocked": "{{locked}} of {{total}} batch types locked",
     "selectBatchType": "Select a batch type to import",
+    "progress": {
+      "title": "Progress Overview",
+      "completed": "{{locked}} of {{total}} batch types locked",
+      "allComplete": "All opening balance batches are locked"
+    },
+    "batchTypes": "Batch Types",
+    "rowsCount": "{{count}} rows",
+    "howItWorks": {
+      "title": "How it works",
+      "description": "Import opening balances in controlled batches, validate them, post them, then lock them for auditability.",
+      "step1": "Create or open the batch for each balance type.",
+      "step2": "Upload the source file using the expected columns.",
+      "step3": "Validate the imported rows and correct any errors.",
+      "step4": "Preview and post the resulting accounting or stock entries.",
+      "step5": "Lock the batch once the balances have been verified."
+    },
+    "notes": {
+      "title": "Important notes",
+      "note1": "Locked opening balances cannot be edited from this screen.",
+      "note2": "Use one cutover date across all batches for clean reporting.",
+      "note3": "Keep your source files for audit reconciliation."
+    },
     "types": {
       "accounting": {
         "title": "GL Accounting",
@@ -561,9 +585,13 @@
         "title": "Setup Batch",
         "description": "Configure the opening balance batch settings",
         "batchName": "Batch Name",
+        "nameLabel": "Batch Name",
         "batchNamePlaceholder": "e.g., Initial Opening - January 2025",
+        "namePlaceholder": "e.g., Initial Opening - January 2025",
         "cutoverDate": "Cutover Date",
+        "cutoverDateLabel": "Cutover Date",
         "cutoverDateHint": "The date as of which these balances are accurate",
+        "cutoverDateHelp": "The date as of which these balances are accurate",
         "sourceSystem": "Source System (Optional)",
         "sourceSystemPlaceholder": "e.g., Sage, QuickBooks, Excel"
       },
@@ -602,6 +630,7 @@
         "title": "Preview Changes",
         "description": "Review what will be created when you post this batch",
         "loading": "Loading preview…",
+        "continueButton": "Continue",
         "accounting": {
           "journalEntry": "Journal Entry",
           "account": "Account",
@@ -632,7 +661,13 @@
         "description": "Create the entries in your accounting system",
         "posting": "Posting…",
         "postButton": "Post Batch",
-        "confirmPost": "This will create all journal entries and stock movements. Continue?"
+        "confirmPost": "This will create all journal entries and stock movements. Continue?",
+        "warningTitle": "Before posting",
+        "warningMessage": "Posting creates permanent accounting or stock entries for this opening balance batch.",
+        "summary": "Posting Summary",
+        "totalRows": "Total Rows",
+        "totalValue": "Total Value",
+        "totalDebit": "Total Debit"
       },
       "lock": {
         "title": "Lock Batch",
@@ -656,7 +691,8 @@
         "hash": "Hash",
         "viewJournalEntries": "View Journal Entries",
         "startAnother": "Start Another Import",
-        "backToOverview": "Back to Overview"
+        "backToOverview": "Back to Overview",
+        "backToDashboard": "Back to Opening Balances"
       }
     },
     "messages": {
