@@ -32,6 +32,7 @@ final readonly class DiscountCalculationService
 
     public function __construct(
         private CurrencyScaleResolverInterface $scaleResolver,
+        private DiscountPermissionResolver $permissionResolver,
     ) {}
 
     private function scale(): int
@@ -56,8 +57,10 @@ final readonly class DiscountCalculationService
         string $discountPercent,
         ?string $reason = null
     ): void {
-        // Check if cashier has discount permission
-        if (! $cashier->can_discount) {
+        // Check if cashier has discount permission (admins bypass the flag —
+        // resolved through the shared DiscountPermissionResolver so this matches
+        // exactly what the read endpoint told the operator).
+        if (! $this->permissionResolver->canDiscount($cashier)) {
             throw DiscountNotAllowedException::cashierNotAuthorized((string) $cashier->id);
         }
 
@@ -92,8 +95,10 @@ final readonly class DiscountCalculationService
         string $discountAmount,
         ?string $reason = null
     ): void {
-        // Check if cashier has discount permission
-        if (! $cashier->can_discount) {
+        // Check if cashier has discount permission (admins bypass the flag —
+        // resolved through the shared DiscountPermissionResolver so this matches
+        // exactly what the read endpoint told the operator).
+        if (! $this->permissionResolver->canDiscount($cashier)) {
             throw DiscountNotAllowedException::cashierNotAuthorized((string) $cashier->id);
         }
 
@@ -200,7 +205,10 @@ final readonly class DiscountCalculationService
         /** @var numeric-string $terminalLimit */
         $terminalLimit = (string) $terminal->max_discount_percent;
 
-        $cashierMaxPercent = $cashier->max_discount_percent;
+        // Admins resolve to a 100% personal cap here (via the shared resolver),
+        // so the terminal ceiling below becomes their binding limit — identical
+        // to the read endpoint's min(terminal, user) semantics.
+        $cashierMaxPercent = $this->permissionResolver->effectiveMaxPercent($cashier);
 
         // No individual cashier limit — terminal limit applies
         if ($cashierMaxPercent === null) {

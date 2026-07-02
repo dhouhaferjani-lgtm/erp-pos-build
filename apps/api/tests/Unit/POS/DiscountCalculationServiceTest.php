@@ -8,6 +8,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Services\DiscountCalculationService;
+use App\Modules\POS\Domain\Services\DiscountPermissionResolver;
 use App\Modules\POS\Domain\Terminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -33,7 +34,7 @@ class DiscountCalculationServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new DiscountCalculationService($this->mockCurrencyScale(3));
+        $this->service = new DiscountCalculationService($this->mockCurrencyScale(3), new DiscountPermissionResolver);
     }
 
     /**

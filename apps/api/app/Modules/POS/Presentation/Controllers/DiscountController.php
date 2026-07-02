@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\DiscountOrchestratorService;
+use App\Modules\POS\Domain\Services\DiscountPermissionResolver;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
@@ -27,6 +28,7 @@ final class DiscountController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly DiscountOrchestratorService $orchestrator,
+        private readonly DiscountPermissionResolver $permissionResolver,
     ) {}
 
     /**
@@ -102,12 +104,14 @@ final class DiscountController extends Controller
             $discountUser = $operator;
         }
 
-        $isAdmin = $discountUser->hasRole(['super_admin', 'admin']);
-        $canUserDiscount = $isAdmin || $discountUser->can_discount;
-        $userMaxDiscountPercent = $isAdmin ? 100.0 : ($discountUser->max_discount_percent !== null ? (float) $discountUser->max_discount_percent : null);
+        // Resolve permission through the shared resolver so this read path can
+        // never disagree with the DiscountCalculationService write path.
+        $canUserDiscount = $this->permissionResolver->canDiscount($discountUser);
+        $effectiveMaxPercent = $this->permissionResolver->effectiveMaxPercent($discountUser);
+        $userMaxDiscountPercent = $effectiveMaxPercent !== null ? (float) $effectiveMaxPercent : null;
 
         // Calculate effective limit (most restrictive)
-        $effectiveLimit = $this->calculateEffectiveLimit($terminal, $discountUser, $isAdmin);
+        $effectiveLimit = $this->calculateEffectiveLimit($terminal, $effectiveMaxPercent);
 
         // User can discount only if:
         // 1. User has can_discount permission
@@ -209,14 +213,18 @@ final class DiscountController extends Controller
 
     /**
      * Calculate the effective discount limit (most restrictive)
+     *
+     * @param  numeric-string|null  $userMaxPercent  The user's resolved personal
+     *                                               max (null = no individual
+     *                                               limit → terminal limit applies)
      */
-    private function calculateEffectiveLimit(Terminal $terminal, User $user, bool $isAdmin): float
+    private function calculateEffectiveLimit(Terminal $terminal, ?string $userMaxPercent): float
     {
         // Terminal limit — decimal:2 cast returns string; convert for numeric comparison
         $terminalLimit = (float) $terminal->max_discount_percent;
 
         // User limit (null means no individual limit, use terminal limit)
-        $userLimit = $isAdmin ? 100.0 : ($user->max_discount_percent !== null ? (float) $user->max_discount_percent : $terminalLimit);
+        $userLimit = $userMaxPercent !== null ? (float) $userMaxPercent : $terminalLimit;
 
         // Return the most restrictive (minimum of the two)
         return min($terminalLimit, $userLimit);
