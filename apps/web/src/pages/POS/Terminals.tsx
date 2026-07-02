@@ -28,7 +28,7 @@ import { useCompanyStore } from '@/stores/companyStore'
  * Allows administrators to manage POS terminals with full CRUD operations
  */
 export function TerminalsPage() {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'pos'])
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -81,17 +81,17 @@ export function TerminalsPage() {
           id: editingTerminal.id,
           data: data as UpdateTerminalInput,
         })
-        toast.success(t('pos.messages.terminalUpdated'))
+        toast.success(t('pos:messages.terminalUpdated'))
       } else {
         await createTerminal.mutateAsync(data as CreateTerminalInput)
-        toast.success(t('pos.messages.terminalCreated'))
+        toast.success(t('pos:messages.terminalCreated'))
       }
       handleCloseForm()
     } catch (_err) {
       toast.error(
         editingTerminal
-          ? t('common.errorUpdating', { resource: t('pos.terminal.terminal') })
-          : t('common.errorCreating', { resource: t('pos.terminal.terminal') })
+          ? t('common:common.errorUpdating', { resource: t('pos:terminal.terminal') })
+          : t('common:common.errorCreating', { resource: t('pos:terminal.terminal') })
       )
     }
   }
@@ -105,9 +105,9 @@ export function TerminalsPage() {
     if (!archiveTarget) return
     try {
       await archiveTerminalMutation.mutateAsync(archiveTarget.id)
-      toast.success(t('pos.messages.terminalArchived'))
+      toast.success(t('pos:messages.terminalArchived'))
     } catch (_err) {
-      toast.error(t('common.error'))
+      toast.error(t('common:common.error'))
     } finally {
       setArchiveTarget(null)
     }
@@ -122,9 +122,9 @@ export function TerminalsPage() {
     if (!deleteTarget) return
     try {
       await deleteTerminal.mutateAsync(deleteTarget.id)
-      toast.success(t('pos.messages.terminalDeleted'))
+      toast.success(t('pos:messages.terminalDeleted'))
     } catch (_err) {
-      toast.error(t('common.errorDeleting', { resource: t('pos.terminal.terminal') }))
+      toast.error(t('common:common.errorDeleting', { resource: t('pos:terminal.terminal') }))
     } finally {
       setDeleteTarget(null)
     }
@@ -134,9 +134,9 @@ export function TerminalsPage() {
   const handleActivate = async (terminal: Terminal) => {
     try {
       await activateTerminal.mutateAsync(terminal.id)
-      toast.success(t('pos.messages.terminalActivated'))
+      toast.success(t('pos:messages.terminalActivated'))
     } catch (_err) {
-      toast.error(t('common.error'))
+      toast.error(t('common:common.error'))
     }
   }
 
@@ -146,11 +146,11 @@ export function TerminalsPage() {
       await toggleTrainingMode.mutateAsync(terminal.id)
       toast.success(
         terminal.is_training_mode
-          ? t('pos.messages.trainingModeDisabled')
-          : t('pos.messages.trainingModeEnabled')
+          ? t('pos:messages.trainingModeDisabled')
+          : t('pos:messages.trainingModeEnabled')
       )
     } catch (_err) {
-      toast.error(t('common.error'))
+      toast.error(t('common:common.error'))
     }
   }
 
@@ -167,9 +167,9 @@ export function TerminalsPage() {
         id: deactivateTarget.id,
         data: deactivateReason ? { reason: deactivateReason } : undefined,
       })
-      toast.success(t('pos.messages.terminalDeactivated'))
+      toast.success(t('pos:messages.terminalDeactivated'))
     } catch (_err) {
-      toast.error(t('common.error'))
+      toast.error(t('common:common.error'))
     } finally {
       setDeactivateTarget(null)
       setDeactivateReason('')
@@ -182,10 +182,10 @@ export function TerminalsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">
-            {t('navigation.terminals')}
+            {t('common:navigation.terminals')}
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            {t('pos.terminal.pageDescription')}
+            {t('pos:terminal.pageDescription')}
           </p>
         </div>
         <button
@@ -194,7 +194,7 @@ export function TerminalsPage() {
           className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
           <Plus className="h-4 w-4" />
-          {t('pos.terminal.addTerminal')}
+          {t('pos:terminal.addTerminal')}
         </button>
       </div>
 
@@ -230,8 +230,8 @@ export function TerminalsPage() {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-medium leading-6 text-gray-900">
                     {editingTerminal
-                      ? t('pos.terminal.editTerminal')
-                      : t('pos.terminal.addTerminal')}
+                      ? t('pos:terminal.editTerminal')
+                      : t('pos:terminal.addTerminal')}
                   </h3>
                   <button
                     type="button"
@@ -263,10 +263,10 @@ export function TerminalsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {t('pos.terminal.confirmArchiveTitle')}
+              {t('pos:terminal.confirmArchiveTitle')}
             </h3>
             <p className="text-gray-600 mb-6">
-              {t('pos.terminal.confirmArchive', { resource: `${archiveTarget.name} (${archiveTarget.code})` })}
+              {t('pos:terminal.confirmArchive', { resource: `${archiveTarget.name} (${archiveTarget.code})` })}
             </p>
             <div className="flex gap-3">
               <button
@@ -274,14 +274,14 @@ export function TerminalsPage() {
                 onClick={() => { setArchiveTarget(null); }}
                 className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                {t('common.actions.cancel')}
+                {t('common:actions.cancel')}
               </button>
               <button
                 type="button"
                 onClick={() => void confirmArchive()}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700"
               >
-                {t('pos.terminal.archive')}
+                {t('pos:terminal.archive')}
               </button>
             </div>
           </div>
@@ -293,10 +293,10 @@ export function TerminalsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {t('common.confirmDeleteTitle')}
+              {t('common:common.confirmDeleteTitle')}
             </h3>
             <p className="text-gray-600 mb-6">
-              {t('common.confirmDelete', { resource: `${deleteTarget.name} (${deleteTarget.code})` })}
+              {t('common:common.confirmDelete', { resource: `${deleteTarget.name} (${deleteTarget.code})` })}
             </p>
             <div className="flex gap-3">
               <button
@@ -304,14 +304,14 @@ export function TerminalsPage() {
                 onClick={() => { setDeleteTarget(null); }}
                 className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                {t('common.actions.cancel')}
+                {t('common:actions.cancel')}
               </button>
               <button
                 type="button"
                 onClick={() => void confirmDelete()}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700"
               >
-                {t('common.actions.delete')}
+                {t('common:actions.delete')}
               </button>
             </div>
           </div>
@@ -323,16 +323,16 @@ export function TerminalsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {t('pos.terminal.deactivateTerminal')}
+              {t('pos:terminal.deactivateTerminal')}
             </h3>
             <p className="text-gray-600 mb-4">
-              {t('pos.terminal.deactivationReasonPrompt')}
+              {t('pos:terminal.deactivationReasonPrompt')}
             </p>
             <input
               type="text"
               value={deactivateReason}
               onChange={(e) => { setDeactivateReason(e.target.value); }}
-              placeholder={t('pos.terminal.deactivationReasonPlaceholder')}
+              placeholder={t('pos:terminal.deactivationReasonPlaceholder')}
               className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
             />
             <div className="flex gap-3">
@@ -341,14 +341,14 @@ export function TerminalsPage() {
                 onClick={() => { setDeactivateTarget(null); setDeactivateReason('') }}
                 className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                {t('common.actions.cancel')}
+                {t('common:actions.cancel')}
               </button>
               <button
                 type="button"
                 onClick={() => void confirmDeactivate()}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700"
               >
-                {t('pos.terminal.deactivate')}
+                {t('pos:terminal.deactivate')}
               </button>
             </div>
           </div>

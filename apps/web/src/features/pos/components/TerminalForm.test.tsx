@@ -61,21 +61,21 @@ describe('TerminalForm', () => {
       render(<TerminalForm {...defaultProps} />)
 
       // Code field (only in create mode)
-      expect(screen.getByLabelText(/pos\.terminal\.code/)).toBeInTheDocument()
-      expect(screen.getByText('common.leaveBlankForAutoGenerate')).toBeInTheDocument()
+      expect(screen.getByLabelText(/pos:terminal\.code/)).toBeInTheDocument()
+      expect(screen.getByText('common:common.leaveBlankForAutoGenerate')).toBeInTheDocument()
 
       // Name field
-      expect(screen.getByLabelText(/pos\.terminal\.name/)).toBeInTheDocument()
+      expect(screen.getByLabelText(/pos:terminal\.name/)).toBeInTheDocument()
 
       // Location dropdown
-      expect(screen.getByLabelText(/pos\.terminal\.location/)).toBeInTheDocument()
+      expect(screen.getByLabelText(/pos:terminal\.location/)).toBeInTheDocument()
 
       // Description field
-      expect(screen.getByLabelText(/pos\.terminal\.description/)).toBeInTheDocument()
+      expect(screen.getByLabelText(/pos:terminal\.description/)).toBeInTheDocument()
 
       // Buttons
-      expect(screen.getByRole('button', { name: /common\.cancel/ })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /common\.create/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /common:actions\.cancel/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /common:common\.create/ })).toBeInTheDocument()
     })
 
     it('populates location dropdown with provided locations', () => {
@@ -92,11 +92,11 @@ describe('TerminalForm', () => {
 
       render(<TerminalForm {...defaultProps} onSubmit={onSubmit} />)
 
-      const submitButton = screen.getByRole('button', { name: /common\.create/ })
+      const submitButton = screen.getByRole('button', { name: /common:common\.create/ })
       await user.click(submitButton)
 
       await waitFor(() => {
-        const errors = screen.getAllByText('validation.required')
+        const errors = screen.getAllByText('common:validation.required')
         expect(errors.length).toBeGreaterThan(0)
       })
 
@@ -109,14 +109,14 @@ describe('TerminalForm', () => {
 
       render(<TerminalForm {...defaultProps} onSubmit={onSubmit} />)
 
-      const nameInput = screen.getByLabelText(/pos\.terminal\.name/)
+      const nameInput = screen.getByLabelText(/pos:terminal\.name/)
       await user.type(nameInput, 'Test Terminal')
 
-      const submitButton = screen.getByRole('button', { name: /common\.create/ })
+      const submitButton = screen.getByRole('button', { name: /common:common\.create/ })
       await user.click(submitButton)
 
       await waitFor(() => {
-        expect(screen.getByText('validation.required')).toBeInTheDocument()
+        expect(screen.getByText('common:validation.required')).toBeInTheDocument()
       })
 
       expect(onSubmit).not.toHaveBeenCalled()
@@ -128,14 +128,14 @@ describe('TerminalForm', () => {
 
       render(<TerminalForm {...defaultProps} onSubmit={onSubmit} />)
 
-      const codeInput = screen.getByLabelText(/pos\.terminal\.code/)
+      const codeInput = screen.getByLabelText(/pos:terminal\.code/)
       await user.type(codeInput, 'pos-01') // Lowercase and hyphen not allowed
 
-      const submitButton = screen.getByRole('button', { name: /common\.create/ })
+      const submitButton = screen.getByRole('button', { name: /common:common\.create/ })
       await user.click(submitButton)
 
       await waitFor(() => {
-        expect(screen.getByText('validation.terminalCodeFormat')).toBeInTheDocument()
+        expect(screen.getByText('common:validation.terminalCodeFormat')).toBeInTheDocument()
       })
 
       expect(onSubmit).not.toHaveBeenCalled()
@@ -148,14 +148,14 @@ describe('TerminalForm', () => {
       render(<TerminalForm {...defaultProps} onSubmit={onSubmit} />)
 
       // Fill in required fields
-      const nameInput = screen.getByLabelText(/pos\.terminal\.name/)
+      const nameInput = screen.getByLabelText(/pos:terminal\.name/)
       await user.type(nameInput, 'New Terminal')
 
-      const locationSelect = screen.getByLabelText(/pos\.terminal\.location/)
+      const locationSelect = screen.getByLabelText(/pos:terminal\.location/)
       await user.selectOptions(locationSelect, 'loc-1')
 
       // Submit form
-      const submitButton = screen.getByRole('button', { name: /common\.create/ })
+      const submitButton = screen.getByRole('button', { name: /common:common\.create/ })
       await user.click(submitButton)
 
       await waitFor(() => {
@@ -176,20 +176,20 @@ describe('TerminalForm', () => {
       render(<TerminalForm {...defaultProps} onSubmit={onSubmit} />)
 
       // Fill in all fields
-      const codeInput = screen.getByLabelText(/pos\.terminal\.code/)
+      const codeInput = screen.getByLabelText(/pos:terminal\.code/)
       await user.type(codeInput, 'POS99')
 
-      const nameInput = screen.getByLabelText(/pos\.terminal\.name/)
+      const nameInput = screen.getByLabelText(/pos:terminal\.name/)
       await user.type(nameInput, 'Custom Terminal')
 
-      const locationSelect = screen.getByLabelText(/pos\.terminal\.location/)
+      const locationSelect = screen.getByLabelText(/pos:terminal\.location/)
       await user.selectOptions(locationSelect, 'loc-2')
 
-      const descriptionInput = screen.getByLabelText(/pos\.terminal\.description/)
+      const descriptionInput = screen.getByLabelText(/pos:terminal\.description/)
       await user.type(descriptionInput, 'Special purpose terminal')
 
       // Submit form
-      const submitButton = screen.getByRole('button', { name: /common\.create/ })
+      const submitButton = screen.getByRole('button', { name: /common:common\.create/ })
       await user.click(submitButton)
 
       await waitFor(() => {
@@ -210,7 +210,7 @@ describe('TerminalForm', () => {
 
       render(<TerminalForm {...defaultProps} onCancel={onCancel} />)
 
-      const cancelButton = screen.getByRole('button', { name: /common\.cancel/ })
+      const cancelButton = screen.getByRole('button', { name: /common:actions\.cancel/ })
       await user.click(cancelButton)
 
       expect(onCancel).toHaveBeenCalledTimes(1)
@@ -222,27 +222,27 @@ describe('TerminalForm', () => {
       render(<TerminalForm {...defaultProps} terminal={mockTerminal} />)
 
       // Code field should NOT be present in edit mode
-      expect(screen.queryByLabelText(/pos\.terminal\.code/)).not.toBeInTheDocument()
+      expect(screen.queryByLabelText(/pos:terminal\.code/)).not.toBeInTheDocument()
 
       // Name should be pre-filled
-      const nameInput = screen.getByLabelText(/pos\.terminal\.name/) as HTMLInputElement
+      const nameInput = screen.getByLabelText(/pos:terminal\.name/) as HTMLInputElement
       expect(nameInput.value).toBe('Main Counter Terminal')
 
       // Location should be pre-selected
       const locationSelect = screen.getByLabelText(
-        /pos\.terminal\.location/
+        /pos:terminal\.location/
       ) as HTMLSelectElement
       expect(locationSelect.value).toBe('loc-1')
 
       // Description should be pre-filled
       const descriptionInput = screen.getByLabelText(
-        /pos\.terminal\.description/
+        /pos:terminal\.description/
       ) as HTMLTextAreaElement
       expect(descriptionInput.value).toBe('Primary checkout terminal')
 
       // Button should say "Update" not "Create"
-      expect(screen.getByRole('button', { name: /common\.update/ })).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /common\.create/ })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /common:common\.update/ })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /common:common\.create/ })).not.toBeInTheDocument()
     })
 
     it('submits updated data', async () => {
@@ -252,12 +252,12 @@ describe('TerminalForm', () => {
       render(<TerminalForm {...defaultProps} terminal={mockTerminal} onSubmit={onSubmit} />)
 
       // Update name
-      const nameInput = screen.getByLabelText(/pos\.terminal\.name/)
+      const nameInput = screen.getByLabelText(/pos:terminal\.name/)
       await user.clear(nameInput)
       await user.type(nameInput, 'Updated Terminal Name')
 
       // Submit form
-      const submitButton = screen.getByRole('button', { name: /common\.update/ })
+      const submitButton = screen.getByRole('button', { name: /common:common\.update/ })
       await user.click(submitButton)
 
       await waitFor(() => {
@@ -276,8 +276,8 @@ describe('TerminalForm', () => {
     it('disables buttons when isSubmitting is true', () => {
       render(<TerminalForm {...defaultProps} isSubmitting={true} />)
 
-      const submitButton = screen.getByRole('button', { name: /common\.saving/ })
-      const cancelButton = screen.getByRole('button', { name: /common\.cancel/ })
+      const submitButton = screen.getByRole('button', { name: /common:common\.saving/ })
+      const cancelButton = screen.getByRole('button', { name: /common:actions\.cancel/ })
 
       expect(submitButton).toBeDisabled()
       expect(cancelButton).toBeDisabled()
@@ -286,7 +286,7 @@ describe('TerminalForm', () => {
     it('shows "Saving..." text when submitting', () => {
       render(<TerminalForm {...defaultProps} isSubmitting={true} />)
 
-      expect(screen.getByText('common.saving')).toBeInTheDocument()
+      expect(screen.getByText('common:common.saving')).toBeInTheDocument()
     })
   })
 
@@ -297,15 +297,15 @@ describe('TerminalForm', () => {
 
       render(<TerminalForm {...defaultProps} onSubmit={onSubmit} />)
 
-      const nameInput = screen.getByLabelText(/pos\.terminal\.name/)
+      const nameInput = screen.getByLabelText(/pos:terminal\.name/)
       const longName = 'a'.repeat(101) // Exceeds 100 char limit
       await user.type(nameInput, longName)
 
-      const submitButton = screen.getByRole('button', { name: /common\.create/ })
+      const submitButton = screen.getByRole('button', { name: /common:common\.create/ })
       await user.click(submitButton)
 
       await waitFor(() => {
-        expect(screen.getByText('validation.maxLength')).toBeInTheDocument()
+        expect(screen.getByText('common:validation.maxLength')).toBeInTheDocument()
       })
 
       expect(onSubmit).not.toHaveBeenCalled()
@@ -317,21 +317,21 @@ describe('TerminalForm', () => {
 
       render(<TerminalForm {...defaultProps} onSubmit={onSubmit} />)
 
-      const nameInput = screen.getByLabelText(/pos\.terminal\.name/)
+      const nameInput = screen.getByLabelText(/pos:terminal\.name/)
       await user.type(nameInput, 'Valid Name')
 
-      const locationSelect = screen.getByLabelText(/pos\.terminal\.location/)
+      const locationSelect = screen.getByLabelText(/pos:terminal\.location/)
       await user.selectOptions(locationSelect, 'loc-1')
 
-      const descriptionInput = screen.getByLabelText(/pos\.terminal\.description/)
+      const descriptionInput = screen.getByLabelText(/pos:terminal\.description/)
       const longDescription = 'a'.repeat(501) // Exceeds 500 char limit
       await user.type(descriptionInput, longDescription)
 
-      const submitButton = screen.getByRole('button', { name: /common\.create/ })
+      const submitButton = screen.getByRole('button', { name: /common:common\.create/ })
       await user.click(submitButton)
 
       await waitFor(() => {
-        expect(screen.getByText('validation.maxLength')).toBeInTheDocument()
+        expect(screen.getByText('common:validation.maxLength')).toBeInTheDocument()
       })
 
       expect(onSubmit).not.toHaveBeenCalled()
@@ -343,16 +343,16 @@ describe('TerminalForm', () => {
 
       render(<TerminalForm {...defaultProps} onSubmit={onSubmit} />)
 
-      const codeInput = screen.getByLabelText(/pos\.terminal\.code/)
+      const codeInput = screen.getByLabelText(/pos:terminal\.code/)
       await user.type(codeInput, 'POS123')
 
-      const nameInput = screen.getByLabelText(/pos\.terminal\.name/)
+      const nameInput = screen.getByLabelText(/pos:terminal\.name/)
       await user.type(nameInput, 'Test Terminal')
 
-      const locationSelect = screen.getByLabelText(/pos\.terminal\.location/)
+      const locationSelect = screen.getByLabelText(/pos:terminal\.location/)
       await user.selectOptions(locationSelect, 'loc-1')
 
-      const submitButton = screen.getByRole('button', { name: /common\.create/ })
+      const submitButton = screen.getByRole('button', { name: /common:common\.create/ })
       await user.click(submitButton)
 
       await waitFor(() => {

@@ -145,6 +145,17 @@
     "error": "Error"
   },
   "terminal": {
+    "terminal": "Terminal",
+    "pageDescription": "Manage POS terminals and checkout devices",
+    "addTerminal": "Add Terminal",
+    "editTerminal": "Edit Terminal",
+    "name": "Name",
+    "namePlaceholder": "e.g., Main checkout",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional notes about this terminal",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive",
     "selectTitle": "Select Terminal",
     "selectDescription": "Choose a terminal to start your POS session",
     "code": "Code",
@@ -152,7 +163,29 @@
     "noTerminals": "No active terminals found",
     "noTerminalsDescription": "Ask your administrator to set up POS terminals.",
     "loadingTerminals": "Loading terminals...",
-    "lastUsed": "Last used"
+    "lastUsed": "Last used",
+    "trainingMode": "Training",
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "deactivateTerminal": "Deactivate Terminal",
+    "deactivationReasonPrompt": "Optionally record why this terminal is being deactivated.",
+    "deactivationReasonPlaceholder": "Reason for deactivation",
+    "archive": "Archive",
+    "enableTraining": "Enable training mode",
+    "disableTraining": "Disable training mode",
+    "cannotDeleteHasHistory": "Cannot delete a terminal with transaction history",
+    "confirmArchiveTitle": "Archive Terminal",
+    "confirmArchive": "Archive {{resource}}? It will no longer be available for new sessions."
+  },
+  "messages": {
+    "terminalCreated": "Terminal created",
+    "terminalUpdated": "Terminal updated",
+    "terminalArchived": "Terminal archived",
+    "terminalDeleted": "Terminal deleted",
+    "terminalActivated": "Terminal activated",
+    "terminalDeactivated": "Terminal deactivated",
+    "trainingModeEnabled": "Training mode enabled",
+    "trainingModeDisabled": "Training mode disabled"
   },
   "transactions": {
     "noLocation": "No Location Selected",

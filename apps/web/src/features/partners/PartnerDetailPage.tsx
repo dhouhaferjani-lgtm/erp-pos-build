@@ -329,7 +329,7 @@ export function PartnerDetailPage() {
                   <div className="flex justify-between">
                     <dt className="text-sm text-gray-500">{t('fields.totalReceivable')}</dt>
                     <dd className="text-sm font-medium text-gray-900">
-                      {formatAmount(partner.receivable_balance ?? 0)}
+                      {formatAmount(partner.receivable_balance ?? '0')}
                     </dd>
                   </div>
                 )}
@@ -339,13 +339,13 @@ export function PartnerDetailPage() {
                   <div className="flex justify-between">
                     <dt className="text-sm text-gray-500">{t('fields.totalPayable')}</dt>
                     <dd className="text-sm font-medium text-gray-900">
-                      {formatAmount(partner.payable_balance ?? 0)}
+                      {formatAmount(partner.payable_balance ?? '0')}
                     </dd>
                   </div>
                 )}
 
                 {/* Unallocated Balance / Credit */}
-                {accountBalance && parseFloat(accountBalance.unallocated_balance) > 0 && (
+                {accountBalance && bccomp(accountBalance.unallocated_balance, '0') > 0 && (
                   <>
                     <div className="border-t border-gray-100 pt-3">
                       <div className="flex justify-between items-center">
@@ -354,7 +354,7 @@ export function PartnerDetailPage() {
                           {t('partner.unallocatedBalance')}
                         </dt>
                         <dd className="text-sm font-medium text-green-600">
-                          {formatAmount(parseFloat(accountBalance.unallocated_balance))}
+                          {formatAmount(accountBalance.unallocated_balance)}
                         </dd>
                       </div>
                       <p className="mt-1 text-xs text-gray-400">
@@ -365,7 +365,7 @@ export function PartnerDetailPage() {
                 )}
 
                 {/* On Account Credit */}
-                {accountBalance && parseFloat(accountBalance.unallocated_balance) > 0 && (
+                {accountBalance && bccomp(accountBalance.unallocated_balance, '0') > 0 && (
                   <div className="bg-green-50 -mx-2 px-2 py-2 rounded">
                     <div className="flex items-center gap-2 text-green-700">
                       <PiggyBank className="h-4 w-4" />
@@ -375,7 +375,7 @@ export function PartnerDetailPage() {
                 )}
 
                 {/* No balance */}
-                {(!accountBalance || parseFloat(accountBalance.unallocated_balance) === 0) &&
+                {(!accountBalance || bccomp(accountBalance.unallocated_balance, '0') === 0) &&
                  bccomp(partner.receivable_balance ?? '0', '0') === 0 &&
                  bccomp(partner.payable_balance ?? '0', '0') === 0 && (
                   <div className="text-sm text-gray-400 text-center py-2">
@@ -562,7 +562,7 @@ export function PartnerDetailPage() {
                             </span>
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
-                            {formatAmount(parseFloat(doc.total ?? '0'))}
+                            {formatAmount(doc.total ?? '0')}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                             {new Date(doc.document_date).toLocaleDateString()}
@@ -639,11 +639,11 @@ export function PartnerDetailPage() {
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-end">
                         <div className="text-sm font-medium text-gray-900">
-                          {formatAmount(parseFloat(payment.amount))}
+                          {formatAmount(payment.amount)}
                         </div>
-                        {parseFloat(payment.unallocated_amount) > 0 && (
+                        {bccomp(payment.unallocated_amount, '0') > 0 && (
                           <div className="text-xs text-blue-600">
-                            {t('treasury:payments.creditBalance')}: {formatAmount(parseFloat(payment.unallocated_amount))}
+                            {t('treasury:payments.creditBalance')}: {formatAmount(payment.unallocated_amount)}
                           </div>
                         )}
                       </td>

@@ -271,6 +271,7 @@
     "vin": "NIV",
     "description": "Description",
     "currency": "Devise",
+    "total": "Total",
     "basicInfo": "Informations générales"
   },
   "sections": {
@@ -368,8 +369,10 @@
     "addCompany": "Ajouter une entreprise"
   },
   "table": {
+    "actions": "Actions",
     "actionsColumn": "Actions",
-    "noData": "Aucune donnée disponible"
+    "noData": "Aucune donnée disponible",
+    "sortBy": "Trier par {{label}}"
   },
   "pagination": {
     "showing": "Affichage de {{from}} à {{to}} sur {{total}} résultats",
@@ -527,6 +530,28 @@
     "progressOverview": "Aperçu de la progression",
     "batchesLocked": "{{locked}} sur {{total}} types de lots verrouillés",
     "selectBatchType": "Sélectionnez un type de lot à importer",
+    "progress": {
+      "title": "Aperçu de la progression",
+      "completed": "{{locked}} sur {{total}} types de lots verrouillés",
+      "allComplete": "Tous les lots de soldes d'ouverture sont verrouillés"
+    },
+    "batchTypes": "Types de lots",
+    "rowsCount": "{{count}} lignes",
+    "howItWorks": {
+      "title": "Fonctionnement",
+      "description": "Importez les soldes d'ouverture par lots contrôlés, validez-les, comptabilisez-les puis verrouillez-les pour l'audit.",
+      "step1": "Créez ou ouvrez le lot de chaque type de solde.",
+      "step2": "Importez le fichier source avec les colonnes attendues.",
+      "step3": "Validez les lignes importées et corrigez les erreurs.",
+      "step4": "Prévisualisez puis comptabilisez les écritures ou mouvements de stock.",
+      "step5": "Verrouillez le lot une fois les soldes vérifiés."
+    },
+    "notes": {
+      "title": "Notes importantes",
+      "note1": "Les soldes d'ouverture verrouillés ne peuvent plus être modifiés depuis cet écran.",
+      "note2": "Utilisez une seule date de bascule pour tous les lots afin de garder des rapports cohérents.",
+      "note3": "Conservez les fichiers source pour le rapprochement d'audit."
+    },
     "types": {
       "accounting": {
         "title": "Comptabilité générale",
@@ -567,9 +592,13 @@
         "title": "Configuration du lot",
         "description": "Configurez les paramètres du lot de soldes d'ouverture",
         "batchName": "Nom du lot",
+        "nameLabel": "Nom du lot",
         "batchNamePlaceholder": "ex. Ouverture initiale - Janvier 2025",
+        "namePlaceholder": "ex. Ouverture initiale - Janvier 2025",
         "cutoverDate": "Date de bascule",
+        "cutoverDateLabel": "Date de bascule",
         "cutoverDateHint": "La date à laquelle ces soldes sont exacts",
+        "cutoverDateHelp": "La date à laquelle ces soldes sont exacts",
         "sourceSystem": "Système source (optionnel)",
         "sourceSystemPlaceholder": "ex. Sage, QuickBooks, Excel"
       },
@@ -608,6 +637,7 @@
         "title": "Aperçu des modifications",
         "description": "Vérifiez ce qui sera créé lors de la comptabilisation de ce lot",
         "loading": "Chargement de l'aperçu…",
+        "continueButton": "Continuer",
         "accounting": {
           "journalEntry": "Écriture comptable",
           "account": "Compte",
@@ -638,7 +668,13 @@
         "description": "Créez les écritures dans votre système comptable",
         "posting": "Comptabilisation en cours…",
         "postButton": "Comptabiliser le lot",
-        "confirmPost": "Cela créera toutes les écritures comptables et mouvements de stock. Continuer ?"
+        "confirmPost": "Cela créera toutes les écritures comptables et mouvements de stock. Continuer ?",
+        "warningTitle": "Avant la comptabilisation",
+        "warningMessage": "La comptabilisation crée des écritures comptables ou mouvements de stock permanents pour ce lot d'ouverture.",
+        "summary": "Résumé de comptabilisation",
+        "totalRows": "Total des lignes",
+        "totalValue": "Valeur totale",
+        "totalDebit": "Total débit"
       },
       "lock": {
         "title": "Verrouiller le lot",
@@ -662,7 +698,8 @@
         "hash": "Empreinte",
         "viewJournalEntries": "Voir les écritures comptables",
         "startAnother": "Démarrer un autre import",
-        "backToOverview": "Retour à la vue d'ensemble"
+        "backToOverview": "Retour à la vue d'ensemble",
+        "backToDashboard": "Retour aux soldes d'ouverture"
       }
     },
     "messages": {

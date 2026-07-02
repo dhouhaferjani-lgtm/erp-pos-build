@@ -85,7 +85,7 @@ export function AgedReceivablesPage() {
             {t('reports:agedReceivables.totalOutstanding')}
           </div>
           <div className="text-2xl font-bold text-gray-900">
-            {formatCurrency(parseFloat(report.total_outstanding), { currency })}
+            {formatCurrency(report.total_outstanding, { currency })}
           </div>
         </div>
 
@@ -94,7 +94,7 @@ export function AgedReceivablesPage() {
             {t('reports:agedReceivables.current')}
           </div>
           <div className="text-2xl font-bold text-green-900">
-            {formatCurrency(parseFloat(report.summary.current), { currency })}
+            {formatCurrency(report.summary.current, { currency })}
           </div>
         </div>
 
@@ -103,7 +103,7 @@ export function AgedReceivablesPage() {
             {t('reports:agedReceivables.days1To30')}
           </div>
           <div className="text-2xl font-bold text-yellow-900">
-            {formatCurrency(parseFloat(report.summary.days_1_30), { currency })}
+            {formatCurrency(report.summary.days_1_30, { currency })}
           </div>
         </div>
 
@@ -112,7 +112,7 @@ export function AgedReceivablesPage() {
             {t('reports:agedReceivables.days31To60')}
           </div>
           <div className="text-2xl font-bold text-orange-900">
-            {formatCurrency(parseFloat(report.summary.days_31_60), { currency })}
+            {formatCurrency(report.summary.days_31_60, { currency })}
           </div>
         </div>
 
@@ -121,7 +121,7 @@ export function AgedReceivablesPage() {
             {t('reports:agedReceivables.daysOver90')}
           </div>
           <div className="text-2xl font-bold text-red-900">
-            {formatCurrency(parseFloat(report.summary.days_over_90), { currency })}
+            {formatCurrency(report.summary.days_over_90, { currency })}
           </div>
         </div>
       </div>
@@ -168,22 +168,22 @@ export function AgedReceivablesPage() {
                     {partner.partner_name}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-end font-semibold text-gray-900">
-                    {formatCurrency(parseFloat(partner.total_outstanding), { currency })}
+                    {formatCurrency(partner.total_outstanding, { currency })}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-end text-green-600">
-                    {formatCurrency(parseFloat(partner.current), { currency })}
+                    {formatCurrency(partner.current, { currency })}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-end text-yellow-600">
-                    {formatCurrency(parseFloat(partner.days_1_30), { currency })}
+                    {formatCurrency(partner.days_1_30, { currency })}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-end text-orange-600">
-                    {formatCurrency(parseFloat(partner.days_31_60), { currency })}
+                    {formatCurrency(partner.days_31_60, { currency })}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-end text-red-500">
-                    {formatCurrency(parseFloat(partner.days_61_90), { currency })}
+                    {formatCurrency(partner.days_61_90, { currency })}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-end text-red-700 font-semibold">
-                    {formatCurrency(parseFloat(partner.days_over_90), { currency })}
+                    {formatCurrency(partner.days_over_90, { currency })}
                   </td>
                 </tr>
               ))}

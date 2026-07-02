@@ -6,7 +6,8 @@ import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, FileText, Car, RotateCcw } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
-import { formatCurrency } from '../../../lib/format'
+import { formatCurrency, formatQuantity } from '../../../lib/format'
+import { bccomp } from '../../../lib/decimal'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { Modal } from '../../../components/organisms'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
@@ -249,13 +250,13 @@ export function ReturnNoteDetailPage() {
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {parseFloat(line.quantity)}
+                    {formatQuantity(line.quantity)}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {formatCurrency(parseFloat(line.unit_price), { currency: currentCompany?.currency ?? 'EUR' })}
+                    {formatCurrency(line.unit_price, { currency: currentCompany?.currency ?? 'EUR' })}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
-                    {formatCurrency(parseFloat(line.line_total), { currency: currentCompany?.currency ?? 'EUR' })}
+                    {formatCurrency(line.line_total, { currency: currentCompany?.currency ?? 'EUR' })}
                   </td>
                 </tr>
               ))}
@@ -270,21 +271,21 @@ export function ReturnNoteDetailPage() {
               <div className="flex justify-between gap-12">
                 <dt className="text-gray-500">{t('documents.subtotal')}</dt>
                 <dd className="text-gray-900 font-medium">
-                  {formatCurrency(parseFloat(returnNote.subtotal || '0'), { currency: currentCompany?.currency ?? 'EUR' })}
+                  {formatCurrency(returnNote.subtotal || '0', { currency: currentCompany?.currency ?? 'EUR' })}
                 </dd>
               </div>
-              {parseFloat(returnNote.tax_amount || '0') > 0 && (
+              {bccomp(returnNote.tax_amount || '0', '0') > 0 && (
                 <div className="flex justify-between gap-12">
                   <dt className="text-gray-500">{t('documents.tax')}</dt>
                   <dd className="text-gray-900 font-medium">
-                    {formatCurrency(parseFloat(returnNote.tax_amount), { currency: currentCompany?.currency ?? 'EUR' })}
+                    {formatCurrency(returnNote.tax_amount, { currency: currentCompany?.currency ?? 'EUR' })}
                   </dd>
                 </div>
               )}
               <div className="flex justify-between gap-12 text-base font-bold pt-2 border-t border-gray-200">
                 <dt className="text-gray-900">{t('returnNotes.returnValue')}</dt>
                 <dd className="text-gray-900">
-                  {formatCurrency(parseFloat(returnNote.total || '0'), { currency: currentCompany?.currency ?? 'EUR' })}
+                  {formatCurrency(returnNote.total || '0', { currency: currentCompany?.currency ?? 'EUR' })}
                 </dd>
               </div>
             </dl>

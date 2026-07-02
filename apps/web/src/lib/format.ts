@@ -3,13 +3,64 @@
  * Supports country-specific formatting (Tunisia, France, etc.)
  */
 
-import { getDecimals, getLocale } from '../hooks/useCurrency'
+import Big from 'big.js'
+import { getDecimals, getLocale } from './currencyMeta'
 
 export interface CurrencyFormatOptions {
   currency?: string
   locale?: string
   minimumFractionDigits?: number
   maximumFractionDigits?: number
+  includeCurrency?: boolean
+}
+
+function safeDecimal(value: string | number): Big {
+  try {
+    const stringValue = typeof value === 'number' ? String(value) : value
+    return stringValue.trim() === '' ? new Big(0) : new Big(stringValue)
+  } catch {
+    return new Big(0)
+  }
+}
+
+function getDecimalSeparator(locale: string): string {
+  return new Intl.NumberFormat(locale).formatToParts(1.1).find((part) => part.type === 'decimal')?.value ?? '.'
+}
+
+function formatIntegerPart(integerPart: string, locale: string): string {
+  return new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 0,
+    useGrouping: true,
+  }).format(BigInt(integerPart || '0'))
+}
+
+export function formatDecimalAmount(
+  amount: string | number,
+  locale: string,
+  decimals: number
+): string {
+  const fixed = safeDecimal(amount).toFixed(decimals)
+  const isNegative = fixed.startsWith('-')
+  const unsignedFixed = isNegative ? fixed.slice(1) : fixed
+  const [integerPart = '0', fractionPart = ''] = unsignedFixed.split('.')
+  const formattedInteger = formatIntegerPart(integerPart, locale)
+  const formattedNumber = fractionPart.length > 0
+    ? `${formattedInteger}${getDecimalSeparator(locale)}${fractionPart}`
+    : formattedInteger
+
+  return isNegative ? `-${formattedNumber}` : formattedNumber
+}
+
+function currencyAppearsBeforeNumber(locale: string, currency: string): boolean {
+  const parts = new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    currencyDisplay: 'code',
+  }).formatToParts(0)
+  const currencyIndex = parts.findIndex((part) => part.type === 'currency')
+  const numberIndex = parts.findIndex((part) => part.type === 'integer')
+
+  return currencyIndex !== -1 && numberIndex !== -1 && currencyIndex < numberIndex
 }
 
 /**
@@ -22,24 +73,21 @@ export function formatCurrency(
   amount: string | number,
   options?: CurrencyFormatOptions
 ): string {
-  const num = typeof amount === 'string' ? parseFloat(amount) : amount
-
-  if (isNaN(num)) {
-    return '0.00'
-  }
-
   const currency = options?.currency ?? 'EUR'
   const defaultDecimals = getDecimals(currency)
   const locale = options?.locale ?? getLocale(currency)
   const minimumFractionDigits = options?.minimumFractionDigits ?? defaultDecimals
   const maximumFractionDigits = options?.maximumFractionDigits ?? defaultDecimals
+  const decimals = Math.max(minimumFractionDigits, maximumFractionDigits)
+  const formattedAmount = formatDecimalAmount(amount, locale, decimals)
 
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency,
-    minimumFractionDigits,
-    maximumFractionDigits,
-  }).format(num)
+  if (options?.includeCurrency === false) {
+    return formattedAmount
+  }
+
+  return currencyAppearsBeforeNumber(locale, currency)
+    ? `${currency} ${formattedAmount}`
+    : `${formattedAmount} ${currency}`
 }
 
 /**
@@ -68,16 +116,7 @@ export function formatNumber(
   decimals: number = 2,
   locale: string = 'en-US'
 ): string {
-  const num = typeof value === 'string' ? parseFloat(value) : value
-
-  if (isNaN(num)) {
-    return '0.00'
-  }
-
-  return new Intl.NumberFormat(locale, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(num)
+  return formatDecimalAmount(value, locale, decimals)
 }
 
 /**
@@ -95,16 +134,9 @@ export function formatQuantity(
   scale: number = 4,
   locale: string = 'en-US'
 ): string {
-  const num = typeof value === 'string' ? parseFloat(value) : value
-
-  if (isNaN(num)) {
-    return '0'
-  }
-
-  return new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: scale,
-  }).format(num)
+  const fixed = safeDecimal(value).toFixed(scale)
+  const trimmed = fixed.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
+  return formatDecimalAmount(trimmed, locale, trimmed.includes('.') ? trimmed.split('.')[1]?.length ?? 0 : 0)
 }
 
 /**

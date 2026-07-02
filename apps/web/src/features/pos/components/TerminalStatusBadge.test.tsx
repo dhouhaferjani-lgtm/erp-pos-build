@@ -13,7 +13,7 @@ describe('TerminalStatusBadge', () => {
   it('renders active badge when isActive is true', () => {
     render(<TerminalStatusBadge isActive={true} />)
 
-    const badge = screen.getByText('pos.terminal.active')
+    const badge = screen.getByText('terminal.active')
 
     expect(badge).toBeInTheDocument()
     expect(badge).toHaveClass('bg-green-100', 'text-green-800')
@@ -22,7 +22,7 @@ describe('TerminalStatusBadge', () => {
   it('renders inactive badge when isActive is false', () => {
     render(<TerminalStatusBadge isActive={false} />)
 
-    const badge = screen.getByText('pos.terminal.inactive')
+    const badge = screen.getByText('terminal.inactive')
 
     expect(badge).toBeInTheDocument()
     expect(badge).toHaveClass('bg-gray-100', 'text-gray-800')
@@ -41,7 +41,7 @@ describe('TerminalStatusBadge', () => {
   it('has proper badge structure', () => {
     render(<TerminalStatusBadge isActive={true} />)
 
-    const badge = screen.getByText('pos.terminal.active')
+    const badge = screen.getByText('terminal.active')
 
     // Check that it's a span element
     expect(badge.tagName).toBe('SPAN')

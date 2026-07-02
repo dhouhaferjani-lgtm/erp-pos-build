@@ -11,7 +11,7 @@ interface TerminalStatusBadgeProps {
  * Badge component to display terminal status (Active/Inactive)
  */
 export function TerminalStatusBadge({ isActive, className }: TerminalStatusBadgeProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation('pos')
 
   return (
     <span
@@ -21,7 +21,7 @@ export function TerminalStatusBadge({ isActive, className }: TerminalStatusBadge
         className
       )}
     >
-      {isActive ? t('pos.terminal.active') : t('pos.terminal.inactive')}
+      {isActive ? t('terminal.active') : t('terminal.inactive')}
     </span>
   )
 }

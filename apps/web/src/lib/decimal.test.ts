@@ -85,13 +85,13 @@ describe('decimal precision', () => {
 
   describe('formatCurrency', () => {
     it('formats TND with 3 decimals', () => {
-      expect(formatCurrency('5.000', false, 'TND')).toBe('5.000')
+      expect(formatCurrency('5.000', false, 'TND')).toBe('5,000')
     })
     it('formats EUR with 2 decimals', () => {
-      expect(formatCurrency('19.99', false, 'EUR', 2)).toBe('19.99')
+      expect(formatCurrency('19.99', false, 'EUR', 2)).toBe('19,99')
     })
     it('handles empty string input', () => {
-      expect(formatCurrency('', false, 'TND')).toBe('0.000')
+      expect(formatCurrency('', false, 'TND')).toBe('0,000')
     })
   })
 
@@ -133,7 +133,7 @@ describe('decimal precision', () => {
 
     it('formatCurrency treats garbage as zero', () => {
       for (const input of GARBAGE_INPUTS) {
-        expect(formatCurrency(input, false, 'EUR', 2)).toBe('0.00')
+        expect(formatCurrency(input, false, 'EUR', 2)).toBe('0,00')
       }
     })
   })

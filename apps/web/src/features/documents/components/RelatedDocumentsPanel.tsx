@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '@/lib/api'
+import { formatCurrency } from '@/lib/format'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -30,6 +31,7 @@ interface RelatedDocument {
   number?: string
   document_date: string
   total?: string | number
+  currency?: string
   status: string
   partner?: {
     id: string
@@ -67,6 +69,7 @@ export function RelatedDocumentsPanel({
   const [isExpanded, setIsExpanded] = useState(true)
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const companyCurrency = useCompanyStore((state) => state.getCurrentCompany()?.currency ?? 'EUR')
 
   // Fetch related documents
   const { data: relatedData, isLoading } = useQuery({
@@ -115,13 +118,9 @@ export function RelatedDocumentsPanel({
     return `${baseUrls[doc.type] || '/sales/documents'}/${doc.id}`
   }
 
-  const formatCurrency = (amount: string | number | undefined) => {
+  const formatDocumentTotal = (amount: string | number | undefined, currency?: string) => {
     if (!amount) return ''
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-    }).format(num)
+    return formatCurrency(amount, { currency: currency ?? companyCurrency })
   }
 
   const renderDocumentCard = (doc: RelatedDocument, isCurrent: boolean = false) => {
@@ -159,7 +158,7 @@ export function RelatedDocumentsPanel({
           )}
           {doc.total && (
             <div className="text-xs font-medium text-gray-700 mt-1">
-              {formatCurrency(doc.total)}
+              {formatDocumentTotal(doc.total, doc.currency)}
             </div>
           )}
         </div>

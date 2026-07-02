@@ -27,7 +27,7 @@ export function TerminalForm({
   onSubmit,
   onCancel,
 }: TerminalFormProps) {
-  const { t } = useTranslation(['common', 'settings'])
+  const { t } = useTranslation(['common', 'pos', 'settings', 'validation'])
   const isEditMode = !!terminal
 
   const {
@@ -68,16 +68,16 @@ export function TerminalForm({
       {/* Terminal Code (only for create) */}
       {!isEditMode && (
         <FormField
-          label={t('pos.terminal.code')}
+          label={t('pos:terminal.code')}
           htmlFor="code"
-          helperText={t('common.leaveBlankForAutoGenerate')}
+          helperText={t('common:common.leaveBlankForAutoGenerate')}
           error={codeError?.message}
         >
           <Input
             {...register('code', {
               pattern: {
                 value: /^[A-Z0-9]+$/,
-                message: t('validation.terminalCodeFormat'),
+                message: t('common:validation.terminalCodeFormat'),
               },
             })}
             type="text"
@@ -91,41 +91,41 @@ export function TerminalForm({
 
       {/* Terminal Name */}
       <FormField
-        label={t('pos.terminal.name')}
+        label={t('pos:terminal.name')}
         htmlFor="name"
         required
         error={errors.name?.message}
       >
         <Input
           {...register('name', {
-            required: t('validation.required'),
+            required: t('common:validation.required'),
             maxLength: {
               value: 100,
-              message: t('validation.maxLength', { max: 100 }),
+              message: t('common:validation.maxLength', { max: 100 }),
             },
           })}
           type="text"
           id="name"
-          placeholder={t('pos.terminal.namePlaceholder')}
+          placeholder={t('pos:terminal.namePlaceholder')}
           error={!!errors.name}
         />
       </FormField>
 
       {/* Location */}
       <FormField
-        label={t('pos.terminal.location')}
+        label={t('pos:terminal.location')}
         htmlFor="location_id"
         required
         error={errors.location_id?.message}
       >
         <Select
           {...register('location_id', {
-            required: t('validation.required'),
+            required: t('common:validation.required'),
           })}
           id="location_id"
           error={!!errors.location_id}
         >
-          <option value="">{t('common.selectOption')}</option>
+          <option value="">{t('common:common.selectOption')}</option>
           {locations.map((location) => (
             <option key={location.id} value={location.id}>
               {location.name} ({location.code})
@@ -136,7 +136,7 @@ export function TerminalForm({
 
       {/* Description */}
       <FormField
-        label={t('pos.terminal.description')}
+        label={t('pos:terminal.description')}
         htmlFor="description"
         error={errors.description?.message}
       >
@@ -144,12 +144,12 @@ export function TerminalForm({
           {...register('description', {
             maxLength: {
               value: 500,
-              message: t('validation.maxLength', { max: 500 }),
+              message: t('common:validation.maxLength', { max: 500 }),
             },
           })}
           id="description"
           rows={3}
-          placeholder={t('pos.terminal.descriptionPlaceholder')}
+          placeholder={t('pos:terminal.descriptionPlaceholder')}
         />
       </FormField>
 
@@ -172,11 +172,11 @@ export function TerminalForm({
                 valueAsNumber: true,
                 min: {
                   value: 0,
-                  message: t('validation.min', { min: 0 }),
+                  message: t('validation:min', { min: 0 }),
                 },
                 max: {
                   value: 100,
-                  message: t('validation.max', { max: 100 }),
+                  message: t('validation:max', { max: 100 }),
                 },
               })}
               type="number"
@@ -219,14 +219,14 @@ export function TerminalForm({
       {/* Form Actions */}
       <div className={cn('flex justify-end gap-3 pt-4 border-t', borderColors.light)}>
         <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
-          {t('common.cancel')}
+          {t('common:actions.cancel')}
         </Button>
         <Button type="submit" variant="primary" disabled={isSubmitting}>
           {isSubmitting
-            ? t('common.saving')
+            ? t('common:common.saving')
             : isEditMode
-              ? t('common.update')
-              : t('common.create')}
+              ? t('common:common.update')
+              : t('common:common.create')}
         </Button>
       </div>
     </form>

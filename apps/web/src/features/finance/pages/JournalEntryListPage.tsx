@@ -69,7 +69,7 @@ export function JournalEntryListPage() {
     },
     {
       key: 'actions',
-      header: <span className="sr-only">{t('common:table.actions')}</span>,
+      header: <span className="sr-only">{t('common:table.actionsColumn')}</span>,
       align: 'right',
       render: (entry) => (
         <Button
@@ -78,7 +78,7 @@ export function JournalEntryListPage() {
           className={cn('font-medium', textColors.brand, 'hover:underline')}
           onClick={() => { void navigate(`/finance/journal-entries/${entry.id}`) }}
         >
-          {t('common:view')}
+          {t('common:actions.view')}
         </Button>
       ),
     },

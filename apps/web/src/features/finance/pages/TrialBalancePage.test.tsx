@@ -68,12 +68,15 @@ describe('TrialBalancePage (design-system)', () => {
 
   it('right-aligns numeric cells with tabular-nums', () => {
     render(<TrialBalancePage />)
-    // The Cash row's debit cell (5,000.00) — scope to that row to disambiguate
-    // from the totals row, which also shows 5,000.00.
+    // The Cash row's debit cell — scope to that row to disambiguate
+    // from the totals row, which also shows the same amount.
     const cashRow = screen.getByText('Cash').closest('tr')
     if (cashRow === null) throw new Error('Cash row not found')
     const debitCell = Array.from(cashRow.querySelectorAll('td')).find(
-      (td) => td.textContent === '5,000.00'
+      (td) => {
+        const text = td.textContent
+        return text.includes('5') && text.includes('EUR')
+      }
     )
     if (debitCell === undefined) throw new Error('debit cell not found')
     expect(debitCell.className).toContain('tabular-nums')

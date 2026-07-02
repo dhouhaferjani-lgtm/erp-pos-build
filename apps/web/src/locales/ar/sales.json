@@ -1,0 +1,73 @@
+{
+  "partners": {
+    "title": "الشركاء",
+    "new": "إضافة شريك",
+    "edit": "تعديل الشريك",
+    "unknown": "شريك غير معروف",
+    "name": "الاسم",
+    "type": "النوع",
+    "selectType": "اختر النوع",
+    "contact": "جهة الاتصال",
+    "email": "البريد الإلكتروني",
+    "phone": "الهاتف",
+    "generalInfo": "المعلومات العامة",
+    "addressInfo": "العنوان",
+    "streetAddress": "عنوان الشارع",
+    "streetAddress2": "سطر العنوان الثاني",
+    "city": "المدينة",
+    "state": "الولاية / المنطقة",
+    "governorate": "الولاية",
+    "postalCode": "الرمز البريدي",
+    "country": "الدولة",
+    "selectCountry": "اختر الدولة",
+    "countryCode": "الدولة (الضريبة)",
+    "selectCountryCode": "اختر دولة الضريبة",
+    "vatNumber": "رقم الضريبة",
+    "taxRegistrationNumber": "المعرّف الجبائي",
+    "taxId": "المعرّف الجبائي",
+    "notes": "ملاحظات",
+    "created": "تاريخ الإنشاء",
+    "address": "العنوان",
+    "types": {
+      "customer": "عميل",
+      "supplier": "مورّد",
+      "both": "كلاهما"
+    },
+    "validation": {
+      "nameRequired": "الاسم مطلوب",
+      "typeRequired": "النوع مطلوب"
+    },
+    "messages": {
+      "created": "تم إنشاء الشريك بنجاح",
+      "updated": "تم تحديث الشريك بنجاح",
+      "saveFailed": "تعذّر حفظ الشريك"
+    },
+    "balance": "الرصيد",
+    "hasBalance": "لديه رصيد مستحق",
+    "countLabels": {
+      "customer_zero": "عميل",
+      "customer_one": "عميل",
+      "customer_two": "عميلان",
+      "customer_few": "عملاء",
+      "customer_many": "عميلًا",
+      "customer_other": "عميل",
+      "supplier_zero": "مورّد",
+      "supplier_one": "مورّد",
+      "supplier_two": "مورّدان",
+      "supplier_few": "مورّدون",
+      "supplier_many": "مورّدًا",
+      "supplier_other": "مورّد",
+      "partner_zero": "شريك",
+      "partner_one": "شريك",
+      "partner_two": "شريكان",
+      "partner_few": "شركاء",
+      "partner_many": "شريكًا",
+      "partner_other": "شريك"
+    },
+    "totalSummary": "{{count}} {{entity}} المجموع",
+    "empty": {
+      "title": "لا يوجد شركاء بعد",
+      "description": "ابدأ بإضافة أول شريك."
+    }
+  }
+}

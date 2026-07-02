@@ -1,4 +1,5 @@
-import { getDecimals } from '../hooks/useCurrency'
+import { getDecimals } from './currencyMeta'
+import { formatCurrency as formatLocaleCurrency, formatDecimalAmount } from './format'
 
 /**
  * Format currency based on locale and currency code
@@ -20,29 +21,13 @@ export function formatCurrency(
   currencyCode: string,
   locale: string
 ): string {
-  const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount
-
-  if (isNaN(numericAmount)) {
-    return '0.00'
-  }
-
   const decimals = getDecimals(currencyCode)
-
-  try {
-    const formatter = new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: currencyCode,
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    })
-
-    return formatter.format(numericAmount)
-  } catch (error) {
-    console.warn(`Failed to format currency ${currencyCode} with locale ${locale}:`, error)
-
-    const formatted = numericAmount.toFixed(decimals)
-    return `${currencyCode} ${formatted}`
-  }
+  return formatLocaleCurrency(amount, {
+    currency: currencyCode,
+    locale,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })
 }
 
 /**
@@ -58,22 +43,6 @@ export function formatCurrencyCompact(
   currencyCode: string,
   locale: string
 ): string {
-  const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount
-
-  if (isNaN(numericAmount)) {
-    return '0.00'
-  }
-
   const decimals = getDecimals(currencyCode)
-
-  try {
-    const formatter = new Intl.NumberFormat(locale, {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    })
-
-    return formatter.format(numericAmount)
-  } catch (error) {
-    return numericAmount.toFixed(decimals)
-  }
+  return formatDecimalAmount(amount, locale, decimals)
 }

@@ -30,12 +30,12 @@ export function TerminalList({
   onDeactivate,
   onToggleTraining,
 }: TerminalListProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation(['common', 'pos'])
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={textColors.tertiary}>{t('common.loading')}</div>
+        <div className={textColors.tertiary}>{t('common:common.loading')}</div>
       </div>
     )
   }
@@ -44,10 +44,10 @@ export function TerminalList({
     return (
       <div className="text-center py-12">
         <div className={cn('text-lg font-medium', textColors.primary)}>
-          {t('pos.terminal.noTerminals')}
+          {t('pos:terminal.noTerminals')}
         </div>
         <p className={cn('mt-1', textColors.tertiary)}>
-          {t('pos.terminal.noTerminalsDescription')}
+          {t('pos:terminal.noTerminalsDescription')}
         </p>
       </div>
     )
@@ -62,31 +62,31 @@ export function TerminalList({
               scope="col"
               className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}
             >
-              {t('pos.terminal.code')}
+              {t('pos:terminal.code')}
             </th>
             <th
               scope="col"
               className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}
             >
-              {t('pos.terminal.name')}
+              {t('pos:terminal.name')}
             </th>
             <th
               scope="col"
               className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}
             >
-              {t('pos.terminal.location')}
+              {t('pos:terminal.location')}
             </th>
             <th
               scope="col"
               className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}
             >
-              {t('pos.terminal.status')}
+              {t('pos:terminal.status')}
             </th>
             <th
               scope="col"
               className={cn('px-6 py-3 text-end text-xs font-medium uppercase tracking-wider', textColors.tertiary)}
             >
-              {t('common.actions')}
+              {t('common:actions.actions')}
             </th>
           </tr>
         </thead>
@@ -115,7 +115,7 @@ export function TerminalList({
                   {terminal.is_training_mode && (
                     <StatusBadge tone="warning" className="gap-1">
                       <GraduationCap className="h-3 w-3" />
-                      {t('pos.terminal.trainingMode')}
+                      {t('pos:terminal.trainingMode')}
                     </StatusBadge>
                   )}
                 </div>
@@ -126,7 +126,7 @@ export function TerminalList({
                     type="button"
                     onClick={() => { onEdit(terminal) }}
                     className={cn(textColors.brand, textColors.hoverPrimary)}
-                    title={t('common.edit')}
+                    title={t('common:actions.edit')}
                   >
                     <Edit2 className="h-4 w-4" />
                   </button>
@@ -136,7 +136,7 @@ export function TerminalList({
                       type="button"
                       onClick={() => { onDeactivate(terminal) }}
                       className={cn(textColors.warningDark, textColors.hoverPrimary)}
-                      title={t('pos.terminal.deactivate')}
+                      title={t('pos:terminal.deactivate')}
                     >
                       <PowerOff className="h-4 w-4" />
                     </button>
@@ -145,7 +145,7 @@ export function TerminalList({
                       type="button"
                       onClick={() => { onActivate(terminal) }}
                       className={cn(textColors.success, textColors.hoverPrimary)}
-                      title={t('pos.terminal.activate')}
+                      title={t('pos:terminal.activate')}
                     >
                       <Power className="h-4 w-4" />
                     </button>
@@ -160,8 +160,8 @@ export function TerminalList({
                     )}
                     title={
                       terminal.is_training_mode
-                        ? t('pos.terminal.disableTraining')
-                        : t('pos.terminal.enableTraining')
+                        ? t('pos:terminal.disableTraining')
+                        : t('pos:terminal.enableTraining')
                     }
                   >
                     <GraduationCap className="h-4 w-4" />
@@ -171,7 +171,7 @@ export function TerminalList({
                     type="button"
                     onClick={() => { onArchive(terminal) }}
                     className={cn(textColors.warningDark, textColors.hoverPrimary)}
-                    title={t('pos.terminal.archive')}
+                    title={t('pos:terminal.archive')}
                   >
                     <Archive className="h-4 w-4" />
                   </button>
@@ -187,8 +187,8 @@ export function TerminalList({
                     }
                     title={
                       terminal.has_history
-                        ? t('pos.terminal.cannotDeleteHasHistory')
-                        : t('common.delete')
+                        ? t('pos:terminal.cannotDeleteHasHistory')
+                        : t('common:actions.delete')
                     }
                   >
                     <Trash2 className="h-4 w-4" />

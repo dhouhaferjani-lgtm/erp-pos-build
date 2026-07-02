@@ -38,12 +38,14 @@
     "streetAddress2": "Complément d'adresse",
     "city": "Ville",
     "state": "État / Région",
+    "governorate": "Gouvernorat",
     "postalCode": "Code postal",
     "country": "Pays",
     "selectCountry": "Sélectionner le pays",
     "countryCode": "Pays (TVA)",
     "selectCountryCode": "Sélectionner le pays pour la TVA",
     "vatNumber": "Numéro de TVA",
+    "taxRegistrationNumber": "Matricule fiscal",
     "taxId": "Numéro de TVA",
     "notes": "Notes",
     "created": "Créé le",
@@ -81,6 +83,15 @@
     },
     "balance": "Solde",
     "hasBalance": "Avec solde en cours",
+    "countLabels": {
+      "customer_one": "client",
+      "customer_other": "clients",
+      "supplier_one": "fournisseur",
+      "supplier_other": "fournisseurs",
+      "partner_one": "partenaire",
+      "partner_other": "partenaires"
+    },
+    "totalSummary": "{{count}} {{entity}} au total",
     "b2b": {
       "title": "Informations B2B",
       "customerCategory": "Catégorie client",
@@ -155,6 +166,7 @@
     "issueDate": "Date d'émission",
     "dueDate": "Date d'échéance",
     "customer": "Client",
+    "supplier": "Fournisseur",
     "description": "Description",
     "quantity": "Quantité",
     "unitPrice": "Prix unitaire",
@@ -304,6 +316,7 @@
     "receiveGoodsTitle": "Réceptionner les marchandises",
     "receiveGoodsMessage": "Cela créera des mouvements de stock pour réceptionner les marchandises de ce bon d'achat. Continuer ?",
     "goodsReceived": "Marchandises réceptionnées",
+    "received": "Reçu",
     "receive": {
       "remaining": "Restant",
       "quantity": "Quantité à réceptionner",
@@ -365,6 +378,7 @@
       "overpaid": "Surpayée"
     },
     "paymentHistory": {
+      "label": "Historique des paiements",
       "noPayments": "Aucun paiement enregistré",
       "allocated": "Alloué",
       "totalPaid": "Total Payé"

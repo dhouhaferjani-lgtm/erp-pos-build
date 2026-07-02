@@ -6,7 +6,8 @@ import { toast } from 'sonner'
 import { ArrowLeft, Calendar, Building2, FileText, Package, TrendingUp, CreditCard } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
-import { formatCurrency } from '../../../lib/format'
+import { formatCurrency, formatQuantity } from '../../../lib/format'
+import { bccomp } from '../../../lib/decimal'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
@@ -368,18 +369,18 @@ export function PurchaseOrderDetailPage() {
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {parseFloat(line.quantity)}
+                    {formatQuantity(line.quantity)}
                   </td>
                   {purchaseOrder.status === 'confirmed' && (
                     <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                      {parseFloat(line.quantity_received || '0')}
+                      {formatQuantity(line.quantity_received || '0')}
                     </td>
                   )}
                   <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {formatCurrency(parseFloat(line.unit_price), { currency: currentCompany?.currency ?? 'EUR' })}
+                    {formatCurrency(line.unit_price, { currency: currentCompany?.currency ?? 'EUR' })}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
-                    {formatCurrency(parseFloat(line.line_total), { currency: currentCompany?.currency ?? 'EUR' })}
+                    {formatCurrency(line.line_total, { currency: currentCompany?.currency ?? 'EUR' })}
                   </td>
                 </tr>
               ))}
@@ -394,21 +395,21 @@ export function PurchaseOrderDetailPage() {
               <div className="flex justify-between gap-12">
                 <dt className="text-gray-500">{t('documents.subtotal')}</dt>
                 <dd className="text-gray-900 font-medium">
-                  {formatCurrency(parseFloat(purchaseOrder.subtotal), { currency: currentCompany?.currency ?? 'EUR' })}
+                  {formatCurrency(purchaseOrder.subtotal, { currency: currentCompany?.currency ?? 'EUR' })}
                 </dd>
               </div>
-              {parseFloat(purchaseOrder.tax_amount) > 0 && (
+              {bccomp(purchaseOrder.tax_amount, '0') > 0 && (
                 <div className="flex justify-between gap-12">
                   <dt className="text-gray-500">{t('documents.tax')}</dt>
                   <dd className="text-gray-900 font-medium">
-                    {formatCurrency(parseFloat(purchaseOrder.tax_amount), { currency: currentCompany?.currency ?? 'EUR' })}
+                    {formatCurrency(purchaseOrder.tax_amount, { currency: currentCompany?.currency ?? 'EUR' })}
                   </dd>
                 </div>
               )}
               <div className="flex justify-between gap-12 text-base font-bold pt-2 border-t border-gray-200">
                 <dt className="text-gray-900">{t('documents.total')}</dt>
                 <dd className="text-gray-900">
-                  {formatCurrency(parseFloat(purchaseOrder.total), { currency: currentCompany?.currency ?? 'EUR' })}
+                  {formatCurrency(purchaseOrder.total, { currency: currentCompany?.currency ?? 'EUR' })}
                 </dd>
               </div>
             </dl>

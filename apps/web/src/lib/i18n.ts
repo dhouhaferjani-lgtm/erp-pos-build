@@ -122,6 +122,7 @@ import arReports from '../locales/ar/reports.json'
 import arAdmin from '../locales/ar/admin.json'
 import arPurchases from '../locales/ar/purchases.json'
 import arProducts from '../locales/ar/products.json'
+import arSales from '../locales/ar/sales.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -238,7 +239,34 @@ const resources = {
     // IziPOS localization closes those gaps (tracked separately).
     common: arCommon,
     auth: enAuth,
-    sales: enSales,
+    sales: {
+      ...enSales,
+      ...arSales,
+      partners: {
+        ...enSales.partners,
+        ...arSales.partners,
+        countLabels: {
+          ...enSales.partners.countLabels,
+          ...arSales.partners.countLabels,
+        },
+        empty: {
+          ...enSales.partners.empty,
+          ...arSales.partners.empty,
+        },
+        messages: {
+          ...enSales.partners.messages,
+          ...arSales.partners.messages,
+        },
+        types: {
+          ...enSales.partners.types,
+          ...arSales.partners.types,
+        },
+        validation: {
+          ...enSales.partners.validation,
+          ...arSales.partners.validation,
+        },
+      },
+    },
     inventory: { ...enInventory, ...arInventory, products: { ...enInventory.products, ...arInventory.products } },
     treasury: enTreasury,
     validation: arValidation,

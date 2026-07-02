@@ -72,14 +72,14 @@ describe('TerminalList', () => {
   it('displays loading state', () => {
     render(<TerminalList {...defaultProps} isLoading={true} />)
 
-    expect(screen.getByText('common.loading')).toBeInTheDocument()
+    expect(screen.getByText('common:common.loading')).toBeInTheDocument()
   })
 
   it('displays empty state when no terminals', () => {
     render(<TerminalList {...defaultProps} terminals={[]} />)
 
-    expect(screen.getByText('pos.terminal.noTerminals')).toBeInTheDocument()
-    expect(screen.getByText('pos.terminal.noTerminalsDescription')).toBeInTheDocument()
+    expect(screen.getByText('pos:terminal.noTerminals')).toBeInTheDocument()
+    expect(screen.getByText('pos:terminal.noTerminalsDescription')).toBeInTheDocument()
   })
 
   it('renders table with terminals', () => {
@@ -88,11 +88,11 @@ describe('TerminalList', () => {
     )
 
     // Check table headers
-    expect(screen.getByText('pos.terminal.code')).toBeInTheDocument()
-    expect(screen.getByText('pos.terminal.name')).toBeInTheDocument()
-    expect(screen.getByText('pos.terminal.location')).toBeInTheDocument()
-    expect(screen.getByText('pos.terminal.status')).toBeInTheDocument()
-    expect(screen.getByText('common.actions')).toBeInTheDocument()
+    expect(screen.getByText('pos:terminal.code')).toBeInTheDocument()
+    expect(screen.getByText('pos:terminal.name')).toBeInTheDocument()
+    expect(screen.getByText('pos:terminal.location')).toBeInTheDocument()
+    expect(screen.getByText('pos:terminal.status')).toBeInTheDocument()
+    expect(screen.getByText('common:actions.actions')).toBeInTheDocument()
 
     // Check terminal data is displayed
     expect(screen.getByText('POS01')).toBeInTheDocument()
@@ -135,7 +135,7 @@ describe('TerminalList', () => {
       <TerminalList {...defaultProps} terminals={[mockTerminal]} onEdit={onEdit} />
     )
 
-    const editButton = screen.getByTitle('common.edit')
+    const editButton = screen.getByTitle('common:actions.edit')
     await user.click(editButton)
 
     expect(onEdit).toHaveBeenCalledTimes(1)
@@ -150,7 +150,7 @@ describe('TerminalList', () => {
       <TerminalList {...defaultProps} terminals={[mockTerminal]} onArchive={onArchive} />
     )
 
-    const archiveButton = screen.getByTitle('pos.terminal.archive')
+    const archiveButton = screen.getByTitle('pos:terminal.archive')
     await user.click(archiveButton)
 
     expect(onArchive).toHaveBeenCalledTimes(1)
@@ -165,7 +165,7 @@ describe('TerminalList', () => {
       <TerminalList {...defaultProps} terminals={[mockTerminal]} onDelete={onDelete} />
     )
 
-    const deleteButton = screen.getByTitle('common.delete')
+    const deleteButton = screen.getByTitle('common:actions.delete')
     await user.click(deleteButton)
 
     expect(onDelete).toHaveBeenCalledTimes(1)
@@ -177,7 +177,7 @@ describe('TerminalList', () => {
       <TerminalList {...defaultProps} terminals={[mockTerminalWithReceipts]} />
     )
 
-    const deleteButton = screen.getByTitle('pos.terminal.cannotDeleteHasHistory')
+    const deleteButton = screen.getByTitle('pos:terminal.cannotDeleteHasHistory')
     expect(deleteButton).toBeDisabled()
   })
 
@@ -193,7 +193,7 @@ describe('TerminalList', () => {
       />
     )
 
-    const deactivateButton = screen.getByTitle('pos.terminal.deactivate')
+    const deactivateButton = screen.getByTitle('pos:terminal.deactivate')
     expect(deactivateButton).toBeInTheDocument()
 
     await user.click(deactivateButton)
@@ -214,7 +214,7 @@ describe('TerminalList', () => {
       />
     )
 
-    const activateButton = screen.getByTitle('pos.terminal.activate')
+    const activateButton = screen.getByTitle('pos:terminal.activate')
     expect(activateButton).toBeInTheDocument()
 
     await user.click(activateButton)
@@ -229,8 +229,8 @@ describe('TerminalList', () => {
     )
 
     // Check that status badges are present
-    expect(screen.getByText('pos.terminal.active')).toBeInTheDocument()
-    expect(screen.getByText('pos.terminal.inactive')).toBeInTheDocument()
+    expect(screen.getByText('terminal.active')).toBeInTheDocument()
+    expect(screen.getByText('terminal.inactive')).toBeInTheDocument()
   })
 
   it('renders multiple terminals correctly', () => {
@@ -243,9 +243,9 @@ describe('TerminalList', () => {
     expect(screen.getByText('POS02')).toBeInTheDocument()
 
     // Verify each has its action buttons
-    const editButtons = screen.getAllByTitle('common.edit')
-    const archiveButtons = screen.getAllByTitle('pos.terminal.archive')
-    const deleteButtons = screen.getAllByTitle('common.delete')
+    const editButtons = screen.getAllByTitle('common:actions.edit')
+    const archiveButtons = screen.getAllByTitle('pos:terminal.archive')
+    const deleteButtons = screen.getAllByTitle('common:actions.delete')
 
     expect(editButtons).toHaveLength(2)
     expect(archiveButtons).toHaveLength(2)
@@ -261,13 +261,13 @@ describe('TerminalList', () => {
 
     render(<TerminalList {...defaultProps} terminals={[trainingTerminal]} />)
 
-    expect(screen.getByText('pos.terminal.trainingMode')).toBeInTheDocument()
+    expect(screen.getByText('pos:terminal.trainingMode')).toBeInTheDocument()
   })
 
   it('does not show training mode badge when terminal is in production mode', () => {
     render(<TerminalList {...defaultProps} terminals={[mockTerminal]} />)
 
-    expect(screen.queryByText('pos.terminal.trainingMode')).not.toBeInTheDocument()
+    expect(screen.queryByText('pos:terminal.trainingMode')).not.toBeInTheDocument()
   })
 
   it('calls onToggleTraining when training toggle button is clicked', async () => {
@@ -282,7 +282,7 @@ describe('TerminalList', () => {
       />
     )
 
-    const toggleButton = screen.getByTitle('pos.terminal.enableTraining')
+    const toggleButton = screen.getByTitle('pos:terminal.enableTraining')
     await user.click(toggleButton)
 
     expect(onToggleTraining).toHaveBeenCalledTimes(1)
@@ -298,7 +298,7 @@ describe('TerminalList', () => {
 
     render(<TerminalList {...defaultProps} terminals={[trainingTerminal]} />)
 
-    expect(screen.getByTitle('pos.terminal.disableTraining')).toBeInTheDocument()
+    expect(screen.getByTitle('pos:terminal.disableTraining')).toBeInTheDocument()
   })
 
   it('applies hover styles to table rows', () => {

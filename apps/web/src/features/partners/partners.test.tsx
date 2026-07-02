@@ -435,19 +435,25 @@ describe('Partner Management', () => {
       expect(screen.getByText('Address')).toBeInTheDocument()
     })
 
-    it('renders all address fields including state', () => {
+    it('renders all address fields including state (governorate label for Tunisia)', () => {
       renderWithProviders(<PartnerForm />)
 
       expect(screen.getByLabelText(/street address/i)).toBeInTheDocument()
       expect(screen.getByLabelText(/city/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/state/i)).toBeInTheDocument()
+      // The test company defaults to Tunisia (TN, see beforeEach), so PartnerForm
+      // renders the localized "Gouvernorat" label (t('sales:partners.governorate'))
+      // for the state field instead of the generic "State / Region" label.
+      expect(screen.getByLabelText(/gouvernorat/i)).toBeInTheDocument()
       expect(screen.getByLabelText(/postal code/i)).toBeInTheDocument()
     })
 
-    it('renders VAT Number field (not Tax ID)', () => {
+    it('renders Tax Registration Number field for Tunisia, mapped to vat_number (not Tax ID)', () => {
       renderWithProviders(<PartnerForm />)
 
-      expect(screen.getByLabelText(/vat number/i)).toBeInTheDocument()
+      // Tunisia (TN) default country → localized "Matricule fiscal" label
+      // (t('sales:partners.taxRegistrationNumber')) instead of "VAT Number", but the
+      // field still binds to the vat_number form field, not tax_id.
+      expect(screen.getByLabelText(/matricule fiscal/i)).toBeInTheDocument()
     })
 
     it('renders Country (VAT) dropdown field', () => {
@@ -657,7 +663,9 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
-      await user.type(screen.getByLabelText(/vat number/i), 'FR12345678901')
+      // Tunisia (TN) default country → the field is labeled "Matricule fiscal", but
+      // it still submits as vat_number.
+      await user.type(screen.getByLabelText(/matricule fiscal/i), 'FR12345678901')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -705,7 +713,9 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test Partner')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
-      await user.type(screen.getByLabelText(/state/i), 'Île-de-France')
+      // Tunisia (TN) default country → the field is labeled "Gouvernorat", but it
+      // still submits as state.
+      await user.type(screen.getByLabelText(/gouvernorat/i), 'Île-de-France')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -740,8 +750,11 @@ describe('Partner Management', () => {
         expect(payload['city']).toBeNull()
         expect(payload['state']).toBeNull()
         expect(payload['postal_code']).toBeNull()
-        expect(payload['country']).toBeNull()
-        expect(payload['country_code']).toBeNull()
+        // country/country_code default to 'TN' (Tunisia) when the current company has
+        // no countryCode override — see PartnerForm's defaultCountryCode. They are no
+        // longer empty, so they submit 'TN' rather than being nulled out.
+        expect(payload['country']).toBe('TN')
+        expect(payload['country_code']).toBe('TN')
         expect(payload['vat_number']).toBeNull()
         expect(payload['notes']).toBeNull()
       })
@@ -876,7 +889,8 @@ describe('Partner Management', () => {
 
       await user.type(screen.getByLabelText(/name/i), 'Test')
       await user.selectOptions(screen.getByLabelText(/^type/i), 'customer')
-      await user.type(screen.getByLabelText(/vat number/i), 'INVALID')
+      // Tunisia (TN) default country → the field is labeled "Matricule fiscal".
+      await user.type(screen.getByLabelText(/matricule fiscal/i), 'INVALID')
 
       await user.click(screen.getByRole('button', { name: /save/i }))
 
@@ -909,9 +923,11 @@ describe('Partner Management', () => {
         expect(screen.getByLabelText(/^Phone$/i)).toHaveValue('+33612345678')
         expect(screen.getByLabelText(/street address/i)).toHaveValue('123 Rue de la Paix')
         expect(screen.getByLabelText(/^City$/i)).toHaveValue('Paris')
-        expect(screen.getByLabelText(/state/i)).toHaveValue('Île-de-France')
+        // Tunisia (TN) default country (the test company, not the edited partner's FR
+        // country) → labeled "Gouvernorat" / "Matricule fiscal".
+        expect(screen.getByLabelText(/gouvernorat/i)).toHaveValue('Île-de-France')
         expect(screen.getByLabelText(/postal code/i)).toHaveValue('75001')
-        expect(screen.getByLabelText(/vat number/i)).toHaveValue('FR12345678901')
+        expect(screen.getByLabelText(/matricule fiscal/i)).toHaveValue('FR12345678901')
         expect(screen.getByLabelText(/^Notes$/i)).toHaveValue('Important client')
       })
     })

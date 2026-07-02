@@ -38,12 +38,14 @@
     "streetAddress2": "Address Line 2",
     "city": "City",
     "state": "State / Region",
+    "governorate": "Gouvernorat",
     "postalCode": "Postal Code",
     "country": "Country",
     "selectCountry": "Select country",
     "countryCode": "Country (VAT)",
     "selectCountryCode": "Select country for VAT",
     "vatNumber": "VAT Number",
+    "taxRegistrationNumber": "Matricule fiscal",
     "taxId": "Tax ID",
     "notes": "Notes",
     "created": "Created",
@@ -81,6 +83,15 @@
     },
     "balance": "Balance",
     "hasBalance": "Has outstanding balance",
+    "countLabels": {
+      "customer_one": "customer",
+      "customer_other": "customers",
+      "supplier_one": "supplier",
+      "supplier_other": "suppliers",
+      "partner_one": "partner",
+      "partner_other": "partners"
+    },
+    "totalSummary": "{{count}} {{entity}} total",
     "b2b": {
       "title": "B2B Information",
       "customerCategory": "Customer Category",
@@ -155,6 +166,7 @@
     "issueDate": "Issue Date",
     "dueDate": "Due Date",
     "customer": "Customer",
+    "supplier": "Supplier",
     "description": "Description",
     "quantity": "Quantity",
     "unitPrice": "Unit Price",
@@ -304,6 +316,7 @@
     "receiveGoodsTitle": "Receive Goods",
     "receiveGoodsMessage": "This will create stock movements to receive the goods from this purchase order. Continue?",
     "goodsReceived": "Goods Received",
+    "received": "Received",
     "receive": {
       "remaining": "Remaining",
       "quantity": "Quantity to receive",
@@ -365,6 +378,7 @@
       "overpaid": "Overpaid"
     },
     "paymentHistory": {
+      "label": "Payment History",
       "noPayments": "No payments recorded yet",
       "allocated": "Allocated",
       "totalPaid": "Total Paid"
