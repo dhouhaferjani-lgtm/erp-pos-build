@@ -361,6 +361,8 @@
       "sortByAmount": "Montant",
       "selectAll": "Tout sélectionner",
       "deselectAll": "Tout désélectionner",
+      "selectInvoice": "Sélectionner {{invoiceNumber}}",
+      "allocationAmount": "Montant à allouer pour {{invoiceNumber}}",
       "totalBalance": "Solde total : {{amount}}"
     },
     "errors": {
