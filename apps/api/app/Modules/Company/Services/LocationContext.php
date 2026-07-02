@@ -179,6 +179,34 @@ class LocationContext
     }
 
     /**
+     * Get the location IDs the user is allowed to access.
+     *
+     * Returns null when the membership is unrestricted (allowed_location_ids is
+     * NULL — access to ALL locations), so callers can distinguish "all" from an
+     * explicit empty list. Returns an empty array when no active membership
+     * exists (fail-closed). This lets consumers in other modules scope queries
+     * without importing the Company membership model directly.
+     *
+     * @param  string  $companyId  Company UUID
+     * @param  User|null  $user  User (defaults to authenticated user)
+     * @return array<int, string>|null Allowed location UUIDs, or null for all
+     */
+    public function getAllowedLocationIds(string $companyId, ?User $user = null): ?array
+    {
+        $membership = $this->getCurrentMembership($companyId, $user);
+
+        if ($membership === null) {
+            return [];
+        }
+
+        if ($membership->allowed_location_ids === null) {
+            return null;
+        }
+
+        return array_values($membership->allowed_location_ids);
+    }
+
+    /**
      * Check if user can access a specific location.
      *
      * Returns true if:
