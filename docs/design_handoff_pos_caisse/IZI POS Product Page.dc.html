@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    html, body { margin: 0; padding: 0; }
+    body { background: #EAECEF; }
+    .ezfield input, .ezfield select { width:100%; font-family:'Public Sans',sans-serif; font-size:14px; color:#1C1E21; padding:9px 11px; border:1.5px solid #DDDEDF; border-radius:8px; outline:none; background:#fff; transition:border-color .15s, box-shadow .15s; }
+    .ezfield input:focus, .ezfield select:focus { border-color:#EA661A; box-shadow:0 0 0 3px rgba(234,102,26,.16); }
+    .ezfield label { display:block; font-family:'Public Sans',sans-serif; font-size:12px; font-weight:600; color:#41454B; margin-bottom:5px; }
+    .ezfield .hint { font-size:11px; color:#9AA0A8; margin-top:4px; }
+    .ezscroll::-webkit-scrollbar { width:10px; } .ezscroll::-webkit-scrollbar-thumb { background:#D4D8DD; border-radius:8px; border:3px solid #F6F7F8; }
+  </style>
+</helmet>
+<div style="font-family:'Public Sans',system-ui,sans-serif; color:#1C1E21; background:#F6F7F8; height:100vh; overflow:hidden; display:flex; flex-direction:column;">
+
+  <header style="flex:none; background:#fff; border-bottom:1px solid #E4E7EB; padding:14px 24px; display:flex; align-items:center; gap:18px;">
+    <img src="assets/pos-mark.svg" alt="IZI POS" style="width:30px; height:30px;">
+    <div style="display:flex; align-items:center; gap:9px; color:#777C84; font-size:13px;"><span style="cursor:pointer;" style-hover="color:#1E3A5F;">Products</span><span>/</span><span style="color:#1C1E21; font-weight:600;">Add product</span></div>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:14px;">
+      <div style="display:flex; align-items:center; gap:7px; background:#F2F4F7; border-radius:10px; padding:4px;">
+        <span style="font-size:11px; font-weight:700; color:#777C84; padding:0 6px; letter-spacing:.04em;">LAYOUT</span>
+        <button onClick="{{ setA }}" style="{{ segAStyle }}">A &middot; Tabs</button>
+        <button onClick="{{ setB }}" style="{{ segBStyle }}">B &middot; Scroll</button>
+      </div>
+      <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:14px; color:#5A5F66; background:none; border:none; cursor:pointer; padding:9px 8px;" style-hover="color:#1C1E21;">Cancel</button>
+      <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:14px; color:#1E3A5F; background:#fff; border:1.5px solid #C2D0E0; padding:9px 16px; border-radius:9px; cursor:pointer; white-space:nowrap;" style-hover="background:#F2F6FB;">Save draft</button>
+      <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:14px; color:#fff; background:#EA661A; border:none; padding:10px 20px; border-radius:9px; cursor:pointer; white-space:nowrap; box-shadow:0 1px 2px rgba(138,58,13,.3);" style-hover="background:#D45915;">Publish product</button>
+    </div>
+  </header>
+
+  <div style="flex:none; background:#14283F; padding:12px 24px;">
+    <div style="max-width:1280px; margin:0 auto; display:flex; gap:14px; align-items:center;">
+      <div style="width:56px; height:56px; flex:none; border-radius:9px; background:repeating-linear-gradient(45deg,#22405F,#22405F 6px,#1E3A57 6px,#1E3A57 12px); border:1px solid #2C4A6E; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:8px; color:#7E97B5;">photo</span>
+        <span style="position:absolute; top:3px; left:3px; font-size:7px; font-weight:700; color:#14283F; background:#FBC9AC; padding:1px 4px; border-radius:4px;">AUTO</span>
+      </div>
+      <div style="flex:none; width:260px; position:relative;">
+        <svg style="position:absolute; left:11px; top:50%; transform:translateY(-50%);" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5B7AA3" stroke-width="2"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14" stroke-linecap="round"></path></svg>
+        <input value="5012345 678900" placeholder="Scan or type barcode" style="width:100%; padding:9px 11px 9px 36px; font-family:'IBM Plex Mono',monospace; font-size:15px; letter-spacing:.02em; border:1px solid #2C4A6E; border-radius:8px; background:#0F2138; color:#EAF1FA; outline:none;">
+        <span style="position:absolute; left:11px; bottom:-17px; font-size:10px; color:#6E86A5;">Auto-fetches as you type</span>
+      </div>
+      <div style="flex:1; min-width:0;">
+        <input value="Paracetamol 500mg Tablets" placeholder="Product name (used if no barcode)" style="width:100%; padding:9px 12px; font-size:15px; font-weight:600; border:1px solid #2C4A6E; border-radius:8px; background:#0F2138; color:#EAF1FA; outline:none;">
+      </div>
+      <span style="flex:none; display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:#7BE0B0; background:rgba(31,138,91,.18); padding:7px 12px; border-radius:999px; white-space:nowrap;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3FD18B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7L12 16.8 5.7 21l2.3-7-6-4.6h7.6z"></path></svg>Synerivia &middot; 14 fields</span>
+      <button title="Re-fetch from Synerivia" style="flex:none; width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; color:#9FB4CE; background:transparent; border:1px solid #2C4A6E; border-radius:8px; cursor:pointer;" style-hover="color:#fff; border-color:#5B7AA3;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg></button>
+    </div>
+  </div>
+
+  <main class="ezscroll" style="flex:1; overflow-y:auto; scroll-behavior:smooth; padding:24px;">
+    <div style="max-width:1280px; margin:0 auto;">
+      <sc-if value="{{ isA }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid; grid-template-columns:1fr 340px; gap:20px; align-items:start;">
+          <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; box-shadow:0 1px 3px rgba(20,40,63,.06); overflow:hidden;">
+            <div style="display:flex; gap:26px; padding:0 22px; border-bottom:1px solid #ECEDEE; overflow-x:auto;">
+              <button onClick="{{ goTab_general }}" style="{{ tabStyle_general }}">General</button>
+              <button onClick="{{ goTab_pricing }}" style="{{ tabStyle_pricing }}">Pricing &amp; Tax</button>
+              <button onClick="{{ goTab_inventory }}" style="{{ tabStyle_inventory }}">Inventory &amp; Units</button>
+              <button onClick="{{ goTab_media }}" style="{{ tabStyle_media }}">Media &amp; Files</button>
+              <button onClick="{{ goTab_pharma }}" style="{{ tabStyle_pharma }}">Pharmacy</button>
+            </div>
+            <div style="padding:24px;">
+              <sc-if value="{{ is_general }}" hint-placeholder-val="{{ true }}">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px 18px;">
+                  <div class="ezfield" style="grid-column:1 / -1;"><label>Short description</label><input value="Fast-acting pain &amp; fever relief. 24 tablets."></div>
+                  <div class="ezfield"><label>Category</label><select><option>Pain relief</option><option>Cold &amp; flu</option><option>Vitamins</option></select></div>
+                  <div class="ezfield"><label>Brand</label><input value="Panadol"></div>
+                  <div class="ezfield"><label>Manufacturer</label><input value="GSK Consumer Health"></div>
+                  <div class="ezfield"><label>Country of origin</label><input value="United Kingdom"></div>
+                  <div class="ezfield" style="grid-column:1 / -1;"><label>Tags</label><div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><span style="font-size:12px; font-weight:600; color:#1E3A5F; background:#E5ECF4; padding:5px 11px; border-radius:999px;">analgesic ×</span><span style="font-size:12px; font-weight:600; color:#1E3A5F; background:#E5ECF4; padding:5px 11px; border-radius:999px;">OTC ×</span><span style="font-size:12px; font-weight:600; color:#1E3A5F; background:#E5ECF4; padding:5px 11px; border-radius:999px;">fever ×</span><input style="flex:1; min-width:120px; border:1.5px dashed #DDDEDF;" placeholder="Add tag…"></div></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ is_pricing }}" hint-placeholder-val="{{ false }}">
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 18px;">
+                  <div class="ezfield"><label>Cost price</label><input value="1.20" style="font-family:'IBM Plex Mono',monospace;"><div class="hint">Ex-tax, from supplier</div></div>
+                  <div class="ezfield"><label>Margin</label><input value="58%" style="font-family:'IBM Plex Mono',monospace;"></div>
+                  <div class="ezfield"><label>Selling price</label><input value="2.85" style="font-family:'IBM Plex Mono',monospace;"></div>
+                  <div class="ezfield"><label>Tax class</label><select><option>VAT 0% (medicine)</option><option>VAT 5%</option><option>VAT 20%</option></select></div>
+                  <div class="ezfield"><label>Price incl. tax</label><input value="2.85" style="font-family:'IBM Plex Mono',monospace; background:#F6F7F8;"></div>
+                  <div class="ezfield"><label>Loyalty points</label><input value="3"></div>
+                  <div style="grid-column:1 / -1; display:flex; gap:24px; margin-top:4px;">
+                    <label style="display:flex; align-items:center; gap:9px; font-size:14px; cursor:pointer;"><span style="width:20px; height:20px; border-radius:5px; background:#EA661A; display:inline-flex; align-items:center; justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Eligible for discounts</label>
+                    <label style="display:flex; align-items:center; gap:9px; font-size:14px; cursor:pointer;"><span style="width:20px; height:20px; border-radius:5px; background:#fff; border:1.5px solid #C7C6C5; display:inline-block;"></span>Price overrides allowed at till</label>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ is_inventory }}" hint-placeholder-val="{{ false }}">
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 18px;">
+                  <div class="ezfield"><label>Stock on hand</label><input value="142" style="font-family:'IBM Plex Mono',monospace;"></div>
+                  <div class="ezfield"><label>Reorder point</label><input value="30" style="font-family:'IBM Plex Mono',monospace;"></div>
+                  <div class="ezfield"><label>Reorder quantity</label><input value="100" style="font-family:'IBM Plex Mono',monospace;"></div>
+                  <div class="ezfield"><label>Sold as</label><select><option>Each (box of 24)</option><option>Strip of 12</option><option>Single tablet</option></select></div>
+                  <div class="ezfield"><label>Units per pack</label><input value="24"></div>
+                  <div class="ezfield"><label>Shelf / aisle</label><input value="A3 &middot; Analgesics"></div>
+                  <div class="ezfield"><label>Supplier</label><select><option>Alliance Healthcare</option><option>AAH Pharmaceuticals</option></select></div>
+                  <div class="ezfield"><label>Supplier SKU</label><input value="ALH-99214"></div>
+                  <div class="ezfield"><label>Lead time</label><input value="2 days"></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ is_media }}" hint-placeholder-val="{{ false }}">
+                <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px;">
+                  <div style="grid-column:1 / 3; grid-row:1 / 3; aspect-ratio:1/1; border-radius:12px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 9px,#E6EAF0 9px,#E6EAF0 18px); border:1px solid #E4E7EB; display:flex; align-items:center; justify-content:center; position:relative;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#9AA0A8;">featured image</span><span style="position:absolute; top:10px; left:10px; font-size:10px; font-weight:700; color:#fff; background:#EA661A; padding:3px 8px; border-radius:6px;">★ FEATURED</span></div>
+                  <div style="aspect-ratio:1/1; border-radius:10px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 7px,#E6EAF0 7px,#E6EAF0 14px); border:1px solid #E4E7EB; display:flex; align-items:center; justify-content:center;"><span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#9AA0A8;">image</span></div>
+                  <div style="aspect-ratio:1/1; border-radius:10px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 7px,#E6EAF0 7px,#E6EAF0 14px); border:1px solid #E4E7EB; display:flex; align-items:center; justify-content:center;"><span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#9AA0A8;">image</span></div>
+                  <div style="aspect-ratio:1/1; border-radius:10px; background:#FBE9E9; border:1px solid #F2C9C9; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#C0392B;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg><span style="font-size:10px; font-weight:700;">Leaflet.pdf</span></div>
+                  <div style="aspect-ratio:1/1; border-radius:10px; background:#14283F; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; color:#fff;"><svg width="26" height="26" viewBox="0 0 24 24" fill="#fff" stroke="none"><polygon points="9 7 19 12 9 17 9 7"></polygon></svg><span style="font-size:10px; font-weight:700; color:#8FA6C2;">How-to.mp4</span></div>
+                  <div style="aspect-ratio:1/1; border-radius:10px; border:1.5px dashed #C7CDD4; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; color:#9AA0A8; cursor:pointer;" style-hover="border-color:#EA661A; color:#D45915;"><span style="font-size:24px; line-height:1;">+</span><span style="font-size:10px; font-weight:600;">Add media</span></div>
+                </div>
+                <div style="font-size:12px; color:#9AA0A8; margin-top:14px;">Drag to reorder &middot; the first image is used as the featured image &middot; PDFs &amp; videos appear on the product page and web store.</div>
+              </sc-if>
+              <sc-if value="{{ is_pharma }}" hint-placeholder-val="{{ false }}">
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 18px;">
+                  <div class="ezfield"><label>Active ingredient</label><input value="Paracetamol"></div>
+                  <div class="ezfield"><label>Strength</label><input value="500 mg"></div>
+                  <div class="ezfield"><label>Form</label><select><option>Tablet</option><option>Capsule</option><option>Syrup</option></select></div>
+                  <div class="ezfield"><label>ATC code</label><input value="N02BE01" style="font-family:'IBM Plex Mono',monospace;"></div>
+                  <div class="ezfield"><label>Legal category</label><select><option>GSL (general sale)</option><option>P (pharmacy)</option><option>POM (prescription)</option></select></div>
+                  <div class="ezfield"><label>Max per sale</label><input value="2"></div>
+                  <div class="ezfield"><label>Storage</label><input value="Below 25°C, dry"></div>
+                  <div class="ezfield"><label>Shelf life</label><input value="36 months"></div>
+                  <div class="ezfield"><label>PIP code</label><input value="0312-345" style="font-family:'IBM Plex Mono',monospace;"></div>
+                  <div style="grid-column:1 / -1; display:flex; gap:14px; margin-top:6px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; padding:11px 14px; background:#FAFBFC; border:1px solid #ECEDEE; border-radius:10px; flex:1; min-width:200px;"><span style="font-size:14px; font-weight:500;">Requires prescription</span><span style="width:44px; height:25px; border-radius:999px; background:#C7C6C5; display:flex; align-items:center; padding:3px; justify-content:flex-start;"><span style="width:19px; height:19px; border-radius:999px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25);"></span></span></div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; padding:11px 14px; background:#FAFBFC; border:1px solid #ECEDEE; border-radius:10px; flex:1; min-width:200px;"><span style="font-size:14px; font-weight:500;">Track batch &amp; expiry</span><span style="width:44px; height:25px; border-radius:999px; background:#1F8A5B; display:flex; align-items:center; padding:3px; justify-content:flex-end;"><span style="width:19px; height:19px; border-radius:999px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25);"></span></span></div>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:16px; position:sticky; top:16px;">
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:18px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+              <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#777C84; margin-bottom:12px;">Media</div>
+              <div style="aspect-ratio:1/1; border-radius:12px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 9px,#E6EAF0 9px,#E6EAF0 18px); border:1px solid #E4E7EB; display:flex; align-items:center; justify-content:center; position:relative; margin-bottom:10px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#9AA0A8;">featured</span><span style="position:absolute; top:9px; left:9px; font-size:9px; font-weight:700; color:#fff; background:#EA661A; padding:2px 7px; border-radius:5px;">★</span></div>
+              <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:7px;">
+                <div style="aspect-ratio:1/1; border-radius:7px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 5px,#E6EAF0 5px,#E6EAF0 10px); border:1px solid #E4E7EB;"></div>
+                <div style="aspect-ratio:1/1; border-radius:7px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 5px,#E6EAF0 5px,#E6EAF0 10px); border:1px solid #E4E7EB;"></div>
+                <div style="aspect-ratio:1/1; border-radius:7px; background:#FBE9E9; display:flex; align-items:center; justify-content:center; color:#C0392B; font-size:8px; font-weight:700;">PDF</div>
+                <div style="aspect-ratio:1/1; border-radius:7px; background:#14283F; display:flex; align-items:center; justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><polygon points="9 7 19 12 9 17 9 7"></polygon></svg></div>
+              </div>
+            </div>
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:18px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+              <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#777C84; margin-bottom:12px;">Live on POS</div>
+              <div style="border:1px solid #ECEDEE; border-radius:10px; overflow:hidden; width:140px;">
+                <div style="height:84px; background:repeating-linear-gradient(45deg,#F2F6FB,#F2F6FB 8px,#E9EFF7 8px,#E9EFF7 16px);"></div>
+                <div style="padding:9px 11px;"><div style="font-size:13px; font-weight:600;">Paracetamol 500mg</div><div style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EA661A; font-weight:500; margin-top:2px;">$2.85</div></div>
+              </div>
+              <div style="display:flex; align-items:center; gap:7px; font-size:12px; color:#1F8A5B; margin-top:12px; font-weight:600;"><span style="width:7px; height:7px; border-radius:999px; background:#1F8A5B;"></span>Ready to publish</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isB }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid; grid-template-columns:204px 1fr 248px; gap:20px; align-items:start;">
+          <nav style="position:sticky; top:16px; display:flex; flex-direction:column; gap:3px; background:#fff; border:1px solid #E4E7EB; border-radius:14px; padding:12px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+            <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#9AA0A8; padding:6px 12px 8px;">Sections</div>
+            <a href="#secB-general" onClick="{{ goNav_general }}" style="{{ navStyle_general }}">General</a>
+            <a href="#secB-pricing" onClick="{{ goNav_pricing }}" style="{{ navStyle_pricing }}">Pricing &amp; Tax</a>
+            <a href="#secB-inventory" onClick="{{ goNav_inventory }}" style="{{ navStyle_inventory }}">Inventory &amp; Units</a>
+            <a href="#secB-media" onClick="{{ goNav_media }}" style="{{ navStyle_media }}">Media &amp; Files</a>
+            <a href="#secB-pharma" onClick="{{ goNav_pharma }}" style="{{ navStyle_pharma }}">Pharmacy</a>
+            <a href="#secB-suppliers" onClick="{{ goNav_suppliers }}" style="{{ navStyle_suppliers }}">Suppliers</a>
+            <div style="height:1px; background:#ECEDEE; margin:8px 4px;"></div>
+            <div style="padding:4px 12px 6px;"><div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px;"><span style="color:#777C84;">Completeness</span><span style="font-weight:700; color:#1F8A5B;">86%</span></div><div style="height:6px; border-radius:999px; background:#ECEDEE; overflow:hidden;"><span style="display:block; height:100%; width:86%; background:#1F8A5B;"></span></div></div>
+          </nav>
+
+          <div style="display:flex; flex-direction:column; gap:16px;">
+            <div id="secB-general" style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:22px; box-shadow:0 1px 3px rgba(20,40,63,.06); scroll-margin-top:16px;">
+              <div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:16px;">General</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px 18px;">
+                <div class="ezfield" style="grid-column:1 / -1;"><label>Short description</label><input value="Fast-acting pain &amp; fever relief. 24 tablets."></div>
+                <div class="ezfield"><label>Category</label><select><option>Pain relief</option><option>Cold &amp; flu</option></select></div>
+                <div class="ezfield"><label>Brand</label><input value="Panadol"></div>
+                <div class="ezfield"><label>Manufacturer</label><input value="GSK Consumer Health"></div>
+                <div class="ezfield"><label>Country of origin</label><input value="United Kingdom"></div>
+              </div>
+            </div>
+            <div id="secB-pricing" style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:22px; box-shadow:0 1px 3px rgba(20,40,63,.06); scroll-margin-top:16px;">
+              <div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:16px;">Pricing &amp; Tax</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 18px;">
+                <div class="ezfield"><label>Cost price</label><input value="1.20" style="font-family:'IBM Plex Mono',monospace;"></div>
+                <div class="ezfield"><label>Margin</label><input value="58%" style="font-family:'IBM Plex Mono',monospace;"></div>
+                <div class="ezfield"><label>Selling price</label><input value="2.85" style="font-family:'IBM Plex Mono',monospace;"></div>
+                <div class="ezfield"><label>Tax class</label><select><option>VAT 0% (medicine)</option><option>VAT 20%</option></select></div>
+                <div class="ezfield"><label>Price incl. tax</label><input value="2.85" style="font-family:'IBM Plex Mono',monospace; background:#F6F7F8;"></div>
+                <div class="ezfield"><label>Loyalty points</label><input value="3"></div>
+              </div>
+            </div>
+            <div id="secB-inventory" style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:22px; box-shadow:0 1px 3px rgba(20,40,63,.06); scroll-margin-top:16px;">
+              <div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:6px;">Inventory &amp; Units</div>
+              <p style="font-size:13px; color:#5A5F66; margin:0 0 16px; line-height:1.5;">Set the <b style="color:#1C1E21;">opening balance</b> once, at creation. After that, stock only changes through traceable operations &mdash; adjustments, purchases, sales and returns.</p>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 18px;">
+                <div class="ezfield"><label>Opening stock <span style="font-size:9px; font-weight:700; color:#B84E12; background:#FDE6D8; padding:1px 6px; border-radius:5px; letter-spacing:.04em;">ONCE</span></label><input value="0" style="font-family:'IBM Plex Mono',monospace;"><div class="hint">Initial count when you start tracking this item.</div></div>
+                <div class="ezfield"><label>Opening unit cost</label><div style="position:relative;"><span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-family:'IBM Plex Mono',monospace; font-size:14px; color:#777C84;">$</span><input value="1.20" style="font-family:'IBM Plex Mono',monospace; padding-left:26px;"></div><div class="hint">Values the opening balance.</div></div>
+                <div class="ezfield"><label>As of date</label><input value="23 Jun 2026" style="font-family:'IBM Plex Mono',monospace;"></div>
+                <div class="ezfield"><label>Sold as</label><select><option>Each (box of 24)</option><option>Strip of 12</option><option>Single tablet</option></select></div>
+                <div class="ezfield"><label>Units per pack</label><input value="24"></div>
+                <div class="ezfield"><label>Shelf / aisle</label><input value="A3 &middot; Analgesics"></div>
+                <div class="ezfield"><label>Reorder point</label><input value="30" style="font-family:'IBM Plex Mono',monospace;"></div>
+                <div class="ezfield"><label>Reorder quantity</label><input value="100" style="font-family:'IBM Plex Mono',monospace;"></div>
+                <div class="ezfield"><label>Track batches &amp; expiry</label><div style="display:flex; align-items:center; gap:10px; padding-top:6px;"><span style="width:44px; height:25px; border-radius:999px; background:#1F8A5B; display:flex; align-items:center; padding:3px; justify-content:flex-end;"><span style="width:19px; height:19px; border-radius:999px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25);"></span></span><span style="font-size:13px; color:#5A5F66;">On</span></div></div>
+              </div>
+              <div style="display:flex; align-items:center; gap:9px; font-size:12.5px; color:#41546E; background:#E7F0FD; border:1px solid #C7DCF7; border-radius:9px; padding:10px 13px; margin-top:16px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2B6CC4" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="8"></line></svg>The opening balance is locked once the product has any movement, keeping the stock ledger auditable.</div>
+            </div>
+            <div id="secB-media" style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:22px; box-shadow:0 1px 3px rgba(20,40,63,.06); scroll-margin-top:16px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;"><span style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F;">Media &amp; Files</span><span style="font-size:12px; color:#9AA0A8;">4 items &middot; 2 images, 1 PDF, 1 video</span></div>
+              <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:12px;">
+                <div style="grid-column:1 / 3; grid-row:1 / 3; aspect-ratio:1/1; border-radius:12px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 9px,#E6EAF0 9px,#E6EAF0 18px); border:1px solid #E4E7EB; display:flex; align-items:center; justify-content:center; position:relative;"><span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#9AA0A8;">featured</span><span style="position:absolute; top:10px; left:10px; font-size:10px; font-weight:700; color:#fff; background:#EA661A; padding:3px 8px; border-radius:6px;">★ FEATURED</span></div>
+                <div style="aspect-ratio:1/1; border-radius:10px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 7px,#E6EAF0 7px,#E6EAF0 14px); border:1px solid #E4E7EB;"></div>
+                <div style="aspect-ratio:1/1; border-radius:10px; background:repeating-linear-gradient(45deg,#EEF1F5,#EEF1F5 7px,#E6EAF0 7px,#E6EAF0 14px); border:1px solid #E4E7EB;"></div>
+                <div style="aspect-ratio:1/1; border-radius:10px; background:#FBE9E9; border:1px solid #F2C9C9; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#C0392B;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg><span style="font-size:9px; font-weight:700;">Leaflet</span></div>
+                <div style="aspect-ratio:1/1; border-radius:10px; background:#14283F; display:flex; align-items:center; justify-content:center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><polygon points="9 7 19 12 9 17 9 7"></polygon></svg></div>
+                <div style="aspect-ratio:1/1; border-radius:10px; border:1.5px dashed #C7CDD4; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; color:#9AA0A8; cursor:pointer;" style-hover="border-color:#EA661A; color:#D45915;"><span style="font-size:20px; line-height:1;">+</span><span style="font-size:9px; font-weight:600;">Add</span></div>
+              </div>
+            </div>
+            <div id="secB-pharma" style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:22px; box-shadow:0 1px 3px rgba(20,40,63,.06); scroll-margin-top:16px;">
+              <div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:16px;">Pharmacy</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 18px;">
+                <div class="ezfield"><label>Active ingredient</label><input value="Paracetamol"></div>
+                <div class="ezfield"><label>Strength</label><input value="500 mg"></div>
+                <div class="ezfield"><label>Form</label><select><option>Tablet</option><option>Capsule</option></select></div>
+                <div class="ezfield"><label>ATC code</label><input value="N02BE01" style="font-family:'IBM Plex Mono',monospace;"></div>
+                <div class="ezfield"><label>Legal category</label><select><option>GSL (general sale)</option><option>P (pharmacy)</option><option>POM (prescription)</option></select></div>
+                <div class="ezfield"><label>Max per sale</label><input value="2"></div>
+              </div>
+            </div>
+            <div id="secB-suppliers" style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:22px; box-shadow:0 1px 3px rgba(20,40,63,.06); scroll-margin-top:16px;">
+              <div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F; margin-bottom:16px;">Suppliers</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 18px;">
+                <div class="ezfield"><label>Primary supplier</label><select><option>Alliance Healthcare</option><option>AAH Pharmaceuticals</option></select></div>
+                <div class="ezfield"><label>Supplier SKU</label><input value="ALH-99214"></div>
+                <div class="ezfield"><label>Last cost</label><input value="1.20" style="font-family:'IBM Plex Mono',monospace;"></div>
+              </div>
+            </div>
+          </div>
+
+          <aside style="position:sticky; top:16px; display:flex; flex-direction:column; gap:16px;">
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:18px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+              <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#777C84; margin-bottom:12px;">Live on POS</div>
+              <div style="border:1px solid #ECEDEE; border-radius:10px; overflow:hidden; width:140px;">
+                <div style="height:84px; background:repeating-linear-gradient(45deg,#F2F6FB,#F2F6FB 8px,#E9EFF7 8px,#E9EFF7 16px);"></div>
+                <div style="padding:9px 11px;"><div style="font-size:13px; font-weight:600;">Paracetamol 500mg</div><div style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#EA661A; font-weight:500; margin-top:2px;">$2.85</div></div>
+              </div>
+            </div>
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:18px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+              <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#777C84; margin-bottom:12px;">Before publish</div>
+              <div style="display:flex; flex-direction:column; gap:10px; font-size:13px;">
+                <div style="display:flex; gap:9px; color:#41454B;"><span style="color:#1F8A5B; font-weight:700;">✓</span>Name &amp; price set</div>
+                <div style="display:flex; gap:9px; color:#41454B;"><span style="color:#1F8A5B; font-weight:700;">✓</span>Featured image</div>
+                <div style="display:flex; gap:9px; color:#41454B;"><span style="color:#1F8A5B; font-weight:700;">✓</span>Tax class</div>
+                <div style="display:flex; gap:9px; color:#9AA0A8;"><span style="color:#C7C6C5; font-weight:700;">○</span>Legal category review</div>
+              </div>
+            </div>
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:18px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+              <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#777C84; margin-bottom:4px;">Related operations</div>
+              <div style="font-size:12px; color:#9AA0A8; margin-bottom:12px;">Opens with this product preselected.</div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <a href="#" style="display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:10px; border:1px solid #E4E7EB; text-decoration:none; color:#1C1E21;" style-hover="border-color:#1E3A5F; background:#F2F6FB;">
+                  <span style="width:30px; height:30px; flex:none; border-radius:8px; background:#FEF3EC; color:#D45915; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg></span>
+                  <span style="flex:1;"><span style="display:block; font-size:13.5px; font-weight:600;">New stock adjustment</span><span style="font-size:12px; color:#9AA0A8;">Correct the count, with a reason</span></span>
+                  <span style="color:#C7CDD4;">›</span>
+                </a>
+                <a href="#" style="display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:10px; border:1px solid #E4E7EB; text-decoration:none; color:#1C1E21;" style-hover="border-color:#1E3A5F; background:#F2F6FB;">
+                  <span style="width:30px; height:30px; flex:none; border-radius:8px; background:#E5ECF4; color:#1E3A5F; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"></path><path d="M16 8h4l3 3v5h-7V8z"></path><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg></span>
+                  <span style="flex:1;"><span style="display:block; font-size:13.5px; font-weight:600;">Start a purchase</span><span style="font-size:12px; color:#9AA0A8;">Restock from a supplier</span></span>
+                  <span style="color:#C7CDD4;">›</span>
+                </a>
+                <a href="#" style="display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:10px; border:1px solid #E4E7EB; text-decoration:none; color:#1C1E21;" style-hover="border-color:#1E3A5F; background:#F2F6FB;">
+                  <span style="width:30px; height:30px; flex:none; border-radius:8px; background:#E6F4EE; color:#1F8A5B; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"></path></svg></span>
+                  <span style="flex:1;"><span style="display:block; font-size:13.5px; font-weight:600;">Start a sale</span><span style="font-size:12px; color:#9AA0A8;">B2B / quote with this item</span></span>
+                  <span style="color:#C7CDD4;">›</span>
+                </a>
+                <a href="#" style="display:flex; align-items:center; gap:8px; padding:6px 4px 0; font-size:13px; font-weight:600; color:#1E3A5F; text-decoration:none;" style-hover="color:#EA661A;">View stock movements <span>›</span></a>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </sc-if>
+
+      <!--BODY-->
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1340,&quot;height&quot;:940}}">
+class Component extends DCLogic {
+  state = { variation: 'B', tab: 'general', nav: 'general' };
+  seg(on) {
+    return { fontFamily: "'Public Sans',sans-serif", fontWeight: 600, fontSize: '13px', padding: '7px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', background: on ? '#fff' : 'transparent', color: on ? '#14283F' : '#5A5F66', boxShadow: on ? '0 1px 3px rgba(20,40,63,.16)' : 'none', transition: 'all .15s' };
+  }
+  tab(on) {
+    return { fontFamily: "'Public Sans',sans-serif", fontWeight: 600, fontSize: '14px', padding: '13px 4px', cursor: 'pointer', border: 'none', background: 'transparent', color: on ? '#14283F' : '#777C84', borderBottom: on ? '2.5px solid #EA661A' : '2.5px solid transparent', marginBottom: '-1px', whiteSpace: 'nowrap', transition: 'color .15s' };
+  }
+  navItem(on) {
+    return { display: 'block', width: '100%', textAlign: 'left', textDecoration: 'none', boxSizing: 'border-box', fontFamily: "'Public Sans',sans-serif", fontWeight: on ? 600 : 500, fontSize: '14px', padding: '9px 12px', borderRadius: '8px', cursor: 'pointer', background: on ? '#FEF3EC' : 'transparent', color: on ? '#B84E12' : '#5A5F66', transition: 'all .15s' };
+  }
+  componentDidMount() {
+    this._scroller = document.querySelector('main.ezscroll');
+    this._onScroll = () => {
+      if (this.state.variation !== 'B' || !this._scroller) return;
+      const mt = this._scroller.getBoundingClientRect().top;
+      const ids = ['general', 'pricing', 'inventory', 'media', 'pharma', 'suppliers'];
+      let cur = ids[0];
+      for (const id of ids) {
+        const el = document.getElementById('secB-' + id);
+        if (el && el.getBoundingClientRect().top - mt <= 28) cur = id;
+      }
+      if (cur !== this.state.nav) this.setState({ nav: cur });
+    };
+    if (this._scroller) this._scroller.addEventListener('scroll', this._onScroll, { passive: true });
+  }
+  componentWillUnmount() {
+    if (this._scroller && this._onScroll) this._scroller.removeEventListener('scroll', this._onScroll);
+  }
+  renderVals() {
+    const v = this.state.variation, t = this.state.tab, n = this.state.nav;
+    const tabs = ['general', 'pricing', 'inventory', 'media', 'pharma'];
+    const navs = ['general', 'pricing', 'inventory', 'media', 'pharma', 'suppliers'];
+    const o = {
+      isA: v === 'A', isB: v === 'B',
+      setA: () => this.setState({ variation: 'A' }), setB: () => this.setState({ variation: 'B' }),
+      segAStyle: this.seg(v === 'A'), segBStyle: this.seg(v === 'B'),
+    };
+    tabs.forEach(id => { o['is_' + id] = t === id; o['tabStyle_' + id] = this.tab(t === id); o['goTab_' + id] = () => this.setState({ tab: id }); });
+    navs.forEach(id => {
+      o['navStyle_' + id] = this.navItem(n === id);
+      o['goNav_' + id] = () => this.setState({ nav: id });
+    });
+    return o;
+  }
+}
+</script>
+</body>
+</html>

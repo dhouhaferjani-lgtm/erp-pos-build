@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body { background: #0F1726; }
+  </style>
+</helmet>
+<div style="display:flex; height:100vh; overflow:hidden; font-family:'Public Sans',system-ui,sans-serif; color:#1C1E21; background:#F6F7F8;">
+
+  <aside style="width:248px; flex:none; background:#14283F; color:#8FA6C2; display:flex; flex-direction:column; padding:22px 16px;">
+    <div style="display:flex; align-items:center; gap:11px; padding:6px 8px 22px;">
+      <img src="assets/pos-mark-dark.svg" alt="mark" style="width:34px; height:34px;">
+      <div style="line-height:1.1;"><div style="font-family:'Montserrat',sans-serif; font-weight:800; font-size:16px; color:#fff;">IZI POS</div><div style="font-size:10px; font-weight:600; letter-spacing:.14em; color:#5B7AA3;">POINT OF SALE</div></div>
+    </div>
+    <nav style="display:flex; flex-direction:column; gap:3px;">
+      <button onClick="{{ goDash }}" style="{{ navDashStyle }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>Dashboard</button>
+      <button style="{{ navInertStyle }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"></path></svg>New sale</button>
+      <button onClick="{{ goProducts }}" style="{{ navProductsStyle }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>Products</button>
+      <button style="{{ navInertStyle }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path></svg>Customers</button>
+      <button style="{{ navInertStyle }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>Reports</button>
+    </nav>
+    <div style="margin-top:auto;">
+      <button style="{{ navInertStyle }}"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>Settings</button>
+      <div style="display:flex; align-items:center; gap:11px; padding:12px 10px; margin-top:8px; border-top:1px solid #20304C;">
+        <span style="width:34px; height:34px; border-radius:999px; background:#3A5C88; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;">MK</span>
+        <div style="line-height:1.2;"><div style="font-size:13px; font-weight:600; color:#E8EDF5;">Maya K.</div><div style="font-size:11px; color:#5B7AA3;">Riverside Cafe</div></div>
+      </div>
+    </div>
+  </aside>
+
+  <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+    <header style="height:68px; flex:none; background:#fff; border-bottom:1px solid #E4E7EB; display:flex; align-items:center; gap:20px; padding:0 28px;">
+      <div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:20px; color:#14283F;">{{ pageTitle }}</div>
+      <div style="position:relative; margin-left:8px; width:300px;">
+        <svg style="position:absolute; left:13px; top:50%; transform:translateY(-50%);" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9AA0A8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input placeholder="Search anything…" style="width:100%; font-family:'Public Sans',sans-serif; font-size:14px; padding:9px 12px 9px 38px; border:1.5px solid #E4E7EB; border-radius:9px; outline:none; background:#FAFBFC;" style-focus="border-color:#EA661A; box-shadow:0 0 0 3px rgba(234,102,26,.15); background:#fff;">
+      </div>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:14px;">
+        <span style="position:relative; width:40px; height:40px; border-radius:10px; background:#F6F7F8; display:flex; align-items:center; justify-content:center; color:#5A5F66; cursor:pointer;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span style="position:absolute; top:8px; right:9px; width:7px; height:7px; border-radius:999px; background:#EA661A; border:1.5px solid #F6F7F8;"></span></span>
+        <button onClick="{{ goAdd }}" style="{{ primaryMd }}" style-hover="{{ primaryHover }}"><span style="font-size:17px; line-height:1;">+</span> Add product</button>
+      </div>
+    </header>
+
+    <main style="flex:1; overflow-y:auto; padding:28px;">
+      <sc-if value="{{ isDash }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1180px;">
+          <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:20px;">
+            <div><div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:24px; color:#14283F;">Good morning, Maya</div><div style="font-size:15px; color:#5A5F66; margin-top:2px;">Here&rsquo;s how Riverside Cafe is doing today.</div></div>
+            <div style="display:flex; gap:4px; background:#ECEDEE; border-radius:10px; padding:4px; font-size:13px; font-weight:600;"><span style="padding:7px 14px; border-radius:7px; background:#fff; color:#14283F; box-shadow:0 1px 2px rgba(20,40,63,.12);">Today</span><span style="padding:7px 14px; color:#5A5F66; cursor:pointer;">Week</span><span style="padding:7px 14px; color:#5A5F66; cursor:pointer;">Month</span></div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px;">
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:20px; box-shadow:0 1px 3px rgba(20,40,63,.06);"><div style="font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#777C84;">Today&rsquo;s sales</div><div style="font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:28px; color:#14283F; margin:8px 0 6px;">$1,842</div><div style="font-size:13px; font-weight:600; color:#1F8A5B;">▲ 12% <span style="color:#9AA0A8; font-weight:400;">vs yesterday</span></div></div>
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:20px; box-shadow:0 1px 3px rgba(20,40,63,.06);"><div style="font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#777C84;">Transactions</div><div style="font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:28px; color:#14283F; margin:8px 0 6px;">213</div><div style="font-size:13px; font-weight:600; color:#1F8A5B;">▲ 5% <span style="color:#9AA0A8; font-weight:400;">vs yesterday</span></div></div>
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:20px; box-shadow:0 1px 3px rgba(20,40,63,.06);"><div style="font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#777C84;">Avg. basket</div><div style="font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:28px; color:#14283F; margin:8px 0 6px;">$8.65</div><div style="font-size:13px; font-weight:600; color:#D64545;">▼ 2% <span style="color:#9AA0A8; font-weight:400;">vs yesterday</span></div></div>
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#14283F; padding:20px; color:#fff;"><div style="font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#8FA6C2;">Low stock</div><div style="font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:28px; margin:8px 0 6px;">7 <span style="font-size:15px; color:#8FA6C2;">items</span></div><div style="font-size:13px; font-weight:600; color:#F59E6E;">Needs reorder soon</div></div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1.6fr 1fr; gap:16px;">
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; box-shadow:0 1px 3px rgba(20,40,63,.06); overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 20px; border-bottom:1px solid #ECEDEE;"><span style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F;">Recent sales</span><span style="font-size:13px; font-weight:600; color:#EA661A; cursor:pointer;">View all</span></div>
+              <div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #F0F1F2;"><div style="display:flex; align-items:center; gap:12px;"><span style="width:36px; height:36px; border-radius:9px; background:#E6F4EE; color:#1F8A5B; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">#42</span><div><div style="font-size:15px; font-weight:500; color:#1C1E21;">3 items &middot; Card</div><div style="font-size:13px; color:#9AA0A8;">9:42 AM</div></div></div><div style="text-align:right;"><div style="font-family:'IBM Plex Mono',monospace; font-size:15px; color:#1C1E21;">$14.20</div><span style="font-size:11px; font-weight:600; color:#1F8A5B;">Paid</span></div></div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #F0F1F2;"><div style="display:flex; align-items:center; gap:12px;"><span style="width:36px; height:36px; border-radius:9px; background:#E6F4EE; color:#1F8A5B; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">#41</span><div><div style="font-size:15px; font-weight:500; color:#1C1E21;">1 item &middot; Cash</div><div style="font-size:13px; color:#9AA0A8;">9:38 AM</div></div></div><div style="text-align:right;"><div style="font-family:'IBM Plex Mono',monospace; font-size:15px; color:#1C1E21;">$4.50</div><span style="font-size:11px; font-weight:600; color:#1F8A5B;">Paid</span></div></div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #F0F1F2;"><div style="display:flex; align-items:center; gap:12px;"><span style="width:36px; height:36px; border-radius:9px; background:#FBE9E9; color:#D64545; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">#40</span><div><div style="font-size:15px; font-weight:500; color:#1C1E21;">Refund &middot; Card</div><div style="font-size:13px; color:#9AA0A8;">9:21 AM</div></div></div><div style="text-align:right;"><div style="font-family:'IBM Plex Mono',monospace; font-size:15px; color:#D64545;">-$3.20</div><span style="font-size:11px; font-weight:600; color:#D64545;">Refunded</span></div></div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px;"><div style="display:flex; align-items:center; gap:12px;"><span style="width:36px; height:36px; border-radius:9px; background:#E6F4EE; color:#1F8A5B; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">#39</span><div><div style="font-size:15px; font-weight:500; color:#1C1E21;">5 items &middot; Card</div><div style="font-size:13px; color:#9AA0A8;">9:08 AM</div></div></div><div style="text-align:right;"><div style="font-family:'IBM Plex Mono',monospace; font-size:15px; color:#1C1E21;">$28.90</div><span style="font-size:11px; font-weight:600; color:#1F8A5B;">Paid</span></div></div>
+              </div>
+            </div>
+
+            <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; box-shadow:0 1px 3px rgba(20,40,63,.06); overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 20px; border-bottom:1px solid #ECEDEE;"><span style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F;">Running low</span><span style="font-size:12px; font-weight:600; color:#8A5A00; background:#FCF3DC; padding:3px 9px; border-radius:999px;">7</span></div>
+              <div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #F0F1F2;"><span style="font-size:15px; color:#1C1E21;">Muffin</span><span style="font-size:12px; font-weight:600; color:#D64545; background:#FBE9E9; padding:3px 10px; border-radius:999px;">0 left</span></div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #F0F1F2;"><span style="font-size:15px; color:#1C1E21;">Croissant</span><span style="font-size:12px; font-weight:600; color:#8A5A00; background:#FCF3DC; padding:3px 10px; border-radius:999px;">5 left</span></div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid #F0F1F2;"><span style="font-size:15px; color:#1C1E21;">Oat milk</span><span style="font-size:12px; font-weight:600; color:#8A5A00; background:#FCF3DC; padding:3px 10px; border-radius:999px;">3 left</span></div>
+                <div style="padding:16px 20px;"><button onClick="{{ goProducts }}" style="width:100%; font-family:'Public Sans',sans-serif; font-weight:600; font-size:14px; color:#1E3A5F; background:#F2F6FB; border:none; padding:11px; border-radius:9px; cursor:pointer;" style-hover="background:#E5ECF4;">Review &amp; reorder</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isProducts }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:1180px;">
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
+            <div style="position:relative; flex:1; max-width:360px;">
+              <svg style="position:absolute; left:13px; top:50%; transform:translateY(-50%);" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9AA0A8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input placeholder="Search products…" style="width:100%; font-family:'Public Sans',sans-serif; font-size:14px; padding:10px 12px 10px 38px; border:1.5px solid #E4E7EB; border-radius:9px; outline:none; background:#fff;" style-focus="border-color:#EA661A; box-shadow:0 0 0 3px rgba(234,102,26,.15);">
+            </div>
+            <div style="display:flex; gap:8px; font-size:13px; font-weight:500;">
+              <span style="padding:9px 14px; border-radius:999px; background:#14283F; color:#fff; cursor:pointer;">All</span>
+              <span style="padding:9px 14px; border-radius:999px; background:#fff; border:1px solid #E4E7EB; color:#5A5F66; cursor:pointer;" style-hover="border-color:#1E3A5F;">Hot drinks</span>
+              <span style="padding:9px 14px; border-radius:999px; background:#fff; border:1px solid #E4E7EB; color:#5A5F66; cursor:pointer;" style-hover="border-color:#1E3A5F;">Cold drinks</span>
+              <span style="padding:9px 14px; border-radius:999px; background:#fff; border:1px solid #E4E7EB; color:#5A5F66; cursor:pointer;" style-hover="border-color:#1E3A5F;">Food</span>
+            </div>
+            <button onClick="{{ goAdd }}" style="{{ primaryMdRight }}" style-hover="{{ primaryHover }}"><span style="font-size:17px; line-height:1;">+</span> Add product</button>
+          </div>
+
+          <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; box-shadow:0 1px 3px rgba(20,40,63,.06); overflow:hidden;">
+            <table style="width:100%; border-collapse:collapse;">
+              <thead><tr style="background:#FAFBFC;">
+                <th style="text-align:left; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777C84; padding:13px 20px;">Product</th>
+                <th style="text-align:left; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777C84; padding:13px 20px;">Category</th>
+                <th style="text-align:right; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777C84; padding:13px 20px;">Price</th>
+                <th style="text-align:right; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777C84; padding:13px 20px;">Stock</th>
+                <th style="text-align:left; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#777C84; padding:13px 20px;">Status</th>
+                <th style="width:44px;"></th>
+              </tr></thead>
+              <tbody>
+                <tr style="border-top:1px solid #F0F1F2; cursor:pointer;" style-hover="background:#FAFBFC;"><td style="padding:13px 20px;"><div style="display:flex; align-items:center; gap:12px;"><span style="width:38px; height:38px; border-radius:9px; background:#E5ECF4; color:#1E3A5F; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px;">F</span><span style="font-size:15px; font-weight:500; color:#1C1E21;">Flat white</span></div></td><td style="padding:13px 20px; font-size:14px; color:#5A5F66;">Hot drinks</td><td style="padding:13px 20px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px;">$4.50</td><td style="padding:13px 20px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px;">24</td><td style="padding:13px 20px;"><span style="font-size:12px; font-weight:600; color:#1F8A5B; background:#E6F4EE; padding:4px 10px; border-radius:999px;">In stock</span></td><td style="text-align:center; color:#9AA0A8;">⋯</td></tr>
+                <tr style="border-top:1px solid #F0F1F2; cursor:pointer;" style-hover="background:#FAFBFC;"><td style="padding:13px 20px;"><div style="display:flex; align-items:center; gap:12px;"><span style="width:38px; height:38px; border-radius:9px; background:#FEF3EC; color:#D45915; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px;">C</span><span style="font-size:15px; font-weight:500; color:#1C1E21;">Croissant</span></div></td><td style="padding:13px 20px; font-size:14px; color:#5A5F66;">Food</td><td style="padding:13px 20px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px;">$3.20</td><td style="padding:13px 20px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px;">5</td><td style="padding:13px 20px;"><span style="font-size:12px; font-weight:600; color:#8A5A00; background:#FCF3DC; padding:4px 10px; border-radius:999px;">Low stock</span></td><td style="text-align:center; color:#9AA0A8;">⋯</td></tr>
+                <tr style="border-top:1px solid #F0F1F2; cursor:pointer;" style-hover="background:#FAFBFC;"><td style="padding:13px 20px;"><div style="display:flex; align-items:center; gap:12px;"><span style="width:38px; height:38px; border-radius:9px; background:#E5ECF4; color:#1E3A5F; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px;">I</span><span style="font-size:15px; font-weight:500; color:#1C1E21;">Iced latte</span></div></td><td style="padding:13px 20px; font-size:14px; color:#5A5F66;">Cold drinks</td><td style="padding:13px 20px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px;">$5.00</td><td style="padding:13px 20px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px;">31</td><td style="padding:13px 20px;"><span style="font-size:12px; font-weight:600; color:#1F8A5B; background:#E6F4EE; padding:4px 10px; border-radius:999px;">In stock</span></td><td style="text-align:center; color:#9AA0A8;">⋯</td></tr>
+                <tr style="border-top:1px solid #F0F1F2; cursor:pointer;" style-hover="background:#FAFBFC;"><td style="padding:13px 20px;"><div style="display:flex; align-items:center; gap:12px;"><span style="width:38px; height:38px; border-radius:9px; background:#FEF3EC; color:#D45915; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px;">M</span><span style="font-size:15px; font-weight:500; color:#1C1E21;">Muffin</span></div></td><td style="padding:13px 20px; font-size:14px; color:#5A5F66;">Food</td><td style="padding:13px 20px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px;">$2.80</td><td style="padding:13px 20px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px;">0</td><td style="padding:13px 20px;"><span style="font-size:12px; font-weight:600; color:#D64545; background:#FBE9E9; padding:4px 10px; border-radius:999px;">Out of stock</span></td><td style="text-align:center; color:#9AA0A8;">⋯</td></tr>
+                <tr style="border-top:1px solid #F0F1F2; cursor:pointer;" style-hover="background:#FAFBFC;"><td style="padding:13px 20px;"><div style="display:flex; align-items:center; gap:12px;"><span style="width:38px; height:38px; border-radius:9px; background:#E5ECF4; color:#1E3A5F; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px;">E</span><span style="font-size:15px; font-weight:500; color:#1C1E21;">Espresso</span></div></td><td style="padding:13px 20px; font-size:14px; color:#5A5F66;">Hot drinks</td><td style="padding:13px 20px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px;">$3.00</td><td style="padding:13px 20px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:14px;">52</td><td style="padding:13px 20px;"><span style="font-size:12px; font-weight:600; color:#1F8A5B; background:#E6F4EE; padding:4px 10px; border-radius:999px;">In stock</span></td><td style="text-align:center; color:#9AA0A8;">⋯</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isAdd }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:960px; margin:0 auto;">
+          <button onClick="{{ goProducts }}" style="display:inline-flex; align-items:center; gap:7px; font-family:'Public Sans',sans-serif; font-weight:600; font-size:14px; color:#5A5F66; background:none; border:none; cursor:pointer; padding:0; margin-bottom:14px;" style-hover="color:#1E3A5F;">← Products</button>
+          <div style="margin-bottom:24px;"><div style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:26px; color:#14283F;">Add a product</div><div style="font-size:15px; color:#5A5F66; margin-top:4px;">Just two things to start &mdash; a <b style="color:#1C1E21;">name</b> and a <b style="color:#1C1E21;">price</b>. Everything else is optional and can wait.</div></div>
+
+          <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:20px; align-items:start;">
+            <div style="display:flex; flex-direction:column; gap:20px;">
+              <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:26px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:22px;"><span style="width:26px; height:26px; border-radius:999px; background:#EA661A; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">1</span><span style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F;">The basics</span></div>
+
+                <div style="display:flex; gap:18px; margin-bottom:20px;">
+                  <div style="width:96px; height:96px; flex:none; border:2px dashed #C7CDD4; border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; cursor:pointer; color:#9AA0A8; background:#FAFBFC;" style-hover="border-color:#EA661A; color:#D45915;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg><span style="font-size:11px; font-weight:600;">Add photo</span></div>
+                  <div style="flex:1;">
+                    <label style="display:block; font-family:'Public Sans',sans-serif; font-weight:600; font-size:13px; color:#41454B; margin-bottom:7px;">Product name</label>
+                    <input type="text" placeholder="e.g. Flat white" style="width:100%; font-family:'Public Sans',sans-serif; font-size:16px; color:#1C1E21; padding:13px 14px; border:1.5px solid #DDDEDF; border-radius:9px; outline:none; transition:border-color .15s,box-shadow .15s;" style-focus="border-color:#EA661A; box-shadow:0 0 0 3px rgba(234,102,26,.18);">
+                    <div style="font-size:12px; color:#777C84; margin-top:6px;">This is what staff tap on the sale screen.</div>
+                  </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                  <div>
+                    <label style="display:block; font-family:'Public Sans',sans-serif; font-weight:600; font-size:13px; color:#41454B; margin-bottom:7px;">Selling price</label>
+                    <div style="position:relative;"><span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); font-family:'IBM Plex Mono',monospace; font-size:16px; color:#777C84;">$</span><input type="text" placeholder="0.00" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:16px; color:#1C1E21; padding:13px 14px 13px 30px; border:1.5px solid #DDDEDF; border-radius:9px; outline:none; transition:border-color .15s,box-shadow .15s;" style-focus="border-color:#EA661A; box-shadow:0 0 0 3px rgba(234,102,26,.18);"></div>
+                  </div>
+                  <div>
+                    <label style="display:block; font-family:'Public Sans',sans-serif; font-weight:600; font-size:13px; color:#41454B; margin-bottom:7px;">Category</label>
+                    <div style="position:relative;"><select style="width:100%; appearance:none; font-family:'Public Sans',sans-serif; font-size:16px; color:#1C1E21; padding:13px 14px; border:1.5px solid #DDDEDF; border-radius:9px; outline:none; background:#fff; cursor:pointer;" style-focus="border-color:#EA661A; box-shadow:0 0 0 3px rgba(234,102,26,.18);"><option>Hot drinks</option><option>Cold drinks</option><option>Food</option><option>+ New category…</option></select><span style="position:absolute; right:14px; top:50%; transform:translateY(-50%); pointer-events:none; color:#777C84;">▾</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; box-shadow:0 1px 3px rgba(20,40,63,.06); overflow:hidden;">
+                <button onClick="{{ toggleMore }}" style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:18px 26px; background:none; border:none; cursor:pointer; text-align:left;" style-hover="background:#FAFBFC;">
+                  <span style="display:flex; align-items:center; gap:10px;"><span style="width:26px; height:26px; border-radius:999px; background:#E5ECF4; color:#1E3A5F; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;">2</span><span style="font-family:'Montserrat',sans-serif; font-weight:700; font-size:16px; color:#14283F;">More options</span><span style="font-size:13px; color:#9AA0A8; font-weight:400;">barcode, stock, tax</span></span>
+                  <sc-if value="{{ notMore }}" hint-placeholder-val="{{ true }}"><span style="font-size:14px; font-weight:600; color:#EA661A;">Show ▾</span></sc-if>
+                  <sc-if value="{{ more }}" hint-placeholder-val="{{ false }}"><span style="font-size:14px; font-weight:600; color:#EA661A;">Hide ▴</span></sc-if>
+                </button>
+                <sc-if value="{{ more }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:4px 26px 26px; border-top:1px solid #ECEDEE;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:18px 0;">
+                      <div><label style="display:block; font-weight:600; font-size:13px; color:#41454B; margin-bottom:7px;">Barcode</label><input type="text" placeholder="Scan or type the numbers" style="width:100%; font-family:'Public Sans',sans-serif; font-size:15px; padding:11px 14px; border:1.5px solid #DDDEDF; border-radius:9px; outline:none;" style-focus="border-color:#EA661A; box-shadow:0 0 0 3px rgba(234,102,26,.18);"></div>
+                      <div><label style="display:block; font-weight:600; font-size:13px; color:#41454B; margin-bottom:7px;">Cost price <span style="color:#9AA0A8; font-weight:400;">(optional)</span></label><div style="position:relative;"><span style="position:absolute; left:14px; top:50%; transform:translateY(-50%); font-family:'IBM Plex Mono',monospace; font-size:15px; color:#777C84;">$</span><input type="text" placeholder="0.00" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:15px; padding:11px 14px 11px 30px; border:1.5px solid #DDDEDF; border-radius:9px; outline:none;" style-focus="border-color:#EA661A; box-shadow:0 0 0 3px rgba(234,102,26,.18);"></div></div>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:#FAFBFC; border:1px solid #ECEDEE; border-radius:10px; margin-bottom:12px;"><div><div style="font-size:15px; font-weight:500; color:#1C1E21;">Track inventory</div><div style="font-size:13px; color:#777C84;">Warn me when this runs low.</div></div><span style="width:46px; height:26px; border-radius:999px; background:#1F8A5B; display:flex; align-items:center; padding:3px; justify-content:flex-end;"><span style="width:20px; height:20px; border-radius:999px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25);"></span></span></div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:#FAFBFC; border:1px solid #ECEDEE; border-radius:10px;"><div><div style="font-size:15px; font-weight:500; color:#1C1E21;">Available online</div><div style="font-size:13px; color:#777C84;">Show on your web store too.</div></div><span style="width:46px; height:26px; border-radius:999px; background:#C7C6C5; display:flex; align-items:center; padding:3px; justify-content:flex-start;"><span style="width:20px; height:20px; border-radius:999px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25);"></span></span></div>
+                  </div>
+                </sc-if>
+              </div>
+
+              <div style="display:flex; align-items:center; gap:12px; padding-top:4px;">
+                <button onClick="{{ goProducts }}" style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#5A5F66; background:none; border:none; cursor:pointer; padding:13px 8px;" style-hover="color:#1C1E21;">Cancel</button>
+                <button style="margin-left:auto; font-family:'Public Sans',sans-serif; font-weight:600; font-size:15px; color:#1E3A5F; background:#fff; border:1.5px solid #C2D0E0; padding:13px 20px; border-radius:10px; cursor:pointer;" style-hover="background:#F2F6FB;">Save &amp; add another</button>
+                <button onClick="{{ goProducts }}" style="{{ primaryLg }}" style-hover="{{ primaryHover }}">Save product</button>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:16px; position:sticky; top:0;">
+              <div style="border:1px solid #E4E7EB; border-radius:14px; background:#fff; padding:22px; box-shadow:0 1px 3px rgba(20,40,63,.06);">
+                <div style="font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#777C84; margin-bottom:14px;">Live preview on POS</div>
+                <div style="border:1px solid #ECEDEE; border-radius:12px; overflow:hidden; width:160px;">
+                  <div style="height:96px; background:repeating-linear-gradient(45deg,#F2F6FB,#F2F6FB 8px,#E9EFF7 8px,#E9EFF7 16px); display:flex; align-items:center; justify-content:center; color:#8FA6C2;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>
+                  <div style="padding:11px 12px;"><div style="font-size:14px; font-weight:600; color:#1C1E21;">Flat white</div><div style="font-family:'IBM Plex Mono',monospace; font-size:14px; color:#EA661A; font-weight:500; margin-top:2px;">$4.50</div></div>
+                </div>
+                <div style="font-size:12px; color:#9AA0A8; margin-top:12px; line-height:1.5;">This is the tile staff will tap to sell the item.</div>
+              </div>
+
+              <div style="border:1px solid #DCEAF9; border-radius:14px; background:#F4F9FE; padding:20px;">
+                <div style="display:flex; align-items:center; gap:8px; font-family:'Montserrat',sans-serif; font-weight:700; font-size:14px; color:#1E3A5F; margin-bottom:12px;"><span style="width:22px; height:22px; border-radius:999px; background:#2B6CC4; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">i</span>Quick tips</div>
+                <div style="display:flex; flex-direction:column; gap:11px; font-size:13px; color:#41546E; line-height:1.5;">
+                  <div style="display:flex; gap:8px;"><span style="color:#1F8A5B; font-weight:700;">✓</span><span>You only need a name and price to save.</span></div>
+                  <div style="display:flex; gap:8px;"><span style="color:#1F8A5B; font-weight:700;">✓</span><span>No photo? A coloured tile is made for you.</span></div>
+                  <div style="display:flex; gap:8px;"><span style="color:#1F8A5B; font-weight:700;">✓</span><span>You can edit everything later from Products.</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;primaryColor&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;orange&quot;,&quot;navy&quot;],&quot;default&quot;:&quot;orange&quot;,&quot;tsType&quot;:&quot;'orange' | 'navy'&quot;}}">
+class Component extends DCLogic {
+  state = { screen: 'dashboard', more: false };
+  navStyle(active) {
+    return {
+      display: 'flex', alignItems: 'center', gap: '12px', width: '100%', textAlign: 'left',
+      fontFamily: "'Public Sans',sans-serif", fontSize: '15px', fontWeight: active ? 600 : 500,
+      padding: '11px 14px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+      background: active ? '#1E3A5F' : 'transparent',
+      color: active ? '#FFFFFF' : '#8FA6C2', transition: 'all .15s',
+    };
+  }
+  renderVals() {
+    const s = this.state.screen;
+    const titles = { dashboard: 'Dashboard', products: 'Products', add: 'Add product' };
+    const navy = (this.props.primaryColor ?? 'orange') === 'navy';
+    const bg = navy ? '#1E3A5F' : '#EA661A';
+    const hover = navy ? '#18324F' : '#D45915';
+    const shadow = navy ? '0 1px 2px rgba(20,40,63,.28)' : '0 1px 2px rgba(138,58,13,.30)';
+    const baseBtn = {
+      fontFamily: "'Public Sans',sans-serif", fontWeight: 600, fontSize: '14px', color: '#fff',
+      background: bg, border: 'none', borderRadius: '10px', cursor: 'pointer',
+      display: 'inline-flex', alignItems: 'center', gap: '7px', boxShadow: shadow, transition: 'background .15s',
+    };
+    return {
+      pageTitle: titles[s],
+      primaryMd: { ...baseBtn, padding: '10px 18px' },
+      primaryMdRight: { ...baseBtn, padding: '10px 18px', marginLeft: 'auto' },
+      primaryLg: { ...baseBtn, fontSize: '15px', padding: '13px 26px' },
+      primaryHover: { background: hover },
+      isDash: s === 'dashboard',
+      isProducts: s === 'products',
+      isAdd: s === 'add',
+      more: this.state.more,
+      notMore: !this.state.more,
+      navDashStyle: this.navStyle(s === 'dashboard'),
+      navProductsStyle: this.navStyle(s === 'products' || s === 'add'),
+      navInertStyle: this.navStyle(false),
+      goDash: () => this.setState({ screen: 'dashboard' }),
+      goProducts: () => this.setState({ screen: 'products' }),
+      goAdd: () => this.setState({ screen: 'add', more: false }),
+      toggleMore: () => this.setState(m => ({ more: !m.more })),
+    };
+  }
+}
+</script>
+</body>
+</html>

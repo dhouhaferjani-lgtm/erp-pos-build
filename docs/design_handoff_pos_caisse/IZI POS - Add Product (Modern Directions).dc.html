@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing:border-box; }
+    .ml-in { width:100%; font-family:'Public Sans',sans-serif; font-size:13.5px; color:#1C1E21; border:1px solid #D2D8DF; border-radius:6px; padding:9px 11px; outline:none; background:#fff; }
+    .ml-in:focus { border-color:#1E3A5F; box-shadow:0 0 0 3px rgba(30,58,95,.10); }
+    .ml-mono { font-family:'IBM Plex Mono',monospace; }
+    .ml-lbl { font-size:12px; font-weight:600; color:#4C5A6B; margin-bottom:6px; }
+  </style>
+</helmet>
+
+<!-- ===================== DIRECTION A — CRISP / OPERATIONAL ===================== -->
+<div style="position:absolute; left:0; top:0; width:1320px;">
+  <div data-drags-parent="1" style="display:flex; align-items:baseline; gap:12px; margin-bottom:16px; font-family:'Space Grotesk',sans-serif;">
+    <span style="font-size:19px; font-weight:600; color:#14283F;">Direction A — Crisp / Operational</span>
+    <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6B7787;">hairline · flat · mono numerics</span>
+  </div>
+
+  <div data-screen-label="Add Product — Crisp" style="width:1320px; height:980px; background:#fff; border-radius:3px; box-shadow:0 1px 3px rgba(20,40,63,.10); overflow:hidden; display:flex; font-family:'Public Sans',system-ui,sans-serif; color:#1C1E21;">
+    <aside style="width:222px; flex:none; background:#0B1726; display:flex; flex-direction:column;">
+      <div style="height:60px; flex:none; display:flex; align-items:center; gap:10px; padding:0 18px; border-bottom:1px solid #182740;">
+        <img src="assets/pos-mark-dark.svg" alt="" style="width:26px; height:26px;">
+        <span style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; color:#fff; letter-spacing:-.01em;">IZI POS</span>
+      </div>
+      <nav style="flex:1; padding:12px 10px; display:flex; flex-direction:column; gap:1px; font-size:13.5px;">
+        <div style="padding:9px 12px; color:#7E97B5;">Dashboard</div>
+        <div style="padding:9px 12px; color:#7E97B5;">Sales</div>
+        <div style="padding:9px 12px; color:#7E97B5;">Purchases</div>
+        <div style="margin-top:3px; padding:9px 12px; color:#fff; font-weight:600; background:#16263c; border-left:2px solid #EA661A; border-radius:0 6px 6px 0;">Catalog</div>
+        <div style="padding:2px 0 4px 22px; display:flex; flex-direction:column;">
+          <div style="padding:7px 12px; font-size:13px; color:#fff; font-weight:600;">Products</div>
+          <div style="padding:7px 12px; font-size:13px; color:#6E86A5;">Categories</div>
+          <div style="padding:7px 12px; font-size:13px; color:#6E86A5;">Price Lists</div>
+        </div>
+        <div style="padding:9px 12px; color:#7E97B5;">Inventory</div>
+        <div style="padding:9px 12px; color:#7E97B5;">Point of Sale</div>
+        <div style="padding:9px 12px; color:#7E97B5;">Settings</div>
+      </nav>
+      <div style="flex:none; border-top:1px solid #182740; padding:12px 14px; display:flex; align-items:center; gap:10px;">
+        <span style="width:30px; height:30px; border-radius:7px; background:#2B4A72; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">MK</span>
+        <div style="line-height:1.2;"><div style="font-size:12.5px; font-weight:600; color:#E8EDF5;">Maya Khaled</div><div style="font-size:11px; color:#5B7AA3;">Riverside Pharmacy</div></div>
+      </div>
+    </aside>
+
+    <div style="flex:1; display:flex; flex-direction:column; min-width:0; background:#FBFBFC;">
+      <header style="height:60px; flex:none; background:#fff; border-bottom:1px solid #E0E4E9; display:flex; align-items:center; gap:14px; padding:0 22px;">
+        <div style="position:relative; width:300px;">
+          <input placeholder="Search" style="width:100%; font-family:'Public Sans',sans-serif; font-size:13.5px; padding:8px 12px 8px 14px; border:1px solid #E0E4E9; border-radius:6px; outline:none; background:#F6F7F8;">
+          <span style="position:absolute; right:9px; top:50%; transform:translateY(-50%); font-family:'IBM Plex Mono',monospace; font-size:11px; color:#9AA5B2; border:1px solid #E0E4E9; border-radius:4px; padding:1px 6px;">⌘K</span>
+        </div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:#344150; border:1px solid #E0E4E9; border-radius:6px; padding:7px 12px;">Riverside · Main<span style="color:#9AA5B2;">▾</span></div>
+      </header>
+
+      <main style="flex:1; overflow:hidden; padding:24px 28px;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6B7787; margin-bottom:14px;">Catalog / Products / <span style="color:#1C1E21;">new</span></div>
+        <div style="display:flex; align-items:flex-start; gap:16px; margin-bottom:20px;">
+          <div style="flex:1;">
+            <h1 style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:27px; color:#14283F; margin:0; letter-spacing:-.02em;">New product</h1>
+            <p style="font-size:13.5px; color:#6B7787; margin:6px 0 0;">Scan a barcode to auto-fill from Synerivia, or type by hand.</p>
+          </div>
+          <div style="display:flex; align-items:center; gap:9px; flex:none;">
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:13.5px; color:#4C5A6B; background:none; border:none; cursor:pointer; padding:9px 8px;">Cancel</button>
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:13.5px; color:#1E3A5F; background:#fff; border:1px solid #C2D0E0; padding:8px 15px; border-radius:6px; cursor:pointer;">Save draft</button>
+            <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:13.5px; color:#fff; background:#EA661A; border:none; padding:9px 18px; border-radius:6px; cursor:pointer;">Publish</button>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:12px; border:1px solid #E0E4E9; border-radius:8px; background:#fff; padding:12px 14px; margin-bottom:22px;">
+          <div style="width:46px; height:46px; flex:none; border-radius:7px; background:repeating-linear-gradient(45deg,#F2F4F7,#F2F4F7 6px,#E9EDF2 6px,#E9EDF2 12px); border:1px solid #E0E4E9; display:flex; align-items:center; justify-content:center;"><span style="font-family:'IBM Plex Mono',monospace; font-size:8px; color:#9AA5B2;">photo</span></div>
+          <input value="5012345 678900" class="ml-in ml-mono" style="width:200px; flex:none; font-size:14px;">
+          <input value="Paracetamol 500mg Tablets ×24" class="ml-in" style="flex:1; font-size:14px; font-weight:600;">
+          <span style="flex:none; display:inline-flex; align-items:center; gap:7px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#1F8A5B; border:1px solid #C3E6D4; background:#F2FAF6; padding:7px 11px; border-radius:6px;"><span style="width:6px; height:6px; border-radius:999px; background:#1F8A5B;"></span>Synerivia · 14 fields</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:160px 1fr 270px; gap:22px; align-items:start;">
+          <nav style="display:flex; flex-direction:column; gap:1px;">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:#9AA5B2; padding:4px 10px 10px;">Sections</div>
+            <div style="padding:8px 10px; font-size:13.5px; font-weight:600; color:#14283F; border-left:2px solid #EA661A; background:#F2F4F7;">General</div>
+            <div style="padding:8px 12px; font-size:13.5px; color:#4C5A6B;">Pricing &amp; Tax</div>
+            <div style="padding:8px 12px; font-size:13.5px; color:#4C5A6B;">Inventory &amp; Units</div>
+            <div style="padding:8px 12px; font-size:13.5px; color:#4C5A6B;">Media &amp; Files</div>
+            <div style="padding:8px 12px; font-size:13.5px; color:#4C5A6B;">Pharmacy</div>
+            <div style="margin-top:14px; padding:0 10px;">
+              <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:11px; margin-bottom:6px;"><span style="color:#6B7787;">complete</span><span style="color:#1F8A5B; font-weight:500;">86%</span></div>
+              <div style="height:4px; background:#E9EDF2; overflow:hidden;"><span style="display:block; height:100%; width:86%; background:#1F8A5B;"></span></div>
+            </div>
+          </nav>
+
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <section style="border:1px solid #E0E4E9; border-radius:8px; background:#fff; padding:22px;">
+              <div style="display:flex; align-items:center; gap:9px; margin-bottom:18px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#9AA5B2;">01</span><h2 style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px; color:#14283F; margin:0;">General</h2></div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px 20px;">
+                <div><div class="ml-lbl">SKU</div><input value="PAR-500-24" class="ml-in ml-mono"></div>
+                <div><div class="ml-lbl">Type</div><select class="ml-in"><option>Storable</option><option>Service</option></select></div>
+                <div style="grid-column:1 / -1;"><div class="ml-lbl">Description</div><textarea rows="2" class="ml-in" style="resize:vertical;">Fast-acting pain &amp; fever relief. 24 film-coated tablets.</textarea></div>
+                <div><div class="ml-lbl">Brand</div><input value="Panadol" class="ml-in"></div>
+                <div><div class="ml-lbl">Manufacturer</div><input value="GSK Consumer Health" class="ml-in"></div>
+                <div style="grid-column:1 / -1; display:flex; gap:26px; padding-top:2px;">
+                  <label style="display:flex; align-items:center; gap:9px; font-size:13.5px;"><span style="width:18px; height:18px; border-radius:4px; background:#1E3A5F; display:inline-flex; align-items:center; justify-content:center;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Active (sellable)</label>
+                  <label style="display:flex; align-items:center; gap:9px; font-size:13.5px;"><span style="width:18px; height:18px; border-radius:4px; background:#fff; border:1.5px solid #C7CDD4;"></span>E-commerce</label>
+                </div>
+              </div>
+            </section>
+            <section style="border:1px solid #E0E4E9; border-radius:8px; background:#fff; padding:22px;">
+              <div style="display:flex; align-items:center; gap:9px; margin-bottom:18px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#9AA5B2;">02</span><h2 style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px; color:#14283F; margin:0;">Pricing &amp; Tax</h2></div>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 20px;">
+                <div><div class="ml-lbl">Purchase price</div><input value="1.20" class="ml-in ml-mono"></div>
+                <div><div class="ml-lbl">Margin</div><input value="58%" readonly class="ml-in ml-mono" style="color:#4C5A6B; background:#F6F7F8; border-color:#E0E4E9;"></div>
+                <div><div class="ml-lbl">Sale price <span style="color:#EA661A;">*</span></div><input value="2.85" class="ml-in ml-mono"></div>
+                <div><div class="ml-lbl">Tax class <span style="color:#EA661A;">*</span></div><select class="ml-in"><option>VAT 0% — medicine</option></select></div>
+                <div><div class="ml-lbl">Loyalty points</div><input value="3" class="ml-in ml-mono"></div>
+                <div style="display:flex; align-items:flex-end;"><label style="display:flex; align-items:center; gap:9px; font-size:13.5px; padding-bottom:9px;"><span style="width:18px; height:18px; border-radius:4px; background:#1E3A5F; display:inline-flex; align-items:center; justify-content:center;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Discountable</label></div>
+              </div>
+            </section>
+            <section style="border:1px solid #E0E4E9; border-radius:8px; background:#fff; padding:22px;">
+              <div style="display:flex; align-items:center; gap:9px; margin-bottom:14px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#9AA5B2;">03</span><h2 style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px; color:#14283F; margin:0;">Inventory &amp; Units</h2></div>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px 20px;">
+                <div><div class="ml-lbl">Opening stock</div><input value="0" class="ml-in ml-mono"></div>
+                <div><div class="ml-lbl">Opening unit cost</div><input value="1.20" class="ml-in ml-mono"></div>
+                <div><div class="ml-lbl">As of</div><input value="23 Jun 2026" class="ml-in ml-mono"></div>
+              </div>
+            </section>
+          </div>
+
+          <aside style="display:flex; flex-direction:column; gap:14px;">
+            <div style="border:1px solid #E0E4E9; border-radius:8px; background:#fff; padding:18px;">
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:#9AA5B2; margin-bottom:14px;">Before publish</div>
+              <div style="display:flex; flex-direction:column; gap:11px; font-size:13px;">
+                <div style="display:flex; align-items:center; gap:10px; color:#1C1E21;"><span style="width:16px; height:16px; border-radius:999px; background:#1F8A5B; display:inline-flex; align-items:center; justify-content:center; flex:none;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Name &amp; barcode</div>
+                <div style="display:flex; align-items:center; gap:10px; color:#1C1E21;"><span style="width:16px; height:16px; border-radius:999px; background:#1F8A5B; display:inline-flex; align-items:center; justify-content:center; flex:none;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>Sale price &amp; tax</div>
+                <div style="display:flex; align-items:center; gap:10px; color:#6B7787;"><span style="width:16px; height:16px; border-radius:999px; border:1.5px solid #C7CDD4; flex:none;"></span>Product image</div>
+                <div style="display:flex; align-items:center; gap:10px; color:#6B7787;"><span style="width:16px; height:16px; border-radius:999px; border:1.5px solid #C7CDD4; flex:none;"></span>Category</div>
+              </div>
+            </div>
+            <div style="border:1px solid #E0E4E9; border-radius:8px; background:#fff; padding:18px;">
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:#9AA5B2; margin-bottom:12px;">Organize</div>
+              <div style="margin-bottom:14px;"><div class="ml-lbl">Category</div><select class="ml-in"><option>Pain &amp; Fever</option></select></div>
+              <div><div class="ml-lbl">Tags</div><div style="display:flex; flex-wrap:wrap; gap:6px; padding-top:2px;"><span style="font-size:12px; color:#1E3A5F; background:#EDF1F6; border-radius:5px; padding:4px 9px;">OTC</span><span style="font-size:12px; color:#1E3A5F; background:#EDF1F6; border-radius:5px; padding:4px 9px;">analgesic</span></div></div>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== DIRECTION B — EDITORIAL / CONFIDENT ===================== -->
+<div style="position:absolute; left:1440px; top:0; width:1320px;">
+  <div data-drags-parent="1" style="display:flex; align-items:baseline; gap:12px; margin-bottom:16px; font-family:'Bricolage Grotesque',sans-serif;">
+    <span style="font-size:19px; font-weight:700; color:#14283F;">Direction B — Editorial / Confident</span>
+    <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6B7787;">big type · whitespace · numbered rules · underline fields</span>
+  </div>
+
+  <div data-screen-label="Add Product — Editorial" style="width:1320px; height:980px; background:#fff; border-radius:3px; box-shadow:0 1px 3px rgba(20,40,63,.10); overflow:hidden; display:flex; font-family:'Public Sans',system-ui,sans-serif; color:#14283F;">
+    <aside style="width:212px; flex:none; background:#0B1726; display:flex; flex-direction:column; padding:0 4px;">
+      <div style="height:72px; flex:none; display:flex; align-items:center; gap:10px; padding:0 18px;">
+        <img src="assets/pos-mark-dark.svg" alt="" style="width:26px; height:26px;">
+        <span style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:18px; color:#fff; letter-spacing:-.01em;">IZI POS</span>
+      </div>
+      <nav style="flex:1; padding:10px 14px; display:flex; flex-direction:column; gap:2px; font-size:15px;">
+        <div style="padding:8px 4px; color:#9FB2C9;">Dashboard</div>
+        <div style="padding:8px 4px; color:#9FB2C9;">Sales</div>
+        <div style="padding:8px 4px; color:#9FB2C9;">Purchases</div>
+        <div style="padding:8px 4px; color:#fff; font-weight:600;">Catalog</div>
+        <div style="padding:2px 0 4px 16px; display:flex; flex-direction:column; gap:2px; font-size:14px;">
+          <div style="padding:6px 4px; color:#fff; font-weight:600; display:flex; align-items:center; gap:9px;"><span style="width:5px; height:5px; border-radius:999px; background:#EA661A;"></span>Products</div>
+          <div style="padding:6px 4px; color:#6E86A5;">Categories</div>
+          <div style="padding:6px 4px; color:#6E86A5;">Price Lists</div>
+        </div>
+        <div style="padding:8px 4px; color:#9FB2C9;">Inventory</div>
+        <div style="padding:8px 4px; color:#9FB2C9;">Point of Sale</div>
+        <div style="padding:8px 4px; color:#9FB2C9;">Settings</div>
+      </nav>
+      <div style="flex:none; padding:16px 18px; display:flex; align-items:center; gap:10px;">
+        <span style="width:32px; height:32px; border-radius:999px; background:#2B4A72; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">MK</span>
+        <div style="line-height:1.2;"><div style="font-size:13px; font-weight:600; color:#E8EDF5;">Maya Khaled</div><div style="font-size:11px; color:#5B7AA3;">Riverside Pharmacy</div></div>
+      </div>
+    </aside>
+
+    <div style="flex:1; display:flex; flex-direction:column; min-width:0; background:#fff;">
+      <header style="height:72px; flex:none; display:flex; align-items:center; gap:16px; padding:0 40px; border-bottom:1px solid #EDEFF2;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#9098A4; letter-spacing:.02em;">CATALOG / PRODUCTS / NEW</div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:14px;">
+          <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:14px; color:#6B7280; background:none; border:none; cursor:pointer;">Save draft</button>
+          <button style="font-family:'Public Sans',sans-serif; font-weight:600; font-size:14px; color:#fff; background:#14283F; border:none; padding:11px 22px; border-radius:999px; cursor:pointer;">Publish product →</button>
+        </div>
+      </header>
+
+      <main style="flex:1; overflow:hidden; padding:40px 56px;">
+        <div style="max-width:880px;">
+          <div style="display:flex; align-items:flex-start; gap:30px; margin-bottom:42px;">
+            <div style="flex:1;">
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#EA661A; letter-spacing:.06em; margin-bottom:14px;">NEW PRODUCT</div>
+              <input value="Paracetamol 500mg Tablets ×24" style="width:100%; font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:40px; line-height:1.1; letter-spacing:-.025em; color:#14283F; border:none; outline:none; padding:0; background:transparent;">
+              <div style="display:flex; align-items:center; gap:14px; margin-top:18px;">
+                <input value="5012345 678900" style="font-family:'IBM Plex Mono',monospace; font-size:15px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:5px 2px; width:180px;">
+                <span style="display:inline-flex; align-items:center; gap:7px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#1F8A5B;"><span style="width:6px; height:6px; border-radius:999px; background:#1F8A5B;"></span>enriched from Synerivia · 14 fields</span>
+              </div>
+            </div>
+            <div style="width:128px; height:128px; flex:none; border-radius:14px; background:repeating-linear-gradient(45deg,#F6F7F9,#F6F7F9 8px,#EEF0F3 8px,#EEF0F3 16px); border:1px solid #EAECEF; display:flex; align-items:center; justify-content:center; color:#A9B0BA; font-size:12px;">+ photo</div>
+          </div>
+
+          <!-- Section 01 -->
+          <section style="display:grid; grid-template-columns:200px 1fr; gap:40px; padding:34px 0; border-top:1px solid #EDEFF2;">
+            <div>
+              <div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:20px; color:#14283F; letter-spacing:-.01em;"><span style="color:#C8CDD4;">01</span> General</div>
+              <p style="font-size:13.5px; color:#8A929C; line-height:1.55; margin:10px 0 0;">How this product is identified across the catalog.</p>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:26px 36px; align-items:end;">
+              <div><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">SKU</div><input value="PAR-500-24" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:16px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:7px 2px; background:transparent;"></div>
+              <div><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Type</div><select style="width:100%; font-family:'Public Sans',sans-serif; font-size:16px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:7px 2px; background:transparent;"><option>Storable</option><option>Service</option></select></div>
+              <div><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Brand</div><input value="Panadol" style="width:100%; font-size:16px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:7px 2px; background:transparent;"></div>
+              <div><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Manufacturer</div><input value="GSK Consumer Health" style="width:100%; font-size:16px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:7px 2px; background:transparent;"></div>
+              <div style="grid-column:1 / -1;"><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Description</div><input value="Fast-acting pain &amp; fever relief. 24 film-coated tablets." style="width:100%; font-size:16px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:7px 2px; background:transparent;"></div>
+            </div>
+          </section>
+
+          <!-- Section 02 -->
+          <section style="display:grid; grid-template-columns:200px 1fr; gap:40px; padding:34px 0; border-top:1px solid #EDEFF2;">
+            <div>
+              <div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:20px; color:#14283F; letter-spacing:-.01em;"><span style="color:#C8CDD4;">02</span> Pricing</div>
+              <p style="font-size:13.5px; color:#8A929C; line-height:1.55; margin:10px 0 0;">Margin is computed for you.</p>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:24px;">
+              <div style="display:flex; align-items:flex-end; gap:36px;">
+                <div style="flex:1;"><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Purchase</div><div style="display:flex; align-items:baseline; gap:4px; border-bottom:1.5px solid #D8DDE4; padding-bottom:7px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:16px; color:#9098A4;">$</span><input value="1.20" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:24px; font-weight:500; color:#14283F; border:none; outline:none; padding:0; background:transparent;"></div></div>
+                <div style="flex:1;"><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Sale price <span style="color:#EA661A;">*</span></div><div style="display:flex; align-items:baseline; gap:4px; border-bottom:1.5px solid #EA661A; padding-bottom:7px;"><span style="font-family:'IBM Plex Mono',monospace; font-size:16px; color:#EA661A;">$</span><input value="2.85" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:24px; font-weight:600; color:#14283F; border:none; outline:none; padding:0; background:transparent;"></div></div>
+                <div style="flex:none; text-align:right; padding-bottom:7px;"><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Margin</div><div style="font-family:'IBM Plex Mono',monospace; font-size:24px; font-weight:500; color:#1F8A5B;">58%</div></div>
+              </div>
+              <div style="display:flex; align-items:flex-end; gap:36px;">
+                <div style="flex:1;"><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Tax class <span style="color:#EA661A;">*</span></div><select style="width:100%; font-size:16px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:7px 2px; background:transparent;"><option>VAT 0% — medicine</option></select></div>
+                <div style="flex:1;"><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Loyalty points</div><input value="3" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:16px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:7px 2px; background:transparent;"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Section 03 -->
+          <section style="display:grid; grid-template-columns:200px 1fr; gap:40px; padding:34px 0; border-top:1px solid #EDEFF2;">
+            <div>
+              <div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:700; font-size:20px; color:#14283F; letter-spacing:-.01em;"><span style="color:#C8CDD4;">03</span> Inventory</div>
+              <p style="font-size:13.5px; color:#8A929C; line-height:1.55; margin:10px 0 0;">Opening balance, set once.</p>
+            </div>
+            <div style="display:flex; align-items:flex-end; gap:36px;">
+              <div style="flex:1;"><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Opening stock</div><input value="0" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:16px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:7px 2px; background:transparent;"></div>
+              <div style="flex:1;"><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">Unit cost</div><input value="1.20" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:16px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:7px 2px; background:transparent;"></div>
+              <div style="flex:1;"><div style="font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#9098A4; margin-bottom:9px;">As of</div><input value="23 Jun 2026" style="width:100%; font-family:'IBM Plex Mono',monospace; font-size:16px; color:#14283F; border:none; border-bottom:1.5px solid #D8DDE4; outline:none; padding:7px 2px; background:transparent;"></div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+</body>
+</html>
