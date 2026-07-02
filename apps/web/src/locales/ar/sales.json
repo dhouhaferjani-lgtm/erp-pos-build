@@ -111,5 +111,14 @@
       "received": "مُستلَم",
       "cancelled": "مُلغى"
     }
+  },
+  "purchaseOrders": {
+    "received": "مُستلَم",
+    "receivedOfTotal": "{{received}} من {{total}}",
+    "receiptStatus": {
+      "not_received": "غير مُستلَم",
+      "partially_received": "مُستلَم جزئيًا",
+      "fully_received": "مُستلَم بالكامل"
+    }
   }
 }

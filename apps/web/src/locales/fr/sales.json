@@ -325,6 +325,7 @@
     "receiveGoodsMessage": "Cela créera des mouvements de stock pour réceptionner les marchandises de ce bon d'achat. Continuer ?",
     "goodsReceived": "Marchandises réceptionnées",
     "received": "Reçu",
+    "receivedOfTotal": "{{received}} sur {{total}}",
     "receive": {
       "remaining": "Restant",
       "quantity": "Quantité à réceptionner",
