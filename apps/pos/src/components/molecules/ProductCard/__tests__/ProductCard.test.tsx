@@ -189,6 +189,36 @@ describe('ProductCard layout regressions', () => {
     expect(eye.className).toContain('border');
   });
 
+  it('uses the mock visual-card typography scale', () => {
+    const product = makeProduct({
+      id: 'p-visual-scale',
+      name: 'Effaclar Gel Moussant 200ml',
+      brand_name: 'La Roche-Posay',
+      sale_price: '38.500',
+      stock_quantity: 18,
+    });
+    const { container } = render(
+      <I18nextProvider i18n={i18n}>
+        <ProductCard product={product} onAddToCart={vi.fn()} displayMode="visual" />
+      </I18nextProvider>,
+    );
+
+    const brand = screen.getByText('La Roche-Posay');
+    const name = screen.getByRole('heading', { level: 3 });
+    const price = container.querySelector('[data-testid="price-row"]');
+    const stock = container.querySelector('[data-testid="stock-row"]');
+
+    expect(brand.className).toContain('text-[10px]');
+    expect(brand.className).toContain('leading-[1.2]');
+    expect(name.className).toContain('text-[13.5px]');
+    expect(name.className).toContain('leading-[1.3]');
+    expect(price?.className).toContain('text-[15px]');
+    expect(price?.className).toContain('font-semibold');
+    expect(stock?.className).toContain('text-[10.5px]');
+    expect(stock?.className).toContain('px-[7px]');
+    expect(stock?.className).toContain('py-[3px]');
+  });
+
   it('renders the outer card as role="button" rather than a <button> so the inner customize button is not nested', () => {
     const productWithModifiers: POSProduct = {
       ...longNameProduct,

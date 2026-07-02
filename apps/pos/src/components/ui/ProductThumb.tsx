@@ -57,6 +57,8 @@ const TINT_CLASS: Record<CategoryTint, string> = {
   neutral: 'bg-surface-sunken text-ink-muted',
 };
 
+const FULL_WIDTH_NEUTRAL_TINT_CLASS = 'bg-[#eef3f8] text-[#5e6670]';
+
 export interface ProductThumbProps {
   name: string;
   category?: string | null;
@@ -88,6 +90,7 @@ export function ProductThumb({
     );
   }
   const tint = tintForCategory(category);
+  const tintClass = fullWidth && tint === 'neutral' ? FULL_WIDTH_NEUTRAL_TINT_CLASS : TINT_CLASS[tint];
   // Square thumbs use large initials; full-width POS tiles match the mock's
   // compact 20px initials centered in an 88px-high image area.
   const fontSize = fullWidth ? 20 : Math.round(size * 0.34);
@@ -97,7 +100,7 @@ export function ProductThumb({
       aria-hidden
       className={cn(
         'flex shrink-0 select-none items-center justify-center rounded-tile font-display font-bold tracking-tight',
-        TINT_CLASS[tint],
+        tintClass,
         className,
       )}
     >

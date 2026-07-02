@@ -308,7 +308,7 @@ function ProductCardInner({
       {product.brand_name && (
         <p
           className={cn(
-            'w-full text-xs font-semibold tracking-widest uppercase',
+            'w-full text-[10px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
             isOutOfStock ? 'text-ink-faint' : 'text-ink-muted',
           )}
         >
@@ -325,7 +325,7 @@ function ProductCardInner({
           'w-full line-clamp-2 overflow-hidden font-semibold',
           nameMinHClass,
           isOutOfStock ? 'text-ink-faint' : 'text-ink',
-          displayMode === 'visual' ? 'text-sm' : 'text-base',
+          displayMode === 'visual' ? 'text-[13.5px] leading-[1.3]' : 'text-base',
         )}
       >
         {product.name}
@@ -345,7 +345,8 @@ function ProductCardInner({
         <p
           data-testid="price-row"
           className={cn(
-            'shrink-0 font-mono text-lg font-bold tabular-nums',
+            'shrink-0 font-mono font-semibold tabular-nums',
+            displayMode === 'visual' ? 'text-[15px]' : 'text-lg font-bold',
             isOutOfStock ? 'text-ink-faint' : 'text-accent-strong',
           )}
         >
@@ -364,7 +365,10 @@ function ProductCardInner({
             <StockBadge
               data-testid="stock-row"
               status={isOutOfStock ? 'out' : isLowStock ? 'low' : 'ok'}
-              className="max-w-full shrink-0"
+              className={cn(
+                'max-w-full shrink-0',
+                displayMode === 'visual' && 'px-[7px] py-[3px] text-[10.5px] font-semibold',
+              )}
             >
               {stockLabel}
             </StockBadge>
