@@ -10,7 +10,7 @@ import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { formatCurrency } from '../../lib/format'
+import { formatCurrency, formatDate } from '../../lib/format'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
 import { OffsetPagination } from '../../components/ui/OffsetPagination'
@@ -366,7 +366,7 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
       render: (doc) => (
         <div className={cn('flex items-center gap-1', textColors.tertiary)}>
           <Calendar className="h-3.5 w-3.5" />
-          {new Date(doc.document_date).toLocaleDateString()}
+          {formatDate(doc.document_date)}
         </div>
       ),
     },
