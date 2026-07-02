@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { ExpenseCategorySelect } from '../molecules/ExpenseCategorySelect'
 import { useActivePaymentMethods } from '../../../treasury/hooks/usePaymentMethods'
 import { useActivePaymentRepositories } from '../../../treasury/hooks/usePaymentRepositories'
+import { useLinkableExpenseInvoices, useLinkableExpenseOperations } from '../../hooks/useExpenses'
 import { useCurrency } from '../../../../hooks/useCurrency'
 import {
   Button,
@@ -71,16 +73,47 @@ export function ExpenseFormFields({
           notes: expense.notes || '',
           internal_notes: expense.internal_notes || '',
           is_paid: expense.metadata?.is_paid || false,
+          expense_kind: expense.metadata?.expense_kind || 'generic',
+          cost_type: expense.metadata?.cost_type || 'transport',
+          split_method: expense.metadata?.split_method || 'by_value',
           document_date: expense.document_date,
         }
       : {
           document_date: new Date().toISOString().split('T')[0],
           is_paid: false,
+          expense_kind: 'generic',
+          cost_type: 'transport',
+          split_method: 'by_value',
+          total: '',
         },
   })
 
   const categoryId = watch('expense_category_id')
   const totalValue = watch('total')
+  const expenseKind = watch('expense_kind') || 'generic'
+  const linkedOperationId = watch('linked_operation_id')
+  const [selectedLinkedInvoiceId, setSelectedLinkedInvoiceId] = useState(
+    expense?.metadata?.linked_invoice_id ?? ''
+  )
+  const isLinkedCost = expenseKind === 'linked_cost'
+  const { data: linkableInvoices = [], isLoading: isLoadingInvoices } =
+    useLinkableExpenseInvoices(isLinkedCost)
+  const { data: operationResolution } = useLinkableExpenseOperations(
+    isLinkedCost ? selectedLinkedInvoiceId : undefined
+  )
+
+  useEffect(() => {
+    if (!operationResolution?.auto_selected_id) {
+      return
+    }
+    setValue('linked_operation_id', operationResolution.auto_selected_id)
+  }, [operationResolution?.auto_selected_id, setValue])
+
+  const selectedOperationId = linkedOperationId || operationResolution?.auto_selected_id
+  const selectedOperation = operationResolution?.operations.find(
+    (operation) => operation.document_id === selectedOperationId
+  )
+  const linkedInvoiceField = register('linked_invoice_id')
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -115,6 +148,116 @@ export function ExpenseFormFields({
             setValue('expense_category_id', value || undefined)
           }}
         />
+      </div>
+
+      <div className="space-y-4">
+        <h2 className={tokens.heading.section}>{t('expenses:form.classification')}</h2>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="flex min-h-12 items-center gap-3 rounded-md border border-gray-200 px-3 py-2 text-sm">
+            <input
+              type="radio"
+              value="generic"
+              {...register('expense_kind')}
+              className="h-4 w-4"
+            />
+            <span>{t('expenses:form.kindGeneric')}</span>
+          </label>
+          <label className="flex min-h-12 items-center gap-3 rounded-md border border-gray-200 px-3 py-2 text-sm">
+            <input
+              type="radio"
+              value="linked_cost"
+              {...register('expense_kind')}
+              className="h-4 w-4"
+            />
+            <span>{t('expenses:form.kindLinked')}</span>
+          </label>
+        </div>
+
+        {isLinkedCost && (
+          <div className="space-y-4 rounded-md border border-gray-200 p-4">
+            <FormField label={t('expenses:form.linkedInvoice')} htmlFor="linked_invoice_id">
+              <Select
+                id="linked_invoice_id"
+                {...linkedInvoiceField}
+                onChange={(event) => {
+                  void linkedInvoiceField.onChange(event)
+                  setValue('linked_invoice_id', event.target.value)
+                  setSelectedLinkedInvoiceId(event.target.value)
+                }}
+                disabled={isLoadingInvoices}
+              >
+                <option value="">
+                  {isLoadingInvoices ? t('common:loading') : t('common:select')}
+                </option>
+                {linkableInvoices.map((invoice) => (
+                  <option key={invoice.id} value={invoice.id}>
+                    {invoice.document_number}
+                    {invoice.partner_name ? ` · ${invoice.partner_name}` : ''}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+
+            {operationResolution && operationResolution.operations.length === 0 && (
+              <div className={tokens.alert.base}>
+                <button
+                  type="button"
+                  className="text-sm font-medium text-blue-700"
+                  onClick={() => {
+                    setValue('expense_kind', 'generic')
+                    setValue('linked_invoice_id', undefined)
+                    setValue('linked_operation_id', undefined)
+                    setSelectedLinkedInvoiceId('')
+                  }}
+                >
+                  {t('expenses:form.downgradeToGeneric')}
+                </button>
+              </div>
+            )}
+
+            {selectedOperation && (
+              <div className="flex flex-wrap items-center gap-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                <span className="font-medium">{t('expenses:form.linkedTo')}</span>
+                <span>{selectedOperation.number}</span>
+                <span>{selectedOperation.status}</span>
+              </div>
+            )}
+
+            {operationResolution && operationResolution.operations.length > 1 && (
+              <FormField label={t('expenses:form.linkedOperation')} htmlFor="linked_operation_id">
+                <Select id="linked_operation_id" {...register('linked_operation_id')}>
+                  <option value="">{t('common:select')}</option>
+                  {operationResolution.operations.map((operation) => (
+                    <option key={operation.document_id} value={operation.document_id}>
+                      {operation.number}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            )}
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <FormField label={t('expenses:form.costType')} htmlFor="cost_type">
+                <Select id="cost_type" {...register('cost_type')} defaultValue="transport">
+                  <option value="transport">{t('expenses:costTypes.transport')}</option>
+                  <option value="shipping">{t('expenses:costTypes.shipping')}</option>
+                  <option value="insurance">{t('expenses:costTypes.insurance')}</option>
+                  <option value="customs">{t('expenses:costTypes.customs')}</option>
+                  <option value="handling">{t('expenses:costTypes.handling')}</option>
+                  <option value="other">{t('expenses:costTypes.other')}</option>
+                </Select>
+              </FormField>
+
+              <FormField label={t('expenses:form.splitMethod')} htmlFor="split_method">
+                <Select id="split_method" {...register('split_method')} defaultValue="by_value">
+                  <option value="by_value">{t('expenses:splitMethods.byValue')}</option>
+                  <option value="by_quantity">{t('expenses:splitMethods.byQuantity')}</option>
+                </Select>
+              </FormField>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Amount and Date */}

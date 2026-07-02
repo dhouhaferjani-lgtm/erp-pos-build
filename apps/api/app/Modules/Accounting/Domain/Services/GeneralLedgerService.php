@@ -15,6 +15,7 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentAdditionalCost;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Partner\Domain\Partner;
@@ -2302,6 +2303,173 @@ final class GeneralLedgerService
         $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
 
         return $entry;
+    }
+
+    /**
+     * @param  array{inventory_total: numeric-string, cogs_total: numeric-string}  $application
+     */
+    public function createLinkedCostCapitalizationEntry(
+        Document $expense,
+        DocumentAdditionalCost $cost,
+        array $application,
+        User $user,
+    ): JournalEntry {
+        $existing = JournalEntry::query()
+            ->where('source_type', 'linked_cost_capitalization')
+            ->where('source_id', $cost->id)
+            ->first();
+        if ($existing !== null) {
+            return $existing->load('lines');
+        }
+
+        $entry = DB::transaction(function () use ($expense, $cost, $application): JournalEntry {
+            $companyId = $expense->company_id;
+            $metadata = $expense->expenseMetadata;
+            $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
+            $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
+            $paymentAccount = $this->expensePaymentAccount($expense);
+            $scale = $this->scaleResolver->getScale((string) $expense->currency);
+            $inventoryTotal = CurrencyScale::bcformatStrict($application['inventory_total'], $scale);
+            $cogsTotal = CurrencyScale::bcformatStrict($application['cogs_total'], $scale);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $expense->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $metadata->payment_date ?? $expense->document_date,
+                'description' => "Linked cost capitalization: {$expense->document_number}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'linked_cost_capitalization',
+                'source_id' => $cost->id,
+            ]);
+
+            $lineOrder = 0;
+            if ($this->isPositive($inventoryTotal, $scale)) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $inventoryAccount->id,
+                    'debit' => $inventoryTotal,
+                    'credit' => '0',
+                    'description' => 'Linked landed cost inventory capitalization',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
+            if ($this->isPositive($cogsTotal, $scale)) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $cogsAccount->id,
+                    'debit' => $cogsTotal,
+                    'credit' => '0',
+                    'description' => 'Linked landed cost sold portion',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentAccount->id,
+                'debit' => '0',
+                'credit' => $expense->total ?? '0',
+                'description' => 'Linked cost cash payment',
+                'line_order' => $lineOrder,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+
+        return $entry;
+    }
+
+    /**
+     * @param  array{inventory_total: numeric-string, cogs_total: numeric-string}  $application
+     */
+    public function createLinkedCostCapitalizationReversalEntry(
+        Document $expense,
+        DocumentAdditionalCost $reversalCost,
+        array $application,
+        User $user,
+    ): JournalEntry {
+        $existing = JournalEntry::query()
+            ->where('source_type', 'linked_cost_capitalization_reversal')
+            ->where('source_id', $reversalCost->id)
+            ->first();
+        if ($existing !== null) {
+            return $existing->load('lines');
+        }
+
+        $entry = DB::transaction(function () use ($expense, $reversalCost, $application): JournalEntry {
+            $companyId = $expense->company_id;
+            $metadata = $expense->expenseMetadata;
+            $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
+            $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
+            $paymentAccount = $this->expensePaymentAccount($expense);
+            $scale = $this->scaleResolver->getScale((string) $expense->currency);
+            $inventoryTotal = CurrencyScale::bcformatStrict($application['inventory_total'], $scale);
+            $cogsTotal = CurrencyScale::bcformatStrict($application['cogs_total'], $scale);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $expense->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => now()->toDateString(),
+                'description' => "Linked cost reversal: {$expense->document_number}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'linked_cost_capitalization_reversal',
+                'source_id' => $reversalCost->id,
+            ]);
+
+            $lineOrder = 0;
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentAccount->id,
+                'debit' => $expense->total ?? '0',
+                'credit' => '0',
+                'description' => 'Linked cost cash reversal',
+                'line_order' => $lineOrder++,
+            ]);
+
+            if ($this->isPositive($inventoryTotal, $scale)) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $inventoryAccount->id,
+                    'debit' => '0',
+                    'credit' => $inventoryTotal,
+                    'description' => 'Linked landed cost inventory reversal',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
+            if ($this->isPositive($cogsTotal, $scale)) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $cogsAccount->id,
+                    'debit' => '0',
+                    'credit' => $cogsTotal,
+                    'description' => 'Linked landed cost COGS reversal',
+                    'line_order' => $lineOrder,
+                ]);
+            }
+
+            return $entry->load('lines');
+        });
+
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+
+        return $entry;
+    }
+
+    private function expensePaymentAccount(Document $expense): Account
+    {
+        $metadata = $expense->expenseMetadata;
+        $repositoryType = $metadata !== null && $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : RepositoryType::CashRegister;
+
+        return match ($repositoryType) {
+            RepositoryType::BankAccount => $this->getAccountByPurpose($expense->company_id, SystemAccountPurpose::Bank),
+            default => $this->getAccountByPurpose($expense->company_id, SystemAccountPurpose::Cash),
+        };
     }
 
     /**

@@ -8,6 +8,8 @@ import type {
   ExpenseCategoryListResponse,
   ExpenseCategoryResponse,
   ExpenseFilters,
+  LinkableInvoice,
+  OperationResolution,
   ExpenseListResponse,
   ExpenseResponse,
 } from '../types'
@@ -62,6 +64,26 @@ export const expenseApi = {
    */
   post: async (id: string): Promise<Expense> => {
     const { data } = await api.post<ExpenseResponse>(`/expenses/${id}/post`)
+    return data.data
+  },
+
+  reverse: async (id: string): Promise<unknown> => {
+    const { data } = await api.post(`/expenses/${id}/reverse`)
+    return data.data
+  },
+
+  listLinkableInvoices: async (): Promise<LinkableInvoice[]> => {
+    const { data } = await api.get<{ data: LinkableInvoice[] }>(
+      '/expenses/linkable-invoices'
+    )
+    return data.data
+  },
+
+  resolveLinkableOperations: async (invoiceId: string): Promise<OperationResolution> => {
+    const { data } = await api.get<{ data: OperationResolution }>(
+      '/expenses/linkable-operations',
+      { params: { invoice_id: invoiceId } }
+    )
     return data.data
   },
 }

@@ -6,6 +6,7 @@ namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\CostApplicationPath;
 use App\Modules\Taxation\Domain\DTOs\TaxCalculationResult;
 use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -76,6 +77,21 @@ class LandedCostService
     }
 
     /**
+     * @return numeric-string
+     */
+    private function landedCostAdditionalCostsTotal(Document $purchaseOrder): string
+    {
+        return (string) $purchaseOrder->additionalCosts()
+            ->whereNull('reversed_at')
+            ->where(function ($query): void {
+                $query
+                    ->whereNull('application_path')
+                    ->orWhere('application_path', CostApplicationPath::LandedCost->value);
+            })
+            ->sum('amount');
+    }
+
+    /**
      * Allocate additional costs to purchase order lines proportionally by value
      *
      * Uses a database transaction to ensure atomic allocation.
@@ -92,7 +108,7 @@ class LandedCostService
             // filtered/keyed by a caller (otherwise the remainder could be dropped).
             $lines = $purchaseOrder->lines->values();
             $additionalCostsTotal = CurrencyScale::bcformat(
-                (string) $purchaseOrder->additionalCosts()->sum('amount'),
+                $this->landedCostAdditionalCostsTotal($purchaseOrder),
                 $scale,
             );
             $lineTotals = $this->lineTotals($lines);
@@ -138,7 +154,7 @@ class LandedCostService
             // Re-key to a contiguous 0-based sequence (see allocateCosts()).
             $lines = $purchaseOrder->lines->values();
             $additionalCostsTotal = CurrencyScale::bcformat(
-                (string) $purchaseOrder->additionalCosts()->sum('amount'),
+                $this->landedCostAdditionalCostsTotal($purchaseOrder),
                 $scale,
             );
             $lineTotals = $this->lineTotals($lines);
@@ -231,7 +247,7 @@ class LandedCostService
             // Re-key to a contiguous 0-based sequence (see allocateCosts()).
             $lines = $purchaseOrder->lines->values();
             $additionalCostsTotal = CurrencyScale::bcformat(
-                (string) $purchaseOrder->additionalCosts()->sum('amount'),
+                $this->landedCostAdditionalCostsTotal($purchaseOrder),
                 $scale,
             );
             $lineTotals = $this->lineTotals($lines);
