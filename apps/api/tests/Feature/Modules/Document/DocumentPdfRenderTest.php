@@ -105,6 +105,31 @@ final class DocumentPdfRenderTest extends TestCase
         $this->assertStringNotContainsString('[', $html);
     }
 
+    public function test_purchase_order_pdf_line_items_render_gratuite_sub_row_for_free_quantity(): void
+    {
+        app()->setLocale('fr');
+
+        $document = $this->buildInvoiceWithOverriddenLine(
+            productName: 'Doliprane 1000mg',
+            lineDescription: 'Doliprane 1000mg',
+            productCode: 'DOL1000',
+            notes: null,
+        );
+
+        $line = $document->lines->firstOrFail();
+        $line->forceFill([
+            'quantity' => '20.0000',
+            'free_quantity' => '1.0000',
+            'unit_price' => '5.000',
+            'line_total' => '100.000',
+        ])->save();
+
+        $html = $this->renderLineItemsComponent($document->fresh(['lines']) ?? $document);
+
+        $this->assertStringContainsString('dont gratuité : +1.00 unité gratuite', $html);
+        $this->assertStringContainsString('Total ligne: 21.00 unités livrées attendues', $html);
+    }
+
     /**
      * Build a posted invoice with a single line where:
      * - The product has a given name in the Product table

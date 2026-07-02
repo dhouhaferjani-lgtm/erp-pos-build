@@ -19,6 +19,7 @@ export interface CompanyConfig {
   smart_prompts_enabled: boolean
   smart_prompts_variant: 'inline' | 'toast' | 'both' | 'off'
   line_designation_override_enabled: boolean
+  purchase_bonus_enabled: boolean
 }
 
 /**

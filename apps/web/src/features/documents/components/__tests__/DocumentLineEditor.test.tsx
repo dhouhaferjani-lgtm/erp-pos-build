@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
@@ -14,6 +14,7 @@ import { DocumentLineEditor, type DocumentLine } from '../DocumentLineEditor'
 
 const companyConfigMock = vi.hoisted(() => ({
   enabledModules: ['Workshop'] as string[],
+  purchaseBonusEnabled: false,
 }))
 
 const taxSelectMock = vi.hoisted(() =>
@@ -48,7 +49,12 @@ vi.mock('react-i18next', () => ({
         'sales:lineItems.article': 'Article',
         'sales:lineItems.description': 'Description',
         'sales:lineItems.quantity': 'Qty',
+        'sales:lineItems.freeQuantity': 'Free qty',
         'sales:lineItems.unitPrice': 'Unit Price',
+        'sales:lineItems.priceEntryMode.unit': 'PU',
+        'sales:lineItems.priceEntryMode.total': 'Total',
+        'sales:lineItems.effectiveUnitCost': `Effective unit cost: ${String(params?.['amount'] ?? '')}`,
+        'sales:lineItems.bonusSavings': `Bonus savings: ${String(params?.['amount'] ?? '')}`,
         'sales:lineItems.discount': 'Discount',
         'sales:lineItems.taxPercent': 'Tax',
         'sales:lineItems.total': 'Total',
@@ -103,7 +109,10 @@ vi.mock('../../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSel
 // Mock CompanyConfigContext — useLineDesignationFeature calls useCompanyConfig
 vi.mock('@/contexts/CompanyConfigContext', () => ({
   useCompanyConfig: () => ({
-    config: { line_designation_override_enabled: true },
+    config: {
+      line_designation_override_enabled: true,
+      purchase_bonus_enabled: companyConfigMock.purchaseBonusEnabled,
+    },
     hasModule: (moduleName: string) => companyConfigMock.enabledModules.includes(moduleName),
   }),
 }))
@@ -132,6 +141,8 @@ function makeLine(overrides: Partial<DocumentLine> = {}): DocumentLine {
     unit_price: 10,
     tax_rate: 0,
     line_total: 10,
+    free_quantity: '0',
+    price_entry_mode: 'unit',
     ...overrides,
   }
 }
@@ -144,6 +155,7 @@ describe('DocumentLineEditor — designation cells', () => {
   beforeEach(() => {
     onChange = vi.fn()
     companyConfigMock.enabledModules = ['Workshop']
+    companyConfigMock.purchaseBonusEnabled = false
   })
 
   it('shows overridden indicator when description differs from snapshot', () => {
@@ -333,7 +345,7 @@ describe('DocumentLineEditor — designation cells', () => {
 
     expect(onChange).toHaveBeenLastCalledWith([
       expect.objectContaining({
-        quantity: 3,
+        quantity: '3',
         line_total: '36.000',
       }),
     ])
@@ -381,5 +393,91 @@ describe('DocumentLineEditor — designation cells', () => {
     expect(screen.getByText('EUR 90.00')).toBeInTheDocument()
     expect(screen.getByText('EUR 18.00')).toBeInTheDocument()
     expect(screen.getAllByText('EUR 108.00')).toHaveLength(2)
+  })
+
+  it('hides purchase bonus controls when either the module or company flag is disabled', () => {
+    companyConfigMock.enabledModules = ['Workshop', 'PurchaseBonus']
+    companyConfigMock.purchaseBonusEnabled = false
+
+    render(<DocumentLineEditor documentType="purchase_order" lines={[makeLine()]} onChange={onChange} />, {
+      wrapper: createWrapper(),
+    })
+
+    expect(screen.queryByRole('spinbutton', { name: 'Free qty' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Total' })).not.toBeInTheDocument()
+  })
+
+  it('shows purchase bonus controls and effective-cost facts when the module and company flag are enabled', () => {
+    companyConfigMock.enabledModules = ['Workshop', 'PurchaseBonus']
+    companyConfigMock.purchaseBonusEnabled = true
+
+    render(
+      <DocumentLineEditor
+        documentType="purchase_order"
+        lines={[
+          makeLine({
+            quantity: 20,
+            unit_price: 5,
+            free_quantity: '1',
+            line_total: '100.000',
+            price_entry_mode: 'unit',
+          }),
+        ]}
+        onChange={onChange}
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    expect(screen.getByRole('spinbutton', { name: 'Free qty' })).toHaveValue(1)
+    expect(screen.getByRole('button', { name: 'Total' })).toBeInTheDocument()
+    expect(screen.getByText('Effective unit cost: EUR 4.76')).toBeInTheDocument()
+    expect(screen.getByText('Bonus savings: EUR 5.00')).toBeInTheDocument()
+  })
+
+  it('keeps bonus quantity and total-mode price entry as strings in line updates', async () => {
+    const user = userEvent.setup()
+    companyConfigMock.enabledModules = ['Workshop', 'PurchaseBonus']
+    companyConfigMock.purchaseBonusEnabled = true
+    const line = makeLine({
+      quantity: 7,
+      unit_price: 14.285,
+      line_total: '100.000',
+      free_quantity: '0',
+      price_entry_mode: 'unit',
+    })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([line])
+      return (
+        <DocumentLineEditor
+          documentType="purchase_order"
+          lines={currentLines}
+          onChange={(nextLines) => {
+            onChange(nextLines)
+            setCurrentLines(nextLines)
+          }}
+        />
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: createWrapper() })
+
+    const freeQuantityInput = screen.getByRole('spinbutton', { name: 'Free qty' })
+    await user.clear(freeQuantityInput)
+    await user.type(screen.getByRole('spinbutton', { name: 'Free qty' }), '1')
+
+    await user.click(screen.getByRole('button', { name: 'Total' }))
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Unit Price' }), {
+      target: { value: '100.000' },
+    })
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        free_quantity: '1',
+        price_entry_mode: 'total',
+        line_total: '100.000',
+        unit_price: '14.286',
+      }),
+    ])
   })
 })

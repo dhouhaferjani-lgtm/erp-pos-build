@@ -85,9 +85,14 @@ interface DraftData {
   lines?: Array<{
     id?: string
     product_id: string
-    quantity: number
-    unit_price: number
-    tax_rate?: number
+    quantity: number | string
+    free_quantity?: number | string
+    unit_price: number | string
+    line_total?: number | string
+    price_entry_mode?: 'unit' | 'total'
+    discount_percent?: string | null
+    discount_amount?: string | null
+    tax_rate?: number | string
   }>
   notes?: string | null
   document_date?: string

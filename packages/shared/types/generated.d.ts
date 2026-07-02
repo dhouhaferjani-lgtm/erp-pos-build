@@ -1,6 +1,6 @@
 declare global {
 declare namespace App.Enums {
-export type ModuleName = 'Identity' | 'Tenant' | 'Catalog' | 'Vehicle' | 'Partner' | 'Workshop' | 'Sales' | 'Inventory' | 'Treasury' | 'Accounting' | 'PlatformIntegration' | 'BatchExpiry' | 'Menu' | 'Tables' | 'CompositeItems' | 'Parapharmacy' | 'Appointments' | 'Fleet' | 'Prescription' | 'Reservation' | 'Loyalty' | 'Ecommerce' | 'Merchandising';
+export type ModuleName = 'Identity' | 'Tenant' | 'Catalog' | 'Vehicle' | 'Partner' | 'Workshop' | 'Sales' | 'Inventory' | 'Treasury' | 'Accounting' | 'PlatformIntegration' | 'BatchExpiry' | 'Menu' | 'Tables' | 'CompositeItems' | 'Parapharmacy' | 'Appointments' | 'Fleet' | 'Prescription' | 'Reservation' | 'Loyalty' | 'Ecommerce' | 'Merchandising' | 'PurchaseBonus';
 export type Product = 'izipos' | 'otospex';
 export type Vertical = 'mechanic' | 'pharmacy' | 'restaurant' | 'coffee_shop' | 'retail' | 'fashion' | 'body_shop' | 'parts_retailer' | 'car_glass' | 'tire_shop' | 'service_station' | 'parapharmacy';
 }
@@ -639,11 +639,14 @@ product_id: string | null;
 line_number: number;
 description: string;
 quantity: string;
+free_quantity: string;
 unit_price: string;
 discount_percent: string | null;
 discount_amount: string | null;
 tax_rate: string | null;
 line_total: string;
+price_entry_mode: string;
+is_bonus_line: boolean;
 notes: string | null;
 designation_default_snapshot: string | null;
 quantity_decimals: number;
@@ -667,6 +670,7 @@ export type FiscalCategory = 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | '
 export type FiscalStatus = 'DRAFT' | 'SEALED' | 'VOIDED';
 export type FulfillmentStatus = 'not_fulfilled' | 'partially_fulfilled' | 'fulfilled' | 'not_applicable';
 export type PaymentStatus = 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' | 'overpaid';
+export type PriceEntryMode = 'unit' | 'total';
 export type RefundMethod = 'original_payment' | 'store_credit' | 'exchange' | 'none';
 export type ReturnCondition = 'unopened' | 'used' | 'damaged' | 'unusable';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_regret' | 'damaged_in_transit' | 'warranty' | 'exchange' | 'other';

@@ -94,6 +94,7 @@ const smartPromptsConfig: TestCompanyConfig = {
   smart_prompts_enabled: true,
   smart_prompts_variant: 'inline',
   line_designation_override_enabled: false,
+  purchase_bonus_enabled: false,
 }
 
 beforeEach(() => {

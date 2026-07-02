@@ -9,8 +9,10 @@ import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms/AddQuickProductModal/AddQuickProductModal'
 import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSelect'
 import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
+import { QuantityInput } from '../../../components/atoms/QuantityInput/QuantityInput'
 import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '../../../components/molecules/line-items/LineItemsTable'
 import { LineItemEntryBar, ProductCell, type LineItemEntryAddMeta, type ProductLineProduct } from '../../../components/molecules/line-items'
+import { useCompanyConfig } from '../../../contexts/CompanyConfigContext'
 import { DesignationCell } from './DesignationCell'
 import { NotesCell } from './NotesCell'
 import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
@@ -92,13 +94,19 @@ export interface DocumentLine {
   description: string
   designation_default_snapshot?: string | null
   notes?: string | null
-  quantity: number
-  unit_price: number
+  quantity: string | number
+  unit_price: string | number
   discount_percent?: string | null
   discount_amount?: string | null
-  tax_rate: number
+  tax_rate: string | number
   tax_configuration_id?: string | null
   line_total: string | number
+  free_quantity?: string | number | null
+  free_quantity_received?: string | number | null
+  free_quantity_invoiced?: string | number | null
+  price_entry_mode?: 'unit' | 'total'
+  landed_unit_cost?: string | number | null
+  is_bonus_line?: boolean
   is_service?: boolean
   /** Unit precision (unit decimal_places) → drives the qty input step. */
   quantity_decimals?: number | null
@@ -130,6 +138,7 @@ function scopedNamespacePredicate(
 export function DocumentLineEditor({ lines, onChange, readonly = false, documentType }: DocumentLineEditorProps) {
   const { t } = useTranslation(['sales', 'common'])
   const queryClient = useQueryClient()
+  const { config: companyConfig, hasModule } = useCompanyConfig()
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -145,6 +154,21 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
   const taxDocumentType = taxSelectorDocumentType(documentType)
+  const purchaseBonusEnabled =
+    documentType === 'purchase_order' &&
+    hasModule('PurchaseBonus') &&
+    companyConfig?.purchase_bonus_enabled === true
+
+  const deriveUnitPrice = useCallback((line: DocumentLine): string => {
+    const paidQuantity = decimalValue(line.quantity)
+    if ((line.price_entry_mode ?? 'unit') !== 'total') {
+      return decimalValue(line.unit_price)
+    }
+    if (bccomp(paidQuantity, '0') <= 0) {
+      return '0.000'
+    }
+    return bcdiv(decimalValue(line.line_total), paidQuantity, 3)
+  }, [])
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -194,7 +218,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         onChange(
           linesRef.current.map((line) => {
             if (line.id !== existingLine.id) return line
-            const quantity = line.quantity + incrementBy
+            const quantity = bcadd(decimalValue(line.quantity), String(incrementBy), getQuantityDecimals(line))
             return {
               ...line,
               quantity,
@@ -211,8 +235,8 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         return
       }
 
-      const salePrice = Number(product.sale_price ?? 0) || 0
-      const taxRate = Number(product.tax_rate ?? 0) || 0
+      const salePrice = decimalValue(product.sale_price)
+      const taxRate = decimalValue(product.tax_rate)
       const newLine: DocumentLine = {
         id: generateId(),
         product_id: product.id,
@@ -224,13 +248,15 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         description: product.name,
         designation_default_snapshot: product.name,
         notes: null,
-        quantity: incrementBy,
+        quantity: String(incrementBy),
         unit_price: salePrice,
         discount_percent: null,
         discount_amount: null,
         tax_rate: taxRate,
         tax_configuration_id: product.default_tax_configuration_id ?? null,
         line_total: calculateLineTotal(incrementBy, salePrice, taxRate, null, null),
+        free_quantity: '0',
+        price_entry_mode: 'unit',
         quantity_decimals: product.quantity_decimals ?? null,
       }
       onChange([...linesRef.current, newLine])
@@ -251,6 +277,8 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       discount_amount: null,
       tax_rate: 0,
       line_total: '0.000',
+      free_quantity: '0',
+      price_entry_mode: 'unit',
     }
     onChange([...lines, newLine])
   }, [lines, onChange])
@@ -266,24 +294,45 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
           if (
             'quantity' in updates ||
             'unit_price' in updates ||
+            'line_total' in updates ||
+            'price_entry_mode' in updates ||
             'discount_percent' in updates ||
             'discount_amount' in updates ||
             'tax_rate' in updates
           ) {
-            updatedLine.line_total = calculateLineTotal(
-              updatedLine.quantity,
-              updatedLine.unit_price,
-              updatedLine.tax_rate,
-              updatedLine.discount_percent,
-              updatedLine.discount_amount,
-            )
+            if ((updatedLine.price_entry_mode ?? 'unit') === 'total') {
+              updatedLine.unit_price = deriveUnitPrice(updatedLine)
+            } else {
+              updatedLine.line_total = calculateLineTotal(
+                updatedLine.quantity,
+                updatedLine.unit_price,
+                updatedLine.tax_rate,
+                updatedLine.discount_percent,
+                updatedLine.discount_amount,
+              )
+            }
           }
           return updatedLine
         })
       )
     },
-    [onChange]
+    [deriveUnitPrice, onChange]
   )
+
+  const bonusFacts = useCallback((line: DocumentLine) => {
+    const freeQuantity = decimalValue(line.free_quantity)
+    if (bccomp(freeQuantity, '0') <= 0) return null
+
+    const paidQuantity = decimalValue(line.quantity)
+    const physicalQuantity = bcadd(paidQuantity, freeQuantity, getQuantityDecimals(line))
+    if (bccomp(physicalQuantity, '0') <= 0) return null
+
+    const unitPrice = deriveUnitPrice(line)
+    return {
+      effectiveUnitCost: bcdiv(decimalValue(line.line_total), physicalQuantity, 6),
+      savings: bcmul(freeQuantity, unitPrice),
+    }
+  }, [deriveUnitPrice])
 
   // Remove line
   const handleRemoveLine = useCallback(
@@ -377,30 +426,79 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
           readonly={readonly}
           value={line.quantity}
           onChange={(value) => {
-            handleUpdateLine(line.id, { quantity: parseFloat(value) || 0 })
+            handleUpdateLine(line.id, { quantity: value })
           }}
           ariaLabel={t('sales:lineItems.quantity')}
         />
       ),
     },
+    ...(purchaseBonusEnabled
+      ? [
+          {
+            id: 'free-quantity',
+            header: t('sales:lineItems.freeQuantity'),
+            headerClassName: 'w-28 text-end',
+            cellClassName: 'text-end',
+            Cell: ({ line }) => (
+              readonly ? (
+                <span className={`text-sm ${textColors.primary}`}>{line.free_quantity ?? '0'}</span>
+              ) : (
+                <QuantityInput
+                  decimalPlaces={getQuantityDecimals(line)}
+                  min="0"
+                  value={decimalValue(line.free_quantity)}
+                  onChange={(value) => {
+                    handleUpdateLine(line.id, { free_quantity: value })
+                  }}
+                  aria-label={t('sales:lineItems.freeQuantity')}
+                  className={`${tokens.input.base} w-24 text-end text-sm`}
+                />
+              )
+            ),
+          } satisfies LineItemsTableColumn<DocumentLine>,
+        ]
+      : []),
     {
       id: 'unit-price',
       header: t('sales:lineItems.unitPrice'),
-      headerClassName: 'w-32 text-end',
+      headerClassName: purchaseBonusEnabled ? 'w-40 text-end' : 'w-32 text-end',
       cellClassName: 'text-end',
       Cell: ({ line }) => (
         readonly ? (
-          <span className={`text-sm ${textColors.primary}`}>{formatAmount(line.unit_price)}</span>
+          <span className={`text-sm ${textColors.primary}`}>{formatAmount(deriveUnitPrice(line))}</span>
         ) : (
-          <MoneyInput
-            currency={companyCurrency}
-            min="0"
-            value={String(line.unit_price)}
-            onChange={(value) => {
-              handleUpdateLine(line.id, { unit_price: parseFloat(value) || 0 })
-            }}
-            className={`${tokens.input.base} w-28 text-end text-sm`}
-          />
+          <div className="flex min-w-40 items-center justify-end gap-2">
+            <MoneyInput
+              currency={companyCurrency}
+              min="0"
+              value={(line.price_entry_mode ?? 'unit') === 'total' ? decimalValue(line.line_total) : decimalValue(line.unit_price)}
+              onChange={(value) => {
+                if ((line.price_entry_mode ?? 'unit') === 'total') {
+                  handleUpdateLine(line.id, { line_total: value })
+                  return
+                }
+                handleUpdateLine(line.id, { unit_price: value })
+              }}
+              aria-label={t('sales:lineItems.unitPrice')}
+              className={`${tokens.input.base} w-28 text-end text-sm`}
+            />
+            {purchaseBonusEnabled && (
+              <button
+                type="button"
+                onClick={() => {
+                  handleUpdateLine(line.id, {
+                    price_entry_mode: (line.price_entry_mode ?? 'unit') === 'total' ? 'unit' : 'total',
+                  })
+                }}
+                className={`rounded ${colors.neutral[100]} px-2 py-1 text-xs font-medium ${textColors.secondary} ${colors.hover.gray50}`}
+                aria-pressed={(line.price_entry_mode ?? 'unit') === 'total'}
+              >
+                {(line.price_entry_mode ?? 'unit') === 'total'
+                  ? t('sales:lineItems.priceEntryMode.unit')
+                  : t('sales:lineItems.priceEntryMode.total')}
+              </button>
+            )}
+          </div>
         )
       ),
     },
@@ -486,9 +584,11 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   ], [
     companyCurrency,
     designationFeatureEnabled,
+    deriveUnitPrice,
     formatAmount,
     handleRemoveLine,
     handleUpdateLine,
+    purchaseBonusEnabled,
     readonly,
     t,
     taxDocumentType,
@@ -528,6 +628,18 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
           dragAriaLabel: t('sales:lineItems.actions.dragToReorder'),
           onReorder: handleReorderLines,
         }}
+        renderLineDetail={(line) => {
+              if (!purchaseBonusEnabled) return null
+              const facts = bonusFacts(line)
+              if (facts === null) return null
+
+              return (
+                <div className={`border-t ${borderColors.light} ${colors.neutral[50]} px-6 py-2 text-xs ${textColors.secondary}`}>
+                  <div>{t('sales:lineItems.effectiveUnitCost', { amount: formatAmount(facts.effectiveUnitCost) })}</div>
+                  <div>{t('sales:lineItems.bonusSavings', { amount: formatAmount(facts.savings) })}</div>
+                </div>
+              )
+            }}
         addControls={(
           <div className="flex flex-col gap-2 md:flex-row md:items-start">
             <div className="min-w-0 flex-1">

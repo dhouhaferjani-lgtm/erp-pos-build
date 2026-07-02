@@ -23,7 +23,13 @@ export interface DocumentLineData {
   line_number: number
   description: string
   quantity: string  // Formatted number string from backend
+  free_quantity?: string
+  free_quantity_received?: string
+  free_quantity_invoiced?: string
   unit_price: string  // Formatted number string from backend
+  price_entry_mode?: 'unit' | 'total'
+  landed_unit_cost?: string | null
+  is_bonus_line?: boolean
   discount_percent: string | null
   discount_amount: string | null
   tax_rate: string | null  // Formatted number string from backend

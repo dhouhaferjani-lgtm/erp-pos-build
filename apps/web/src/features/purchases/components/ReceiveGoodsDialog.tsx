@@ -13,6 +13,7 @@ export interface ReceiveBatchPayload {
 
 export interface ReceiveGoodsRequest {
   quantities: Record<string, string>
+  free_quantities?: Record<string, string>
   batches?: Record<string, ReceiveBatchPayload>
 }
 
@@ -22,6 +23,8 @@ export interface ReceivableLine {
   product_name?: string | null
   quantity: string | number
   quantity_received?: string | number | null
+  free_quantity?: string | number | null
+  free_quantity_received?: string | number | null
   quantity_decimals?: number
   requires_batch_tracking?: boolean
 }
@@ -32,6 +35,7 @@ export interface ReceivablePurchaseOrder {
 
 interface ReceiveLineState {
   quantity: string
+  freeQuantity: string
   batchNumber: string
   expiryDate: string
 }
@@ -48,6 +52,10 @@ function remainingQuantity(line: ReceivableLine): string {
   return bcsub(decimalString(line.quantity), decimalString(line.quantity_received), quantityScale(line))
 }
 
+function remainingFreeQuantity(line: ReceivableLine): string {
+  return bcsub(decimalString(line.free_quantity), decimalString(line.free_quantity_received), quantityScale(line))
+}
+
 function lineLabel(line: ReceivableLine): string {
   return line.product_name ?? line.description
 }
@@ -62,6 +70,7 @@ function initialReceiveState(lines: ReceivableLine[]): Record<string, ReceiveLin
       line.id,
       {
         quantity: remainingQuantity(line),
+        freeQuantity: remainingFreeQuantity(line),
         batchNumber: '',
         expiryDate: '',
       },
@@ -84,7 +93,10 @@ export function ReceiveGoodsDialog({
 }) {
   const { t } = useTranslation(['sales', 'common'])
   const receivableLines = useMemo(
-    () => (purchaseOrder.lines ?? []).filter((line) => bccomp(remainingQuantity(line), '0') === 1),
+    () => (purchaseOrder.lines ?? []).filter((line) =>
+      bccomp(remainingQuantity(line), '0') === 1 ||
+      bccomp(remainingFreeQuantity(line), '0') === 1
+    ),
     [purchaseOrder.lines],
   )
   const [lineState, setLineState] = useState<Partial<Record<string, ReceiveLineState>>>(() =>
@@ -93,21 +105,30 @@ export function ReceiveGoodsDialog({
 
   const hasPositiveQuantity = receivableLines.some((line) => {
     const quantity = lineState[line.id]?.quantity ?? '0'
-    return bccomp(quantity, '0') === 1
+    const freeQuantity = lineState[line.id]?.freeQuantity ?? '0'
+    return bccomp(quantity, '0') === 1 || bccomp(freeQuantity, '0') === 1
   })
 
   const hasInvalidQuantity = receivableLines.some((line) => {
     const quantity = lineState[line.id]?.quantity ?? '0'
+    const freeQuantity = lineState[line.id]?.freeQuantity ?? '0'
     const remaining = remainingQuantity(line)
-    return bccomp(quantity, '0') === -1 || bccomp(quantity, remaining) === 1
+    const remainingFree = remainingFreeQuantity(line)
+    return (
+      bccomp(quantity, '0') === -1 ||
+      bccomp(quantity, remaining) === 1 ||
+      bccomp(freeQuantity, '0') === -1 ||
+      bccomp(freeQuantity, remainingFree) === 1
+    )
   })
 
   const hasMissingBatchData = receivableLines.some((line) => {
     const state = lineState[line.id]
     const quantity = state?.quantity ?? '0'
+    const freeQuantity = state?.freeQuantity ?? '0'
     return (
       isBatchTracked(line) &&
-      bccomp(quantity, '0') === 1 &&
+      (bccomp(quantity, '0') === 1 || bccomp(freeQuantity, '0') === 1) &&
       ((state?.batchNumber.trim() ?? '') === '' || (state?.expiryDate ?? '') === '')
     )
   })
@@ -125,6 +146,7 @@ export function ReceiveGoodsDialog({
       [lineId]: {
         ...(current[lineId] ?? {
           quantity: '0',
+          freeQuantity: '0',
           batchNumber: '',
           expiryDate: '',
         }),
@@ -140,17 +162,24 @@ export function ReceiveGoodsDialog({
     }
 
     const quantities: Record<string, string> = {}
+    const freeQuantities: Record<string, string> = {}
     const batches: Record<string, ReceiveBatchPayload> = {}
 
     receivableLines.forEach((line) => {
       const state = lineState[line.id]
       const quantity = state?.quantity ?? '0'
-      if (bccomp(quantity, '0') !== 1) {
-        return
+      const freeQuantity = state?.freeQuantity ?? '0'
+      const hasPaidQuantity = bccomp(quantity, '0') === 1
+      const hasFreeQuantity = bccomp(freeQuantity, '0') === 1
+
+      if (hasPaidQuantity) {
+        quantities[line.id] = quantity
+      }
+      if (hasFreeQuantity) {
+        freeQuantities[line.id] = freeQuantity
       }
 
-      quantities[line.id] = quantity
-      if (isBatchTracked(line) && state !== undefined) {
+      if ((hasPaidQuantity || hasFreeQuantity) && isBatchTracked(line) && state !== undefined) {
         batches[line.id] = {
           batch_number: state.batchNumber.trim(),
           expiry_date: state.expiryDate,
@@ -160,6 +189,7 @@ export function ReceiveGoodsDialog({
 
     onConfirm({
       quantities,
+      ...(Object.keys(freeQuantities).length > 0 ? { free_quantities: freeQuantities } : {}),
       ...(Object.keys(batches).length > 0 ? { batches } : {}),
     })
   }
@@ -170,11 +200,15 @@ export function ReceiveGoodsDialog({
         {receivableLines.map((line) => {
           const label = lineLabel(line)
           const remaining = remainingQuantity(line)
+          const remainingFree = remainingFreeQuantity(line)
           const state = lineState[line.id] ?? {
             quantity: remaining,
+            freeQuantity: remainingFree,
             batchNumber: '',
             expiryDate: '',
           }
+          const canReceivePaid = bccomp(remaining, '0') === 1
+          const canReceiveFree = bccomp(remainingFree, '0') === 1
 
           return (
             <div key={line.id} className={tokens.card.base}>
@@ -184,18 +218,41 @@ export function ReceiveGoodsDialog({
                   <div className={tokens.helperText.base}>
                     {t('purchaseOrders.receive.remaining')}: {remaining}
                   </div>
+                  {canReceiveFree && (
+                    <div className={tokens.helperText.base}>
+                      {t('purchaseOrders.receive.freeOrderedSummary', {
+                        ordered: decimalString(line.free_quantity),
+                        received: decimalString(line.free_quantity_received),
+                      })}
+                    </div>
+                  )}
                 </div>
-                <label className={tokens.label.base}>
-                  {t('purchaseOrders.receive.quantity')}
-                  <QuantityInput
-                    value={state.quantity}
-                    onChange={(value) => { updateLine(line.id, { quantity: value }); }}
-                    decimalPlaces={quantityScale(line)}
-                    min="0"
-                    max={remaining}
-                    aria-label={`${t('purchaseOrders.receive.quantity')} ${label}`}
-                  />
-                </label>
+                {canReceivePaid && (
+                  <label className={tokens.label.base}>
+                    {t('purchaseOrders.receive.quantity')}
+                    <QuantityInput
+                      value={state.quantity}
+                      onChange={(value) => { updateLine(line.id, { quantity: value }); }}
+                      decimalPlaces={quantityScale(line)}
+                      min="0"
+                      max={remaining}
+                      aria-label={`${t('purchaseOrders.receive.quantity')} ${label}`}
+                    />
+                  </label>
+                )}
+                {canReceiveFree && (
+                  <label className={tokens.label.base}>
+                    {t('purchaseOrders.receive.freeQuantity')}
+                    <QuantityInput
+                      value={state.freeQuantity}
+                      onChange={(value) => { updateLine(line.id, { freeQuantity: value }); }}
+                      decimalPlaces={quantityScale(line)}
+                      min="0"
+                      max={remainingFree}
+                      aria-label={`${t('purchaseOrders.receive.freeQuantity')} ${label}`}
+                    />
+                  </label>
+                )}
                 {isBatchTracked(line) && (
                   <div className="grid grid-cols-1 gap-4 md:col-span-3 md:grid-cols-2">
                     <label className={tokens.label.base}>

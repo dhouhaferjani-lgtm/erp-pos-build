@@ -255,7 +255,14 @@
     "item": "Article",
     "description": "Description",
     "quantity": "Qté",
+    "freeQuantity": "Qté gratuite",
     "unitPrice": "Prix unitaire",
+    "priceEntryMode": {
+      "unit": "PU",
+      "total": "Total"
+    },
+    "effectiveUnitCost": "Coût unitaire effectif : {{amount}}",
+    "bonusSavings": "Économie gratuité : {{amount}}",
     "discount": "Remise",
     "tax": "TVA",
     "taxPercent": "TVA %",
@@ -327,7 +334,10 @@
     "received": "Reçu",
     "receive": {
       "remaining": "Restant",
+      "remainingFree": "Gratuité restante",
       "quantity": "Quantité à réceptionner",
+      "freeQuantity": "Gratuité à réceptionner",
+      "freeOrderedSummary": "Gratuité commandée : {{ordered}} · reçue : {{received}}",
       "batchNumber": "Numéro de lot",
       "expiryDate": "Date d'expiration",
       "submit": "Réceptionner"
