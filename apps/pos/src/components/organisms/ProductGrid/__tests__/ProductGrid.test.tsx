@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { type ComponentProps } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProductGrid, type ProductGridProps } from '../ProductGrid';
@@ -218,6 +218,43 @@ describe('ProductGrid', () => {
     fireEvent.change(searchInput, { target: { value: 'zzzzzznotfound' } });
 
     expect(screen.getByText('products.notFound')).toBeInTheDocument();
+  });
+
+  it('sizes columns from the grid container, not the full app window', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 1600,
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 900,
+      height: 640,
+      top: 0,
+      right: 900,
+      bottom: 640,
+      left: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    settingsStoreMock.state.displayMode = 'visual';
+    settingsStoreMock.state.density = 'dense';
+
+    const products = Array.from({ length: 12 }, (_, index) =>
+      makeProduct({
+        id: `p-${index}`,
+        name: `Product ${index}`,
+        sku: `SKU-${index}`,
+        sale_price: '10.000',
+        stock_quantity: 10,
+      }),
+    );
+    const { container } = renderGrid({ products, categories: [] });
+
+    const firstRow = container.querySelector('[data-index="0"]') as HTMLElement | null;
+    await waitFor(() => {
+      expect(firstRow?.style.gridTemplateColumns).toBe('repeat(5, minmax(0, 1fr))');
+    });
   });
 
   it('mounts without crashing with 100 products', () => {

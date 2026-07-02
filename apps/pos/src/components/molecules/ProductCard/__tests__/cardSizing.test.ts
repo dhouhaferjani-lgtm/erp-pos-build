@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getColumns } from '../cardSizing';
+import { getCardMinH, getColumns } from '../cardSizing';
 
 // ---------------------------------------------------------------------------
 // Task 25 — getColumns density-aware column counts
@@ -49,5 +49,12 @@ describe('getColumns — displayMode × density', () => {
 
   it('grid + comfortable at xs (400) returns 2', () => {
     expect(getColumns('grid', 'comfortable', 400)).toBe(2);
+  });
+});
+
+describe('getCardMinH — virtualized row estimates', () => {
+  it('reserves enough visual-card height for stacked price and stock rows', () => {
+    expect(getCardMinH('visual', 'comfortable')).toBeGreaterThanOrEqual(244);
+    expect(getCardMinH('visual', 'dense')).toBeGreaterThanOrEqual(244);
   });
 });

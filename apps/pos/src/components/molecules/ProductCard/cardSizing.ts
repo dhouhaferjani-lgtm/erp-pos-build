@@ -18,11 +18,11 @@ export const CARD_MIN_H_GRID = 104;
 /** Grid mode, dense — same content, narrower; estimate unchanged. */
 export const CARD_MIN_H_GRID_DENSE = 104;
 
-/** Visual card estimate: 88 thumb + gap + brand + 2-line name + price/stock + padding. */
-export const CARD_MIN_H_VISUAL = 192;
+/** Visual card estimate: 88 thumb + gap + brand + 2-line name + stacked price/stock + padding. */
+export const CARD_MIN_H_VISUAL = 244;
 
-/** Visual mode, dense — same card content, narrower columns; estimate unchanged. */
-export const CARD_MIN_H_VISUAL_DENSE = 192;
+/** Visual mode, dense — same content; narrow columns keep the stacked footer. */
+export const CARD_MIN_H_VISUAL_DENSE = 244;
 
 /**
  * Deterministic two-line slot for the product name.
