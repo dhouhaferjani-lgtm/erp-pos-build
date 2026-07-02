@@ -2,7 +2,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
-import { lookupBarcode, submitForEnrichment } from './platformApi'
+import { lookupBarcode, refreshEnrichment, submitForEnrichment } from './platformApi'
 import type { SubmitForEnrichmentPayload } from './platformApi'
 
 export const platformKeys = {
@@ -26,5 +26,11 @@ export function useCatalogLookup(barcode: string | null) {
 export function useProductSubmission() {
   return useMutation({
     mutationFn: (data: SubmitForEnrichmentPayload) => submitForEnrichment(data),
+  })
+}
+
+export function useEnrichmentRefresh() {
+  return useMutation({
+    mutationFn: (productId: string) => refreshEnrichment(productId),
   })
 }

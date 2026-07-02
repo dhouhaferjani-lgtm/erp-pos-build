@@ -13,7 +13,9 @@
     "toastSavedWithEnrichment": "Product saved. Submitted for catalog enrichment.",
     "toastEnrichmentFailed": "Product saved but enrichment submission failed.",
     "clearBarcode": "Clear barcode",
-    "toastProductSaved": "Product saved successfully."
+    "toastProductSaved": "Product saved successfully.",
+    "refreshSuccess": "Enrichment status refreshed.",
+    "refreshError": "Could not refresh enrichment status."
   },
   "goodsReceipt": {
     "title": "Goods Receipts",
