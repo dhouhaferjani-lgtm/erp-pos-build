@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileText, Clock, Wallet, Receipt, FileArchive } from 'lucide-react';
 import { useOperatorStore } from '@/stores/operatorStore';
-import { isManagerRole } from '@/lib/auth/roles';
+import { useAuthStore } from '@/stores/authStore';
+import { hasManagerAccess } from '@/lib/auth/roles';
 
 interface ReportsMenuProps {
   isOpen: boolean;
@@ -29,7 +30,8 @@ export function ReportsMenu({
   // (X-report, cash-drawer ops, Z-report history) are manager-only; the
   // transaction history + today's sales views stay open to every operator.
   const operator = useOperatorStore((s) => s.operator);
-  const isManager = isManagerRole(operator?.roles);
+  const userRoles = useAuthStore((s) => s.user?.roles);
+  const isManager = hasManagerAccess(operator?.roles, userRoles);
 
   useEffect(() => {
     if (!isOpen) return;

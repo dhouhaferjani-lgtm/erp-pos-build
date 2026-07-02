@@ -155,7 +155,7 @@ describe('FiltresDrawer — facets from product set', () => {
     expect(screen.getByRole('button', { name: 'combination' })).toBeInTheDocument();
   });
 
-  it('does NOT render the routine facet (deferred: no display names available)', () => {
+  it('renders routine step-label facets without exposing routine UUIDs', () => {
     const withRoutines: POSProduct[] = [
       makeProduct({
         id: 'pr1',
@@ -170,7 +170,7 @@ describe('FiltresDrawer — facets from product set', () => {
       }),
     ];
     renderDrawer({ products: withRoutines });
-    // The routine_id UUID must NOT appear as a facet label.
+    expect(screen.getByRole('button', { name: 'Nettoyant' })).toBeInTheDocument();
     expect(screen.queryByText('r-uuid-1')).not.toBeInTheDocument();
   });
 
@@ -190,13 +190,14 @@ describe('FiltresDrawer — facets from product set', () => {
       brands: ['Avene'],
       categories: [],
       skinTypes: [],
+      routines: [],
     });
   });
 
   it('deselects a brand when the pill is clicked again', () => {
     const onFiltersChange = vi.fn();
     renderDrawer({
-      filters: { brands: ['Avene'], categories: [], skinTypes: [] },
+      filters: { brands: ['Avene'], categories: [], skinTypes: [], routines: [] },
       onFiltersChange,
     });
     fireEvent.click(screen.getByRole('button', { name: 'Avene' }));
@@ -204,6 +205,7 @@ describe('FiltresDrawer — facets from product set', () => {
       brands: [],
       categories: [],
       skinTypes: [],
+      routines: [],
     });
   });
 
@@ -216,7 +218,7 @@ describe('FiltresDrawer — facets from product set', () => {
 
   it('shows the clear-all button when filters are active', () => {
     renderDrawer({
-      filters: { brands: ['Avene'], categories: [], skinTypes: [] },
+      filters: { brands: ['Avene'], categories: [], skinTypes: [], routines: [] },
     });
     expect(screen.getByText('products.filtersClearAll')).toBeInTheDocument();
   });
@@ -229,7 +231,7 @@ describe('FiltresDrawer — facets from product set', () => {
   it('calls onFiltersChange with EMPTY_FILTRES_FILTERS when clear-all is clicked', () => {
     const onFiltersChange = vi.fn();
     renderDrawer({
-      filters: { brands: ['Avene'], categories: ['Soin visage'], skinTypes: ['dry'] },
+      filters: { brands: ['Avene'], categories: ['Soin visage'], skinTypes: ['dry'], routines: [] },
       onFiltersChange,
     });
     fireEvent.click(screen.getByText('products.filtersClearAll'));

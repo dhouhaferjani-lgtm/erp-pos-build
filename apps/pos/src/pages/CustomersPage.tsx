@@ -46,7 +46,7 @@ function CustomerRow({ customer, isSelected, showSkin, onClick }: CustomerRowPro
       type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full flex-col gap-0.5 rounded-xl px-4 py-3 text-left transition-colors',
+        'flex min-h-[64px] w-full flex-col justify-center gap-1 rounded-xl px-4 py-3 text-left transition-colors',
         isSelected
           ? 'bg-action text-ink-inverse'
           : 'bg-surface-raised hover:bg-surface-sunken',
@@ -54,7 +54,7 @@ function CustomerRow({ customer, isSelected, showSkin, onClick }: CustomerRowPro
     >
       <span
         className={cn(
-          'text-sm font-semibold leading-tight',
+          'text-base font-semibold leading-tight',
           isSelected ? 'text-ink-inverse' : 'text-ink',
         )}
       >
@@ -63,7 +63,7 @@ function CustomerRow({ customer, isSelected, showSkin, onClick }: CustomerRowPro
       {contact && (
         <span
           className={cn(
-            'truncate text-xs',
+            'truncate text-sm',
             isSelected ? 'text-ink-inverse/70' : 'text-ink-faint',
           )}
         >
@@ -73,7 +73,7 @@ function CustomerRow({ customer, isSelected, showSkin, onClick }: CustomerRowPro
       {showSkin && customer.skin_type && (
         <span
           className={cn(
-            'mt-0.5 text-xs',
+            'mt-0.5 text-sm',
             isSelected ? 'text-ink-inverse/80' : 'text-ink-muted',
           )}
         >
@@ -161,7 +161,7 @@ function SkinProfileForm({
           aria-label={t('customers.skinType')}
           value={skinType}
           onChange={(e) => setSkinType(e.target.value)}
-          className="rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-12 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         >
           <option value="">{t('customers.skinTypeNone')}</option>
           {SKIN_TYPES.map((st) => (
@@ -186,7 +186,7 @@ function SkinProfileForm({
           onChange={(e) => setSkinAdviceNote(e.target.value)}
           placeholder={t('customers.skinAdviceNotePlaceholder')}
           rows={3}
-          className="rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-[96px] rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
 
@@ -198,7 +198,7 @@ function SkinProfileForm({
         <button
           type="button"
           onClick={onCancel}
-          className={cn(tokens.button.secondary, 'flex-1 py-2 text-sm')}
+          className={cn(tokens.button.secondary, 'flex-1 min-h-12 py-2 text-sm')}
         >
           {t('customers.close')}
         </button>
@@ -207,7 +207,7 @@ function SkinProfileForm({
           aria-label={t('customers.saveSkinProfile')}
           onClick={() => void handleSave()}
           disabled={saving}
-          className={cn(tokens.button.primary, 'flex-1 py-2 text-sm')}
+          className={cn(tokens.button.primary, 'flex-1 min-h-12 py-2 text-sm')}
         >
           <Check className="h-4 w-4" aria-hidden="true" />
           {saving ? t('customers.savingSkinProfile') : t('customers.saveSkinProfile')}
@@ -312,7 +312,7 @@ function CustomerDetail({
                   type="button"
                   aria-label={t('customers.editSkinProfile')}
                   onClick={() => setMode('editSkin')}
-                  className={cn(tokens.button.ghost, 'gap-1.5 px-2 py-1 text-xs')}
+                  className={cn(tokens.button.ghost, 'min-h-12 gap-1.5 px-3 py-2 text-sm')}
                 >
                   <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                   {t('customers.editSkinProfile')}
@@ -439,7 +439,7 @@ function AddCustomerForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t('customers.name')}
-          className="rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-12 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -452,7 +452,7 @@ function AddCustomerForm({
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder={t('customers.phone')}
-          className="rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-12 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -465,7 +465,7 @@ function AddCustomerForm({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder={t('customers.email')}
-          className="rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-12 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
 
@@ -477,7 +477,7 @@ function AddCustomerForm({
         <button
           type="button"
           onClick={onCancel}
-          className={cn(tokens.button.secondary, 'flex-1 py-2 text-sm')}
+          className={cn(tokens.button.secondary, 'flex-1 min-h-12 py-2 text-sm')}
         >
           {t('customers.close')}
         </button>
@@ -485,7 +485,7 @@ function AddCustomerForm({
           type="button"
           onClick={() => void handleCreate()}
           disabled={creating}
-          className={cn(tokens.button.primary, 'flex-1 py-2 text-sm')}
+          className={cn(tokens.button.primary, 'flex-1 min-h-12 py-2 text-sm')}
         >
           <UserPlus className="h-4 w-4" aria-hidden="true" />
           {creating ? t('customers.creating') : t('customers.createCustomer')}
@@ -622,7 +622,7 @@ export function CustomersPage() {
             setPageMode('add');
             setSelectedId(null);
           }}
-          className={cn(tokens.button.secondary, 'gap-2 px-3 py-2 text-sm')}
+          className={cn(tokens.button.secondary, 'min-h-12 gap-2 px-4 py-2 text-sm')}
         >
           <UserPlus className="h-4 w-4" aria-hidden="true" />
           {t('customers.addCustomer')}
@@ -637,8 +637,8 @@ export function CustomersPage() {
             'flex flex-col border-r border-border-subtle bg-surface-canvas',
             // Mobile: hide list when a customer is selected or add form is open
             selectedId || pageMode === 'add'
-              ? 'hidden md:flex md:w-80'
-              : 'flex w-full md:w-80',
+              ? 'hidden md:flex md:w-[360px]'
+              : 'flex w-full md:w-[360px]',
           )}
         >
           {/* Search */}
@@ -649,7 +649,7 @@ export function CustomersPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('customers.search')}
-              className="w-full rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+              className="min-h-12 w-full rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
             />
           </div>
 
@@ -700,7 +700,7 @@ export function CustomersPage() {
               </div>
             </div>
           ) : selectedCustomer && tenantId && companyId ? (
-            <div className="p-4 md:p-5 h-full">
+            <div className="h-full p-4 md:p-5">
               <CustomerDetail
                 key={selectedCustomer.id}
                 customer={selectedCustomer}
@@ -713,7 +713,7 @@ export function CustomersPage() {
             </div>
           ) : (
             // Empty state — no customer selected, not in add mode
-            <div className="hidden md:flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+            <div className="hidden h-full flex-col items-center justify-center gap-3 p-8 text-center md:flex">
               <span className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-sunken text-ink-faint">
                 <Users className="h-8 w-8" aria-hidden="true" />
               </span>

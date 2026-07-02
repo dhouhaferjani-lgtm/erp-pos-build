@@ -251,8 +251,8 @@ export function HomePage() {
   // Settings
   const cartPosition = useSettingsStore((s) => s.cartPosition);
 
-  // Task 26 — Filtres drawer filter state. Lifted here so the skin-advice bar
-  // (Task 27+) can also read/set the skinType selection.
+  // Task 26 — Filtres drawer filter state. Lifted here so ProductGrid can
+  // keep the drawer filter state across product-grid remounts.
   const [filtresFilters, setFiltresFilters] = useState<FiltresFilters>(EMPTY_FILTRES_FILTERS);
 
   // Task 27 — resolve the attached customer's skin_type from SQLite so the
@@ -1452,7 +1452,7 @@ export function HomePage() {
       {/* Cart - left panel (first in DOM). The customer control is rendered
           inside the cart header (customerControl prop) so the cart owns one
           unified header zone — no separate floating customer band. */}
-      <div className="flex min-w-[340px] flex-[4] flex-col border-r border-subtle">
+      <div className="flex w-[460px] min-w-[460px] max-w-[460px] flex-none flex-col border-r border-subtle">
         <div className="min-h-0 flex-1">
           <TransactionCart
             customerControl={

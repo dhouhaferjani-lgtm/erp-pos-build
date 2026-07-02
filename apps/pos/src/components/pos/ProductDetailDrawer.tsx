@@ -1,17 +1,17 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Check, MapPin, Plus, ShoppingCart, X } from 'lucide-react';
 import { useCurrency } from '@/lib/currency';
-import { X, Package } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { bccomp } from '@/lib/decimal';
 import { formatAvailableQty } from '@/lib/stock/stockGate';
+import { addItemGated } from '@/lib/stock/cartIngress';
+import { cn } from '@/lib/utils';
+import { ProductThumb } from '@/components/ui/ProductThumb';
+import { StockBadge } from '@/components/ui/StockBadge';
 import { useProductStore, hasModule } from '@/stores/productStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { CrossLocationStockSection } from '@/components/organisms/CrossLocationStockSection/CrossLocationStockSection';
-import { Tabs, type TabItem } from '@/components/ui/Tabs';
-import { ProductThumb } from '@/components/ui/ProductThumb';
-import { addItemGated } from '@/lib/stock/cartIngress';
 import type { POSProduct } from '@/types/product';
 import type { LocationStockDisplay } from '@/lib/stock/gridStock';
 
@@ -23,7 +23,16 @@ interface ProductDetailDrawerProps {
   locationStock?: LocationStockDisplay | null;
 }
 
-type MerchandiseTab = 'equivalents' | 'complements' | 'routine';
+type DetailTab = 'details' | 'routine' | 'equivalents' | 'complements';
+
+interface RoutineStep {
+  product: POSProduct;
+  step_label: string;
+  step_order: number;
+  routine_id: string;
+}
+
+const DETAILS_TAB: DetailTab = 'details';
 
 export function ProductDetailDrawer({
   isOpen,
@@ -32,11 +41,8 @@ export function ProductDetailDrawer({
   locationStock,
 }: ProductDetailDrawerProps) {
   const { t } = useTranslation('pos');
+  const { t: tSmart } = useTranslation('smart-prompts');
   const { format } = useCurrency();
-
-  // F8 — cross-location stock gate. ALL hooks must run before the early return
-  // below to keep hook order stable. The section itself renders only when both
-  // the company flag and the operator permission are present (canView).
   const allowCrossLocation = useProductStore(
     (s) => s.companyConfig?.allow_cross_location_stock_view === true,
   );
@@ -44,340 +50,388 @@ export function ProductDetailDrawer({
     (s) => s.operator?.permissions?.includes('pos.view_cross_location_stock') ?? false,
   );
   const currentLocationId = useTerminalStore((s) => s.terminal?.location?.id ?? null);
-
-  // Task 28 — merchandising tabs (module-gated). All hooks run unconditionally
-  // before the early return so hook order is stable.
-  const [activeTab, setActiveTab] = useState<MerchandiseTab>('equivalents');
-  // Reset to the first tab when a different product is shown in the same drawer
-  // instance. Inline prev-prop comparison (React's recommended pattern) instead
-  // of a useEffect — avoids the extra commit with a stale tab.
-  const [prevProductId, setPrevProductId] = useState<string | undefined>(product?.id);
-  if (product?.id !== prevProductId) {
-    setPrevProductId(product?.id);
-    setActiveTab('equivalents');
-  }
+  const currentLocationName = useTerminalStore((s) => s.terminal?.location?.name ?? null);
   const companyConfig = useProductStore((s) => s.companyConfig);
   const getByIds = useProductStore((s) => s.getByIds);
   const allProducts = useProductStore((s) => s.products);
   const hasMerchandising = hasModule(companyConfig, 'Merchandising');
 
-  if (!product) return null;
+  const [activeTab, setActiveTab] = useState<DetailTab>(DETAILS_TAB);
+  const [prevProductId, setPrevProductId] = useState<string | undefined>(product?.id);
+  if (product?.id !== prevProductId) {
+    setPrevProductId(product?.id);
+    setActiveTab(DETAILS_TAB);
+  }
 
+  if (!isOpen || !product) return null;
+
+  const meta = product.parapharmacy_metadata;
   const hasSlice = locationStock !== undefined && locationStock !== null;
   const exempt = locationStock === null;
-
   const available = hasSlice ? locationStock!.available : null;
   const isOut = available !== null ? bccomp(available, '0') <= 0 : product.stock_quantity <= 0;
   const isLow = !isOut && (available !== null ? bccomp(available, '10') <= 0 : product.stock_quantity <= 10);
-  const stockTone = isOut ? 'text-red-600 bg-red-50' : isLow ? 'text-amber-600 bg-amber-50' : 'text-green-600 bg-green-50';
   const stockText = available !== null ? formatAvailableQty(available) : String(product.stock_quantity);
+  const stockStatus = isOut ? 'out' : isLow ? 'low' : 'ok';
+  const stockLabel = isOut
+    ? t('products.outOfStock')
+    : stockText;
+  const showMerchandising = hasMerchandising && meta != null;
+  const equivalents = showMerchandising ? getByIds(meta.equivalent_product_ids) : [];
+  const complements = showMerchandising ? getByIds(meta.complement_product_ids) : [];
+  const routineSteps = showMerchandising ? buildRoutineSteps(product, allProducts) : [];
+  const benefitLabels = meta?.suitable_skin_types ?? [];
+  const ingredientLabels = [product.category, product.brand_name].filter((v): v is string => Boolean(v));
+  const priceText = format(product.sale_price ?? '0');
+  const showDtSuffix = !priceText.toUpperCase().includes('DT');
+  const brand = product.brand_name ?? t('productDetail.brandFallback');
 
-  // Task 28 — compute merchandising data (product is non-null here)
-  const meta = product.parapharmacy_metadata;
-  const showMerchandisingTabs = hasMerchandising && meta != null;
-
-  const equivalents = showMerchandisingTabs ? getByIds(meta.equivalent_product_ids) : [];
-  const complements = showMerchandisingTabs ? getByIds(meta.complement_product_ids) : [];
-
-  /**
-   * Reconstruct the routine(s) this product belongs to.
-   * For each routine_id referenced in this product's routine_refs, find ALL
-   * products in the in-memory catalog that share that routine_id, then order
-   * them by step_order.  Multiple routines are sorted by routine_id first so
-   * the list is stable across renders.
-   */
-  const routineSteps: { product: POSProduct; step_label: string; step_order: number; routine_id: string }[] =
-    showMerchandisingTabs
-      ? (() => {
-          const myRoutineIds = new Set(meta.routine_refs.map((r) => r.routine_id));
-          if (myRoutineIds.size === 0) return [];
-          const steps: { product: POSProduct; step_label: string; step_order: number; routine_id: string }[] = [];
-          for (const p of allProducts) {
-            const refs = p.parapharmacy_metadata?.routine_refs ?? [];
-            for (const ref of refs) {
-              if (myRoutineIds.has(ref.routine_id)) {
-                steps.push({
-                  product: p,
-                  step_label: ref.step_label,
-                  step_order: ref.step_order,
-                  routine_id: ref.routine_id,
-                });
-              }
-            }
-          }
-          steps.sort((a, b) =>
-            a.routine_id !== b.routine_id
-              ? a.routine_id.localeCompare(b.routine_id)
-              : a.step_order - b.step_order,
-          );
-          return steps;
-        })()
-      : [];
-
-  const merchandisingTabs: TabItem<MerchandiseTab>[] = [
-    {
-      id: 'equivalents',
-      label: t('productDetail.merchandising.equivalents'),
-      count: equivalents.length,
-    },
-    {
-      id: 'complements',
-      label: t('productDetail.merchandising.complements'),
-      count: complements.length,
-    },
-    {
-      id: 'routine',
-      label: t('productDetail.merchandising.routine'),
-      count: routineSteps.length,
-    },
+  const tabs: { id: DetailTab; label: string; count?: number }[] = [
+    { id: 'details', label: t('productDetail.tabs.details') },
+    { id: 'routine', label: t('productDetail.merchandising.routine'), count: routineSteps.length },
+    { id: 'equivalents', label: t('productDetail.merchandising.equivalents'), count: equivalents.length },
+    { id: 'complements', label: t('productDetail.merchandising.complements'), count: complements.length },
   ];
 
   return (
-    <>
-      {/* Backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/30"
-          onClick={onClose}
-        />
-      )}
-
-      {/* Drawer */}
-      <div
-        className={cn(
-          'fixed inset-y-0 right-0 z-50 w-80 transform bg-white shadow-2xl transition-transform duration-300',
-          isOpen ? 'translate-x-0' : 'translate-x-full',
-        )}
+    <div className="fixed inset-0 z-[52] flex items-center justify-center bg-black/50 p-3 ez-fade-in" onClick={onClose}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('productDetail.title')}
+        data-testid="product-detail-modal"
+        className="ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-[20px] bg-surface-overlay shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-4">
-          <h2 className="text-lg font-bold text-gray-900">
-            {t('productDetail.title')}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t('products.filtersClose')}
+          className="absolute top-4 right-4 z-10 flex h-12 w-12 items-center justify-center rounded-ctl border border-border-subtle bg-surface-raised text-ink-muted active:bg-surface-sunken"
+        >
+          <X className="h-5 w-5" aria-hidden="true" />
+        </button>
+
+        <aside
+          data-testid="product-detail-left-column"
+          className="flex w-[344px] shrink-0 flex-col border-r border-border-subtle px-6 py-7"
+        >
+          <div className="relative flex h-[188px] shrink-0 items-center justify-center overflow-hidden rounded-card bg-surface-sunken">
+            <ProductThumb
+              name={product.name}
+              category={product.category}
+              imageUrl={product.image_url}
+              size={148}
+            />
+            {isOut && !exempt && (
+              <span className="absolute top-3 left-3 rounded-pill border border-danger-subtle bg-surface-raised px-3 py-1.5 text-xs font-bold text-danger-strong">
+                {t('products.outOfStock')}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-5 text-xs font-bold tracking-[0.06em] text-accent uppercase">{brand}</div>
+          <h2 className="mt-1 font-display text-[21px] leading-tight font-bold text-ink-strong">
+            {product.name}
           </h2>
-          <button
-            onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {/* Product image / icon */}
-          <div className="mb-4 flex items-center justify-center rounded-xl bg-gray-50 p-8">
-            {product.image_url ? (
-              <img
-                src={product.image_url}
-                alt={product.name}
-                className="h-24 w-24 rounded-lg object-cover"
-              />
-            ) : (
-              <Package className="h-16 w-16 text-gray-300" />
-            )}
-          </div>
-
-          {/* Name */}
-          <h3 className="text-xl font-bold text-gray-900">{product.name}</h3>
-
-          {/* Price */}
-          <p className="mt-1 text-2xl font-bold text-blue-600">
-            {format(product.sale_price ?? 0)}
-          </p>
-
-          {/* Info rows */}
-          <div className="mt-6 space-y-4">
-            {/* SKU */}
-            {product.sku && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">SKU</span>
-                <span className="font-medium text-gray-900">{product.sku}</span>
-              </div>
-            )}
-
-            {/* Barcode */}
-            {product.barcode && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">{t('barcode.inputLabel')}</span>
-                <span className="font-medium text-gray-900">{product.barcode}</span>
-              </div>
-            )}
-
-            {/* Category */}
-            {product.category && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">{t('products.allCategories')}</span>
-                <span className="font-medium text-gray-900">{product.category}</span>
-              </div>
-            )}
-
-            {/* Stock */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             {!exempt && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">{t('productDetail.stock')}</span>
-                <span
-                  data-testid="drawer-stock-row"
-                  className={cn(
-                    'rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                    stockTone,
-                  )}
-                >
-                  {stockText}
-                </span>
-              </div>
+              <StockBadge data-testid="drawer-stock-row" status={stockStatus}>
+                {stockLabel}
+              </StockBadge>
             )}
-
-            {/* Tax rate */}
-            {product.tax_rate && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">{t('common:tax')}</span>
-                <span className="font-medium text-gray-900">{product.tax_rate}%</span>
-              </div>
+            {product.category && (
+              <span className="text-sm text-ink-faint">{product.category}</span>
             )}
           </div>
 
-          {/* F8 — cross-location stock distribution (gated inside the section) */}
-          <CrossLocationStockSection
-            product={product}
-            canView={allowCrossLocation && canViewCrossLocation}
-            currentLocationId={currentLocationId}
-          />
-
-          {/* Task 28 — Merchandising tabs (module-gated) */}
-          {showMerchandisingTabs && (
-            <div className="mt-6 border-t border-border-subtle pt-4">
-              <Tabs
-                tabs={merchandisingTabs}
-                value={activeTab}
-                onChange={setActiveTab}
-                ariaLabel={t('productDetail.merchandising.ariaLabel')}
-              />
-
-              <div className="mt-3 space-y-1">
-                {/* Équivalents panel */}
-                {activeTab === 'equivalents' && (
-                  <>
-                    {equivalents.length === 0 ? (
-                      <p className="py-6 text-center text-sm text-ink-muted">
-                        {t('productDetail.merchandising.empty')}
-                      </p>
-                    ) : (
-                      equivalents.map((p) => (
-                        <MerchandiseRow
-                          key={p.id}
-                          product={p}
-                          format={format}
-                          addLabel={t('productDetail.merchandising.add')}
-                        />
-                      ))
-                    )}
-                  </>
-                )}
-
-                {/* Compléments panel */}
-                {activeTab === 'complements' && (
-                  <>
-                    {complements.length === 0 ? (
-                      <p className="py-6 text-center text-sm text-ink-muted">
-                        {t('productDetail.merchandising.empty')}
-                      </p>
-                    ) : (
-                      complements.map((p) => (
-                        <MerchandiseRow
-                          key={p.id}
-                          product={p}
-                          format={format}
-                          addLabel={t('productDetail.merchandising.add')}
-                        />
-                      ))
-                    )}
-                  </>
-                )}
-
-                {/* Routine panel */}
-                {activeTab === 'routine' && (
-                  <>
-                    {routineSteps.length === 0 ? (
-                      <p className="py-6 text-center text-sm text-ink-muted">
-                        {t('productDetail.merchandising.empty')}
-                      </p>
-                    ) : (
-                      routineSteps.map((step, i) => (
-                        <button
-                          key={`${step.routine_id}-${step.product.id}-${i}`}
-                          type="button"
-                          data-testid="routine-step-row"
-                          onClick={() => { void addItemGated(step.product); }}
-                          className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-surface-raised active:bg-surface-sunken"
-                        >
-                          {/* Step order badge */}
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-xs font-semibold text-ink-muted tabular-nums">
-                            {step.step_order}
-                          </span>
-                          <ProductThumb
-                            name={step.product.name}
-                            category={step.product.category}
-                            imageUrl={step.product.image_url}
-                            size={40}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs text-ink-muted">{step.step_label}</p>
-                            <p className="truncate text-sm font-medium text-ink">{step.product.name}</p>
-                          </div>
-                          <span
-                            data-testid="merch-add-btn"
-                            className="shrink-0 text-xs font-semibold text-accent"
-                          >
-                            {t('productDetail.merchandising.add')}
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </>
-                )}
+          <div className="mt-5 flex items-end justify-between border-t border-border-subtle pt-5">
+            <div>
+              <div className="text-sm text-ink-faint">{t('productDetail.priceTtc')}</div>
+              <div className="font-mono text-[28px] leading-tight font-semibold tabular-nums text-ink-strong">
+                {priceText}
+                {showDtSuffix && <span className="ml-1 text-sm text-ink-faint">DT</span>}
               </div>
             </div>
-          )}
+            <div className="text-right font-mono text-[11px] leading-relaxed text-ink-faint">
+              {product.sku && <div>{product.sku}</div>}
+              {product.barcode && <div>{product.barcode}</div>}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            aria-label={t('productDetail.addToCart')}
+            disabled={isOut && !exempt}
+            onClick={() => { void addItemGated(product); }}
+            className={cn(
+              'mt-5 flex h-[54px] w-full items-center justify-center gap-2 rounded-ctl text-base font-bold shadow-sm',
+              isOut && !exempt
+                ? 'cursor-not-allowed border border-border-subtle bg-surface-sunken text-ink-faint shadow-none'
+                : 'bg-accent text-ink-inverse active:bg-accent-strong',
+            )}
+          >
+            <ShoppingCart className="h-5 w-5" aria-hidden="true" />
+            {t('productDetail.addToCart')}
+          </button>
+        </aside>
+
+        <div data-testid="product-detail-right-column" className="flex min-w-0 flex-1 flex-col">
+          <div
+            role="tablist"
+            aria-label={t('productDetail.merchandising.ariaLabel')}
+            className="flex shrink-0 gap-1 border-b border-border-subtle px-6 pt-4"
+          >
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'min-h-12 border-b-2 px-4 pt-2 pb-3 text-sm font-semibold',
+                  activeTab === tab.id
+                    ? 'border-accent text-ink-strong'
+                    : 'border-transparent text-ink-muted active:text-ink',
+                )}
+              >
+                {tab.label}
+                {tab.count !== undefined && (
+                  <span className="ml-2 font-mono text-xs text-ink-faint">{tab.count}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            {activeTab === 'details' && (
+              <DetailsPanel
+                product={product}
+                benefitLabels={benefitLabels}
+                ingredientLabels={ingredientLabels}
+                currentLocationName={currentLocationName}
+                stockLabel={stockLabel}
+                isOut={isOut && !exempt}
+                t={t}
+                tSmart={tSmart}
+              />
+            )}
+            {activeTab === 'routine' && (
+              <RoutinePanel
+                steps={routineSteps}
+                currentProductId={product.id}
+                emptyText={t('productDetail.merchandising.empty')}
+                currentLabel={t('productDetail.currentSelection')}
+              />
+            )}
+            {activeTab === 'equivalents' && (
+              <RelatedPanel products={equivalents} emptyText={t('productDetail.merchandising.empty')} intro={t('productDetail.tabs.equivalentsIntro')} />
+            )}
+            {activeTab === 'complements' && (
+              <RelatedPanel products={complements} emptyText={t('productDetail.merchandising.empty')} intro={t('productDetail.tabs.complementsIntro')} />
+            )}
+
+            <CrossLocationStockSection
+              product={product}
+              canView={allowCrossLocation && canViewCrossLocation}
+              currentLocationId={currentLocationId}
+            />
+          </div>
         </div>
-      </div>
-    </>
+      </section>
+    </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// MerchandiseRow — shared row component for Équivalents and Compléments tabs.
-// ---------------------------------------------------------------------------
-interface MerchandiseRowProps {
-  product: POSProduct;
-  format: (value: string | number) => string;
-  addLabel: string;
+function buildRoutineSteps(product: POSProduct, allProducts: POSProduct[]): RoutineStep[] {
+  const refs = product.parapharmacy_metadata?.routine_refs ?? [];
+  const routineIds = new Set(refs.map((r) => r.routine_id));
+  if (routineIds.size === 0) return [];
+
+  const steps: RoutineStep[] = [];
+  for (const candidate of allProducts) {
+    for (const ref of candidate.parapharmacy_metadata?.routine_refs ?? []) {
+      if (routineIds.has(ref.routine_id)) {
+        steps.push({
+          product: candidate,
+          step_label: ref.step_label,
+          step_order: ref.step_order,
+          routine_id: ref.routine_id,
+        });
+      }
+    }
+  }
+  steps.sort((a, b) =>
+    a.routine_id !== b.routine_id
+      ? a.routine_id.localeCompare(b.routine_id)
+      : a.step_order - b.step_order,
+  );
+  return steps;
 }
 
-function MerchandiseRow({ product, format, addLabel }: MerchandiseRowProps) {
+function DetailsPanel({
+  product,
+  benefitLabels,
+  ingredientLabels,
+  currentLocationName,
+  stockLabel,
+  isOut,
+  t,
+  tSmart,
+}: {
+  product: POSProduct;
+  benefitLabels: string[];
+  ingredientLabels: string[];
+  currentLocationName: string | null;
+  stockLabel: string;
+  isOut: boolean;
+  t: (key: string, options?: Record<string, unknown>) => string;
+  tSmart: (key: string, options?: Record<string, unknown>) => string;
+}) {
   return (
-    <button
-      type="button"
-      onClick={() => { void addItemGated(product); }}
-      className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-surface-raised active:bg-surface-sunken"
-    >
-      <ProductThumb
-        name={product.name}
-        category={product.category}
-        imageUrl={product.image_url}
-        size={40}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-ink">{product.name}</p>
-        {product.sale_price != null && (
-          <p className="text-xs text-ink-muted">{format(product.sale_price)}</p>
-        )}
+    <div>
+      <p className="text-[15px] leading-relaxed text-ink">
+        {(product as { description?: string }).description ?? t('productDetail.descriptionFallback')}
+      </p>
+
+      <SectionTitle>{t('productDetail.benefitsTitle')}</SectionTitle>
+      <div className="flex flex-wrap gap-2">
+        {(benefitLabels.length > 0 ? benefitLabels : ['normal']).map((label) => (
+          <span
+            key={label}
+            className="inline-flex min-h-10 items-center gap-2 rounded-pill border border-success-subtle bg-success-surface px-3 text-sm font-semibold text-success-strong"
+          >
+            <Check className="h-4 w-4" aria-hidden="true" />
+            {tSmart(`skin_type.${label}`, { defaultValue: label })}
+          </span>
+        ))}
       </div>
-      <span
-        data-testid="merch-add-btn"
-        className="shrink-0 text-xs font-semibold text-accent"
-      >
-        {addLabel}
-      </span>
-    </button>
+
+      <SectionTitle>{t('productDetail.ingredientsTitle')}</SectionTitle>
+      <div className="flex flex-wrap gap-2">
+        {(ingredientLabels.length > 0 ? ingredientLabels : [t('productDetail.defaultIngredient')]).map((label) => (
+          <span
+            key={label}
+            className="inline-flex min-h-10 items-center rounded-ctl border border-border-subtle bg-surface-sunken px-3 text-sm font-medium text-ink"
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      <SectionTitle>{t('productDetail.availabilityTitle')}</SectionTitle>
+      <div className="flex flex-col gap-2">
+        <div className="flex min-h-12 items-center gap-3 rounded-ctl border border-accent-subtle bg-accent-tint px-4">
+          <MapPin className="h-4 w-4 shrink-0 text-accent-strong" aria-hidden="true" />
+          <span className="min-w-0 flex-1 text-sm font-semibold text-ink">
+            {currentLocationName ?? t('productDetail.currentBranch')}
+            <span className="ml-2 rounded-pill bg-surface-raised px-2 py-0.5 text-xs font-bold text-accent-strong">
+              {t('productDetail.here')}
+            </span>
+          </span>
+          <span className={cn('font-mono text-sm font-semibold', isOut ? 'text-danger-strong' : 'text-ink-strong')}>
+            {stockLabel}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoutinePanel({
+  steps,
+  currentProductId,
+  emptyText,
+  currentLabel,
+}: {
+  steps: RoutineStep[];
+  currentProductId: string;
+  emptyText: string;
+  currentLabel: string;
+}) {
+  if (steps.length === 0) return <EmptyState>{emptyText}</EmptyState>;
+  return (
+    <div className="flex flex-col gap-2">
+      {steps.map((step, index) => (
+        <button
+          key={`${step.routine_id}-${step.product.id}-${index}`}
+          type="button"
+          data-testid="routine-step-row"
+          onClick={() => { void addItemGated(step.product); }}
+          className="flex min-h-[64px] w-full items-center gap-3 rounded-card border border-border-subtle bg-surface-raised px-3 text-left active:bg-surface-sunken"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-accent text-sm font-bold text-ink-inverse">
+            {step.step_order}
+          </span>
+          <ProductThumb name={step.product.name} category={step.product.category} imageUrl={step.product.image_url} size={48} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-bold tracking-wide text-accent uppercase">{step.step_label}</span>
+            <span className="block truncate text-sm font-semibold text-ink">{step.product.name}</span>
+          </span>
+          {step.product.id === currentProductId ? (
+            <span className="rounded-pill bg-accent-tint px-3 py-1 text-xs font-bold text-accent-strong">{currentLabel}</span>
+          ) : (
+            <span data-testid="merch-add-btn" className="flex h-10 w-10 items-center justify-center rounded-ctl bg-accent-tint text-accent-strong">
+              <Plus className="h-5 w-5" aria-hidden="true" />
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function RelatedPanel({
+  products,
+  emptyText,
+  intro,
+}: {
+  products: POSProduct[];
+  emptyText: string;
+  intro: string;
+}) {
+  if (products.length === 0) return <EmptyState>{emptyText}</EmptyState>;
+  return (
+    <div>
+      <p className="mb-4 text-sm text-ink-muted">{intro}</p>
+      <div className="grid grid-cols-2 gap-3">
+        {products.map((product) => (
+          <button
+            key={product.id}
+            type="button"
+            data-testid="merch-add-btn"
+            onClick={() => { void addItemGated(product); }}
+            className="flex min-h-[74px] items-center gap-3 rounded-card border border-border-subtle bg-surface-raised p-3 text-left active:bg-surface-sunken"
+          >
+            <ProductThumb name={product.name} category={product.category} imageUrl={product.image_url} size={48} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[11px] font-bold tracking-wide text-ink-faint uppercase">
+                {product.brand_name}
+              </span>
+              <span className="block truncate text-sm font-semibold text-ink">{product.name}</span>
+              <span className="block font-mono text-sm font-semibold text-ink-strong">{product.sale_price}</span>
+            </span>
+            <Plus className="h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="mt-6 mb-3 text-xs font-bold tracking-[0.05em] text-ink-faint uppercase">
+      {children}
+    </h3>
+  );
+}
+
+function EmptyState({ children }: { children: ReactNode }) {
+  return (
+    <p className="flex h-44 items-center justify-center rounded-card border border-border-subtle bg-surface-sunken text-sm font-medium text-ink-muted">
+      {children}
+    </p>
   );
 }

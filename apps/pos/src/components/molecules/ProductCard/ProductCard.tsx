@@ -230,7 +230,7 @@ function ProductCardInner({
       {isInCart && (
         <span
           aria-hidden
-          className="absolute inset-x-0 top-0 h-[3px] rounded-t-xl bg-accent"
+          className="absolute top-0 right-3.5 left-3.5 h-[3px] rounded-b-pill bg-accent"
         />
       )}
 
@@ -315,8 +315,8 @@ function ProductCardInner({
         <p
           data-testid="price-row"
           className={cn(
-            'shrink-0 text-lg font-mono tabular-nums',
-            isOutOfStock ? 'text-ink-faint' : 'text-ink',
+            'shrink-0 font-mono text-lg font-bold tabular-nums',
+            isOutOfStock ? 'text-ink-faint' : 'text-accent-strong',
           )}
         >
           {format(product.sale_price ?? '0')}

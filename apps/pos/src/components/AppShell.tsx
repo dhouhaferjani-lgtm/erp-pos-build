@@ -13,7 +13,7 @@ import { DurabilityGateModal } from './fiscal/DurabilityGateModal';
 import { HomePage } from '@/pages/HomePage';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { isManagerRole } from '@/lib/auth/roles';
+import { hasManagerAccess } from '@/lib/auth/roles';
 import { useSyncStore } from '@/stores/syncStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useCustomerDisplaySync } from '@/hooks/useCustomerDisplaySync';
@@ -30,6 +30,14 @@ const TodaySalesPage = lazy(() =>
   import('@/components/pos/TodaySalesPanel').then((m) => ({ default: m.TodaySalesPage })),
 );
 
+const ReportsPage = lazy(() =>
+  import('@/pages/ReportsPage').then((m) => ({ default: m.ReportsPage })),
+);
+
+const ShiftClosurePage = lazy(() =>
+  import('@/pages/ShiftClosurePage').then((m) => ({ default: m.ShiftClosurePage })),
+);
+
 const ZReportListPage = lazy(() =>
   import('@/pages/ZReportListPage').then((m) => ({ default: m.ZReportListPage })),
 );
@@ -43,13 +51,13 @@ type NavDest = 'caisse' | 'clients' | 'rapports' | 'shift';
 const NAV_ROUTE: Record<NavDest, string> = {
   caisse: '/',
   clients: '/customers',
-  rapports: '/sales',
-  shift: '/reports/z',
+  rapports: '/reports',
+  shift: '/shift',
 };
 function activeDestForPath(pathname: string): NavDest {
   if (pathname.startsWith('/customers')) return 'clients';
-  if (pathname.startsWith('/sales')) return 'rapports';
-  if (pathname.startsWith('/reports')) return 'shift';
+  if (pathname === '/reports' || pathname.startsWith('/sales')) return 'rapports';
+  if (pathname.startsWith('/shift') || pathname.startsWith('/reports/z')) return 'shift';
   return 'caisse';
 }
 
@@ -58,6 +66,7 @@ export function AppShell() {
   const lock = useOperatorStore((s) => s.lock);
   const operator = useOperatorStore((s) => s.operator);
   const companyId = useAuthStore((s) => s.companyId);
+  const userRoles = useAuthStore((s) => s.user?.roles);
 
   // Nav rail (P2): destinations + theme toggle, placed OPPOSITE the cart.
   const navigate = useNavigate();
@@ -67,11 +76,8 @@ export function AppShell() {
   const setTheme = useSettingsStore((s) => s.setTheme);
   const cartPosition = useSettingsStore((s) => s.cartPosition);
   const railOnLeft = cartPosition === 'end'; // cart right ⇒ rail left
-  // Manager-gating (point 1/2): a cashier closes blind, so they must NOT get a
-  // nav path to manager-only report screens (Z-report history / X-report) that
-  // could leak shift totals. Sales history (/sales) stays open — it is already
-  // scoped to the current shift. `isManagerRole` is the canonical check.
-  const isManager = isManagerRole(operator?.roles);
+  // Manager-gating: owner user access outranks the active PIN operator role.
+  const isManager = hasManagerAccess(operator?.roles, userRoles);
   const navItems: { id: NavDest; label: string; icon: React.ReactNode }[] = [
     { id: 'caisse', label: t('nav.caisse'), icon: <ShoppingCart className="h-5 w-5" /> },
     { id: 'clients', label: t('nav.clients'), icon: <Users className="h-5 w-5" /> },
@@ -207,6 +213,14 @@ export function AppShell() {
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/sales" element={<TodaySalesPage />} />
+            <Route
+              path="/reports"
+              element={isManager ? <ReportsPage /> : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/shift"
+              element={isManager ? <ShiftClosurePage /> : <Navigate to="/" replace />}
+            />
             {/* Z-report history = manager-only (point 1/2): defense-in-depth
                 even though the nav item is hidden for cashiers. */}
             <Route

@@ -26,12 +26,6 @@ type DisplayMode = 'grid' | 'visual';
 type SortMode = 'default' | 'mostSold';
 
 /**
- * Task 27 — The canonical 5 skin-type values for the advice bar.
- * Translated via `skin_type.<value>` in the `smart-prompts` namespace.
- */
-const SKIN_TYPES = ['normal', 'dry', 'oily', 'combination', 'sensitive'] as const;
-
-/**
  * Stable default for the `locationStock` prop — an inline `{}` default would
  * be a brand-new object every render, invalidating the `filteredProducts`
  * memo (which depends on it) on each pass.
@@ -97,6 +91,7 @@ export function ProductGrid({
   // ---------------------------------------------------------------------------
   const displayMode = useSettingsStore((s) => s.displayMode);
   const density = useSettingsStore((s) => s.density);
+  const showParapharmacyFilters = useSettingsStore((s) => s.parapharmacySkinFiltersEnabled);
   const setDisplayMode = useSettingsStore((s) => s.setDisplayMode);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -121,7 +116,7 @@ export function ProductGrid({
   _onFiltersChangeRef.current = onFiltersChange;
 
   useEffect(() => {
-    if (!isMerchandisingEnabled) return;       // guard: no-op when module is off (bar is hidden but filter must not apply)
+    if (!isMerchandisingEnabled || !showParapharmacyFilters) return;
     if (!customerSkinType) return;
     const f = _filtersRef.current;
     const onChange = _onFiltersChangeRef.current;
@@ -130,7 +125,7 @@ export function ProductGrid({
     onChange({ ...f, skinTypes: [customerSkinType] });
     // customerSkinType / isMerchandisingEnabled are the change-drivers; filters/onFiltersChange are
     // read via stable refs — refs are excluded from deps by convention.
-  }, [customerSkinType, isMerchandisingEnabled]);
+  }, [customerSkinType, isMerchandisingEnabled, showParapharmacyFilters]);
 
   const companyId = useAuthStore((s) => s.companyId);
   const { counts: salesCounts } = useMostSoldCounts({
@@ -288,15 +283,23 @@ export function ProductGrid({
         (p) => p.category != null && filters.categories.includes(p.category),
       );
     }
-    if (filters?.skinTypes && filters.skinTypes.length > 0) {
+    if (showParapharmacyFilters && filters?.skinTypes && filters.skinTypes.length > 0) {
       filtered = filtered.filter((p) => {
         const sst = p.parapharmacy_metadata?.suitable_skin_types;
         return sst != null && filters.skinTypes.some((st) => sst.includes(st));
       });
     }
+    if (showParapharmacyFilters && filters?.routines && filters.routines.length > 0) {
+      filtered = filtered.filter((p) => {
+        const refs = p.parapharmacy_metadata?.routine_refs;
+        return refs != null && filters.routines.some((routine) =>
+          refs.some((ref) => ref.step_label === routine),
+        );
+      });
+    }
 
     return filtered;
-  }, [sortedProducts, selectedCategory, searchQuery, inStockOnly, locationStock, filters]);
+  }, [sortedProducts, selectedCategory, searchQuery, inStockOnly, locationStock, filters, showParapharmacyFilters]);
 
   // ---------------------------------------------------------------------------
   // Active filter count — badge on the Filtres button. Counts ONLY the
@@ -306,7 +309,7 @@ export function ProductGrid({
   const activeFilterCount =
     (filters?.brands.length ?? 0) +
     (filters?.categories.length ?? 0) +
-    (filters?.skinTypes.length ?? 0);
+    (showParapharmacyFilters ? (filters?.skinTypes.length ?? 0) + (filters?.routines.length ?? 0) : 0);
 
   const rowHeight = getCardMinH(displayMode, density);
   const rowCount = Math.ceil(filteredProducts.length / columns);
@@ -530,7 +533,9 @@ export function ProductGrid({
       {/* Active filter-chip row (Task 26) — shown only when Merchandising module is on
           and there are active drawer filters. */}
       {isMerchandisingEnabled && filters && (
-        filters.brands.length > 0 || filters.categories.length > 0 || filters.skinTypes.length > 0
+        filters.brands.length > 0 ||
+        filters.categories.length > 0 ||
+        (showParapharmacyFilters && (filters.skinTypes.length > 0 || filters.routines.length > 0))
       ) && (
         <div className="flex flex-wrap items-center gap-2" data-testid="filter-chip-row">
           {filters.brands.map((brand) => (
@@ -563,7 +568,7 @@ export function ProductGrid({
               {cat}
             </Pill>
           ))}
-          {filters.skinTypes.map((st) => (
+          {showParapharmacyFilters && filters.skinTypes.map((st) => (
             <Pill
               key={`skin-${st}`}
               selected
@@ -580,41 +585,21 @@ export function ProductGrid({
               {t(`skin_type.${st}`, { ns: 'smart-prompts', defaultValue: st })}
             </Pill>
           ))}
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Skin-advice bar (Task 27) — module-gated (Merchandising)          */}
-      {/* Shows the 5 SkinType pills that toggle the shared skinTypes filter */}
-      {/* and auto-defaults from the attached customer's skin_type.          */}
-      {/* ------------------------------------------------------------------ */}
-      {isMerchandisingEnabled && filters && onFiltersChange && (
-        <div
-          className="flex flex-wrap items-center gap-3 py-1"
-          data-testid="skin-advice-bar"
-        >
-          <span className="shrink-0 text-xs font-semibold text-ink-muted">
-            {t('products.skinAdviceLabel')}
-          </span>
-          <div className="flex flex-wrap gap-2">
-            {SKIN_TYPES.map((st) => (
-              <Pill
-                key={st}
-                selected={filters.skinTypes.includes(st)}
-                onClick={() => {
-                  const next = filters.skinTypes.includes(st)
-                    ? filters.skinTypes.filter((s) => s !== st)
-                    : [...filters.skinTypes, st];
-                  onFiltersChange({ ...filters, skinTypes: next });
-                }}
-              >
-                {t(`skin_type.${st}`, { ns: 'smart-prompts', defaultValue: st })}
-              </Pill>
-            ))}
-          </div>
-          <span className="ml-auto shrink-0 text-xs text-ink-faint">
-            {t('products.filtersResultCount', { count: filteredProducts.length })}
-          </span>
+          {showParapharmacyFilters && filters.routines.map((routine) => (
+            <Pill
+              key={`routine-${routine}`}
+              selected
+              onRemove={() =>
+                onFiltersChange?.({
+                  ...filters,
+                  routines: filters.routines.filter((r) => r !== routine),
+                })
+              }
+              removeLabel={t('products.filterRemove', { value: routine })}
+            >
+              {routine}
+            </Pill>
+          ))}
         </div>
       )}
 
@@ -629,6 +614,7 @@ export function ProductGrid({
             onFiltersChange?.(f);
           }}
           resultCount={filteredProducts.length}
+          showParapharmacyFilters={showParapharmacyFilters}
         />
       )}
 

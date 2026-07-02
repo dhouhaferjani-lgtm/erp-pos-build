@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon, Trash2 } from 'lucide-react';
+import { Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon, Trash2, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tokens } from '@/lib/designTokens';
 import { SegmentedControl } from '@/components/ui';
@@ -15,7 +15,7 @@ import { useConnectivityStore } from '@/stores/connectivityStore';
 import { Modal } from '@/components/pos/Modal';
 import { teardownPosSessionStores } from '@/lib/session/teardownPosSession';
 import { recordAuditEvent } from '@/lib/audit/recordAuditEvent';
-import { isManagerRole } from '@/lib/auth/roles';
+import { hasManagerAccess } from '@/lib/auth/roles';
 import { PageHeader } from '@/components/PageHeader';
 import {
   discoverPrinters,
@@ -66,6 +66,8 @@ export function SettingsPage() {
   const setFullscreen = useSettingsStore((s) => s.setFullscreen);
   const confirmLineDelete = useSettingsStore((s) => s.confirmLineDelete);
   const setConfirmLineDelete = useSettingsStore((s) => s.setConfirmLineDelete);
+  const parapharmacySkinFiltersEnabled = useSettingsStore((s) => s.parapharmacySkinFiltersEnabled);
+  const setParapharmacySkinFiltersEnabled = useSettingsStore((s) => s.setParapharmacySkinFiltersEnabled);
   const inactivityTimeout = useSettingsStore((s) => s.inactivityTimeout);
   const lockAfterSale = useSettingsStore((s) => s.lockAfterSale);
   const setInactivityTimeout = useSettingsStore((s) => s.setInactivityTimeout);
@@ -85,9 +87,10 @@ export function SettingsPage() {
 
   const serverUrl = useAuthStore((s) => s.serverUrl);
   const unbindDevice = useAuthStore((s) => s.unbindDevice);
+  const userRoles = useAuthStore((s) => s.user?.roles);
 
   const operator = useOperatorStore((s) => s.operator);
-  const isManager = isManagerRole(operator?.roles);
+  const isManager = hasManagerAccess(operator?.roles, userRoles);
 
   const [showUnbindConfirm, setShowUnbindConfirm] = useState(false);
 
@@ -471,6 +474,24 @@ export function SettingsPage() {
                 <ToggleSwitch
                   checked={confirmLineDelete}
                   onChange={() => setConfirmLineDelete(!confirmLineDelete)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4 shrink-0 text-ink-muted" />
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium text-ink">
+                      {t('settings.parapharmacySkinFilters')}
+                    </span>
+                    <p className="text-xs text-ink-faint">
+                      {t('settings.parapharmacySkinFiltersDesc')}
+                    </p>
+                  </div>
+                </div>
+                <ToggleSwitch
+                  checked={parapharmacySkinFiltersEnabled}
+                  onChange={() => setParapharmacySkinFiltersEnabled(!parapharmacySkinFiltersEnabled)}
                 />
               </div>
             </div>

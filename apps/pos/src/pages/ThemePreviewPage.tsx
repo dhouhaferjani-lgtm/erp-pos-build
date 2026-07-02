@@ -23,10 +23,14 @@ import {
 import { NavRail } from '@/components/NavRail';
 import { CartLineItem } from '@/components/molecules/CartLineItem';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
+import { ProductDetailDrawer } from '@/components/organisms/ProductDetailDrawer';
+import { ReportsPage } from '@/pages/ReportsPage';
+import { ShiftClosurePage } from '@/pages/ShiftClosurePage';
 import { ACCENTS, type AccentName, type Density } from '@/lib/theme';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useProductStore } from '@/stores/productStore';
 import { formatCurrency } from '@/lib/currency';
+import { cn } from '@/lib/utils';
 import { Search, Printer, ShoppingCart, Users, BarChart3, Wallet } from 'lucide-react';
 import type { CartItem } from '@/types/cart';
 import type { POSProduct } from '@/types/product';
@@ -64,7 +68,7 @@ function seedProduct(
             suitable_skin_types: [skin],
             equivalent_product_ids: [],
             complement_product_ids: [],
-            routine_refs: [],
+            routine_refs: [{ routine_id: 'pulse-face', step_order: 1, step_label: category }],
           },
         }
       : {}),
@@ -148,16 +152,20 @@ export function ThemePreviewPage() {
   const [nav, setNav] = useState('caisse');
   const [expandedLine, setExpandedLine] = useState<string | null>('l2');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [detailProduct, setDetailProduct] = useState<POSProduct | null>(null);
   // Sell-screen preview state
   const displayMode = useSettingsStore((s) => s.displayMode);
   const setDisplayMode = useSettingsStore((s) => s.setDisplayMode);
   const density = useSettingsStore((s) => s.density);
   const setDensity = useSettingsStore((s) => s.setDensity);
-  const [gridFilters, setGridFilters] = useState<FiltresFilters>({ brands: [], categories: [], skinTypes: [] });
+  const [gridFilters, setGridFilters] = useState<FiltresFilters>({ brands: [], categories: [], skinTypes: [], routines: [] });
   const [gridCart, setGridCart] = useState<string[]>(['seed-3']);
-  // Enable the Merchandising surface (skin-advice bar + Filtres) in the harness.
+  // Enable the Merchandising surface (Filtres + product detail merchandising) in the harness.
   useEffect(() => {
-    useProductStore.setState({ companyConfig: { all_enabled_modules: ['Merchandising'] } });
+    useProductStore.setState({
+      companyConfig: { all_enabled_modules: ['Merchandising'] },
+      products: SELL_PRODUCTS,
+    });
   }, []);
   const mockCart: CartItem[] = [
     { id: 'l1', quantity: 2, unit_price: '45.500', line_total: '91.000', product: { id: 'p1', name: 'Avène Eau Thermale 300ml', sku: 'AV1', price: '45.500' } } as unknown as CartItem,
@@ -418,12 +426,101 @@ export function ThemePreviewPage() {
                 cartProductIds={gridCart}
                 filters={gridFilters}
                 onFiltersChange={setGridFilters}
-                onViewDetails={() => undefined}
+                onViewDetails={setDetailProduct}
               />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="md"
+                data-testid="open-product-detail-preview"
+                onClick={() => setDetailProduct(SELL_PRODUCTS[0] ?? null)}
+              >
+                Ouvrir fiche produit
+              </Button>
             </div>
           </Section>
         </div>
       </div>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <Section title="Rapports — Pulse">
+          <div data-testid="reports-preview" className="h-[640px] overflow-hidden rounded-panel border border-border-subtle">
+            <ReportsPage />
+          </div>
+        </Section>
+
+        <Section title="Cloture service — X/Z">
+          <div data-testid="shift-preview" className="h-[640px] overflow-hidden rounded-panel border border-border-subtle">
+            <ShiftClosurePage />
+          </div>
+        </Section>
+      </div>
+
+      <div className="mt-6">
+        <Section title="Clients — tactile">
+          <div data-testid="customers-preview" className="grid h-[600px] overflow-hidden rounded-panel border border-border-subtle bg-surface-canvas md:grid-cols-[360px_minmax(0,1fr)]">
+            <aside className="flex min-h-0 flex-col border-r border-border-subtle">
+              <div className="border-b border-border-subtle p-3">
+                <input
+                  aria-label="Recherche clients"
+                  className="min-h-12 w-full rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink"
+                  defaultValue="Ben"
+                />
+              </div>
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                {['Ben Salem Amira', 'Ben Youssef Nadia', 'Ben Romdhane Imen', 'Bennour Sami'].map((name, index) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className={cn(
+                      'flex min-h-[64px] w-full flex-col justify-center gap-1 rounded-xl px-4 py-3 text-left',
+                      index === 0 ? 'bg-action text-ink-inverse' : 'bg-surface-raised text-ink',
+                    )}
+                  >
+                    <span className="text-base font-semibold">{name}</span>
+                    <span className={cn('text-sm', index === 0 ? 'text-ink-inverse/70' : 'text-ink-faint')}>
+                      98 123 45{index} · peau sensible
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </aside>
+            <div className="min-h-0 p-5">
+              <div className="flex h-full flex-col rounded-2xl bg-surface-raised shadow-sm">
+                <header className="border-b border-border-subtle px-5 py-4">
+                  <h3 className="text-lg font-bold text-ink">Ben Salem Amira</h3>
+                </header>
+                <div className="flex-1 space-y-5 overflow-y-auto p-5">
+                  <dl className="grid gap-3 text-sm">
+                    <div>
+                      <dt className="text-xs text-ink-faint">Téléphone</dt>
+                      <dd className="text-ink">98 123 450</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-ink-faint">E-mail</dt>
+                      <dd className="text-ink">amira@example.test</dd>
+                    </div>
+                  </dl>
+                  <div className="rounded-xl bg-surface-sunken p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-ink">Profil de peau</h4>
+                      <Button variant="ghost" size="md">Modifier</Button>
+                    </div>
+                    <p className="text-sm text-ink">Sensible · éviter les parfums, conseiller SPF50.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Section>
+      </div>
+
+      <ProductDetailDrawer
+        isOpen={detailProduct !== null}
+        product={detailProduct}
+        onClose={() => setDetailProduct(null)}
+      />
     </div>
   );
 }

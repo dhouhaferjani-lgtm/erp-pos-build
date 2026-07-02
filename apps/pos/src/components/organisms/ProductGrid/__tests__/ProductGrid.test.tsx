@@ -16,6 +16,7 @@ const settingsStoreMock = vi.hoisted(() => ({
   state: {
     displayMode: 'grid' as 'grid' | 'visual',
     density: 'comfortable' as 'comfortable' | 'dense',
+    parapharmacySkinFiltersEnabled: true,
     setDisplayMode: vi.fn(),
   },
 }));
@@ -72,7 +73,7 @@ vi.mock('@/components/organisms/FiltresDrawer', () => ({
         FiltresDrawer
       </div>
     ) : null,
-  EMPTY_FILTRES_FILTERS: { brands: [], categories: [], skinTypes: [] },
+  EMPTY_FILTRES_FILTERS: { brands: [], categories: [], skinTypes: [], routines: [] },
 }));
 
 // Mock localStorage for ProductGrid's display mode storage
@@ -174,6 +175,7 @@ describe('ProductGrid', () => {
     // Reset store mock to safe defaults.
     settingsStoreMock.state.displayMode = 'grid';
     settingsStoreMock.state.density = 'comfortable';
+    settingsStoreMock.state.parapharmacySkinFiltersEnabled = true;
     settingsStoreMock.state.setDisplayMode = vi.fn();
     // Restore default t() behaviour (key-passthrough) after vi.clearAllMocks.
     mockT.mockImplementation((key: string) => key);
@@ -722,6 +724,7 @@ describe('ProductGrid — Task 26 Filtres drawer', () => {
       brands: ['Avene'],
       categories: [],
       skinTypes: [],
+      routines: [],
     };
     render(
       <ProductGrid
@@ -746,7 +749,8 @@ describe('ProductGrid — Task 26 Filtres drawer', () => {
     const filters: FiltresFilters = {
       brands: ['Avene'],
       categories: [],
-      skinTypes: ['dry'],
+      skinTypes: [],
+      routines: [],
     };
     render(
       <ProductGrid
@@ -761,7 +765,6 @@ describe('ProductGrid — Task 26 Filtres drawer', () => {
     const chipRow = screen.getByTestId('filter-chip-row');
     expect(chipRow).toBeInTheDocument();
     expect(chipRow).toHaveTextContent('Avene');
-    expect(chipRow).toHaveTextContent('dry');
   });
 
   // (b) Removable chip calls onFiltersChange correctly
@@ -774,6 +777,7 @@ describe('ProductGrid — Task 26 Filtres drawer', () => {
       brands: ['Avene'],
       categories: [],
       skinTypes: [],
+      routines: [],
     };
     render(
       <ProductGrid
@@ -792,6 +796,7 @@ describe('ProductGrid — Task 26 Filtres drawer', () => {
       brands: [],
       categories: [],
       skinTypes: [],
+      routines: [],
     });
   });
 
@@ -804,6 +809,7 @@ describe('ProductGrid — Task 26 Filtres drawer', () => {
       brands: ['Avene', 'Vichy'],
       categories: ['Soin'],
       skinTypes: [],
+      routines: [],
     };
     render(
       <ProductGrid
@@ -827,6 +833,7 @@ describe('ProductGrid — Task 26 Filtres drawer', () => {
       brands: ['Avene'],
       categories: [],
       skinTypes: [],
+      routines: [],
     };
     render(
       <ProductGrid
@@ -908,7 +915,7 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
         categories={[]}
         onAddToCart={vi.fn()}
         cartProductIds={[]}
-        filters={{ brands: [], categories: [], skinTypes: [] }}
+        filters={{ brands: [], categories: [], skinTypes: [], routines: [] }}
         onFiltersChange={vi.fn()}
       />,
     );
@@ -930,7 +937,7 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
 
   // (a) skin pills narrow the grid via filters.skinTypes
   it('(a) grid shows only products matching the active skinTypes filter', () => {
-    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['dry'] };
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['dry'], routines: [] };
     render(
       <ProductGrid
         products={skinProducts}
@@ -947,54 +954,10 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
     expect(screen.queryByTestId('product-p-oily')).not.toBeInTheDocument();
   });
 
-  // (a) clicking a skin-type pill calls onFiltersChange to toggle it
-  it('(a) clicking a skin-type pill calls onFiltersChange with the toggled skinType', () => {
-    const onFiltersChange = vi.fn();
-    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [] };
-    render(
-      <ProductGrid
-        products={skinProducts}
-        categories={[]}
-        onAddToCart={vi.fn()}
-        cartProductIds={[]}
-        filters={filters}
-        onFiltersChange={onFiltersChange}
-      />,
-    );
-    // The skin-advice bar renders 5 pills — find the 'dry' pill.
-    // mockT returns the defaultValue (= the raw key value like 'dry') for skin_type.* keys.
-    const dryPill = screen.getByRole('button', { name: 'dry' });
-    fireEvent.click(dryPill);
-    expect(onFiltersChange).toHaveBeenCalledWith(
-      expect.objectContaining({ skinTypes: ['dry'] }),
-    );
-  });
-
-  // (a) clicking an already-active pill removes it from skinTypes
-  it('(a) clicking an active skin-type pill removes it from the filter', () => {
-    const onFiltersChange = vi.fn();
-    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['dry'] };
-    render(
-      <ProductGrid
-        products={skinProducts}
-        categories={[]}
-        onAddToCart={vi.fn()}
-        cartProductIds={[]}
-        filters={filters}
-        onFiltersChange={onFiltersChange}
-      />,
-    );
-    const dryPill = screen.getByRole('button', { name: 'dry' });
-    fireEvent.click(dryPill);
-    expect(onFiltersChange).toHaveBeenCalledWith(
-      expect.objectContaining({ skinTypes: [] }),
-    );
-  });
-
   // (b) customerSkinType auto-defaults the skin type filter via onFiltersChange
   it('(b) customerSkinType="dry" triggers onFiltersChange to add dry to skinTypes', () => {
     const onFiltersChange = vi.fn();
-    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [] };
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [], routines: [] };
     render(
       <ProductGrid
         products={skinProducts}
@@ -1008,7 +971,7 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
     );
     // The useEffect fires on mount (customerSkinType changed from undefined → 'dry')
     expect(onFiltersChange).toHaveBeenCalledWith(
-      expect.objectContaining({ skinTypes: ['dry'] }),
+      expect.objectContaining({ skinTypes: ['dry'], routines: [] }),
     );
   });
 
@@ -1016,7 +979,7 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
   it('(b) does NOT call onFiltersChange when customerSkinType is already active', () => {
     const onFiltersChange = vi.fn();
     // 'dry' is already in skinTypes
-    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['dry'] };
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['dry'], routines: [] };
     render(
       <ProductGrid
         products={skinProducts}
@@ -1035,7 +998,7 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
   // (b) no auto-default when customerSkinType is null (no customer / no skin type known)
   it('(b) does NOT call onFiltersChange when customerSkinType is null', () => {
     const onFiltersChange = vi.fn();
-    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [] };
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [], routines: [] };
     render(
       <ProductGrid
         products={skinProducts}
@@ -1055,7 +1018,7 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
     // Disable the module
     productStoreMock.state.companyConfig = null;
     const onFiltersChange = vi.fn();
-    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [] };
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: [], routines: [] };
     render(
       <ProductGrid
         products={skinProducts}
@@ -1075,7 +1038,7 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
   it('(b) does NOT call onFiltersChange when a different skin type is already manually selected', () => {
     const onFiltersChange = vi.fn();
     // User already selected 'oily'; customer has 'dry' — must not wipe the manual choice
-    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['oily'] };
+    const filters: FiltresFilters = { brands: [], categories: [], skinTypes: ['oily'], routines: [] };
     render(
       <ProductGrid
         products={skinProducts}

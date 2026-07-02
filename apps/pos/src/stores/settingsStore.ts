@@ -24,6 +24,8 @@ interface SettingsState {
   lockAfterSale: boolean;
   /** Require a second confirming tap before a cart line is removed (mis-tap guard). */
   confirmLineDelete: boolean;
+  /** Shows parapharmacy skin and routine filters in the Filtres drawer. */
+  parapharmacySkinFiltersEnabled: boolean;
   /** Appearance — light/dark theme. */
   theme: ThemeMode;
   /** Appearance — UX accent colour (not brand-locked). */
@@ -40,6 +42,7 @@ interface SettingsState {
   setInactivityTimeout: (seconds: number) => void;
   setLockAfterSale: (enabled: boolean) => void;
   setConfirmLineDelete: (enabled: boolean) => void;
+  setParapharmacySkinFiltersEnabled: (enabled: boolean) => void;
   setTheme: (theme: ThemeMode) => void;
   setAccent: (accent: AccentName) => void;
   setCorner: (corner: CornerStyle) => void;
@@ -62,6 +65,7 @@ export const useSettingsStore = create<SettingsState>()(
       inactivityTimeout: 300,
       lockAfterSale: false,
       confirmLineDelete: true,
+      parapharmacySkinFiltersEnabled: true,
       theme: DEFAULT_THEME_SETTINGS.theme,
       accent: DEFAULT_THEME_SETTINGS.accent,
       corner: DEFAULT_THEME_SETTINGS.corner,
@@ -98,6 +102,10 @@ export const useSettingsStore = create<SettingsState>()(
 
       setConfirmLineDelete: (enabled: boolean) => {
         set({ confirmLineDelete: enabled });
+      },
+
+      setParapharmacySkinFiltersEnabled: (enabled: boolean) => {
+        set({ parapharmacySkinFiltersEnabled: enabled });
       },
 
       setTheme: (theme: ThemeMode) => {

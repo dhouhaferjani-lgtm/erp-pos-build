@@ -174,19 +174,21 @@ function renderDrawer(product: POSProduct | null = currentProduct) {
 // Tests
 // ---------------------------------------------------------------------------
 describe('ProductDetailDrawer — Merchandising tabs (Task 28)', () => {
-  // (d) Gate: tabs must not appear without the module
-  it('hides merchandising tabs when Merchandising module is NOT enabled', () => {
+  // Pulse modal keeps the tab strip visible; module gating leaves related tabs empty.
+  it('keeps the details tab visible when Merchandising module is NOT enabled', () => {
     productStoreMock.state.companyConfig = configWithoutMerchandising;
     renderDrawer();
-    expect(screen.queryByRole('tablist', { name: 'productDetail.merchandising.ariaLabel' })).toBeNull();
-    expect(screen.queryByText('productDetail.merchandising.equivalents')).toBeNull();
+    expect(screen.getByRole('tab', { name: /productDetail\.tabs\.details/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ })).toBeTruthy();
   });
 
-  // Module enabled but product has no parapharmacy_metadata → no tabs
-  it('hides merchandising tabs when product has no parapharmacy_metadata', () => {
+  // Module enabled but product has no parapharmacy_metadata → details still render, related tabs are empty.
+  it('keeps details visible when product has no parapharmacy_metadata', () => {
     const plainProduct = makeParaProduct('px', 'Plain Product', { parapharmacy_metadata: undefined });
     renderDrawer(plainProduct);
-    expect(screen.queryByRole('tablist', { name: 'productDetail.merchandising.ariaLabel' })).toBeNull();
+    expect(screen.getByRole('tab', { name: /productDetail\.tabs\.details/ })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ }));
+    expect(screen.getByText('productDetail.merchandising.empty')).toBeTruthy();
   });
 
   // (a) Équivalents tab
@@ -194,13 +196,14 @@ describe('ProductDetailDrawer — Merchandising tabs (Task 28)', () => {
     it('shows the tab strip when Merchandising is enabled', () => {
       renderDrawer();
       expect(screen.getByRole('tablist', { name: 'productDetail.merchandising.ariaLabel' })).toBeTruthy();
-      // Équivalents tab is the default active tab
+      // Details tab is the default active tab in the centered Pulse modal.
+      expect(screen.getByRole('tab', { name: /productDetail\.tabs\.details/ })).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ })).toBeTruthy();
     });
 
     it('resolves equivalent_product_ids and renders a row per product', () => {
       renderDrawer();
-      // Default tab is Équivalents — p2 and p3 should be visible
+      fireEvent.click(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ }));
       expect(screen.getByText('Sérum Hydratant')).toBeTruthy();
       expect(screen.getByText('Lotion Tonique')).toBeTruthy();
     });
@@ -217,6 +220,7 @@ describe('ProductDetailDrawer — Merchandising tabs (Task 28)', () => {
       productStoreMock.state.products = [noEquivProduct];
       productStoreMock.state.getByIds = () => [];
       renderDrawer(noEquivProduct);
+      fireEvent.click(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ }));
       expect(screen.getByText('productDetail.merchandising.empty')).toBeTruthy();
     });
   });
@@ -280,7 +284,8 @@ describe('ProductDetailDrawer — Merchandising tabs (Task 28)', () => {
   describe('Add-to-cart', () => {
     it('calls addItemGated when an Équivalents row is tapped', async () => {
       renderDrawer();
-      // Équivalents tab is active by default; find the add button for p2
+      fireEvent.click(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ }));
+      // Find the add button for p2
       const addButtons = screen.getAllByTestId('merch-add-btn');
       fireEvent.click(addButtons[0]!);
       await waitFor(() => expect(addItemGatedMock).toHaveBeenCalledTimes(1));
