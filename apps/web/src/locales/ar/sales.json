@@ -12,6 +12,18 @@
     },
     "effectiveUnitCost": "الكلفة الفعلية للوحدة: {{amount}}",
     "bonusSavings": "قيمة المجاني: {{amount}}",
+    "pricing": {
+      "cost": "الكلفة {{amount}}",
+      "lastBuy": "آخر شراء {{amount}}",
+      "margin": "الهامش {{percent}}%",
+      "details": "تفاصيل التسعير",
+      "suggested": "السعر المقترح {{amount}}",
+      "lastSale": "آخر بيع {{amount}}",
+      "minimumMargin": "الحد الأدنى {{percent}}%",
+      "useSuggested": "استخدام المقترح",
+      "policyBlocked": "الهامش محظور: {{permission}}",
+      "policyWarning": "تحذير الهامش"
+    },
     "discount": "الخصم",
     "tax": "الضريبة",
     "taxPercent": "نسبة الضريبة",

@@ -620,6 +620,7 @@ export function CreateCreditNotePage() {
               <DocumentLineEditor
                 lines={lines}
                 onChange={setLines}
+                partnerId={partnerId}
               />
             </div>
           )}
