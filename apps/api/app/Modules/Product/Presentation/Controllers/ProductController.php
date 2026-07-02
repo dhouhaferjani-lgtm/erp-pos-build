@@ -288,7 +288,8 @@ class ProductController extends Controller
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('id', $product)
-            ->with(['unitOfMeasure', 'brand'])
+            ->with(['unitOfMeasure', 'brand', 'category', 'latestEnrichmentResult'])
+            ->withSum('stockLevels as stock_quantity', 'quantity')
             ->first();
 
         if (! $productModel) {

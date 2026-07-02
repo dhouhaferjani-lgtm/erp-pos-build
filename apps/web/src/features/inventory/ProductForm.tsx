@@ -7,7 +7,7 @@ import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { Plus, X, Layers } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, apiPost, apiPatch } from '../../lib/api'
+import { api, apiPost, apiPatch, isApiError } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
@@ -31,7 +31,7 @@ import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { buildProductPayload } from './productPayload'
 import { LoyaltyPointsDisplay } from './LoyaltyPointsDisplay'
 import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
-import { BarcodeHero } from '../products/editor/components/BarcodeHero'
+import { ProductEditHero, type EditorHeroEnrichmentState } from '../products/editor/components/ProductEditHero'
 import { SectionNav } from '../products/editor/components/SectionNav'
 import type { EditorSection } from '../products/editor/components/SectionNav'
 import { EditorSectionCard } from '../products/editor/components/EditorSectionCard'
@@ -41,7 +41,7 @@ import type { ChecklistItem } from '../products/editor/components/BeforePublishC
 import { LivePosTile } from '../products/editor/components/LivePosTile'
 import { useScrollSpy } from '../products/editor/hooks/useScrollSpy'
 import { formatCurrency } from '../../lib/formatCurrency'
-import { bcsub, bcdiv, bcmul } from '../../lib/decimal'
+import { bcadd, bccomp, bcsub, bcdiv, bcmul } from '../../lib/decimal'
 import { UnitDropdown } from '../uom/components/UnitDropdown'
 import { useUnits } from '../uom/hooks/useUnits'
 import { getQuantityDecimals } from '../../lib/quantityScale'
@@ -65,6 +65,13 @@ interface Product {
   unit: string | null
   barcode: string | null
   is_active: boolean
+  primary_image_url?: string | null
+  stock_quantity?: string | null
+  enrichment_status?: string | null
+  latest_enrichment_result?: { id?: string; status: string } | null
+  brand?: { id?: string; name: string; source?: string | null } | null
+  brand_source?: string | null
+  category?: { id?: number | string; name: string } | null
   oem_numbers: string[] | null
   cross_references: Array<{ brand: string; reference: string }> | null
   parapharmacy_metadata: ParapharmacyMetadata | null
@@ -96,6 +103,100 @@ interface ParapharmacyMetadata {
   requires_consultation: boolean
   regulatory_code: string | null
   storage_requirements: string | null
+}
+
+type EditorSectionKey =
+  | 'general'
+  | 'pricing'
+  | 'inventory'
+  | 'pharmacy'
+  | 'loyalty'
+  | 'suppliers'
+  | 'media'
+  | 'automotive'
+  | 'variants'
+
+interface EditorGateCtx {
+  isParapharmacy: boolean
+  hasLoyalty: boolean
+  isOtospex: boolean
+  isEditing: boolean
+}
+
+interface EditorSectionDef {
+  id: string
+  labelKey: string
+  component: EditorSectionKey
+  when?: (ctx: EditorGateCtx) => boolean
+  navVisible?: boolean
+}
+
+type HeroBlockKey =
+  | 'identity.image'
+  | 'identity.name'
+  | 'identity.barcode'
+  | 'enrichment.chips'
+  | 'stock.openingQty'
+  | 'pricing.cost'
+  | 'pricing.margin'
+  | 'pricing.priceHt'
+  | 'pricing.priceTtc'
+
+interface HeroBlockDef {
+  id: string
+  component: HeroBlockKey
+  slot: 'image' | 'main' | 'strip'
+  when?: (ctx: EditorGateCtx) => boolean
+}
+
+const EDITOR_SECTIONS: EditorSectionDef[] = [
+  { id: 'section-general', labelKey: 'catalog:editor.sectionLabels.general', component: 'general' },
+  { id: 'section-pricing', labelKey: 'catalog:editor.sectionLabels.pricing', component: 'pricing' },
+  { id: 'section-inventory', labelKey: 'catalog:editor.sectionLabels.inventory', component: 'inventory' },
+  { id: 'section-automotive', labelKey: 'inventory:products.sections.automotiveInfo', component: 'automotive', when: (ctx) => ctx.isOtospex, navVisible: false },
+  { id: 'section-pharmacy', labelKey: 'catalog:editor.sectionLabels.pharmacy', component: 'pharmacy', when: (ctx) => ctx.isParapharmacy },
+  { id: 'section-loyalty', labelKey: 'catalog:editor.sectionLabels.loyalty', component: 'loyalty', when: (ctx) => ctx.hasLoyalty },
+  { id: 'section-suppliers', labelKey: 'catalog:editor.sectionLabels.suppliers', component: 'suppliers' },
+  { id: 'section-media', labelKey: 'catalog:editor.sectionLabels.media', component: 'media' },
+  { id: 'section-variants', labelKey: 'catalog:variants.title', component: 'variants', when: (ctx) => ctx.isEditing, navVisible: false },
+]
+
+const HERO_BLOCKS: HeroBlockDef[] = [
+  { id: 'identity.image', component: 'identity.image', slot: 'image' },
+  { id: 'identity.name', component: 'identity.name', slot: 'main' },
+  { id: 'identity.barcode', component: 'identity.barcode', slot: 'main' },
+  { id: 'enrichment.chips', component: 'enrichment.chips', slot: 'main' },
+  { id: 'stock.openingQty', component: 'stock.openingQty', slot: 'strip' },
+  { id: 'pricing.cost', component: 'pricing.cost', slot: 'strip' },
+  { id: 'pricing.margin', component: 'pricing.margin', slot: 'strip' },
+  { id: 'pricing.priceHt', component: 'pricing.priceHt', slot: 'strip' },
+  { id: 'pricing.priceTtc', component: 'pricing.priceTtc', slot: 'strip' },
+]
+
+function taxDivisor(taxRate: string): string {
+  const rate = taxRate.trim() === '' ? '0' : taxRate
+  return bcadd('1', bcdiv(rate, '100', 6), 6)
+}
+
+function priceHtFromTtc(ttc: string, taxRate: string, scale: number): string {
+  if (ttc.trim() === '') return ''
+  return bcdiv(ttc, taxDivisor(taxRate), scale)
+}
+
+function priceTtcFromHt(ht: string, taxRate: string, scale: number): string {
+  if (ht.trim() === '') return ''
+  return bcmul(ht, taxDivisor(taxRate), scale)
+}
+
+function marginFromCost(cost: string, priceHt: string): string {
+  if (cost.trim() === '' || priceHt.trim() === '' || bccomp(cost, '0') <= 0) return ''
+  return bcmul(bcdiv(bcsub(priceHt, cost, 4), cost, 6), '100', 2)
+}
+
+function priceHtFromMargin(cost: string, margin: string, scale: number): string {
+  if (cost.trim() === '' || margin.trim() === '') return ''
+  const factor = bcadd('1', bcdiv(margin, '100', 6), 6)
+  return bcmul(cost, factor, scale)
 }
 
 export interface ProductFormData {
@@ -145,7 +246,7 @@ export function ProductForm() {
   const isParapharmacy = config?.vertical === 'parapharmacy'
   const showBatchTracking = hasModule('BatchExpiry') || hasModule('Inventory')
   const { isOtospex } = useProductConfig()
-  const { currency, locale } = useCurrency()
+  const { currency, locale, decimals } = useCurrency()
 
   const [showVariants, setShowVariants] = useState(false)
   const [oemInput, setOemInput] = useState('')
@@ -303,12 +404,6 @@ export function ProductForm() {
     isOpeningLocked &&
     openingState.has_active_opening &&
     !openingState.has_downstream_movements
-  // Cost becomes required (and enabled) once qty has a non-zero value.
-  const openingCostRequired =
-    canEnterOpening &&
-    openingQtyValue.trim() !== '' &&
-    openingQtyValue.trim() !== '0'
-
   // Existing variants for this product (edit mode only). If any exist, default
   // the variants section open so the user lands on the matrix editor.
   const { data: existingVariants } = useVariantsForProduct(isEditing ? id : '')
@@ -530,8 +625,26 @@ export function ProductForm() {
   const handleManualRefresh = () => {
     if (!isEditing || enrichmentRefreshMutation.isPending) return
     enrichmentRefreshMutation.mutate(id, {
-      onSuccess: () => { toast.success(t('inventory:barcodeLookup.refreshSuccess')) },
-      onError: () => { toast.error(t('inventory:barcodeLookup.refreshError')) },
+      onSuccess: () => {
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', id]) }),
+          queryClient.invalidateQueries({
+            predicate: inventoryProductsInvalidationPredicate(tenantId, companyId),
+          }),
+        ])
+        toast.success(t('inventory:barcodeLookup.refreshSuccess'))
+      },
+      onError: (error) => {
+        if (isApiError(error) && error.response?.status === 422) {
+          toast.info(t('catalog:editor.hero.refreshNothing'))
+          return
+        }
+        if (isApiError(error) && error.response?.status === 502) {
+          toast.error(t('inventory:barcodeLookup.refreshError'))
+          return
+        }
+        toast.error(t('inventory:barcodeLookup.refreshError'))
+      },
     })
   }
 
@@ -545,28 +658,51 @@ export function ProductForm() {
   const taxRateValue = watch('tax_rate')
   const barcodeValue = watch('barcode')
 
-  // Compute indicative gross margin = (sale − purchase) / sale × 100
-  // Only shown when both prices are non-empty and sale > 0.
-  // NOTE: sale_price is TTC (tax-inclusive) while purchase_price is HT (ex-tax),
-  // so this is an indicative margin only — a tax-exact net margin is a later refinement.
-  // Precision rule 19: all arithmetic via big.js helpers, never parseFloat/Number.
-  const indicativeMargin: string | null = (() => {
-    const saleStr = salePriceValue.trim()
-    const purchaseStr = purchasePriceValue.trim()
-    if (saleStr === '' || purchaseStr === '') return null
-    // bcdiv throws on division by zero — guard via the zero string check
-    if (saleStr === '0') return null
-    // Also guard via big comparison (handles '0.000', '0.00', etc.)
-    try {
-      const diff = bcsub(saleStr, purchaseStr, 4)
-      const ratio = bcdiv(diff, saleStr, 6)
-      const percent = bcmul(ratio, '100', 1)
-      // Don't show if either side is effectively zero (purchase >= sale edge cases are allowed — negative margin is valid)
-      return percent
-    } catch {
-      return null
+  const moneyScale = decimals ?? 3
+  const priceHtValue = priceHtFromTtc(salePriceValue, taxRateValue, moneyScale)
+  const costBasisValue = isOpeningLocked ? product?.cost_price ?? '' : purchasePriceValue
+  const marginPercentValue = marginFromCost(costBasisValue, priceHtValue)
+
+  const handleCostChange = (value: string): void => {
+    setValue('purchase_price', value, { shouldDirty: true })
+    if (canEnterOpening && openingQtyValue.trim() !== '' && openingQtyValue.trim() !== '0') {
+      setValue('opening_unit_cost', value, { shouldDirty: true })
     }
+  }
+
+  const handlePriceHtChange = (value: string): void => {
+    setValue('sale_price', priceTtcFromHt(value, taxRateValue, moneyScale), { shouldDirty: true })
+  }
+
+  const handleMarginChange = (value: string): void => {
+    const nextHt = priceHtFromMargin(costBasisValue, value, moneyScale)
+    if (nextHt !== '') {
+      setValue('sale_price', priceTtcFromHt(nextHt, taxRateValue, moneyScale), { shouldDirty: true })
+    }
+  }
+
+  const heroEnrichmentState: EditorHeroEnrichmentState = (() => {
+    const latestStatus = product?.latest_enrichment_result?.status ?? null
+    const status = product?.enrichment_status ?? null
+    if (latestStatus === 'accepted' || product?.brand_source === 'enriched') return 'enriched'
+    if (status === 'completed' && latestStatus === 'pending_review') return 'ready-for-review'
+    if (status === 'pending' || status === 'enriching') return 'pending'
+    if (status === 'failed' || status === 'rejected' || status === 'not_enrichable') return 'unavailable'
+    return 'never-submitted'
   })()
+
+  const heroChips = [
+    ...(product?.brand !== null && product?.brand !== undefined
+      ? [{
+          id: 'brand',
+          label: product.brand.name,
+          enriched: product.brand_source === 'enriched' || product.brand.source === 'enriched',
+        }]
+      : []),
+    ...(product?.category !== null && product?.category !== undefined
+      ? [{ id: 'category', label: product.category.name }]
+      : []),
+  ]
 
   const hasTax = (taxConfigValue ?? '') !== '' || (taxRateValue ?? '') !== ''
   const checklistItems: ChecklistItem[] = [
@@ -578,25 +714,16 @@ export function ProductForm() {
   const satisfiedCount = checklistItems.filter((item) => item.satisfied).length
   const completenessPercent = Math.round((satisfiedCount / checklistItems.length) * 100)
 
-  // Section descriptors: General + Pricing + Inventory are always present; the
-  // vertical-gated Pharmacy section and the always-present Suppliers + Media
-  // sections follow. Markers are re-derived from order so they stay sequential.
-  const sectionDefs: Array<{ id: string; labelKey: string }> = [
-    { id: 'section-general', labelKey: 'catalog:editor.sectionLabels.general' },
-    { id: 'section-pricing', labelKey: 'catalog:editor.sectionLabels.pricing' },
-    { id: 'section-inventory', labelKey: 'catalog:editor.sectionLabels.inventory' },
-    ...(isParapharmacy
-      ? [{ id: 'section-pharmacy', labelKey: 'catalog:editor.sectionLabels.pharmacy' }]
-      : []),
-    ...(hasModule('Loyalty')
-      ? [{ id: 'section-loyalty', labelKey: 'catalog:editor.sectionLabels.loyalty' }]
-      : []),
-    { id: 'section-suppliers', labelKey: 'catalog:editor.sectionLabels.suppliers' },
-    { id: 'section-media', labelKey: 'catalog:editor.sectionLabels.media' },
-  ]
-  const sectionIds = sectionDefs.map((s) => s.id)
+  const editorCtx: EditorGateCtx = {
+    isParapharmacy,
+    hasLoyalty: hasModule('Loyalty'),
+    isOtospex,
+    isEditing,
+  }
+  const sectionDefs = EDITOR_SECTIONS.filter((section) => section.when?.(editorCtx) ?? true)
+  const sectionIds = sectionDefs.filter((s) => s.navVisible !== false).map((s) => s.id)
   const activeSectionId = useScrollSpy(sectionIds)
-  const sections: EditorSection[] = sectionDefs.map((s) => ({
+  const sections: EditorSection[] = sectionDefs.filter((s) => s.navVisible !== false).map((s) => ({
     id: s.id,
     label: t(s.labelKey),
   }))
@@ -611,6 +738,167 @@ export function ProductForm() {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
+
+  const heroStripRenderers: Record<HeroBlockKey, () => React.ReactNode> = {
+    'identity.image': () => null,
+    'identity.name': () => null,
+    'identity.barcode': () => null,
+    'enrichment.chips': () => null,
+    'stock.openingQty': () => (
+      <div key="stock.openingQty" className="rounded-md border border-gray-200 bg-white px-3 py-2">
+        <label htmlFor="opening_qty" className={cn('block text-start text-xs', textColors.tertiary)}>
+          {t('inventory:products.openingQtyShort')}
+        </label>
+        {showOpeningSection && canEnterOpening ? (
+          <Controller
+            name="opening_qty"
+            control={control}
+            render={({ field }) => (
+              <QuantityInput
+                id="opening_qty"
+                data-testid="opening-qty-input"
+                decimalPlaces={4}
+                value={field.value ?? ''}
+                onChange={(value) => {
+                  field.onChange(value)
+                  if (value.trim() !== '' && value.trim() !== '0' && watch('opening_unit_cost').trim() === '') {
+                    setValue('opening_unit_cost', purchasePriceValue, { shouldDirty: true })
+                  }
+                }}
+                onBlur={field.onBlur}
+                disabled={!showOpeningSection}
+                className="mt-1"
+              />
+            )}
+          />
+        ) : (
+          <div className="mt-1 space-y-1 text-sm font-semibold text-gray-900">
+            <div>{t('inventory:products.onHandShort')}: {product?.stock_quantity ?? '0.0000'}</div>
+            {isOpeningLocked && canResetOpening && !showResetConfirm && (
+              <button
+                type="button"
+                data-testid="opening-reset-btn"
+                onClick={() => { setShowResetConfirm(true) }}
+                className={cn('text-xs font-medium', textColors.brand)}
+              >
+                {t('inventory:opening.reset_label')}
+              </button>
+            )}
+            {isOpeningLocked && canResetOpening && showResetConfirm && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => { setShowResetConfirm(false) }}
+                >
+                  {t('inventory:opening.reset_confirm_cancel')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  disabled={isResettingOpening}
+                  onClick={() => { void handleResetOpening() }}
+                >
+                  {isResettingOpening
+                    ? t('status.saving')
+                    : t('inventory:opening.reset_confirm_proceed')}
+                </Button>
+              </div>
+            )}
+            {isOpeningLocked && !canResetOpening && (
+              <Link to="/inventory/stock" className={cn('text-xs font-medium', textColors.brand)}>
+                {t('inventory:opening.view_stock_link')}
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
+    ),
+    'pricing.cost': () => (
+      <div key="pricing.cost" className="rounded-md border border-gray-200 bg-white px-3 py-2">
+        <label htmlFor="ready_cost_ht" className={cn('block text-start text-xs', textColors.tertiary)}>
+          {isOpeningLocked ? t('inventory:products.costWac') : t('inventory:products.costHt')}
+        </label>
+        {isOpeningLocked ? (
+          <div id="ready_cost_ht" className="mt-2 text-sm font-semibold tabular-nums text-gray-900">
+            {product?.cost_price ?? '0.000'}
+          </div>
+        ) : (
+          <MoneyInput
+            id="ready_cost_ht"
+            data-testid="opening-cost-input"
+            aria-label={t('inventory:products.costHt')}
+            currency={currency}
+            value={purchasePriceValue}
+            onChange={handleCostChange}
+            className="mt-1"
+          />
+        )}
+      </div>
+    ),
+    'pricing.margin': () => (
+      <div key="pricing.margin" className="rounded-md border border-gray-200 bg-white px-3 py-2">
+        <label htmlFor="ready_margin_percent" className={cn('block text-start text-xs', textColors.tertiary)}>
+          {t('inventory:products.marginPercent')}
+        </label>
+        <Input
+          id="ready_margin_percent"
+          aria-label={t('inventory:products.marginPercent')}
+          inputMode="decimal"
+          value={marginPercentValue}
+          onChange={(event) => { handleMarginChange(event.target.value) }}
+          className="mt-1"
+        />
+      </div>
+    ),
+    'pricing.priceHt': () => (
+      <div key="pricing.priceHt" className="rounded-md border border-gray-200 bg-white px-3 py-2">
+        <label htmlFor="ready_price_ht" className={cn('block text-start text-xs', textColors.tertiary)}>
+          {t('inventory:products.priceHt')}
+        </label>
+        <MoneyInput
+          id="ready_price_ht"
+          aria-label={t('inventory:products.priceHt')}
+          currency={currency}
+          value={priceHtValue}
+          onChange={handlePriceHtChange}
+          className="mt-1"
+        />
+      </div>
+    ),
+    'pricing.priceTtc': () => (
+      <div key="pricing.priceTtc" className="rounded-md border border-gray-200 bg-white px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="ready_price_ttc" className={cn('block text-start text-xs', textColors.tertiary)}>
+            {t('inventory:products.priceTtc')}
+          </label>
+          {!hasTax && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+              {t('inventory:products.selectTaxHint')}
+            </span>
+          )}
+        </div>
+        <MoneyInput
+          id="ready_price_ttc"
+          aria-label={t('inventory:products.priceTtc')}
+          currency={currency}
+          value={salePriceValue}
+          onChange={(value) => { setValue('sale_price', value, { shouldDirty: true }) }}
+          className="mt-1"
+        />
+      </div>
+    ),
+  }
+
+  const readyToSellStrip = (
+    <div data-testid="ready-to-sell-strip" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {HERO_BLOCKS
+        .filter((block) => block.slot === 'strip' && (block.when?.(editorCtx) ?? true))
+        .map((block) => heroStripRenderers[block.component]())}
+    </div>
+  )
 
   if (isEditing && isLoading) {
     return (
@@ -680,14 +968,21 @@ export function ProductForm() {
           existing form fields (single source of truth for `barcode`).
           The hero drives the catalog lookup engine (debounce + scanner) —
           no separate BarcodeLookupInput in the General section. */}
-      <BarcodeHero
+      <ProductEditHero
         barcode={barcodeValue}
         onBarcodeChange={(value) => { setValue('barcode', value, { shouldDirty: true }) }}
         name={nameValue}
         onNameChange={(value) => { setValue('name', value, { shouldDirty: true }) }}
+        productId={isEditing ? id : undefined}
+        primaryImageUrl={product?.primary_image_url ?? null}
+        bufferedFiles={bufferedImages}
+        onBufferedFilesChange={setBufferedImages}
+        enrichmentState={heroEnrichmentState}
+        chips={heroChips}
         onProductData={handleProductData}
         onLookupStateChange={handleLookupStateChange}
         onManualRefresh={handleManualRefresh}
+        strip={readyToSellStrip}
       />
 
       {/* Enrichment opt-in — shown under the hero when barcode not found in
@@ -896,23 +1191,6 @@ export function ProductForm() {
                 />
               </FormField>
 
-              {/* Indicative Gross Margin — read-only, computed, not stored */}
-              {indicativeMargin !== null && (
-                <FormField
-                  label={t('inventory:products.margin')}
-                  htmlFor="indicative_margin"
-                  helperText={t('inventory:products.marginIndicative')}
-                >
-                  <Input
-                    id="indicative_margin"
-                    type="text"
-                    value={`${indicativeMargin}%`}
-                    readOnly
-                    className={cn(colors.neutral[50], textColors.tertiary, 'cursor-not-allowed')}
-                  />
-                </FormField>
-              )}
-
               {/* Cost (WAC) - Read-only when editing */}
               {isEditing && product && (
                 <FormField
@@ -1047,128 +1325,6 @@ export function ProductForm() {
                 </div>
               )}
             </EditorSectionCard>
-
-            {/* Opening Stock — shown when Inventory module is enabled, the user
-                has inventory.adjust permission, and the product is physical.
-                Section is absent for services; operators without adjust rights
-                do not see it. On create it allows entering initial qty + cost
-                (WAC seed). On edit it reflects the backend opening state:
-                editable if can_enter_opening, locked otherwise. */}
-            {showOpeningSection && (
-              <div data-testid="opening-section">
-                <EditorSectionCard
-                  id="section-opening"
-                  title={t('inventory:opening.title')}
-                >
-                  {/* Qty input — disabled in locked mode */}
-                  <FormField
-                    label={t('inventory:opening.qty_label')}
-                    htmlFor="opening_qty"
-                  >
-                    <Controller
-                      name="opening_qty"
-                      control={control}
-                      render={({ field }) => (
-                        <QuantityInput
-                          id="opening_qty"
-                          data-testid="opening-qty-input"
-                          decimalPlaces={4}
-                          value={field.value ?? ''}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={!canEnterOpening}
-                        />
-                      )}
-                    />
-                  </FormField>
-
-                  {/* Cost input — required when qty > 0, disabled when locked or qty empty */}
-                  <FormField
-                    label={`${t('inventory:opening.cost_label')}${openingCostRequired ? ' *' : ''}`}
-                    htmlFor="opening_unit_cost"
-                    helperText={t('inventory:opening.cost_help')}
-                  >
-                    <Controller
-                      name="opening_unit_cost"
-                      control={control}
-                      render={({ field }) => (
-                        <MoneyInput
-                          id="opening_unit_cost"
-                          data-testid="opening-cost-input"
-                          currency={currency}
-                          value={field.value ?? ''}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          disabled={!canEnterOpening || !openingCostRequired}
-                        />
-                      )}
-                    />
-                  </FormField>
-
-                  {/* Lock / reset controls — only shown when can_enter_opening is false */}
-                  {isOpeningLocked && (
-                    <div className="sm:col-span-2">
-                      {canResetOpening ? (
-                        <>
-                          <p className={cn('mb-2 text-sm', textColors.tertiary)}>
-                            {t('inventory:opening.locked_helper')}
-                          </p>
-                          {!showResetConfirm ? (
-                            <button
-                              type="button"
-                              data-testid="opening-reset-btn"
-                              onClick={() => { setShowResetConfirm(true) }}
-                              className={cn('text-sm font-medium', textColors.brand)}
-                            >
-                              {t('inventory:opening.reset_label')}
-                            </button>
-                          ) : (
-                            <div className={cn('rounded-lg p-4', colors.neutral[100])}>
-                              <p className={cn('mb-3 text-sm font-medium', textColors.secondary)}>
-                                {t('inventory:opening.reset_confirm_body')}
-                              </p>
-                              <div className="flex gap-2">
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => { setShowResetConfirm(false) }}
-                                >
-                                  {t('inventory:opening.reset_confirm_cancel')}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="danger"
-                                  size="sm"
-                                  disabled={isResettingOpening}
-                                  onClick={() => { void handleResetOpening() }}
-                                >
-                                  {isResettingOpening
-                                    ? t('status.saving')
-                                    : t('inventory:opening.reset_confirm_proceed')}
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <p className={cn('mb-1 text-sm', textColors.tertiary)}>
-                            {t('inventory:opening.locked_with_downstream')}
-                          </p>
-                          <Link
-                            to="/inventory/stock"
-                            className={cn('text-sm', textColors.brand)}
-                          >
-                            {t('inventory:opening.view_stock_link')}
-                          </Link>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </EditorSectionCard>
-              </div>
-            )}
 
             {/* Automotive Information - Otospex only (no section nav entry; it
                 is a vertical-exclusive block layered between inventory and the
