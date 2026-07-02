@@ -19,6 +19,7 @@ use App\Modules\Procurement\Application\SupplierInvoiceMatcher;
 use App\Modules\Procurement\Application\SupplierInvoicePostingService;
 use App\Modules\Procurement\Presentation\Requests\CreateSupplierInvoiceRequest;
 use App\Support\Traits\PaginatesResults;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -52,6 +53,23 @@ final class SupplierInvoiceController extends Controller
     protected function getCompanyContext(): CompanyContext
     {
         return $this->companyContext;
+    }
+
+    /**
+     * Supplier invoices are searchable by document number OR supplier (partner)
+     * name. Grouped so the two clauses OR together and still AND with the other
+     * list filters (status, match_status, dates).
+     *
+     * @param  Builder<Document>  $query
+     */
+    protected function applySearchFilter(Builder $query, string $search): void
+    {
+        $query->where(function (Builder $q) use ($search): void {
+            $q->where('document_number', 'like', "%{$search}%")
+                ->orWhereHas('partner', function (Builder $partnerQuery) use ($search): void {
+                    $partnerQuery->where('partners.name', 'like', "%{$search}%");
+                });
+        });
     }
 
     // -------------------------------------------------------------------------

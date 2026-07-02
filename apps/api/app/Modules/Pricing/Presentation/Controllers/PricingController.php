@@ -15,6 +15,7 @@ use App\Modules\Pricing\Domain\Services\PricingService;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -52,6 +53,17 @@ class PricingController extends Controller
 
         if ($request->has('currency')) {
             $query->where('currency', $request->input('currency'));
+        }
+
+        // Free-text search by code, name, or description. Grouped so the
+        // clauses OR together and still AND with the tenant/company scope.
+        $search = $request->query('search');
+        if (is_string($search) && $search !== '') {
+            $query->where(function (Builder $q) use ($search): void {
+                $q->where('code', 'like', "%{$search}%")
+                    ->orWhere('name', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
         }
 
         $priceLists = $query->latest()->paginate(20);

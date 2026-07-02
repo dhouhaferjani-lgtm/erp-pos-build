@@ -149,10 +149,11 @@ trait HandlesDocuments
             $query->where('partner_id', $partnerId);
         }
 
-        // Search by document number
+        // Search — default matches document number; overridable per controller
+        // (e.g. supplier invoices also match partner name).
         $search = $request->query('search');
         if (is_string($search) && $search !== '') {
-            $query->where('document_number', 'like', "%{$search}%");
+            $this->applySearchFilter($query, $search);
         }
 
         // Filter by date range
@@ -176,6 +177,21 @@ trait HandlesDocuments
         }
 
         return $query;
+    }
+
+    /**
+     * Apply the free-text search clause to a document query.
+     *
+     * Default matches document number only. Document-type controllers may
+     * override to also search related fields (e.g. supplier invoices match
+     * partner name). Keep overrides grouped in a single closure so they OR
+     * together rather than AND with the other filters.
+     *
+     * @param  Builder<Document>  $query
+     */
+    protected function applySearchFilter(Builder $query, string $search): void
+    {
+        $query->where('document_number', 'like', "%{$search}%");
     }
 
     /**

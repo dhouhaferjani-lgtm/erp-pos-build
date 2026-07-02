@@ -424,6 +424,40 @@ final class PricingTenantIsolationTest extends TestCase
         $this->assertNotContains($this->priceListB->id, $ids, 'Cross-tenant price_list must NOT appear in /price-lists.');
     }
 
+    public function test_index_filters_by_search_term(): void
+    {
+        $gold = PriceList::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantA->id,
+            'company_id' => $this->companyA->id,
+            'code' => 'GOLD-TIER',
+            'name' => 'Gold Tier Wholesale',
+            'description' => 'Premium partners',
+            'currency' => 'EUR',
+            'is_active' => true,
+        ]);
+
+        // Match by name.
+        $byName = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/price-lists?search=Gold');
+        $byName->assertOk();
+        $nameIds = array_column($byName->json('data') ?? [], 'id');
+        $this->assertContains($gold->id, $nameIds);
+        $this->assertNotContains($this->priceListA->id, $nameIds);
+
+        // Match by code.
+        $byCode = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/price-lists?search=GOLD-TIER');
+        $byCode->assertOk();
+        $this->assertContains($gold->id, array_column($byCode->json('data') ?? [], 'id'));
+
+        // No match.
+        $none = $this->actingAsForTenant($this->userA, $this->companyA)
+            ->getJson('/api/v1/price-lists?search=zzzNoMatch');
+        $none->assertOk();
+        $this->assertCount(0, $none->json('data') ?? []);
+    }
+
     public function test_index_query_includes_tenant_and_company_predicates(): void
     {
         \DB::enableQueryLog();

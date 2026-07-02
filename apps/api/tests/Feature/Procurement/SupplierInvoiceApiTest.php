@@ -393,6 +393,39 @@ final class SupplierInvoiceApiTest extends TestCase
         $this->assertCount(0, $postedFilter->json('data'));
     }
 
+    public function test_index_filters_by_search_partner_name_or_document_number(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '3.0000', '50.000'));
+
+        // Partner-name match — supplier is "Test Supplier SARL".
+        $byName = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices?search=Supplier');
+        $byName->assertOk();
+        $this->assertCount(1, $byName->json('data'));
+
+        // Document-number match — pull the generated number from the list, then
+        // search by it to confirm the shared document_number path still works
+        // through the SupplierInvoice override.
+        $all = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices');
+        $number = $all->json('data.0.number');
+        $this->assertNotEmpty($number);
+
+        $byNumber = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices?search='.urlencode((string) $number));
+        $byNumber->assertOk();
+        $this->assertCount(1, $byNumber->json('data'));
+
+        // No match.
+        $none = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices?search=zzzNoSuchInvoice');
+        $none->assertOk();
+        $this->assertCount(0, $none->json('data'));
+    }
+
     // -------------------------------------------------------------------------
     // 5. show: detail shape matches contract
     // -------------------------------------------------------------------------
