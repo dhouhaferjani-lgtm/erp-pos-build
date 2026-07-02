@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, CreditCard, Calendar } from 'lucide-react'
+import { SearchInput } from '../../components/molecules/SearchInput/SearchInput'
 import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { cn } from '../../lib/utils'
@@ -50,6 +52,7 @@ export function PaymentListPage() {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
+  const [search, setSearch] = useState('')
 
   // Get translated status label
   const getStatusLabel = (status: Payment['status']) => {
@@ -61,9 +64,14 @@ export function PaymentListPage() {
   const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['payments']),
+    queryKey: tenantScopedKey(['payments', search]),
     queryFn: async () => {
-      const response = await api.get<PaymentsResponse>('/payments')
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      const queryString = params.toString()
+      const response = await api.get<PaymentsResponse>(
+        `/payments${queryString ? `?${queryString}` : ''}`,
+      )
       return response.data
     },
     enabled: tenantId !== null && companyId !== null,
@@ -176,6 +184,14 @@ export function PaymentListPage() {
         </Button>
       }
     >
+      <div className="mb-4">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t('common:actions.search')}
+          className="w-full sm:w-96"
+        />
+      </div>
       {error ? (
         <div className={cn(tokens.alert.base, tokens.alert.error)}>
           {t('errors.loadingFailed', 'Error loading data. Please try again.')}

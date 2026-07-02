@@ -77,6 +77,18 @@ class PaymentController extends Controller
             $query->where('status', $request->input('status'));
         }
 
+        // Free-text search by reference (the displayed payment number derives
+        // from reference) or partner name. Grouped so the clauses OR together.
+        $search = $request->query('search');
+        if (is_string($search) && $search !== '') {
+            $query->where(function (Builder $q) use ($search): void {
+                $q->where('reference', 'like', "%{$search}%")
+                    ->orWhereHas('partner', function (Builder $partnerQuery) use ($search): void {
+                        $partnerQuery->where('partners.name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
         $payments = $query->orderByDesc('payment_date')->get();
 
         return response()->json([

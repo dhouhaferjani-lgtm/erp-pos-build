@@ -7,7 +7,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { fetchPriceLists } from './api'
-import { SearchInput } from '../../components/molecules/SearchInput'
+import { SearchInput } from '../../components/molecules/SearchInput/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
@@ -20,38 +20,30 @@ export function PriceListListPage() {
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['price-lists', statusFilter]),
+    queryKey: tenantScopedKey(['price-lists', statusFilter, searchQuery]),
     queryFn: () =>
-      fetchPriceLists(
-        statusFilter === 'all' ? undefined : { is_active: statusFilter === 'active' }
-      ),
+      fetchPriceLists({
+        ...(statusFilter === 'all' ? {} : { is_active: statusFilter === 'active' }),
+        ...(searchQuery ? { search: searchQuery } : {}),
+      }),
     enabled: !!tenantId && !!companyId,
   })
 
-  const priceLists = data?.data ?? []
-
-  // Filter by search query
-  const filteredPriceLists = priceLists.filter((priceList) => {
-    if (!searchQuery) return true
-    const query = searchQuery.toLowerCase()
-    return (
-      priceList.code.toLowerCase().includes(query) ||
-      priceList.name.toLowerCase().includes(query) ||
-      priceList.description?.toLowerCase().includes(query)
-    )
-  })
+  // Search runs server-side (code/name/description); the returned page is the
+  // authoritative filtered set — no additional client-side filtering.
+  const filteredPriceLists = data?.data ?? []
 
   const filterTabs = [
-    { value: 'all' as StatusFilter, label: t('common:filters.all'), count: priceLists.length },
+    { value: 'all' as StatusFilter, label: t('common:filters.all'), count: filteredPriceLists.length },
     {
       value: 'active' as StatusFilter,
       label: t('common:filters.active'),
-      count: priceLists.filter((p) => p.is_active).length,
+      count: filteredPriceLists.filter((p) => p.is_active).length,
     },
     {
       value: 'inactive' as StatusFilter,
       label: t('common:filters.inactive'),
-      count: priceLists.filter((p) => !p.is_active).length,
+      count: filteredPriceLists.filter((p) => !p.is_active).length,
     },
   ]
 

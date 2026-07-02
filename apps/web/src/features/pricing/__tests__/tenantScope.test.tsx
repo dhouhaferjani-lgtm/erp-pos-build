@@ -177,7 +177,9 @@ describe('pricing page queryKey shapes', () => {
     })
     const keys = pricingKeysFromCache(queryClient)
     const list = keys.find((k) => k[0] === 'price-lists')
-    expect(list).toEqual(['price-lists', 'all', 'tenant-A', 'company-1'])
+    // Key shape: ['price-lists', statusFilter, searchQuery, tenant, company].
+    // Tenant + company remain at the suffix for tenant-scoped invalidation.
+    expect(list).toEqual(['price-lists', 'all', '', 'tenant-A', 'company-1'])
   })
 
   it('queryKeys differ across tenants', async () => {

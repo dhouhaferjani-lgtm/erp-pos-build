@@ -56,6 +56,7 @@ export function useSupplierInvoiceList(params: SupplierInvoiceListParams) {
       if (params.match_status) cleanParams['match_status'] = params.match_status
       if (params.date_from) cleanParams['date_from'] = params.date_from
       if (params.date_to) cleanParams['date_to'] = params.date_to
+      if (params.search) cleanParams['search'] = params.search
       if (params.cursor) cleanParams['cursor'] = params.cursor
 
       const response = await api.get<SupplierInvoiceListResponse>('/supplier-invoices', {

@@ -15,6 +15,7 @@ import type {
 export async function fetchPriceLists(params?: {
   is_active?: boolean
   currency?: string
+  search?: string
 }): Promise<PriceListsResponse> {
   const searchParams = new URLSearchParams()
   if (params?.is_active !== undefined) {
@@ -22,6 +23,9 @@ export async function fetchPriceLists(params?: {
   }
   if (params?.currency) {
     searchParams.append('currency', params.currency)
+  }
+  if (params?.search) {
+    searchParams.append('search', params.search)
   }
   const queryString = searchParams.toString()
   return apiGet<PriceListsResponse>(`/price-lists${queryString ? `?${queryString}` : ''}`)

@@ -368,6 +368,50 @@ final class TreasuryCompanyIsolationTest extends TestCase
         return [$partner, $method, $repository, $purchaseOrder, $payment];
     }
 
+    public function test_index_filters_by_search_reference_or_partner_name(): void
+    {
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->companyA->id,
+            'name' => 'Zenith Wholesale Ltd',
+        ]);
+
+        $payment = Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->companyA->id,
+            'partner_id' => $partner->id,
+            'payment_method_id' => $this->methodA->id,
+            'repository_id' => $this->repositoryA->id,
+            'amount' => '10.00',
+            'currency' => 'EUR',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+            'reference' => 'INV-SEARCH-9911',
+        ]);
+
+        // Match by reference.
+        $byRef = $this->actingAsForCompany($this->companyA)
+            ->getJson('/api/v1/payments?search=SEARCH-9911');
+        $byRef->assertOk();
+        $refIds = array_column($byRef->json('data'), 'id');
+        $this->assertContains($payment->id, $refIds);
+        $this->assertNotContains($this->paymentA->id, $refIds);
+
+        // Match by partner name.
+        $byName = $this->actingAsForCompany($this->companyA)
+            ->getJson('/api/v1/payments?search=Zenith');
+        $byName->assertOk();
+        $this->assertContains($payment->id, array_column($byName->json('data'), 'id'));
+
+        // No match.
+        $none = $this->actingAsForCompany($this->companyA)
+            ->getJson('/api/v1/payments?search=zzzNoSuchPayment');
+        $none->assertOk();
+        $this->assertCount(0, $none->json('data'));
+    }
+
     private function actingAsForCompany(Company $company): self
     {
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
