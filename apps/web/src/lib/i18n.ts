@@ -125,6 +125,7 @@ import arPurchases from '../locales/ar/purchases.json'
 import arProducts from '../locales/ar/products.json'
 import arSales from '../locales/ar/sales.json'
 import arFinance from '../locales/ar/finance.json'
+import arTreasury from '../locales/ar/treasury.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -140,7 +141,7 @@ const resources = {
     auth: enAuth,
     sales: enSales,
     inventory: enInventory,
-    treasury: enTreasury,
+    treasury: { ...enTreasury, ...arTreasury },
     validation: enValidation,
     pricing: enPricing,
     finance: enFinance,

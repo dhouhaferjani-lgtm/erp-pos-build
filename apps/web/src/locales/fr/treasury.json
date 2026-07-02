@@ -469,5 +469,12 @@
         "button": "Désactiver"
       }
     }
+  },
+  "reconciliation": {
+    "openingBalance": "Solde d'ouverture",
+    "startModal": {
+      "openingBalanceHelp": "Par défaut {{amount}} si le champ reste vide.",
+      "liveDifference": "Différence actuelle"
+    }
   }
 }

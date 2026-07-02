@@ -18,6 +18,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Services\BankReconciliationService;
 use App\Modules\Treasury\Domain\BankReconciliation;
+use App\Modules\Treasury\Domain\BankReconciliationItem;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\ReconciliationStatus;
@@ -158,7 +159,6 @@ class TreasuryEventDispatchTest extends TestCase
             'name' => 'Bank Account',
             'type' => RepositoryType::BankAccount,
             'balance' => '0.000',
-            'currency' => 'TND',
             // Ledgered repository so admin payments can post the cash leg.
             'gl_account_id' => $glAccount->id,
         ]);
@@ -326,13 +326,35 @@ class TreasuryEventDispatchTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
+        $payment1 = $this->createCompletedPayment('1200.125');
+        $payment2 = $this->createCompletedPayment('300.375');
+
+        BankReconciliationItem::create([
+            'id' => Str::uuid()->toString(),
+            'reconciliation_id' => $reconciliation->id,
+            'payment_id' => $payment1->id,
+            'is_matched' => true,
+            'matched_by' => $this->user->id,
+            'matched_at' => now(),
+        ]);
+
+        BankReconciliationItem::create([
+            'id' => Str::uuid()->toString(),
+            'reconciliation_id' => $reconciliation->id,
+            'payment_id' => $payment2->id,
+            'is_matched' => true,
+            'matched_by' => $this->user->id,
+            'matched_at' => now(),
+        ]);
+
         $service = app(BankReconciliationService::class);
         $service->completeReconciliation($reconciliation->id, $this->user->id);
 
         Event::assertDispatched(ReconciliationCompleted::class, function (ReconciliationCompleted $event) use ($reconciliation, $repository) {
             return $event->reconciliationId === $reconciliation->id
                 && $event->repositoryId === $repository->id
-                && $event->matchedCount === 0;
+                && $event->matchedCount === 2
+                && $event->matchedTotal === '1500.500';
         });
     }
 }

@@ -364,6 +364,55 @@ class BankReconciliationTest extends TestCase
         $this->assertNotNull($this->bankAccount->last_reconciled_at);
     }
 
+    public function test_explicit_opening_balance_makes_zero_difference_complete_reachable(): void
+    {
+        $payment = $this->createPayment('500.000', 'PMT-OPENING');
+
+        $startResponse = $this->actingAs($this->user)->postJson('/api/v1/bank-reconciliations', [
+            'repository_id' => $this->bankAccount->id,
+            'statement_date' => '2026-03-20',
+            'opening_balance' => '25000.000',
+            'statement_balance' => '25500.000',
+        ]);
+
+        $startResponse->assertStatus(201);
+        $startResponse->assertJsonPath('data.opening_balance', '25000.000');
+        $startResponse->assertJsonPath('data.difference', '500.000');
+
+        $reconciliationId = $startResponse->json('data.id');
+
+        $this->actingAs($this->user)->postJson(
+            "/api/v1/bank-reconciliations/{$reconciliationId}/match/{$payment->id}"
+        )->assertStatus(200);
+
+        $summaryResponse = $this->actingAs($this->user)->getJson(
+            "/api/v1/bank-reconciliations/{$reconciliationId}/summary"
+        );
+
+        $summaryResponse->assertStatus(200);
+        $summaryResponse->assertJsonPath('data.opening_balance', '25000.000');
+        $summaryResponse->assertJsonPath('data.closing_balance', '25500.000');
+        $summaryResponse->assertJsonPath('data.difference', '0.000');
+        $summaryResponse->assertJsonPath('data.can_complete', true);
+
+        $this->actingAs($this->user)->postJson(
+            "/api/v1/bank-reconciliations/{$reconciliationId}/complete"
+        )->assertStatus(200);
+    }
+
+    public function test_start_reconciliation_rejects_opening_balance_over_three_decimals(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/bank-reconciliations', [
+            'repository_id' => $this->bankAccount->id,
+            'statement_date' => '2026-03-20',
+            'opening_balance' => '25000.1234',
+            'statement_balance' => '25500.000',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.errors.opening_balance.0', 'Opening balance must have at most 3 decimal places.');
+    }
+
     public function test_complete_reconciliation_marks_matched_payments_as_reconciled(): void
     {
         $payment1 = $this->createPayment('3000.00', 'PMT-REC-1');

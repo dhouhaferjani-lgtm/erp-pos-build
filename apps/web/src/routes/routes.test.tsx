@@ -55,4 +55,12 @@ describe('route module guards', () => {
     const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)
     expect(fragment).toContain('<ModuleGuard module="Menu">')
   })
+
+  it('guards bank reconciliation with repository view permission', () => {
+    const idx = routesSource.indexOf('path="reconciliation"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)
+    expect(fragment).toContain('permission="repositories.view"')
+    expect(fragment).not.toContain('permission="repositories.manage"')
+  })
 })

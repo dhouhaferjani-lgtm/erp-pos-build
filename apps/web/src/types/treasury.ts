@@ -301,6 +301,7 @@ export interface ReconciliationSummary {
 export interface StartReconciliationRequest {
   repository_id: string;
   statement_date: string;
+  opening_balance?: string;
   statement_balance: string;
   notes?: string;
 }
