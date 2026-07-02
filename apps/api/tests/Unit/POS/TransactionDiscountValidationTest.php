@@ -8,7 +8,9 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Exceptions\DiscountExceedsLimitException;
 use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Services\DiscountCalculationService;
+use App\Modules\POS\Domain\Services\DiscountPermissionResolver;
 use App\Modules\POS\Domain\Terminal;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Tests\Traits\WithCurrencyScale;
 
@@ -20,6 +22,9 @@ use Tests\Traits\WithCurrencyScale;
  */
 class TransactionDiscountValidationTest extends TestCase
 {
+    // RefreshDatabase: the shared DiscountPermissionResolver checks user roles
+    // (hasRole) to resolve the admin bypass, which needs the schema present.
+    use RefreshDatabase;
     use WithCurrencyScale;
 
     private DiscountCalculationService $service;
@@ -27,7 +32,7 @@ class TransactionDiscountValidationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new DiscountCalculationService($this->mockCurrencyScale(3));
+        $this->service = new DiscountCalculationService($this->mockCurrencyScale(3), new DiscountPermissionResolver);
     }
 
     public function test_validates_transaction_discount_successfully(): void
