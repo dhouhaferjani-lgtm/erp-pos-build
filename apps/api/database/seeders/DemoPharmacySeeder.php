@@ -511,6 +511,12 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                     'fiscal_schema_version' => 3,
                     'is_active' => true,
                     'activated_at' => now(),
+                    // Terminal discount gates. Cap set at 100% so the per-user
+                    // max_discount_percent is the binding limit that drives the
+                    // manager-PIN override path (mirrors CoffeeShopSeeder).
+                    'allow_line_discounts' => true,
+                    'allow_transaction_discounts' => true,
+                    'max_discount_percent' => '100.00',
                     // hardware_identifier intentionally NULL — device claims on first launch
                 ],
             );

@@ -929,6 +929,10 @@ class ParapharmacySeeder extends Seeder
             'barcode' => $barcode,
             'is_physical' => true,
             'purchase_price' => $cost,
+            // cost_price is the WAC field read by MarginService and
+            // PostCOGSOnInvoice; without it margin/COGS compute against a null
+            // cost. Seed it to the same landed cost as purchase_price.
+            'cost_price' => $cost,
             'sale_price' => $retailPrice,
             'tax_rate' => $vatRate,
             'is_active' => true,
@@ -1339,6 +1343,10 @@ class ParapharmacySeeder extends Seeder
             'status' => 'active',
             'email_verified_at' => now(),
             'preferences' => [],
+            // POS discount permissions (industry-standard defaults, owner-adjustable):
+            // owner may grant any discount up to the terminal ceiling.
+            'can_discount' => true,
+            'max_discount_percent' => '100.00',
         ]);
 
         // Register in the central identity index so email-first login resolves
@@ -1373,6 +1381,9 @@ class ParapharmacySeeder extends Seeder
             'status' => 'active',
             'email_verified_at' => now(),
             'preferences' => [],
+            // Manager: mid-tier discount authority.
+            'can_discount' => true,
+            'max_discount_percent' => '25.00',
         ]);
 
         $this->recordIdentity($manager, $tenant);
@@ -1405,6 +1416,10 @@ class ParapharmacySeeder extends Seeder
             'status' => 'active',
             'email_verified_at' => now(),
             'preferences' => [],
+            // Cashier: limited discount authority; anything higher needs a
+            // manager PIN override.
+            'can_discount' => true,
+            'max_discount_percent' => '10.00',
         ]);
 
         $this->recordIdentity($cashier, $tenant);
