@@ -53,6 +53,48 @@ export interface ProductCardProps {
   hardBlockOutOfStock?: boolean;
 }
 
+interface ViewDetailsButtonProps {
+  className: string;
+  label: string;
+  product: POSProduct;
+  onViewDetails: (product: POSProduct) => void;
+}
+
+function ViewDetailsButton({
+  className,
+  label,
+  product,
+  onViewDetails,
+}: ViewDetailsButtonProps) {
+  return (
+    <button
+      type="button"
+      data-testid="view-details-button"
+      aria-label={label}
+      onClick={(e) => {
+        e.stopPropagation();
+        onViewDetails(product);
+      }}
+      onKeyDown={(e) => {
+        // The card root is role=button (onKeyDown=activate); Enter/Space on
+        // this inner button must NOT bubble up and add the product to cart.
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.stopPropagation();
+          e.preventDefault();
+          onViewDetails(product);
+        }
+      }}
+      className={cn(
+        'flex items-center justify-center rounded-sm bg-surface-raised/90 text-ink-muted shadow-sm backdrop-blur-sm transition-colors hover:text-ink active:bg-surface-sunken',
+        className,
+      )}
+      title={label}
+    >
+      <Eye className="h-4 w-4" />
+    </button>
+  );
+}
+
 function ProductCardInner({
   product,
   onAddToCart,
@@ -173,38 +215,7 @@ function ProductCardInner({
       ? 'cursor-pointer border-accent bg-accent-tint shadow-sm'
       : 'cursor-pointer border-subtle bg-surface-raised hover:border-action hover:shadow-md';
 
-  // View-details ("eye") button — rendered on the thumbnail in visual mode and
-  // inline in the price row in compact mode (mock layout). Kept OFF the card
-  // bottom-right so it never overlaps the price/stock row. Shared handlers here
-  // avoid duplicating the stopPropagation/keydown guards across placements.
-  const renderViewDetails = (className: string) =>
-    onViewDetails ? (
-      <button
-        type="button"
-        data-testid="view-details-button"
-        aria-label={t('products.viewDetails')}
-        onClick={(e) => {
-          e.stopPropagation();
-          onViewDetails(product);
-        }}
-        onKeyDown={(e) => {
-          // The card root is role=button (onKeyDown=activate); Enter/Space on
-          // this inner button must NOT bubble up and add the product to cart.
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.stopPropagation();
-            e.preventDefault();
-            onViewDetails(product);
-          }
-        }}
-        className={cn(
-          'flex items-center justify-center rounded-full bg-surface-raised/90 text-ink-muted shadow-sm backdrop-blur-sm transition-colors hover:text-ink active:bg-surface-sunken',
-          className,
-        )}
-        title={t('products.viewDetails')}
-      >
-        <Eye className="h-4 w-4" />
-      </button>
-    ) : null;
+  const viewDetailsLabel = t('products.viewDetails');
 
   return (
     <div
@@ -277,8 +288,15 @@ function ProductCardInner({
             imageUrl={imageSrc}
             size={88}
           />
-          {/* Eye overlay on the thumb (mock: top-left of the tile). */}
-          {renderViewDetails('absolute left-1 top-1 h-7 w-7')}
+          {/* Eye overlay on the thumb (mock: top-left 7px inset). */}
+          {onViewDetails && (
+            <ViewDetailsButton
+              className="absolute left-[7px] top-[7px] h-[29px] w-[29px] border border-subtle"
+              label={viewDetailsLabel}
+              product={product}
+              onViewDetails={onViewDetails}
+            />
+          )}
         </div>
       )}
 
@@ -311,7 +329,15 @@ function ProductCardInner({
 
       {/* Price + stock share ONE row (mock layout: space-between), anchored to
           the card bottom via mt-auto so prices align across a row. */}
-      <div className="mt-auto flex w-full items-center justify-between gap-2 pt-2">
+      <div
+        data-testid="price-stock-block"
+        className={cn(
+          'mt-auto flex w-full gap-2 pt-2',
+          displayMode === 'visual'
+            ? 'flex-col items-start'
+            : 'items-center justify-between',
+        )}
+      >
         <p
           data-testid="price-row"
           className={cn(
@@ -324,17 +350,29 @@ function ProductCardInner({
 
         {/* Right group: stock badge + (compact-mode) eye. In visual mode the eye
             lives on the thumb, so only the badge shows here. */}
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div
+          className={cn(
+            'flex items-center gap-1.5',
+            displayMode === 'visual' ? 'max-w-full' : 'shrink-0',
+          )}
+        >
           {stockLabel !== null && (
             <StockBadge
               data-testid="stock-row"
               status={isOutOfStock ? 'out' : isLowStock ? 'low' : 'ok'}
-              className="shrink-0"
+              className="max-w-full shrink-0"
             >
               {stockLabel}
             </StockBadge>
           )}
-          {displayMode === 'grid' && renderViewDetails('h-7 w-7')}
+          {displayMode === 'grid' && onViewDetails && (
+            <ViewDetailsButton
+              className="h-7 w-7"
+              label={viewDetailsLabel}
+              product={product}
+              onViewDetails={onViewDetails}
+            />
+          )}
         </div>
       </div>
 

@@ -133,6 +133,7 @@ export function ProductGrid({
     enabled: sortMode === 'mostSold',
   });
 
+  const gridRootRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const allCategoriesLabel = t('products.allCategories');
@@ -146,11 +147,21 @@ export function ProductGrid({
   );
 
   useEffect(() => {
-    const update = () =>
-      setColumns(getColumns(displayMode, density, typeof window !== 'undefined' ? window.innerWidth : 1280));
+    const update = () => {
+      const measuredWidth = gridRootRef.current?.getBoundingClientRect().width ?? 0;
+      const fallbackWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
+      const width = measuredWidth > 0 ? measuredWidth : fallbackWidth;
+      setColumns(getColumns(displayMode, density, width));
+    };
     update();
     window.addEventListener('resize', update, { passive: true });
-    return () => window.removeEventListener('resize', update);
+    const ResizeObserverCtor = typeof ResizeObserver !== 'undefined' ? ResizeObserver : null;
+    const observer = ResizeObserverCtor !== null ? new ResizeObserverCtor(update) : null;
+    if (observer && gridRootRef.current) observer.observe(gridRootRef.current);
+    return () => {
+      window.removeEventListener('resize', update);
+      observer?.disconnect();
+    };
   }, [displayMode, density]);
 
   const handleDisplayModeChange = useCallback(
@@ -394,7 +405,7 @@ export function ProductGrid({
     virtualizer.measure();
     // virtualizer is intentionally omitted — it's a new instance every
     // render; the resetKey captures the change-trigger we care about.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps, react-doctor/exhaustive-deps
   }, [resetKey]);
 
   if (isLoading) {
@@ -420,7 +431,7 @@ export function ProductGrid({
   }
 
   return (
-    <div className="flex h-full flex-col gap-2">
+    <div ref={gridRootRef} className="flex h-full flex-col gap-2">
       {/* ------------------------------------------------------------------ */}
       {/* Toolbar: search · Filtres · Top ventes · view toggle               */}
       {/* ------------------------------------------------------------------ */}
