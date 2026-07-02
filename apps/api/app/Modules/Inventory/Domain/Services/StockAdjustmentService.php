@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain\Services;
 
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Location;
@@ -50,6 +51,7 @@ final class StockAdjustmentService
     public function __construct(
         private readonly ProductVariantLookup $variantLookup,
         private readonly ProductCostLock $costLock,
+        private readonly BatchStockService $batchStockService,
     ) {}
 
     /**
@@ -118,6 +120,8 @@ final class StockAdjustmentService
                         movementId: $movement->id,
                         quantity: $quantity,
                     );
+                } else {
+                    $this->ensureDefaultBatchForImplicitPositiveStock($stockLevel, $productId);
                 }
 
                 // Dispatch StockMovementRecorded event after transaction commits
@@ -635,6 +639,10 @@ final class StockAdjustmentService
                     reason: $reasonCode,
                 );
 
+                if (bccomp($difference, '0', self::SCALE) > 0) {
+                    $this->ensureDefaultBatchForImplicitPositiveStock($stockLevel, $productId);
+                }
+
                 // Dispatch StockMovementRecorded event after transaction commits
                 $movementSnapshot = $movement;
                 $tenantIdSnapshot = $stockLevel->tenant_id;
@@ -783,6 +791,28 @@ final class StockAdjustmentService
             ->where('company_id', $companyId)
             ->findOrFail($productId)
             ->tenant_id;
+    }
+
+    private function ensureDefaultBatchForImplicitPositiveStock(StockLevel $stockLevel, string $productId): void
+    {
+        $product = Product::query()
+            ->where('company_id', $stockLevel->company_id)
+            ->findOrFail($productId);
+
+        if (! $product->requires_batch_tracking) {
+            return;
+        }
+
+        $this->batchStockService->ensureDefaultBatch(
+            companyId: $stockLevel->company_id,
+            tenantId: $stockLevel->tenant_id,
+            productId: $productId,
+            locationId: $stockLevel->location_id,
+            targetQuantity: (string) $stockLevel->quantity,
+            shelfLifeDays: $product->default_shelf_life_days,
+            asOfDate: now()->toDateString(),
+            variantId: $stockLevel->variant_id,
+        );
     }
 
     /**
