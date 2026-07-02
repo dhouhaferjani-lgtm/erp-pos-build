@@ -62,7 +62,12 @@ class BatchRepository implements BatchRepositoryInterface
                 ->where('is_recalled', false);
         }
 
-        return $query->orderBy('expiry_date', 'asc')->get();
+        // Eager-load per-location stock so BatchResource emits `batch_stock`.
+        // The stock-transfer batch picker (and any consumer of
+        // /products/{id}/batch-stock) computes per-source availability from
+        // this array; without it every location reads as 0 available and FEFO
+        // can never allocate — silently blocking batch-tracked transfers.
+        return $query->with(['batchStock'])->orderBy('expiry_date', 'asc')->get();
     }
 
     /**
