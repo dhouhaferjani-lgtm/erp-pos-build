@@ -255,7 +255,7 @@ describe('ProductDocumentsTab', () => {
 
     await waitFor(() => {
       // Match the actual error text from translation
-      expect(screen.getByText(/error.*loading/i)).toBeInTheDocument()
+      expect(screen.getByText(/failed to load data/i)).toBeInTheDocument()
     })
   })
 
