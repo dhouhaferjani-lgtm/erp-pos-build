@@ -597,7 +597,7 @@ fiscal_status: string;
 status: string;
 is_sealed: boolean;
 is_fiscal: boolean;
-document_number: string;
+document_number: string | null;
 document_date: string;
 due_date: string | null;
 valid_until: string | null;

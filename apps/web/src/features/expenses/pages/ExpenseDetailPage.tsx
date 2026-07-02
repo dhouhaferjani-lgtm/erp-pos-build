@@ -31,7 +31,7 @@ const statusToneOverrides: Record<string, StatusTone> = {
  * Display full expense details with the ability to edit, delete, post, and manage attachments.
  */
 export function ExpenseDetailPage() {
-  const { t } = useTranslation(['expenses', 'common'])
+  const { t } = useTranslation(['expenses', 'common', 'sales'])
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -107,12 +107,13 @@ export function ExpenseDetailPage() {
 
   const isDraft = expense.status === 'draft'
   const isPosted = expense.status === 'posted'
+  const documentNumberLabel = expense.document_number ?? t('sales:documents.draftNumberPlaceholder')
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
       {/* Header */}
       <PageHeader
-        title={expense.document_number}
+        title={documentNumberLabel}
         breadcrumb={backLink}
         subtitle={expense.metadata?.vendor_name ?? t('expenses:noVendor')}
         actions={

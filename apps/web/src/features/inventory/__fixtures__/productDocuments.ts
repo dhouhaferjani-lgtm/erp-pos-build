@@ -21,7 +21,7 @@ export interface ProductDocument {
   id: string
   type: string
   status: string
-  document_number: string
+  document_number: string | null
   document_date: string
   partner_id: string | null
   // Accept `undefined` so tests for the "missing partner" code path can

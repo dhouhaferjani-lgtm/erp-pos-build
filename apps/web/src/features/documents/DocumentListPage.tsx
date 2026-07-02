@@ -141,6 +141,8 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
     return t(`sales:documents.types.${type.replace(/_/g, '')}`, t(`sales:documents.types.${type}`, type))
   }
   const getStatusLabel = (status: string) => t(`status.${status}`, status)
+  const getDocumentNumberLabel = (documentNumber: string | null) =>
+    documentNumber ?? t('sales:documents.draftNumberPlaceholder')
 
   const { data, isLoading, error } = useQuery({
     queryKey: tenantScopedKey(['documents', effectiveType, searchQuery, statusFilter, page, perPage]),
@@ -307,7 +309,7 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
           to={`${basePath}/${doc.id}`}
           className={cn('font-medium', textColors.brand, 'hover:underline')}
         >
-          {doc.document_number}
+          {getDocumentNumberLabel(doc.document_number)}
         </Link>
       ),
     },

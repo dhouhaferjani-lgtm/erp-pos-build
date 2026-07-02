@@ -157,7 +157,8 @@
     "legendMapped": "Mapped",
     "legendSkipped": "Skipped",
     "legendRequired": "Required",
-    "suggested": "(suggested)"
+    "suggested": "(suggested)",
+    "skippedColumnsNotice": "These columns will be skipped unless you map them: {{columns}}"
   },
   "validation": {
     "allValid": "All rows are valid",

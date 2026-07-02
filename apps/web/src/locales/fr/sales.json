@@ -149,6 +149,7 @@
     "title": "Documents",
     "new": "Nouveau document",
     "number": "Numéro",
+    "draftNumberPlaceholder": "Brouillon (non numéroté)",
     "type": "Type",
     "selectType": "Sélectionner le type",
     "typeRequired": "Le type est requis",

@@ -529,7 +529,7 @@ export function PurchaseOrderDetailPage() {
             partner_id: purchaseOrder.partner_id,
             partner_name: purchaseOrder.partner_name || '',
             amount: outstandingAmount,
-            reference: purchaseOrder.document_number,
+            reference: purchaseOrder.document_number ?? '',
             document_id: purchaseOrder.id,
             document_type: 'purchase_order',
           }}

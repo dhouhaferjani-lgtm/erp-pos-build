@@ -45,7 +45,7 @@ interface DashboardStats {
 
 interface RecentDocument {
   id: string
-  document_number: string
+  document_number: string | null
   type: string
   partner_name: string
   total: number | string | null
@@ -85,7 +85,7 @@ const getDocumentRoute = (type: string, id: string): string => {
 }
 
 export function Dashboard() {
-  const { t } = useTranslation(['common', 'settings'])
+  const { t } = useTranslation(['common', 'settings', 'sales'])
   usePageTitle('dashboard.title')
   const navigate = useNavigate()
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
@@ -152,6 +152,8 @@ export function Dashboard() {
       locale: companyLocale,
     })
   }
+  const getDocumentNumberLabel = (documentNumber: string | null) =>
+    documentNumber ?? t('sales:documents.draftNumberPlaceholder')
 
   if (isLoading) {
     return (
@@ -337,7 +339,7 @@ export function Dashboard() {
                   className="flex items-center justify-between px-6 py-4 hover:bg-gray-50"
                 >
                   <div>
-                    <p className="font-medium text-gray-900">{doc.document_number}</p>
+                    <p className="font-medium text-gray-900">{getDocumentNumberLabel(doc.document_number)}</p>
                     <p className="text-sm text-gray-500">{doc.partner_name}</p>
                   </div>
                   <div className="text-end">
