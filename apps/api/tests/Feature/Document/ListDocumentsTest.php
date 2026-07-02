@@ -202,6 +202,37 @@ class ListDocumentsTest extends TestCase
             ->assertJsonPath('meta.total', 1);
     }
 
+    public function test_generic_documents_list_allows_draft_expenses_without_document_number(): void
+    {
+        $this->company->update([
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'currency' => 'TND',
+        ]);
+
+        $expense = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => null,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Draft,
+            'document_number' => null,
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/documents?limit=5&sort=-created_at');
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $expense->id)
+            ->assertJsonPath('data.0.document_number', null);
+    }
+
     public function test_list_is_paginated(): void
     {
         for ($i = 1; $i <= 25; $i++) {

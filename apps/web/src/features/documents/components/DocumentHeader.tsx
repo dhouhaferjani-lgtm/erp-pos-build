@@ -90,6 +90,8 @@ export function DocumentHeader({
   // Helper functions for translated labels
   const getTypeLabel = (type: string) => t(`documents.types.${type}`, type)
   const getStatusLabel = (status: string) => t(`sales:documents.statuses.${status}`, status)
+  const getDocumentNumberLabel = (documentNumber: string | null) =>
+    documentNumber ?? t('sales:documents.draftNumberPlaceholder')
 
   // Determine if document has been converted
   const isAlreadyConverted = document.converted_to_order_id != null
@@ -115,7 +117,7 @@ export function DocumentHeader({
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">
-              {document.document_number}
+              {getDocumentNumberLabel(document.document_number)}
             </h1>
 
             {/* Document Type Badge */}

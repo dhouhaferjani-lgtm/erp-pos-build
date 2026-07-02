@@ -48,7 +48,7 @@ type Partner = App.Modules.Partner.Application.DTOs.PartnerData
 
 interface Document {
   id: string
-  document_number: string
+  document_number: string | null
   type: 'quote' | 'sales_order' | 'invoice' | 'credit_note' | 'purchase_order'
   status: 'draft' | 'confirmed' | 'posted' | 'cancelled'
   fiscal_category: 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE'
@@ -93,7 +93,7 @@ const statusColors: Record<string, string> = {
 
 export function PartnerDetailPage() {
   usePartnerBalanceRealtime()
-  const { t } = useTranslation(['common', 'deposits', 'treasury'])
+  const { t } = useTranslation(['common', 'deposits', 'treasury', 'sales'])
   const queryClient = useQueryClient()
   const { id = '' } = useParams<{ id: string }>()
   const location = useLocation()
@@ -184,6 +184,8 @@ export function PartnerDetailPage() {
       locale: companyLocale,
     })
   }
+  const getDocumentNumberLabel = (documentNumber: string | null) =>
+    documentNumber ?? t('sales:documents.draftNumberPlaceholder')
 
   if (isLoading) {
     return (
@@ -544,7 +546,7 @@ export function PartnerDetailPage() {
                               to={getDocumentPath()}
                               className="font-medium text-blue-600 hover:text-blue-900"
                             >
-                              {doc.document_number}
+                              {getDocumentNumberLabel(doc.document_number)}
                             </Link>
                           </td>
                           <td className="whitespace-nowrap px-6 py-4">

@@ -20,6 +20,7 @@ import { importApi } from '../api/importApi'
 const typeIcons: Record<ImportType, React.ComponentType<{ className?: string }>> = {
   partners: Users,
   products: Package,
+  stock_levels: Package,
   opening_balances: Calculator,
   product_images: Image,
   composite_items: UtensilsCrossed,

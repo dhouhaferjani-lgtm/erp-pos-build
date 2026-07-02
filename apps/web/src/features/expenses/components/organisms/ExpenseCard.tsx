@@ -36,7 +36,8 @@ const statusToneOverrides: Record<string, StatusTone> = {
  * status badge, and action buttons.
  */
 export function ExpenseCard({ expense, onDelete, onPost }: ExpenseCardProps) {
-  const { t } = useTranslation(['expenses', 'common'])
+  const { t } = useTranslation(['expenses', 'common', 'sales'])
+  const documentNumberLabel = expense.document_number ?? t('sales:documents.draftNumberPlaceholder')
 
   const isDraft = expense.status === 'draft'
   const isPosted = expense.status === 'posted'
@@ -54,7 +55,7 @@ export function ExpenseCard({ expense, onDelete, onPost }: ExpenseCardProps) {
               'hover:text-primary-600 dark:hover:text-primary-400'
             )}
           >
-            {expense.document_number}
+            {documentNumberLabel}
           </Link>
           {expense.metadata?.vendor_name && (
             <p className={cn('mt-1 text-sm', textColors.tertiary)}>

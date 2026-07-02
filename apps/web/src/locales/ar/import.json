@@ -1,0 +1,5 @@
+{
+  "mapping": {
+    "skippedColumnsNotice": "سيتم تخطي هذه الأعمدة ما لم تقم بربطها: {{columns}}"
+  }
+}

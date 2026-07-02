@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { DocumentListPage } from './DocumentListPage'
 import type { Document } from '../../types/document'
@@ -73,18 +73,20 @@ interface DocumentsResponse {
   }
 }
 
+const defaultDocumentsResponse: DocumentsResponse = {
+  data: [
+    makeDoc({ id: '1', document_number: 'QUO-1001', status: 'draft', partner_id: 'p1', partner_name: 'Alice Co', total: '120.500' }),
+    makeDoc({ id: '2', document_number: 'QUO-1002', status: 'posted', partner_id: 'p2', partner_name: 'Bob Ltd', total: '90.000' }),
+  ],
+  meta: { total: 30, current_page: 1, last_page: 2, per_page: 25, from: 1, to: 25 },
+}
+
 const mockUseQueryReturn: {
   data: DocumentsResponse | undefined
   isLoading: boolean
   error: unknown
 } = {
-  data: {
-    data: [
-      makeDoc({ id: '1', document_number: 'QUO-1001', status: 'draft', partner_id: 'p1', partner_name: 'Alice Co', total: '120.500' }),
-      makeDoc({ id: '2', document_number: 'QUO-1002', status: 'posted', partner_id: 'p2', partner_name: 'Bob Ltd', total: '90.000' }),
-    ],
-    meta: { total: 30, current_page: 1, last_page: 2, per_page: 25, from: 1, to: 25 },
-  },
+  data: defaultDocumentsResponse,
   isLoading: false,
   error: null,
 }
@@ -95,12 +97,39 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 })
 
 describe('DocumentListPage (canonical list)', () => {
+  beforeEach(() => {
+    mockUseQueryReturn.data = defaultDocumentsResponse
+    mockUseQueryReturn.isLoading = false
+    mockUseQueryReturn.error = null
+  })
+
   it('renders a row per document', () => {
     render(<DocumentListPage />)
     expect(screen.getByText('QUO-1001')).toBeInTheDocument()
     expect(screen.getByText('QUO-1002')).toBeInTheDocument()
     expect(screen.getByText('Alice Co')).toBeInTheDocument()
     expect(screen.getByText('Bob Ltd')).toBeInTheDocument()
+  })
+
+  it('shows a draft placeholder when the document number is not assigned yet', () => {
+    mockUseQueryReturn.data = {
+      data: [
+        makeDoc({
+          id: 'draft-expense',
+          type: 'expense',
+          status: 'draft',
+          document_number: null,
+        } as Partial<Document>),
+      ],
+      meta: { total: 1, current_page: 1, last_page: 1, per_page: 25, from: 1, to: 1 },
+    }
+
+    render(<DocumentListPage />)
+
+    expect(screen.getByRole('link', { name: 'sales:documents.draftNumberPlaceholder' })).toHaveAttribute(
+      'href',
+      '/sales/quotes/draft-expense',
+    )
   })
 
   it('renders the document type as a status badge label', () => {

@@ -103,6 +103,7 @@
     }
   },
   "documents": {
+    "draftNumberPlaceholder": "مسودة (بلا رقم)",
     "statuses": {
       "draft": "مسودة",
       "confirmed": "مؤكَّد",

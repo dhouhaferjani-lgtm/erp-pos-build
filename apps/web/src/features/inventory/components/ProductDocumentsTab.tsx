@@ -34,7 +34,7 @@ interface Document {
   id: string
   type: string
   status: string
-  document_number: string
+  document_number: string | null
   document_date: string
   partner_id: string | null
   partner_name?: string
@@ -112,7 +112,7 @@ const statusToneOverrides: Record<string, StatusTone> = {
 }
 
 export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
-  const { t } = useTranslation(['inventory', 'common'])
+  const { t } = useTranslation(['inventory', 'common', 'sales'])
   const { decimals } = useCurrency()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -193,6 +193,8 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
   }
 
   const getStatusLabel = (status: string) => statusLabels[status] ?? status
+  const getDocumentNumberLabel = (documentNumber: string | null) =>
+    documentNumber ?? t('sales:documents.draftNumberPlaceholder')
 
   if (isLoading) {
     return (
@@ -276,7 +278,7 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
                         to={`${typeConfig.path}/${doc.id}`}
                         className={`font-medium ${textColors.brand} hover:underline`}
                       >
-                        {doc.document_number}
+                        {getDocumentNumberLabel(doc.document_number)}
                       </Link>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
