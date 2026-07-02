@@ -263,6 +263,18 @@
     },
     "effectiveUnitCost": "Coût unitaire effectif : {{amount}}",
     "bonusSavings": "Économie gratuité : {{amount}}",
+    "pricing": {
+      "cost": "Coût {{amount}}",
+      "lastBuy": "Dernier achat {{amount}}",
+      "margin": "Marge {{percent}}%",
+      "details": "Détails du prix",
+      "suggested": "Prix suggéré {{amount}}",
+      "lastSale": "Dernière vente {{amount}}",
+      "minimumMargin": "Minimum {{percent}}%",
+      "useSuggested": "Utiliser le prix suggéré",
+      "policyBlocked": "Marge bloquée : {{permission}}",
+      "policyWarning": "Avertissement de marge"
+    },
     "discount": "Remise",
     "tax": "TVA",
     "taxPercent": "TVA %",

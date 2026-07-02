@@ -1,9 +1,11 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2 } from 'lucide-react'
+import { Info, Plus, Trash2 } from 'lucide-react'
 import { formatCurrency } from '../../../lib/format'
 import { bcadd, bccomp, bcdiv, bcmul, bcsub } from '../../../lib/decimal'
+import { apiPost } from '../../../lib/api'
+import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms/AddQuickProductModal/AddQuickProductModal'
@@ -117,6 +119,39 @@ interface DocumentLineEditorProps {
   onChange: (lines: DocumentLine[]) => void
   readonly?: boolean
   documentType?: string
+  partnerId?: string | null
+}
+
+interface PricingContextLineRequest {
+  product_id: string
+  variant_id: string | null
+  unit_price: string
+}
+
+interface PricingPolicy {
+  level: 'green' | 'yellow' | 'orange' | 'red'
+  allowed: boolean
+  requires_permission: string | null
+}
+
+interface PricingContextItem {
+  currency: string
+  cost_wac: string
+  last_purchase_cost: string | null
+  last_purchase_at: string | null
+  last_sale_to_partner: {
+    unit_price: string
+    at: string | null
+    document_no: string
+  } | null
+  suggested_price: string
+  target_margin_pct: string
+  minimum_margin_pct: string
+  policy: PricingPolicy
+}
+
+interface PricingContextResponse {
+  items: Record<string, PricingContextItem>
 }
 
 function scopedNamespacePredicate(
@@ -135,7 +170,14 @@ function scopedNamespacePredicate(
   }
 }
 
-export function DocumentLineEditor({ lines, onChange, readonly = false, documentType }: DocumentLineEditorProps) {
+function pricingContextKey(line: Pick<DocumentLine, 'product_id' | 'variant_id'>): string {
+  if ((line.variant_id ?? null) === null || line.variant_id === '') {
+    return line.product_id
+  }
+  return `${line.product_id}:${line.variant_id}`
+}
+
+export function DocumentLineEditor({ lines, onChange, readonly = false, documentType, partnerId = null }: DocumentLineEditorProps) {
   const { t } = useTranslation(['sales', 'common'])
   const queryClient = useQueryClient()
   const { config: companyConfig, hasModule } = useCompanyConfig()
@@ -144,6 +186,8 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const designationFeatureEnabled = useLineDesignationFeature()
   const [showProductModal, setShowProductModal] = useState(false)
+  const [focusedPriceLineId, setFocusedPriceLineId] = useState<string | null>(null)
+  const [openPricingLineId, setOpenPricingLineId] = useState<string | null>(null)
   const linesRef = useRef(lines)
 
   useEffect(() => {
@@ -169,6 +213,38 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     }
     return bcdiv(decimalValue(line.line_total), paidQuantity, 3)
   }, [])
+
+  const pricingContextLines = useMemo<PricingContextLineRequest[]>(() => (
+    lines
+      .filter((line) => !line.is_service && line.product_id !== '')
+      .map((line) => ({
+        product_id: line.product_id,
+        variant_id: line.variant_id ?? null,
+        unit_price: decimalValue((line.price_entry_mode ?? 'unit') === 'total' ? deriveUnitPrice(line) : line.unit_price),
+      }))
+  ), [deriveUnitPrice, lines])
+  const pricingContextSignature = useMemo(
+    () => pricingContextLines
+      .map((line) => `${line.product_id}:${line.variant_id ?? ''}:${line.unit_price}`)
+      .join('|'),
+    [pricingContextLines],
+  )
+  const pricingContextEnabled =
+    !readonly &&
+    focusedPriceLineId !== null &&
+    pricingContextLines.length > 0 &&
+    tenantId !== null &&
+    companyId !== null
+
+  const { data: pricingContext } = useQuery({
+    queryKey: tenantScopedKey(['line-entry-pricing-context', partnerId ?? null, pricingContextSignature]),
+    queryFn: () => apiPost<PricingContextResponse>('/line-entry/pricing-context/bulk', {
+      partner_id: partnerId ?? null,
+      lines: pricingContextLines,
+    }),
+    enabled: pricingContextEnabled,
+    staleTime: 30000,
+  })
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -463,44 +539,117 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       header: t('sales:lineItems.unitPrice'),
       headerClassName: purchaseBonusEnabled ? 'w-40 text-end' : 'w-32 text-end',
       cellClassName: 'text-end',
-      Cell: ({ line }) => (
-        readonly ? (
-          <span className={`text-sm ${textColors.primary}`}>{formatAmount(deriveUnitPrice(line))}</span>
-        ) : (
-          <div className="flex min-w-40 items-center justify-end gap-2">
-            <MoneyInput
-              currency={companyCurrency}
-              min="0"
-              value={(line.price_entry_mode ?? 'unit') === 'total' ? decimalValue(line.line_total) : decimalValue(line.unit_price)}
-              onChange={(value) => {
-                if ((line.price_entry_mode ?? 'unit') === 'total') {
-                  handleUpdateLine(line.id, { line_total: value })
-                  return
-                }
-                handleUpdateLine(line.id, { unit_price: value })
-              }}
-              aria-label={t('sales:lineItems.unitPrice')}
-              className={`${tokens.input.base} w-28 text-end text-sm`}
-            />
-            {purchaseBonusEnabled && (
-              <button
-                type="button"
-                onClick={() => {
-                  handleUpdateLine(line.id, {
-                    price_entry_mode: (line.price_entry_mode ?? 'unit') === 'total' ? 'unit' : 'total',
-                  })
+      Cell: ({ line }) => {
+        const pricingItem = line.product_id !== '' ? pricingContext?.items[pricingContextKey(line)] : undefined
+        const policy = pricingItem?.policy
+        const isBlocked = policy?.allowed === false
+        const isWarning = policy !== undefined && policy.allowed && policy.level !== 'green'
+        const policyMessage = isBlocked
+          ? t('sales:lineItems.pricing.policyBlocked', { permission: policy.requires_permission ?? '' })
+          : isWarning
+            ? t('sales:lineItems.pricing.policyWarning')
+            : null
+        const detailsOpen = openPricingLineId === line.id
+
+        if (readonly) {
+          return <span className={`text-sm ${textColors.primary}`}>{formatAmount(deriveUnitPrice(line))}</span>
+        }
+
+        return (
+          <div className="relative flex min-w-40 flex-col items-end gap-1">
+            <div className="flex items-center justify-end gap-2">
+              <MoneyInput
+                currency={companyCurrency}
+                min="0"
+                error={isBlocked}
+                value={(line.price_entry_mode ?? 'unit') === 'total' ? decimalValue(line.line_total) : decimalValue(line.unit_price)}
+                onFocus={() => {
+                  setFocusedPriceLineId(line.id)
                 }}
-                className={`rounded ${colors.neutral[100]} px-2 py-1 text-xs font-medium ${textColors.secondary} ${colors.hover.gray50}`}
-                aria-pressed={(line.price_entry_mode ?? 'unit') === 'total'}
-              >
-                {(line.price_entry_mode ?? 'unit') === 'total'
-                  ? t('sales:lineItems.priceEntryMode.unit')
-                  : t('sales:lineItems.priceEntryMode.total')}
-              </button>
+                onChange={(value) => {
+                  if ((line.price_entry_mode ?? 'unit') === 'total') {
+                    handleUpdateLine(line.id, { line_total: value })
+                    return
+                  }
+                  handleUpdateLine(line.id, { unit_price: value })
+                }}
+                aria-label={t('sales:lineItems.unitPrice')}
+                className={`${tokens.input.base} w-28 text-end text-sm`}
+              />
+              {purchaseBonusEnabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleUpdateLine(line.id, {
+                      price_entry_mode: (line.price_entry_mode ?? 'unit') === 'total' ? 'unit' : 'total',
+                    })
+                  }}
+                  className={`rounded ${colors.neutral[100]} px-2 py-1 text-xs font-medium ${textColors.secondary} ${colors.hover.gray50}`}
+                  aria-pressed={(line.price_entry_mode ?? 'unit') === 'total'}
+                >
+                  {(line.price_entry_mode ?? 'unit') === 'total'
+                    ? t('sales:lineItems.priceEntryMode.unit')
+                    : t('sales:lineItems.priceEntryMode.total')}
+                </button>
+              )}
+            </div>
+
+            {pricingItem !== undefined && (
+              <div className={`max-w-72 text-end text-[11px] leading-4 ${isBlocked ? textColors.error : isWarning ? textColors.warning : textColors.secondary}`}>
+                <div className="flex flex-wrap items-center justify-end gap-x-1">
+                  <span>
+                    {t('sales:lineItems.pricing.cost', { amount: pricingItem.cost_wac })}
+                    {' · '}
+                    {t('sales:lineItems.pricing.lastBuy', { amount: pricingItem.last_purchase_cost ?? '-' })}
+                    {' · '}
+                    {t('sales:lineItems.pricing.margin', { percent: pricingItem.target_margin_pct })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenPricingLineId(detailsOpen ? null : line.id)
+                    }}
+                    className={`inline-flex items-center ${textColors.hoverPrimary}`}
+                    aria-label={t('sales:lineItems.pricing.details')}
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                {policyMessage !== null && (
+                  <div>{policyMessage}</div>
+                )}
+              </div>
+            )}
+
+            {detailsOpen && pricingItem !== undefined && (
+              <div className={`absolute end-0 top-full z-10 mt-1 w-72 rounded-md border ${borderColors.light} ${colors.white} p-3 text-start text-xs shadow-lg`}>
+                <div className="space-y-1">
+                  <div className={textColors.secondary}>{t('sales:lineItems.pricing.suggested', { amount: pricingItem.suggested_price })}</div>
+                  <div className={textColors.secondary}>
+                    {t('sales:lineItems.pricing.lastSale', { amount: pricingItem.last_sale_to_partner?.unit_price ?? '-' })}
+                  </div>
+                  <div className={textColors.secondary}>
+                    {t('sales:lineItems.pricing.minimumMargin', { percent: pricingItem.minimum_margin_pct })}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={`mt-3 rounded ${colors.neutral[100]} px-2 py-1 text-xs font-medium ${textColors.secondary} ${colors.hover.gray50}`}
+                  onClick={() => {
+                    setOpenPricingLineId(null)
+                    handleUpdateLine(line.id, {
+                      price_entry_mode: 'unit',
+                      unit_price: pricingItem.suggested_price,
+                    })
+                  }}
+                >
+                  {t('sales:lineItems.pricing.useSuggested')}
+                </button>
+              </div>
             )}
           </div>
         )
-      ),
+      },
     },
     {
       id: 'discount',
