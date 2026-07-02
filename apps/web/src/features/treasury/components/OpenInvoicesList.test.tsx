@@ -126,8 +126,11 @@ describe('OpenInvoicesList', () => {
       />,
     )
 
-    // Total: 1190 + 595 + 2380 = 4165
-    expect(screen.getByText('Total balance: 4165.00')).toBeInTheDocument()
+    // Total: 1190 + 595 + 2380 = 4165, rendered via the consolidated
+    // locale-aware currency formatting (EUR default company -> fr-FR:
+    // narrow no-break-space grouping + comma decimal separator; the
+    // testing-library normalizer collapses the group separator to ' ').
+    expect(screen.getByText('Total balance: 4 165,00')).toBeInTheDocument()
   })
 
   it('shows overdue status for overdue invoices', () => {
@@ -409,7 +412,7 @@ describe('OpenInvoicesList', () => {
     expect(screen.getByText('Loading...')).toBeInTheDocument()
   })
 
-  it('formats amounts correctly with 2 decimals', () => {
+  it('formats amounts with locale-aware, currency-scale formatting', () => {
     renderWithProviders(
       <OpenInvoicesList
         partnerId="partner-1"
@@ -418,8 +421,10 @@ describe('OpenInvoicesList', () => {
       />,
     )
 
-    expect(screen.getByText('1190.00')).toBeInTheDocument()
-    expect(screen.getByText('595.00')).toBeInTheDocument()
-    expect(screen.getByText('2380.00')).toBeInTheDocument()
+    // EUR default company -> 2 decimals, fr-FR locale (comma decimal,
+    // grouped thousands normalized to ' ' by testing-library).
+    expect(screen.getByText('1 190,00')).toBeInTheDocument()
+    expect(screen.getByText('595,00')).toBeInTheDocument()
+    expect(screen.getByText('2 380,00')).toBeInTheDocument()
   })
 })
