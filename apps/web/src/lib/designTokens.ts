@@ -503,6 +503,14 @@ export const tokens = {
   designationOverride: {
     dot: 'inline-block h-2 w-2 rounded-full bg-amber-400 shrink-0',
   },
+
+  productHero: {
+    band: 'bg-gray-950 text-white',
+    imageSlot: 'bg-gray-900',
+    imageIcon: 'text-gray-500',
+    chip: 'bg-white/10 text-white',
+    mutedChip: 'bg-white/10 text-white/80',
+  },
 }
 
 /**
