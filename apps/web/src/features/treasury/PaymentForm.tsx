@@ -1,7 +1,7 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Plus, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
@@ -19,12 +19,22 @@ import { useCurrency } from '../../hooks/useCurrency'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePaymentAllocationPreview } from './hooks/useSmartPayment'
-import { bccomp, bcsub } from '../../lib/decimal'
+import { bcadd, bccomp, bcdiv, bcmul, bcsub, formatCurrency as formatDecimalCurrency } from '../../lib/decimal'
+
+type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed'
 
 interface PaymentMethod {
   id: string
   name: string
   is_physical: boolean
+  has_maturity: boolean
+  requires_third_party: boolean
+  is_push: boolean
+  has_deducted_fees: boolean
+  is_restricted: boolean
+  fee_type: FeeType | null
+  fee_fixed: string
+  fee_percent: string
 }
 
 interface Partner {
@@ -77,10 +87,48 @@ interface PaymentFormData {
   payment_date: string
   reference: string
   notes: string
+  // Method-driven conditional fields (shown based on the selected method's flags)
+  instrument_number: string
+  maturity_date: string
+  third_party_name: string
   withholding_enabled?: boolean
   withholding_rate?: string
   withholding_transaction_type?: string
   withholding_override_reason?: string
+}
+
+// Repository types compatible with each kind of payment method. Physical methods
+// (cash, checks held in a drawer/portfolio) map to cash-type repositories;
+// electronic methods (cards, transfers) map to bank-type repositories.
+const CASH_REPOSITORY_TYPES = ['cash_register', 'safe'] as const
+const BANK_REPOSITORY_TYPES = ['bank_account', 'virtual'] as const
+
+/**
+ * Mirror of the backend PaymentMethod::calculateFee() (bcmath, strings only).
+ * Fixed fees add as-is; percentage fees compute at scale+1 (4) then round to scale.
+ * Never uses parseFloat on money.
+ */
+function calculatePaymentMethodFee(
+  method: Pick<PaymentMethod, 'fee_type' | 'fee_fixed' | 'fee_percent'>,
+  amount: string,
+  scale: number,
+): string {
+  if (!method.fee_type || method.fee_type === 'none') {
+    return bcadd('0', '0', scale)
+  }
+
+  let fee = bcadd('0', '0', scale)
+
+  if (method.fee_type === 'fixed' || method.fee_type === 'mixed') {
+    fee = bcadd(fee, method.fee_fixed || '0', scale)
+  }
+
+  if (method.fee_type === 'percentage' || method.fee_type === 'mixed') {
+    const percentageFee = bcdiv(bcmul(amount, method.fee_percent || '0', 4), '100', scale)
+    fee = bcadd(fee, percentageFee, scale)
+  }
+
+  return fee
 }
 
 interface PaymentAllocationPayload {
@@ -213,12 +261,16 @@ export function PaymentForm() {
       payment_date: new Date().toISOString().split('T')[0],
       reference: '',
       notes: '',
+      instrument_number: '',
+      maturity_date: '',
+      third_party_name: '',
     },
   })
 
   // Watch partner_id and amount for smart allocation
   const selectedPartnerId = watch('partner_id')
   const paymentAmount = watch('amount')
+  const selectedMethodId = watch('payment_method_id')
 
   // Fetch invoice data if invoice ID is provided in query params
   const { data: invoiceData } = useQuery({
@@ -302,7 +354,7 @@ export function PaymentForm() {
     enabled: tenantId !== null && companyId !== null,
   })
 
-  const paymentMethods = paymentMethodsData?.data ?? []
+  const paymentMethods = useMemo(() => paymentMethodsData?.data ?? [], [paymentMethodsData])
 
   // Fetch partners
   const { data: partnersData } = useQuery({
@@ -326,7 +378,49 @@ export function PaymentForm() {
     enabled: tenantId !== null && companyId !== null,
   })
 
-  const repositories = repositoriesData?.data ?? []
+  const repositories = useMemo(() => repositoriesData?.data ?? [], [repositoriesData])
+
+  // Resolve the selected payment method so the form can react to its capability flags.
+  const selectedMethod = useMemo(
+    () => paymentMethods.find((method) => method.id === selectedMethodId) ?? null,
+    [paymentMethods, selectedMethodId],
+  )
+
+  // Scope the repository options to the selected method's kind. If no repository
+  // matches (e.g. the tenant has no cash repository yet) fall back to the full
+  // list rather than blocking the user.
+  const compatibleRepositories = useMemo(() => {
+    if (!selectedMethod) return repositories
+    const allowed: readonly string[] = selectedMethod.is_physical
+      ? CASH_REPOSITORY_TYPES
+      : BANK_REPOSITORY_TYPES
+    const filtered = repositories.filter((repo) => allowed.includes(repo.type))
+    return filtered.length > 0 ? filtered : repositories
+  }, [selectedMethod, repositories])
+
+  // Clear the chosen repository when it is no longer compatible with the method.
+  const selectedRepositoryId = watch('repository_id')
+  useEffect(() => {
+    if (
+      selectedRepositoryId &&
+      !compatibleRepositories.some((repo) => repo.id === selectedRepositoryId)
+    ) {
+      setValue('repository_id', '')
+    }
+  }, [compatibleRepositories, selectedRepositoryId, setValue])
+
+  // Informational fee + net preview for methods that deduct a processing fee.
+  const feeAmount = useMemo(() => {
+    if (!selectedMethod?.has_deducted_fees || !isPositiveAmount(paymentAmount || '')) {
+      return null
+    }
+    return calculatePaymentMethodFee(selectedMethod, paymentAmount, decimals)
+  }, [selectedMethod, paymentAmount, decimals])
+
+  const netAmount = useMemo(() => {
+    if (feeAmount === null) return null
+    return bcsub(paymentAmount, feeAmount, decimals)
+  }, [feeAmount, paymentAmount, decimals])
 
   // Fetch open invoices for selected partner (for smart allocation)
   const { data: openInvoicesData } = useQuery({
@@ -445,13 +539,49 @@ export function PaymentForm() {
     (allocationMethod === AllocationMethod.MANUAL && normalizeManualAllocations(manualAllocations).length === 0)
 
   const createMutation = useMutation({
-    mutationFn: (data: PaymentFormData) => {
+    mutationFn: async (data: PaymentFormData) => {
       // Prepare allocations array
       const allocations = buildPaymentAllocations(data.amount)
 
+      // Checks / post-dated checks (has_maturity) become a first-class
+      // PaymentInstrument via the existing endpoint, then link to the payment
+      // through the existing instrument_id field.
+      let instrumentId: string | undefined
+      if (selectedMethod?.has_maturity) {
+        const instrument = await apiPost<{ id: string }>('/payment-instruments', {
+          payment_method_id: data.payment_method_id,
+          reference: data.instrument_number,
+          partner_id: data.partner_id || undefined,
+          drawer_name: data.third_party_name || undefined,
+          bank_name: data.third_party_name || undefined,
+          amount: data.amount,
+          currency,
+          received_date: data.payment_date,
+          maturity_date: data.maturity_date || undefined,
+          repository_id: data.repository_id || undefined,
+        })
+        instrumentId = instrument.id
+      }
+
+      // When a third party is required but no instrument was created (e.g. a bank
+      // transfer), fold the third-party/bank name into the payment notes — there
+      // is no dedicated column and adding one is out of scope here.
+      const notes =
+        selectedMethod?.requires_third_party && !instrumentId && data.third_party_name
+          ? [data.notes, `${t('treasury:payments.form.thirdParty')}: ${data.third_party_name}`]
+              .filter((part) => part && part.trim() !== '')
+              .join('\n')
+          : data.notes
+
       return apiPost<Payment>('/payments', {
-        ...data,
         amount: data.amount,
+        payment_method_id: data.payment_method_id,
+        repository_id: data.repository_id,
+        partner_id: data.partner_id,
+        payment_date: data.payment_date,
+        reference: data.reference,
+        notes,
+        instrument_id: instrumentId,
         allocations: allocations.length > 0 ? allocations : undefined,
         withholding_enabled: withholdingEnabled,
         withholding_rate: withholdingEnabled && withholdingRate ? withholdingRate : undefined,
@@ -598,7 +728,7 @@ export function PaymentForm() {
                   error={Boolean(errors.repository_id)}
                 >
                   <option value="">{t('treasury:payments.form.selectRepository')}</option>
-                  {repositories.map((repo) => (
+                  {compatibleRepositories.map((repo) => (
                     <option key={repo.id} value={repo.id}>
                       {repo.name} ({repo.code})
                     </option>
@@ -674,6 +804,90 @@ export function PaymentForm() {
                 placeholder={t('treasury:payments.form.referencePlaceholder')}
               />
             </FormField>
+
+            {/* Check / instrument number + maturity date (methods with maturity) */}
+            {selectedMethod?.has_maturity && (
+              <>
+                <FormField
+                  label={t('treasury:payments.form.instrumentNumber')}
+                  htmlFor="instrument_number"
+                  required
+                  error={errors.instrument_number?.message}
+                >
+                  <Input
+                    type="text"
+                    id="instrument_number"
+                    {...register('instrument_number', {
+                      required: t('treasury:payments.form.instrumentNumberRequired'),
+                    })}
+                    error={Boolean(errors.instrument_number)}
+                    placeholder={t('treasury:payments.form.instrumentNumberPlaceholder')}
+                  />
+                </FormField>
+
+                <FormField
+                  label={t('treasury:payments.form.maturityDate')}
+                  htmlFor="maturity_date"
+                  required
+                  error={errors.maturity_date?.message}
+                >
+                  <Input
+                    type="date"
+                    id="maturity_date"
+                    {...register('maturity_date', {
+                      required: t('treasury:payments.form.maturityDateRequired'),
+                    })}
+                    error={Boolean(errors.maturity_date)}
+                  />
+                </FormField>
+              </>
+            )}
+
+            {/* Third party / bank name (methods requiring a third party) */}
+            {selectedMethod?.requires_third_party && (
+              <FormField
+                label={t('treasury:payments.form.thirdParty')}
+                htmlFor="third_party_name"
+                required
+                error={errors.third_party_name?.message}
+              >
+                <Input
+                  type="text"
+                  id="third_party_name"
+                  {...register('third_party_name', {
+                    required: t('treasury:payments.form.thirdPartyRequired'),
+                  })}
+                  error={Boolean(errors.third_party_name)}
+                  placeholder={t('treasury:payments.form.thirdPartyPlaceholder')}
+                />
+              </FormField>
+            )}
+
+            {/* Processing fee + net amount preview (methods that deduct a fee) */}
+            {selectedMethod?.has_deducted_fees && feeAmount !== null && netAmount !== null && (
+              <div className={cn('sm:col-span-2 rounded-lg border p-4', borderColors.light, colors.neutral[50])}>
+                <div className="flex justify-between text-sm" data-testid="payment-fee-line">
+                  <span className={textColors.tertiary}>{t('treasury:payments.form.feeDeducted')}</span>
+                  <span className={cn('font-mono font-semibold', textColors.error)}>
+                    - {formatDecimalCurrency(feeAmount, true, currency, decimals)}
+                  </span>
+                </div>
+                <div
+                  className={cn('mt-2 flex justify-between border-t pt-2 text-sm', borderColors.default)}
+                  data-testid="payment-net-line"
+                >
+                  <span className={cn('font-semibold', textColors.primary)}>
+                    {t('treasury:payments.form.netAmount')}
+                  </span>
+                  <span className={cn('font-mono font-semibold', textColors.primary)}>
+                    {formatDecimalCurrency(netAmount, true, currency, decimals)}
+                  </span>
+                </div>
+                <p className={cn('mt-2 text-xs', textColors.tertiary)}>
+                  {t('treasury:payments.form.feeNote')}
+                </p>
+              </div>
+            )}
 
             {/* Notes */}
             <FormField
