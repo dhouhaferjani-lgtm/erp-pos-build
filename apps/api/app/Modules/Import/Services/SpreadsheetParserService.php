@@ -34,47 +34,89 @@ final class SpreadsheetParserService
     /**
      * Parse a CSV file
      *
+     * Detects the delimiter (comma, semicolon, or tab — semicolon is the
+     * default Excel CSV export in French/European locales), strips a UTF-8
+     * BOM (written by Excel "CSV UTF-8"), and streams rows through fgetcsv
+     * so quoted fields with embedded newlines parse correctly.
+     *
      * @return array{headers: array<string>, rows: array<int, array<string, mixed>>}
      */
     private function parseCsv(string $filePath): array
     {
-        $content = file_get_contents($filePath);
-        if ($content === false) {
+        $handle = fopen($filePath, 'rb');
+        if ($handle === false) {
             throw new \RuntimeException('Failed to read CSV file');
         }
 
-        $lines = explode("\n", trim($content));
-        /** @var string $headerLine */
-        $headerLine = array_shift($lines);
-        $rawHeaders = str_getcsv($headerLine);
-        /** @var array<string> $headers */
-        $headers = array_map(fn (?string $h) => strtolower(trim($h ?? '')), $rawHeaders);
-
-        $rows = [];
-        $rowNumber = 0;
-
-        foreach ($lines as $line) {
-            if (trim($line) === '') {
-                continue;
+        try {
+            $bom = fread($handle, 3);
+            if ($bom !== "\xEF\xBB\xBF") {
+                rewind($handle);
             }
 
-            $rowNumber++;
-            $values = str_getcsv($line);
-
-            // Ensure values array has same length as headers
-            while (count($values) < count($headers)) {
-                $values[] = '';
+            $headerLine = fgets($handle);
+            if ($headerLine === false) {
+                return ['headers' => [], 'rows' => []];
             }
 
-            /** @var array<string, mixed> $data */
-            $data = array_combine($headers, array_slice($values, 0, count($headers)));
-            $rows[$rowNumber] = $data;
+            $delimiter = $this->detectDelimiter($headerLine);
+            $rawHeaders = str_getcsv(rtrim($headerLine, "\r\n"), $delimiter, '"', '');
+            /** @var array<string> $headers */
+            $headers = array_map(fn (?string $h) => strtolower(trim($h ?? '')), $rawHeaders);
+
+            $rows = [];
+            $rowNumber = 0;
+
+            while (($values = fgetcsv($handle, null, $delimiter, '"', '')) !== false) {
+                /** @var array<string> $values */
+                $values = array_map(
+                    fn (?string $v) => rtrim($v ?? '', "\r"),
+                    $values
+                );
+
+                if ($this->isEmptyRow($values)) {
+                    continue;
+                }
+
+                $rowNumber++;
+
+                // Ensure values array has same length as headers
+                while (count($values) < count($headers)) {
+                    $values[] = '';
+                }
+
+                /** @var array<string, mixed> $data */
+                $data = array_combine($headers, array_slice($values, 0, count($headers)));
+                $rows[$rowNumber] = $data;
+            }
+
+            return [
+                'headers' => $headers,
+                'rows' => $rows,
+            ];
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /**
+     * Detect the CSV delimiter from the header line by picking the candidate
+     * that yields the most columns.
+     */
+    private function detectDelimiter(string $headerLine): string
+    {
+        $best = ',';
+        $bestCount = 0;
+
+        foreach ([',', ';', "\t"] as $candidate) {
+            $count = count(str_getcsv($headerLine, $candidate, '"', ''));
+            if ($count > $bestCount) {
+                $bestCount = $count;
+                $best = $candidate;
+            }
         }
 
-        return [
-            'headers' => $headers,
-            'rows' => $rows,
-        ];
+        return $best;
     }
 
     /**

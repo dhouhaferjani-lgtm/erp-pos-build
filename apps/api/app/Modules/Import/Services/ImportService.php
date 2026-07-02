@@ -30,7 +30,8 @@ final class ImportService
         private readonly InventoryServiceInterface $inventoryService,
         private readonly LocationServiceInterface $locationService,
         private readonly AccountingServiceInterface $accountingService,
-        private readonly CompositeItemServiceInterface $compositeItemService
+        private readonly CompositeItemServiceInterface $compositeItemService,
+        private readonly NumericFieldNormalizer $numericNormalizer
     ) {}
 
     /**
@@ -69,7 +70,7 @@ final class ImportService
         return ImportRow::create([
             'import_job_id' => $job->id,
             'row_number' => $rowNumber,
-            'data' => $data,
+            'data' => $this->numericNormalizer->normalize($data, $job->type->getValidationRules()),
             'is_valid' => false,
         ]);
     }
@@ -86,6 +87,7 @@ final class ImportService
     public function addRowsBatch(ImportJob $job, array $rows, int $batchSize = 1000): void
     {
         $now = now();
+        $rules = $job->type->getValidationRules();
         $batches = array_chunk($rows, max($batchSize, 1), true);
 
         foreach ($batches as $batch) {
@@ -95,7 +97,7 @@ final class ImportService
                     'id' => (string) Str::uuid(),
                     'import_job_id' => $job->id,
                     'row_number' => $rowNumber,
-                    'data' => json_encode($data),
+                    'data' => json_encode($this->numericNormalizer->normalize($data, $rules)),
                     'is_valid' => false,
                     'is_imported' => false,
                     'created_at' => $now,

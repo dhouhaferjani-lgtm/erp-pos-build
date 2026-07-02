@@ -99,7 +99,8 @@
       "maxSize": "Taille maximale : {{size}}Mo",
       "downloadTemplate": "Télécharger le modèle",
       "fileReady": "Fichier prêt : {{name}}",
-      "columnsDetected": "{{count}} colonnes détectées"
+      "columnsDetected": "{{count}} colonnes détectées",
+      "parseError": "Impossible de lire le fichier. Veuillez importer un fichier CSV ou Excel valide."
     },
     "mapping": {
       "title": "Mappez vos colonnes",
