@@ -111,6 +111,43 @@ class PaymentMethodTest extends TestCase
         $response->assertJsonCount(2, 'data');
     }
 
+    public function test_index_returns_capability_flags_and_fee_fields(): void
+    {
+        // Contract lock: the payment-form UI drives its conditional fields
+        // (check number, maturity date, third party, fee/net line) and repository
+        // scoping off the capability flags + fee fields on each method. The index
+        // endpoint MUST expose them so the frontend can react to the selected method.
+        PaymentMethod::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'PDC',
+            'name' => 'Post-dated Check',
+            'is_physical' => true,
+            'has_maturity' => true,
+            'requires_third_party' => true,
+            'is_push' => false,
+            'has_deducted_fees' => true,
+            'is_restricted' => false,
+            'fee_type' => 'mixed',
+            'fee_fixed' => '0.500',
+            'fee_percent' => '1.25',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->user)->getJson('/api/v1/payment-methods');
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.0.is_physical', true);
+        $response->assertJsonPath('data.0.has_maturity', true);
+        $response->assertJsonPath('data.0.requires_third_party', true);
+        $response->assertJsonPath('data.0.is_push', false);
+        $response->assertJsonPath('data.0.has_deducted_fees', true);
+        $response->assertJsonPath('data.0.is_restricted', false);
+        $response->assertJsonPath('data.0.fee_type', 'mixed');
+        $response->assertJsonPath('data.0.fee_fixed', '0.500');
+        $response->assertJsonPath('data.0.fee_percent', '1.25');
+    }
+
     public function test_can_create_cash_payment_method(): void
     {
         $response = $this->actingAs($this->user)->postJson('/api/v1/payment-methods', [
