@@ -189,17 +189,13 @@ describe('document component tenant scope', () => {
     const searchInput = screen.getByRole('combobox', { name: 'sales:lineItems.entry.placeholder' })
     await user.type(searchInput, 'Product')
 
-    // A real product fetch fires from the typed query.
-    // SEMANTIC CHANGE: the redesigned entry bar reads with query key
-    // ['line-entry-products', <query>] and no longer tenant-scopes (nor tenant-gates)
-    // that key, so the former ['products', '', tenant, company] read-key assertion no
-    // longer exists. We preserve the intent by asserting the real /products fetch
-    // fires and its result caches.
+    // A real product fetch fires from the typed query, and the redesigned entry bar
+    // now tenant-scopes its read key: ['line-entry-products', <query>, tenant, company].
     await waitFor(() => {
       expect(mockApiGet).toHaveBeenCalledWith('/products', expect.objectContaining({ params: { search: 'Product' } }))
     })
     await waitFor(() => {
-      expect(queryClient.getQueryData(['line-entry-products', 'Product'])).toEqual({
+      expect(queryClient.getQueryData(['line-entry-products', 'Product', 'tenant-A', 'company-1'])).toEqual({
         data: [{ id: 'product-1', name: 'Product 1', sku: 'P1', sale_price: 10, tax_rate: 0 }],
       })
     })
@@ -262,6 +258,7 @@ describe('document component tenant scope', () => {
 
   it('does not fetch document component data without tenant/company state', async () => {
     resetTenant()
+    const user = userEvent.setup()
     const queryClient = createClient()
 
     // AdditionalCostsForm still tenant-gates its read (enabled: tenant && company).
@@ -269,13 +266,13 @@ describe('document component tenant scope', () => {
     // tenant/company is the meaningful exercise of "no fetch without tenant/company".
     render(<AdditionalCostsForm documentId="doc-1" />, { wrapper: wrapper(queryClient) })
 
-    // Mounting the line editor must also not fetch on its own.
-    // SEMANTIC CHANGE: the redesigned LineItemEntryBar product read is NO LONGER
-    // tenant-gated (enabled only depends on focus + a non-empty query), so typing
-    // into it WOULD fire /products even without tenant/company. We therefore do not
-    // drive the entry bar here — the "no fetch without tenant/company" invariant now
-    // rests on the still-gated AdditionalCostsForm read above.
+    // The redesigned LineItemEntryBar product read is now tenant-gated again
+    // (enabled requires tenant !== null && company !== null), so typing into it with
+    // no tenant/company must NOT fire /products.
     render(<DocumentLineEditor lines={[]} onChange={vi.fn()} />, { wrapper: wrapper(createClient()) })
+
+    const searchInput = screen.getByRole('combobox', { name: 'sales:lineItems.entry.placeholder' })
+    await user.type(searchInput, 'Product')
 
     // Let any (incorrectly) eager query flush before asserting silence.
     await waitFor(() => {

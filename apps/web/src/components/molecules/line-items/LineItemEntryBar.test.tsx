@@ -2,8 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { type ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiGet } from '../../../lib/api'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import { LineItemEntryBar } from './LineItemEntryBar'
 
 const apiClientGetMock = vi.hoisted(() => vi.fn())
@@ -47,6 +49,43 @@ const product = {
   requires_batch_tracking: false,
 }
 
+function setTenant(tenantId: string, companyId: string) {
+  useAuthStore.setState({
+    user: {
+      id: 'user-1',
+      name: 'Test User',
+      email: 'test@example.com',
+      tenant_id: tenantId,
+      roles: [],
+      email_verified_at: null,
+    },
+    token: 'test-token',
+    isAuthenticated: true,
+    isLoading: false,
+  })
+  useCompanyStore.setState({
+    currentCompanyId: companyId,
+    companies: [
+      {
+        id: companyId,
+        name: 'Test Company',
+        legalName: 'Test Company LLC',
+        taxId: null,
+        countryCode: 'TN',
+        currency: 'TND',
+        locale: 'en_US',
+        timezone: 'Africa/Tunis',
+      },
+    ],
+    isLoading: false,
+  })
+}
+
+function resetTenant() {
+  useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+  useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+}
+
 function wrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -61,6 +100,11 @@ describe('LineItemEntryBar', () => {
   beforeEach(() => {
     apiGetMock.mockReset()
     apiClientGetMock.mockReset()
+    setTenant('tenant-A', 'company-1')
+  })
+
+  afterEach(() => {
+    resetTenant()
   })
 
   it('adds the highlighted search result with Enter and keeps the input focused', async () => {
@@ -82,6 +126,47 @@ describe('LineItemEntryBar', () => {
     expect(onAddProduct).toHaveBeenCalledWith(product, expect.objectContaining({ source: 'search', incrementBy: 1 }))
     expect(input).toHaveFocus()
     expect(input).toHaveValue('')
+  })
+
+  it('scopes the product search read key with the active tenant + company', async () => {
+    const user = userEvent.setup()
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    })
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(<LineItemEntryBar onAddProduct={vi.fn()} />, {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      ),
+    })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.type(input, 'creme')
+
+    // The read key carries the tenant + company suffix so cache entries invalidate
+    // on a tenant/company switch and never leak across tenants.
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['line-entry-products', 'creme', 'tenant-A', 'company-1'])).toEqual({
+        data: [product],
+      })
+    })
+  })
+
+  it('does not fire the product search without tenant/company state', async () => {
+    resetTenant()
+    const user = userEvent.setup()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(<LineItemEntryBar onAddProduct={vi.fn()} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.type(input, 'creme')
+
+    // Let any (incorrectly) eager query flush before asserting silence.
+    await waitFor(() => {
+      expect(apiClientGetMock).not.toHaveBeenCalled()
+    })
   })
 
   it('resolves scanner-like Enter through the code resolver and never submits the parent form', async () => {
