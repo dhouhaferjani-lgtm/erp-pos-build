@@ -112,7 +112,7 @@ describe('companyStore', () => {
       expect(result.current.currentCompanyId).toBe('company-tunisia-id')
     })
 
-    it('clears currentCompanyId if previously selected company no longer exists', () => {
+    it('deterministically re-selects when previously selected company no longer exists', () => {
       const { result } = renderHook(() => useCompanyStore())
 
       // Set initial companies and select one
@@ -130,8 +130,26 @@ describe('companyStore', () => {
         result.current.setCompanies(updatedCompanies)
       })
 
-      // Should clear selection
-      expect(result.current.currentCompanyId).toBeNull()
+      // Should NOT silently clear then let the provider pick an arbitrary company.
+      // The centralized rule resolves deterministically to the first remaining
+      // company (no is_primary flag / valid persisted value here).
+      expect(result.current.currentCompanyId).toBe('company-france-id')
+    })
+
+    it('does not clear a valid selection on an empty (transient) fetch', () => {
+      const { result } = renderHook(() => useCompanyStore())
+
+      act(() => {
+        result.current.setCompanies(mockCompanies)
+        result.current.setCurrentCompany('company-tunisia-id')
+      })
+
+      // A transient/partial fetch returns an empty list — must NOT switch scope.
+      act(() => {
+        result.current.setCompanies([])
+      })
+
+      expect(result.current.currentCompanyId).toBe('company-tunisia-id')
     })
 
     it('restores currentCompanyId from localStorage on first load', () => {
@@ -149,7 +167,7 @@ describe('companyStore', () => {
       expect(result.current.currentCompanyId).toBe('company-tunisia-id')
     })
 
-    it('ignores invalid company ID from localStorage', () => {
+    it('falls back to a deterministic default when localStorage holds an invalid id', () => {
       // Simulate corrupted or invalid localStorage
       localStorage.setItem('autoerp-company-selection', 'invalid-company-id')
 
@@ -159,8 +177,8 @@ describe('companyStore', () => {
         result.current.setCompanies(mockCompanies)
       })
 
-      // Should clear invalid selection
-      expect(result.current.currentCompanyId).toBeNull()
+      // Invalid persisted id is ignored; deterministic rule picks the first company.
+      expect(result.current.currentCompanyId).toBe('company-france-id')
     })
 
     it('handles localStorage read errors gracefully', () => {
@@ -176,12 +194,60 @@ describe('companyStore', () => {
         result.current.setCompanies(mockCompanies)
       })
 
-      // Should handle error and continue with null selection
-      expect(result.current.currentCompanyId).toBeNull()
+      // Should handle the error, ignore the unreadable persisted value, and still
+      // resolve deterministically (first company) rather than crashing.
+      expect(result.current.currentCompanyId).toBe('company-france-id')
       expect(result.current.companies).toEqual(mockCompanies)
 
       // Restore original
       vi.spyOn(Storage.prototype, 'getItem').mockImplementation(originalGetItem)
+    })
+
+    it('prefers the is_primary company on first load (no persisted selection)', () => {
+      const withPrimary: Company[] = [
+        { ...mockCompanies[0] }, // France, first by name, not primary
+        { ...mockCompanies[1], isPrimary: true }, // Tunisia is primary
+        { ...mockCompanies[2] },
+      ]
+
+      const { result } = renderHook(() => useCompanyStore())
+
+      act(() => {
+        result.current.setCompanies(withPrimary)
+      })
+
+      expect(result.current.currentCompanyId).toBe('company-tunisia-id')
+    })
+
+    it('honors a persisted selection over the is_primary default', () => {
+      // User previously chose USA; Tunisia is the primary membership.
+      localStorage.setItem('autoerp-company-selection', 'company-usa-id')
+      const withPrimary: Company[] = [
+        { ...mockCompanies[0] },
+        { ...mockCompanies[1], isPrimary: true },
+        { ...mockCompanies[2] },
+      ]
+
+      const { result } = renderHook(() => useCompanyStore())
+
+      act(() => {
+        result.current.setCompanies(withPrimary)
+      })
+
+      // Explicit prior choice must win so the scope never jumps to primary on refresh.
+      expect(result.current.currentCompanyId).toBe('company-usa-id')
+    })
+
+    it('persists the auto-selected company so a refresh restores it', () => {
+      const { result } = renderHook(() => useCompanyStore())
+
+      act(() => {
+        result.current.setCompanies(mockCompanies)
+      })
+
+      // Auto-selected first company is written to the manual persistence key.
+      expect(result.current.currentCompanyId).toBe('company-france-id')
+      expect(localStorage.getItem('autoerp-company-selection')).toBe('company-france-id')
     })
   })
 
@@ -265,6 +331,12 @@ describe('companyStore', () => {
 
     it('returns null when no company selected', () => {
       const { result } = renderHook(() => useCompanyStore())
+
+      // setCompanies now auto-selects deterministically, so explicitly clear the
+      // selection to exercise the "nothing selected" branch.
+      act(() => {
+        useCompanyStore.setState({ currentCompanyId: null })
+      })
 
       expect(result.current.getCurrentCompany()).toBeNull()
     })
@@ -405,8 +477,10 @@ describe('companyStore', () => {
       expect(result.current.getCurrentCompany()?.currency).toBe('TND')
     })
 
-    it('REGRESSION: First-time user defaults to first company (handled by CompanyProvider)', () => {
-      // This test verifies the store behavior - actual defaulting is in CompanyProvider
+    it('REGRESSION: First-time user deterministically defaults to the first company (centralized in store)', () => {
+      // Auto-selection is now centralized in the store's setCompanies via the
+      // deterministic rule — no longer a separate provider step that could pick
+      // an arbitrary company.
       const { result } = renderHook(() => useCompanyStore())
 
       // Fresh user - no localStorage
@@ -416,14 +490,7 @@ describe('companyStore', () => {
         result.current.setCompanies(mockCompanies)
       })
 
-      // Store should allow CompanyProvider to set default
-      expect(result.current.currentCompanyId).toBeNull() // Store doesn't auto-select
-
-      // CompanyProvider would then call setCurrentCompany after companies are set
-      act(() => {
-        result.current.setCurrentCompany(mockCompanies[0].id)
-      })
-
+      // Store auto-selects the first company (no is_primary / persisted value).
       expect(result.current.currentCompanyId).toBe('company-france-id')
       expect(localStorage.getItem('autoerp-company-selection')).toBe('company-france-id')
     })
@@ -519,6 +586,92 @@ describe('companyStore', () => {
 
       expect(result.current.currentCompanyId).toBe('company-2')
       expect(result.current.getCurrentCompany()?.id).toBe('company-2')
+    })
+  })
+
+  describe('Cross-tab reconciliation (storage event)', () => {
+    it('adopts a company selection changed in another tab', () => {
+      const { result } = renderHook(() => useCompanyStore())
+
+      act(() => {
+        result.current.setCompanies(mockCompanies)
+        result.current.setCurrentCompany('company-france-id')
+      })
+
+      expect(result.current.currentCompanyId).toBe('company-france-id')
+
+      // Another tab switches to Tunisia -> storage event fires in this tab.
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'autoerp-company-selection',
+            newValue: 'company-tunisia-id',
+          }),
+        )
+      })
+
+      expect(result.current.currentCompanyId).toBe('company-tunisia-id')
+    })
+
+    it('ignores an unknown company id from another tab', () => {
+      const { result } = renderHook(() => useCompanyStore())
+
+      act(() => {
+        result.current.setCompanies(mockCompanies)
+        result.current.setCurrentCompany('company-france-id')
+      })
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'autoerp-company-selection',
+            newValue: 'not-a-real-company',
+          }),
+        )
+      })
+
+      // Unknown id (companies are loaded) must not switch scope.
+      expect(result.current.currentCompanyId).toBe('company-france-id')
+    })
+
+    it('clears the selection when another tab logs out (key removed)', () => {
+      const { result } = renderHook(() => useCompanyStore())
+
+      act(() => {
+        result.current.setCompanies(mockCompanies)
+        result.current.setCurrentCompany('company-france-id')
+      })
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'autoerp-company-selection',
+            newValue: null,
+          }),
+        )
+      })
+
+      expect(result.current.currentCompanyId).toBeNull()
+    })
+
+    it('ignores storage events for unrelated keys', () => {
+      const { result } = renderHook(() => useCompanyStore())
+
+      act(() => {
+        result.current.setCompanies(mockCompanies)
+        result.current.setCurrentCompany('company-france-id')
+      })
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: 'some-other-key',
+            newValue: 'company-tunisia-id',
+          }),
+        )
+      })
+
+      expect(result.current.currentCompanyId).toBe('company-france-id')
     })
   })
 })

@@ -59,7 +59,7 @@ export function CompanySelector() {
           aria-haspopup="true"
         >
           <Building2 className="h-4 w-4 text-gray-500" />
-          <span className="max-w-32 truncate">{currentCompany?.name ?? t('company.select')}</span>
+          <span className="max-w-40 truncate font-semibold">{currentCompany?.name ?? t('company.select')}</span>
           <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 

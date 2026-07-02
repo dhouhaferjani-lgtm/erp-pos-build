@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -41,11 +41,20 @@ export function LocationProvider({ children }: LocationProviderProps) {
     enabled: Boolean(currentCompanyId) && !isAdminRoute,
   })
 
-  // Reset location selection when company changes
+  // Reset location selection ONLY when the company actually changes.
+  //
+  // Previously this ran on every mount (keyed on currentCompanyId), wiping the
+  // persisted currentLocationId even on a plain remount/refresh — after which
+  // setLocations auto-picked the default/first location, so the scope appeared
+  // to "switch on its own". We now track the previous company id and reset only
+  // on a real change; on first mount we honor the persisted location.
+  const previousCompanyIdRef = useRef<string | null>(null)
   useEffect(() => {
-    if (currentCompanyId) {
+    const previousCompanyId = previousCompanyIdRef.current
+    if (previousCompanyId !== null && previousCompanyId !== currentCompanyId) {
       resetForCompanyChange()
     }
+    previousCompanyIdRef.current = currentCompanyId
   }, [currentCompanyId, resetForCompanyChange])
 
   // Update location store when data is fetched

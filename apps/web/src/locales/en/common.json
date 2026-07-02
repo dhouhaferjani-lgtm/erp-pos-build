@@ -380,6 +380,11 @@
     "switchCompany": "Switch Company",
     "addCompany": "Add Company"
   },
+  "scope": {
+    "activeScope": "Active scope",
+    "nowViewing": "Now viewing {{company}} — {{location}}",
+    "nowViewingCompany": "Now viewing {{company}}"
+  },
   "table": {
     "actionsColumn": "Actions",
     "noData": "No data available"

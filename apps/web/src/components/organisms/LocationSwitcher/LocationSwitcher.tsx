@@ -119,7 +119,7 @@ export function LocationSwitcher({ className = '' }: LocationSwitcherProps) {
           aria-haspopup="true"
         >
           <CurrentIcon className="h-4 w-4 text-gray-500" />
-          <span className="max-w-32 truncate">{buttonLabel}</span>
+          <span className="max-w-40 truncate font-semibold">{buttonLabel}</span>
           {locations.length > 0 && (
             <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
           )}
