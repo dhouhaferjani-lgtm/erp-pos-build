@@ -10,6 +10,7 @@ use App\Modules\Taxation\Domain\DTOs\TaxCalculationResult;
 use App\Modules\Taxation\Domain\Enums\TaxApplicationLevel;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\ProportionalMoneyAllocator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -25,11 +26,10 @@ use Illuminate\Support\Facades\DB;
  * Precision: all arithmetic is bcmath. Intermediate values carry
  * {@see self::workingScale()} (currency scale + 4) extra digits and are
  * truncated to the currency scale exactly once at the boundary. Proportional
- * allocations use a largest-remainder reconciliation: the running remainder is
- * assigned to the absorber line — the last line with a positive base (see
- * {@see self::absorberIndex()}) — so the sum of allocated columns equals the
- * input total to the last unit, the residue never lands on a zero-base line,
- * and line order/keying cannot drop it.
+ * allocations use {@see ProportionalMoneyAllocator}'s largest-remainder
+ * reconciliation so the sum of allocated columns equals the input total to the
+ * last unit, the residue never lands on a zero-base line, and line order/keying
+ * cannot drop it.
  */
 class LandedCostService
 {
@@ -47,6 +47,7 @@ class LandedCostService
 
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly ProportionalMoneyAllocator $moneyAllocator,
     ) {}
 
     private function scale(): int
@@ -94,28 +95,12 @@ class LandedCostService
                 (string) $purchaseOrder->additionalCosts()->sum('amount'),
                 $scale,
             );
-            $subtotal = $this->sumLineTotals($lines);
-
-            $remaining = $additionalCostsTotal;
-            $absorberIndex = $this->absorberIndex($lines);
+            $lineTotals = $this->lineTotals($lines);
+            $allocatedCosts = $this->allocatePositiveShares($additionalCostsTotal, $lineTotals, $scale, $working);
 
             foreach ($lines as $index => $line) {
-                $lineTotal = CurrencyScale::bcformat((string) $line->line_total, $working);
-
-                if (bccomp($subtotal, '0', $working) > 0 && bccomp($additionalCostsTotal, '0', $scale) > 0) {
-                    $allocatedCost = $this->allocateShare(
-                        index: $index,
-                        absorberIndex: $absorberIndex,
-                        lineTotal: $lineTotal,
-                        subtotal: $subtotal,
-                        total: $additionalCostsTotal,
-                        remaining: $remaining,
-                    );
-                } else {
-                    $allocatedCost = CurrencyScale::bcformat('0', $scale);
-                }
-
-                $remaining = bcsub($remaining, $allocatedCost, $scale);
+                $lineTotal = $lineTotals[$index];
+                $allocatedCost = $allocatedCosts[$index];
 
                 $line->allocated_costs = $allocatedCost;
                 $line->landed_unit_cost = $this->landedUnitCost($lineTotal, $allocatedCost, '0', $line);
@@ -156,7 +141,7 @@ class LandedCostService
                 (string) $purchaseOrder->additionalCosts()->sum('amount'),
                 $scale,
             );
-            $subtotal = $this->sumLineTotals($lines);
+            $lineTotals = $this->lineTotals($lines);
 
             // Separate line-level taxes from document-level taxes.
             // Line-level taxes (VAT) must stay with their specific lines.
@@ -174,21 +159,13 @@ class LandedCostService
 
             $totalNonRecoverableTax = CurrencyScale::bcformat('0', $scale);
 
-            $remainingCost = $additionalCostsTotal;
-            $remainingDocTax = $nonRecoverableDocumentTaxTotal;
-            $absorberIndex = $this->absorberIndex($lines);
+            $allocatedCosts = $this->allocatePositiveShares($additionalCostsTotal, $lineTotals, $scale, $working);
+            $allocatedDocumentTaxes = $this->allocatePositiveShares($nonRecoverableDocumentTaxTotal, $lineTotals, $scale, $working);
 
             // Allocate to each line
             foreach ($lines as $index => $line) {
-                $lineTotal = CurrencyScale::bcformat((string) $line->line_total, $working);
-
-                $hasSubtotal = bccomp($subtotal, '0', $working) > 0;
-
-                // Allocate additional costs proportionally (largest-remainder).
-                $allocatedCost = ($hasSubtotal && bccomp($additionalCostsTotal, '0', $scale) > 0)
-                    ? $this->allocateShare($index, $absorberIndex, $lineTotal, $subtotal, $additionalCostsTotal, $remainingCost)
-                    : CurrencyScale::bcformat('0', $scale);
-                $remainingCost = bcsub($remainingCost, $allocatedCost, $scale);
+                $lineTotal = $lineTotals[$index];
+                $allocatedCost = $allocatedCosts[$index];
 
                 // Calculate line-specific non-recoverable tax (VAT based on line's tax_rate).
                 // This tax is already in line_total, but we track it separately for inventory costing.
@@ -215,10 +192,7 @@ class LandedCostService
                 }
 
                 // Allocate proportional share of document-level non-recoverable taxes.
-                $allocatedDocumentTax = ($hasSubtotal && bccomp($nonRecoverableDocumentTaxTotal, '0', $scale) > 0)
-                    ? $this->allocateShare($index, $absorberIndex, $lineTotal, $subtotal, $nonRecoverableDocumentTaxTotal, $remainingDocTax)
-                    : CurrencyScale::bcformat('0', $scale);
-                $remainingDocTax = bcsub($remainingDocTax, $allocatedDocumentTax, $scale);
+                $allocatedDocumentTax = $allocatedDocumentTaxes[$index];
 
                 // Total non-recoverable tax for this line.
                 $totalLineTax = bcadd($lineNonRecoverableTax, $allocatedDocumentTax, $scale);
@@ -260,28 +234,12 @@ class LandedCostService
                 (string) $purchaseOrder->additionalCosts()->sum('amount'),
                 $scale,
             );
-            $subtotal = $this->sumLineTotals($lines);
-
-            $remaining = $additionalCostsTotal;
-            $absorberIndex = $this->absorberIndex($lines);
+            $lineTotals = $this->lineTotals($lines);
+            $allocatedCosts = $this->allocatePositiveShares($additionalCostsTotal, $lineTotals, $scale, $working);
 
             foreach ($lines as $index => $line) {
-                $lineTotal = CurrencyScale::bcformat((string) $line->line_total, $working);
-
-                if (bccomp($subtotal, '0', $working) > 0 && bccomp($additionalCostsTotal, '0', $scale) > 0) {
-                    $allocatedCost = $this->allocateShare(
-                        index: $index,
-                        absorberIndex: $absorberIndex,
-                        lineTotal: $lineTotal,
-                        subtotal: $subtotal,
-                        total: $additionalCostsTotal,
-                        remaining: $remaining,
-                    );
-                } else {
-                    $allocatedCost = CurrencyScale::bcformat('0', $scale);
-                }
-
-                $remaining = bcsub($remaining, $allocatedCost, $scale);
+                $lineTotal = $lineTotals[$index];
+                $allocatedCost = $allocatedCosts[$index];
 
                 $line->allocated_costs = $allocatedCost;
                 $line->landed_unit_cost = $this->landedUnitCost($lineTotal, $allocatedCost, '0', $line);
@@ -299,88 +257,42 @@ class LandedCostService
     }
 
     /**
-     * Sum the line_total of a collection at the working precision.
-     *
-     * @param  iterable<int, DocumentLine>  $lines
-     * @return numeric-string
+     * @param  Collection<int, DocumentLine>  $lines
+     * @return array<int, numeric-string>
      */
-    private function sumLineTotals(iterable $lines): string
+    private function lineTotals(Collection $lines): array
     {
         $working = $this->workingScale();
-        $subtotal = CurrencyScale::bcformat('0', $working);
+        $lineTotals = [];
 
         foreach ($lines as $line) {
-            $subtotal = bcadd($subtotal, CurrencyScale::bcformat((string) $line->line_total, $working), $working);
+            $lineTotals[] = CurrencyScale::bcformatStrict((string) $line->line_total, $working);
         }
 
-        return $subtotal;
+        return $lineTotals;
     }
 
     /**
-     * Index of the line that absorbs the largest-remainder residue.
+     * Preserve the pre-extraction behavior: landed-cost allocations only run
+     * when both the base subtotal and the amount being split are positive.
      *
-     * The residue must land on a line that actually participates in the
-     * proportional split, i.e. one with a positive line_total. A zero-base line
-     * gets a zero proportional share, so dumping the whole rounding residue on it
-     * would inflate its landed unit cost from a base of nothing (e.g. a free /
-     * promotional line). We therefore pick the LAST line with line_total > 0.
-     *
-     * Lines are assumed to be 0-indexed contiguously (callers pass ->values()).
-     * If every line has a zero base the proportional branch is never entered
-     * (subtotal must be > 0 to allocate), so the fallback to the last index is
-     * inert; we return it only to keep the absorber well-defined.
-     *
-     * @param  Collection<int, DocumentLine>  $lines
+     * @param  numeric-string  $total
+     * @param  array<int, numeric-string>  $lineTotals
+     * @return array<int, numeric-string>
      */
-    private function absorberIndex(Collection $lines): int
+    private function allocatePositiveShares(string $total, array $lineTotals, int $scale, int $working): array
     {
-        $working = $this->workingScale();
-        $absorber = $lines->count() - 1;
+        $subtotal = CurrencyScale::bcformatStrict('0', $working);
 
-        foreach ($lines as $index => $line) {
-            $lineTotal = CurrencyScale::bcformat((string) $line->line_total, $working);
-            if (bccomp($lineTotal, '0', $working) > 0) {
-                $absorber = $index;
-            }
+        foreach ($lineTotals as $lineTotal) {
+            $subtotal = bcadd($subtotal, $lineTotal, $working);
         }
 
-        return $absorber;
-    }
-
-    /**
-     * Compute one line's proportional share of a total using largest-remainder
-     * reconciliation: every line except the absorber is rounded proportionally,
-     * and the absorber line receives whatever remains so the allocation sums
-     * exactly. The absorber is the last line with a positive base (see
-     * {@see absorberIndex()}), so the rounding residue never lands on a
-     * zero-base line.
-     *
-     * @param  int  $absorberIndex  Index of the line that absorbs the residue
-     * @param  numeric-string  $lineTotal  Line total at working precision
-     * @param  numeric-string  $subtotal  Sum of all line totals at working precision
-     * @param  numeric-string  $total  Amount being distributed at currency scale
-     * @param  numeric-string  $remaining  Amount still unallocated at currency scale
-     * @return numeric-string Allocated amount at currency scale
-     */
-    private function allocateShare(
-        int $index,
-        int $absorberIndex,
-        string $lineTotal,
-        string $subtotal,
-        string $total,
-        string $remaining,
-    ): string {
-        $scale = $this->scale();
-
-        // Absorber line takes the running remainder — exact reconciliation.
-        if ($index === $absorberIndex) {
-            return CurrencyScale::bcformat($remaining, $scale);
+        if (bccomp($subtotal, '0', $working) <= 0 || bccomp($total, '0', $scale) <= 0) {
+            return array_fill(0, count($lineTotals), CurrencyScale::bcformatStrict('0', $scale));
         }
 
-        $working = $this->workingScale();
-        $proportion = bcdiv($lineTotal, $subtotal, $working);
-
-        return CurrencyScale::bcformat(bcmul($total, $proportion, $working), $scale);
+        return $this->moneyAllocator->allocate($total, $lineTotals, $scale, $working);
     }
 
     /**

@@ -564,13 +564,9 @@ class StockTransferService
 
             $this->wacService->recordCostAdjustment(
                 product: $product,
-                // The (float) here is on a LOCAL bcmath numeric-string (the SAME
-                // 4-dp value persisted to allocated_transfer_cost, not a decimal
-                // property), so PHPStan does not flag it. This float boundary is
-                // the existing WAC API; recordCostAdjustment immediately
-                // re-stringifies via CurrencyScale::bcformat. Passing the 4-dp
-                // value keeps stored sum and capitalized sum both == transferCost.
-                additionalCost: (float) $allocated4dp,
+                // Pass the same 4-dp numeric-string persisted to the transfer
+                // line so stored sum and capitalized sum both equal transferCost.
+                additionalCost: $allocated4dp,
                 reason: 'stock_transfer_cost',
                 tenantId: $transfer->tenant_id,
                 companyId: $transfer->company_id,
