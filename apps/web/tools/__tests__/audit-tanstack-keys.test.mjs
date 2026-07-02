@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, it, expect } from 'vitest';
 
-import { scanCode } from '../audit-tanstack-keys.mjs';
+import { partitionViolationsByBaseline, scanCode } from '../audit-tanstack-keys.mjs';
 
 /**
  * Unit coverage for the Architecture Gate C scanner. Codex 2026-05-03 review
@@ -314,6 +314,56 @@ describe('Gate C — TanStack queryKey scanner', () => {
       `, 'inline.ts');
       expect(v).toHaveLength(1);
       expect(v[0].resource).toBe('products');
+    });
+  });
+
+  describe('baseline filtering for gate mode', () => {
+    it('separates current baseline hits from new violations', () => {
+      const baseline = new Set([
+        'src/features/example.ts|useQuery|useExample|[\'legacy\']@101',
+      ]);
+      const violations = [
+        {
+          file: 'src/features/example.ts',
+          line: 10,
+          column: 5,
+          reason: 'useQuery({ queryKey: ... }) lacks an approved tenant scope',
+          factory: 'useQuery',
+          enclosing_symbol: 'useExample',
+          resource: 'legacy',
+          statement_fingerprint: '[\'legacy\']@101',
+          ast_kind: 'array_literal',
+        },
+        {
+          file: 'src/features/new.ts',
+          line: 20,
+          column: 7,
+          reason: 'useQuery({ queryKey: ... }) lacks an approved tenant scope',
+          factory: 'useQuery',
+          enclosing_symbol: 'useNew',
+          resource: 'new',
+          statement_fingerprint: '[\'new\']@202',
+          ast_kind: 'array_literal',
+        },
+      ];
+
+      const result = partitionViolationsByBaseline(violations, baseline);
+
+      expect(result.baselined).toEqual([violations[0]]);
+      expect(result.newViolations).toEqual([violations[1]]);
+      expect(result.staleBaselineEntries).toEqual([]);
+    });
+
+    it('reports stale baseline entries that no longer match a current violation', () => {
+      const result = partitionViolationsByBaseline([], new Set([
+        'src/features/old.ts|useQuery|useOld|[\'old\']@303',
+      ]));
+
+      expect(result.baselined).toEqual([]);
+      expect(result.newViolations).toEqual([]);
+      expect(result.staleBaselineEntries).toEqual([
+        'src/features/old.ts|useQuery|useOld|[\'old\']@303',
+      ]);
     });
   });
 });

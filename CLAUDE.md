@@ -54,6 +54,8 @@ All dependencies via constructor with `private readonly`. Never use `app()` help
 ### 14. Frontend API Response Handling
 `apiGet`/`apiPost`/etc. already unwrap `response.data.data`. Return them directly — do NOT double-unwrap. See [docs/conventions/01-API-RESPONSES.md](docs/conventions/01-API-RESPONSES.md).
 
+- **TanStack tenant data query keys:** every tenant-data `useQuery` / `useQueries` key must use `tenantScopedKey([...])` so tenant/company are suffixes. Enforced by `apps/web/tools/audit-tanstack-keys.mjs` in web lint, preflight, and CI.
+
 ### 15. Session Files Go in `docs/sessions/`
 Never create status/plan/implementation markdown files at the repo root. Use `docs/sessions/` for ephemeral session artifacts (gitignored).
 

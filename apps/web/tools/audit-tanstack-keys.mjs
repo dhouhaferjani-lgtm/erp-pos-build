@@ -19,6 +19,10 @@
  *   - Array starting with the literal string `'admin'` or `'super-admin'`
  *     for the super-admin namespace.
  *
+ * Gate mode uses the baseline below only to keep today's known offenders
+ * visible while failing on any NEW unscoped query key. Do not add entries for
+ * new code; remove entries when the underlying query key is fixed.
+ *
  * Codex 2026-05-03 review C4 fixes vs the prior version:
  *   - useQueries({ queries: [...] }) now descends into the queries array
  *     and audits each element's queryKey individually.
@@ -26,7 +30,9 @@
  *     LHS; bare property access ending in `companyId` etc. no longer
  *     over-approves.
  *
- * Run via: pnpm test:arch
+ * Run via: pnpm audit:keys (also chained from lint/preflight/CI).
+ * Use --json only for inventory generation; JSON mode emits raw findings and
+ * preserves the historical exit-0 behavior for scanner consumers.
  */
 
 import { promises as fs } from 'node:fs';
@@ -71,6 +77,60 @@ const APPROVED_STORE_OBJECTS = new Set([
 const APPROVED_FACTORY_CALLS = new Set([
   'tenantScopedKey',
 ]);
+
+const BASELINED_VIOLATION_KEYS = new Set([
+  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|attributeKeys.all@2039',
+  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|attributeKeys.all@2330',
+  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|attributeKeys.all@2673',
+  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|variantKeys.forProduct(productId)@3357',
+  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|variantKeys.forProduct(productId)@3788',
+  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|variantKeys.forProduct(productId)@4119',
+  'src/features/inventory/useLoyaltyEarnRate.ts|useQuery|useLoyaltyEarnRate|[\'loyalty\', \'earn-rate\']@585',
+  'src/features/purchases/supplier-invoices/api.ts|useQuery|useSupplierInvoiceList|supplierInvoiceKeys.list(params)@1862',
+  'src/features/purchases/supplier-invoices/api.ts|useQuery|useSupplierInvoiceDetail|supplierInvoiceKeys.detail(id)@3443',
+  'src/features/purchases/supplier-invoices/api.ts|invalidateQueries|onSuccess|supplierInvoiceKeys.detail(id)@4700',
+  'src/features/purchases/supplier-invoices/api.ts|useQuery|useSupplierInvoiceAttachments|supplierInvoiceKeys.attachments(documentId)@5788',
+  'src/features/purchases/supplier-invoices/api.ts|invalidateQueries|onSuccess|supplierInvoiceKeys.attachments(documentId)@6428',
+  'src/features/purchases/supplier-invoices/api.ts|invalidateQueries|onSuccess|supplierInvoiceKeys.attachments(documentId)@6855',
+  'src/features/purchases/supplier-invoices/api.ts|invalidateQueries|onSuccess|supplierInvoiceKeys.detail(invoiceId)@7880',
+]);
+
+/**
+ * @param {{file: string, factory?: string, enclosing_symbol?: string | null, statement_fingerprint?: string}} violation
+ * @returns {string}
+ */
+export function violationBaselineKey(violation) {
+  return [
+    violation.file,
+    violation.factory ?? '<unknown-factory>',
+    violation.enclosing_symbol ?? '<top-level>',
+    violation.statement_fingerprint ?? '<unknown-fingerprint>',
+  ].join('|');
+}
+
+/**
+ * @param {Array<{file: string, line: number, column: number, reason: string, factory?: string, enclosing_symbol?: string | null, resource?: string | null, statement_fingerprint?: string, ast_kind?: string}>} violations
+ * @param {Set<string>} [baseline]
+ * @returns {{baselined: typeof violations, newViolations: typeof violations, staleBaselineEntries: string[]}}
+ */
+export function partitionViolationsByBaseline(violations, baseline = BASELINED_VIOLATION_KEYS) {
+  const seen = new Set();
+  const baselined = [];
+  const newViolations = [];
+
+  for (const violation of violations) {
+    const key = violationBaselineKey(violation);
+    if (baseline.has(key)) {
+      seen.add(key);
+      baselined.push(violation);
+    } else {
+      newViolations.push(violation);
+    }
+  }
+
+  const staleBaselineEntries = [...baseline].filter((entry) => !seen.has(entry));
+  return { baselined, newViolations, staleBaselineEntries };
+}
 
 /**
  * @param {ts.Node} expr
@@ -466,9 +526,34 @@ if (isMain) {
     if (!wrote) {
       await new Promise((resolve) => process.stdout.once('drain', resolve));
     }
+    process.exit(0);
   }
-  // Master plan Section 17 step 17.5: swap the exit code below from 0
-  // (informational) to (allViolations.length === 0 ? 0 : 1) once the
-  // tactical sweep is complete.
+
+  const { baselined, newViolations, staleBaselineEntries } = partitionViolationsByBaseline(allViolations);
+  process.stderr.write(
+    `[gate-summary] Gate C baseline: ${baselined.length} acknowledged, ${newViolations.length} new, ${staleBaselineEntries.length} stale baseline entries\n`,
+  );
+
+  if (newViolations.length > 0) {
+    process.stderr.write('\nNew unscoped TanStack query key violations:\n');
+    for (const violation of newViolations) {
+      process.stderr.write(
+        `  ${violation.file}:${violation.line}:${violation.column} ${violation.reason} ` +
+          `(factory=${violation.factory}, symbol=${violation.enclosing_symbol ?? '<top-level>'}, key=${violation.statement_fingerprint})\n`,
+      );
+    }
+  }
+
+  if (staleBaselineEntries.length > 0) {
+    process.stderr.write('\nStale TanStack query key baseline entries; remove or update these entries:\n');
+    for (const entry of staleBaselineEntries) {
+      process.stderr.write(`  ${entry}\n`);
+    }
+  }
+
+  if (newViolations.length > 0 || staleBaselineEntries.length > 0) {
+    process.exit(1);
+  }
+
   process.exit(0);
 }

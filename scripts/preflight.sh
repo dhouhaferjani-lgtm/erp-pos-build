@@ -75,8 +75,12 @@ pnpm typecheck
 echo -e "${GREEN}✓ TypeScript passed${NC}"
 
 echo -e "\n${YELLOW}Running ESLint...${NC}"
-pnpm lint
+pnpm lint:eslint
 echo -e "${GREEN}✓ ESLint passed${NC}"
+
+echo -e "\n${YELLOW}Running TanStack query key audit...${NC}"
+pnpm audit:keys
+echo -e "${GREEN}✓ TanStack query key audit passed${NC}"
 
 echo -e "\n${YELLOW}Running Vitest tests...${NC}"
 pnpm test
