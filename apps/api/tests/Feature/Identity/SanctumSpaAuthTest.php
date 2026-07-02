@@ -386,6 +386,31 @@ class SanctumSpaAuthTest extends TestCase
                     'timestamp',
                     'request_id',
                 ],
-            ]);
+            ])
+            // The frontend banner reads `emailVerifiedAt`; the /me contract
+            // must expose it (null when the user has not verified).
+            ->assertJsonPath('data.emailVerified', false)
+            ->assertJsonPath('data.emailVerifiedAt', null);
+    }
+
+    /**
+     * A verified user's /me payload exposes an ISO `emailVerifiedAt` string so
+     * the frontend can suppress the email-verification nag banner.
+     */
+    public function test_me_endpoint_exposes_email_verified_at_for_verified_user(): void
+    {
+        $this->user->forceFill(['email_verified_at' => now()])->save();
+
+        $this->actingAs($this->user, 'sanctum');
+
+        $response = $this->withHeaders([
+            'Origin' => 'http://localhost:5173',
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/auth/me');
+
+        $response->assertOk()
+            ->assertJsonPath('data.emailVerified', true);
+
+        $this->assertIsString($response->json('data.emailVerifiedAt'));
     }
 }

@@ -696,6 +696,7 @@ timezone: string | null;
 roles: Array<any>;
 permissions: Array<any>;
 emailVerified: boolean;
+emailVerifiedAt: string | null;
 };
 export type LoginResponseData = {
 user: App.Modules.Identity.Application.DTOs.AuthUserData;
