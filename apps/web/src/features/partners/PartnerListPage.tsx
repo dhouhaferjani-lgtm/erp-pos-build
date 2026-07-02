@@ -68,7 +68,6 @@ interface PartnerListPageProps {
 export function PartnerListPage({ partnerType }: PartnerListPageProps) {
   usePartnerBalanceRealtime()
   const { t, i18n } = useTranslation(['common', 'sales'])
-  usePageTitle('partners.title', 'sales')
   const location = useLocation()
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
@@ -79,6 +78,13 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
   // Determine base path and labels based on partner type
   const isCustomerView = partnerType === 'customer' || location.pathname.includes('/sales/customers')
   const isSupplierView = partnerType === 'supplier' || location.pathname.includes('/purchases/suppliers')
+
+  const pageTitleKey = isCustomerView
+    ? 'navigation.customers'
+    : isSupplierView
+      ? 'navigation.suppliers'
+      : 'partners.title'
+  usePageTitle(pageTitleKey, isCustomerView || isSupplierView ? 'common' : 'sales')
 
   const basePath = isCustomerView
     ? '/sales/customers'
@@ -162,6 +168,11 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
   const partners = data?.data ?? []
   const meta = data?.meta
   const total = meta?.total ?? partners.length
+  const entityCountLabel = isCustomerView
+    ? t('sales:partners.countLabels.customer', { count: total })
+    : isSupplierView
+      ? t('sales:partners.countLabels.supplier', { count: total })
+      : t('sales:partners.countLabels.partner', { count: total })
 
   // Calculate counts for filter tabs
   const totalPartners = data?.aggregates?.total_partners
@@ -189,7 +200,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
           <p className="text-gray-500">
-            {total} {entitySingular.toLowerCase()} {t('total')}
+            {t('sales:partners.totalSummary', { count: total, entity: entityCountLabel })}
           </p>
         </div>
         <div className="flex items-center gap-2">

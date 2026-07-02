@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
 
 export interface SortableTableHeaderProps {
@@ -20,6 +21,7 @@ export function SortableTableHeader({
   align = 'left',
   className,
 }: SortableTableHeaderProps) {
+  const { t } = useTranslation('common')
   const isActive = currentSort === column
 
   const handleClick = () => {
@@ -54,7 +56,7 @@ export function SortableTableHeader({
             : 'descending'
           : 'none'
       }
-      aria-label={`Sort by ${label}`}
+      aria-label={t('table.sortBy', { label })}
     >
       <div
         className={cn(

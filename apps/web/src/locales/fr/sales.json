@@ -83,6 +83,15 @@
     },
     "balance": "Solde",
     "hasBalance": "Avec solde en cours",
+    "countLabels": {
+      "customer_one": "client",
+      "customer_other": "clients",
+      "supplier_one": "fournisseur",
+      "supplier_other": "fournisseurs",
+      "partner_one": "partenaire",
+      "partner_other": "partenaires"
+    },
+    "totalSummary": "{{count}} {{entity}} au total",
     "b2b": {
       "title": "Informations B2B",
       "customerCategory": "Catégorie client",

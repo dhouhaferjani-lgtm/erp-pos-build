@@ -336,7 +336,8 @@
   "table": {
     "actions": "الإجراءات",
     "actionsColumn": "الإجراءات",
-    "noData": "لا توجد بيانات"
+    "noData": "لا توجد بيانات",
+    "sortBy": "فرز حسب {{label}}"
   },
   "pagination": {
     "showing": "عرض {{from}} إلى {{to}} من {{total}} نتيجة",

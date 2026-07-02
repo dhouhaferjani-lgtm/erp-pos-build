@@ -384,7 +384,8 @@
   "table": {
     "actions": "Actions",
     "actionsColumn": "Actions",
-    "noData": "No data available"
+    "noData": "No data available",
+    "sortBy": "Sort by {{label}}"
   },
   "pagination": {
     "showing": "Showing {{from}} to {{to}} of {{total}} results",

@@ -102,7 +102,9 @@ export function ProductConfigProvider({
   }, [initialProduct])
 
   useEffect(() => {
-    document.title = value.productName
+    if (document.title === '' || document.title === value.productName || !document.title.includes(' | ')) {
+      document.title = value.productName
+    }
   }, [value.productName])
 
   return <ProductConfigContext.Provider value={value}>{children}</ProductConfigContext.Provider>

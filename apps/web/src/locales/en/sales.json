@@ -83,6 +83,15 @@
     },
     "balance": "Balance",
     "hasBalance": "Has outstanding balance",
+    "countLabels": {
+      "customer_one": "customer",
+      "customer_other": "customers",
+      "supplier_one": "supplier",
+      "supplier_other": "suppliers",
+      "partner_one": "partner",
+      "partner_other": "partners"
+    },
+    "totalSummary": "{{count}} {{entity}} total",
     "b2b": {
       "title": "B2B Information",
       "customerCategory": "Customer Category",
