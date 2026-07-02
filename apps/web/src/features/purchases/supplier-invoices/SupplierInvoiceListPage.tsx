@@ -10,6 +10,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
+import { SearchInput } from '../../../components/molecules/SearchInput/SearchInput'
 import { formatCurrency } from '../../../lib/decimal'
 import type { SupplierInvoiceListParams, SupplierInvoiceMatchStatus, SupplierInvoiceStatus } from './types'
 import { useSupplierInvoiceList } from './api'
@@ -127,6 +128,14 @@ export function SupplierInvoiceListPage() {
 
       {/* Filters */}
       <div className={`rounded-lg ${borderColors.light} border bg-white p-4`}>
+        <div className="mb-4">
+          <SearchInput
+            value={params.search ?? ''}
+            onChange={(value) => { handleFilterChange('search', value === '' ? undefined : value); }}
+            placeholder={t('common:actions.search')}
+            className="w-full sm:w-96"
+          />
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {/* Status filter */}
           <div>

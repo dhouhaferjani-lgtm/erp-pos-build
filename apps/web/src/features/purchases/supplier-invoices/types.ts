@@ -170,6 +170,8 @@ export interface SupplierInvoiceListParams {
   match_status?: SupplierInvoiceMatchStatus
   date_from?: string
   date_to?: string
+  /** Free-text search over document number and supplier (partner) name. */
+  search?: string
   /** Cursor token for the next/previous page (cursor-based pagination). */
   cursor?: string
 }
