@@ -141,7 +141,7 @@ const resources = {
     auth: enAuth,
     sales: enSales,
     inventory: enInventory,
-    treasury: { ...enTreasury, ...arTreasury },
+    treasury: enTreasury,
     validation: enValidation,
     pricing: enPricing,
     finance: enFinance,
@@ -279,7 +279,7 @@ const resources = {
       },
     },
     inventory: { ...enInventory, ...arInventory, products: { ...enInventory.products, ...arInventory.products } },
-    treasury: enTreasury,
+    treasury: { ...enTreasury, ...arTreasury },
     validation: arValidation,
     pricing: enPricing,
     finance: {
