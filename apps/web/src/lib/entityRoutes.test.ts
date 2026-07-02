@@ -5,6 +5,10 @@ describe('entityRoutes', () => {
   it('builds product and variant routes through product detail pages', () => {
     expect(entityRoutes.product('prod-1')).toBe('/inventory/products/prod-1')
     expect(entityRoutes.variant('variant-1', { productId: 'prod-1' })).toBe('/inventory/products/prod-1')
+    expect(entityRoutes.product('prod-1', { tab: 'movements' })).toBe('/inventory/products/prod-1?tab=movements')
+    expect(entityRoutes.variant('variant-1', { productId: 'prod-1', tab: 'financialOperations' })).toBe(
+      '/inventory/products/prod-1?tab=financialOperations',
+    )
   })
 
   it('builds partner routes with supplier/customer awareness', () => {
@@ -13,6 +17,8 @@ describe('entityRoutes', () => {
     expect(entityRoutes.partner('partner-3', { partnerType: 'supplier' })).toBe('/purchases/suppliers/partner-3')
     expect(entityRoutes.partner('partner-4', { partnerType: 'customer' })).toBe('/sales/customers/partner-4')
     expect(entityRoutes.partner('partner-5', { partnerType: null })).toBe('/sales/customers/partner-5')
+    expect(entityRoutes.customer('partner-1', { tab: 'payments' })).toBe('/sales/customers/partner-1?tab=payments')
+    expect(entityRoutes.supplier('partner-2', { tab: 'documents' })).toBe('/purchases/suppliers/partner-2?tab=documents')
   })
 
   it('builds document routes by document type', () => {
@@ -24,6 +30,7 @@ describe('entityRoutes', () => {
     expect(entityRoutes.document('doc-6', { documentType: 'purchase_order' })).toBe('/purchases/orders/doc-6')
     expect(entityRoutes.document('doc-7', { documentType: 'delivery_note' })).toBe('/inventory/delivery-notes/doc-7')
     expect(entityRoutes.document('doc-8', { documentType: 'supplier_invoice' })).toBe('/purchases/supplier-invoices/doc-8')
+    expect(entityRoutes.document('doc-9', { documentType: 'invoice', tab: 'related' })).toBe('/sales/invoices/doc-9?tab=related')
   })
 
   it('builds treasury, expense, inventory, and finance entity routes', () => {

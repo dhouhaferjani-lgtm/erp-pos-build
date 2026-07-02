@@ -9,6 +9,11 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
@@ -388,6 +393,45 @@ class StockMovementTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonCount(2, 'data');
+    }
+
+    public function test_list_exposes_source_document_provenance(): void
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->warehouse->id,
+            'type' => DocumentType::Invoice,
+            'fiscal_category' => FiscalCategory::TaxInvoice,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'INV-2026-0001',
+            'document_date' => now()->toDateString(),
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'discount_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '100.000',
+            'balance_due' => '100.000',
+        ]);
+
+        $movement = app(StockAdjustmentService::class)->receive(
+            productId: $this->product->id,
+            locationId: $this->warehouse->id,
+            quantity: '10.00',
+            reference: $document->document_number,
+            userId: $this->user->id,
+        );
+        $movement->forceFill([
+            'reference_type' => 'Document',
+            'reference_id' => $document->id,
+        ])->save();
+
+        $response = $this->actingAs($this->user)->getJson('/api/v1/stock-movements?product_id='.$this->product->id);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.0.source_document_id', $document->id);
+        $response->assertJsonPath('data.0.source_document_type', 'invoice');
     }
 
     public function test_movements_are_ordered_by_date_descending(): void

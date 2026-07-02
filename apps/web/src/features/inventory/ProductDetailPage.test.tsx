@@ -1,6 +1,7 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/authStore'
@@ -25,9 +26,7 @@ vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
   return {
     ...actual,
-    Link: ({ children }: { children: ReactNode }) => <a href="/test">{children}</a>,
     useNavigate: () => mockNavigate,
-    useParams: () => ({ id: 'product-1' }),
   }
 })
 
@@ -84,10 +83,24 @@ function resetTenant() {
   useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
 }
 
-function wrapper(queryClient: QueryClient) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  }
+function LocationSearchProbe() {
+  const location = useLocation()
+  return <div data-testid="location-search">{location.search}</div>
+}
+
+function renderProductDetail(route = '/inventory/products/product-1') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[route]}>
+        <LocationSearchProbe />
+        <Routes>
+          <Route path="/inventory/products/:id" element={<ProductDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
 }
 
 function productFixture() {
@@ -126,9 +139,8 @@ describe('ProductDetailPage', () => {
 
   it('renders exactly one h1 with the product name', async () => {
     mockApiGet.mockResolvedValue({ data: { data: productFixture() } })
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-    render(<ProductDetailPage />, { wrapper: wrapper(queryClient) })
+    renderProductDetail()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Brake Pad')
@@ -138,12 +150,33 @@ describe('ProductDetailPage', () => {
 
   it('renders the active status via StatusBadge (rounded-full pill)', async () => {
     mockApiGet.mockResolvedValue({ data: { data: productFixture() } })
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-    render(<ProductDetailPage />, { wrapper: wrapper(queryClient) })
+    renderProductDetail()
 
     const badge = await screen.findByText('common:status.active')
     expect(badge.tagName).toBe('SPAN')
     expect(badge.className).toContain('rounded-full')
+  })
+
+  it('reads the active tab from the tab search param', async () => {
+    mockApiGet.mockResolvedValue({ data: { data: productFixture() } })
+
+    renderProductDetail('/inventory/products/product-1?tab=movements')
+
+    expect(await screen.findByTestId('movements-tab')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'products.tabs.movements' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('writes the active tab to the tab search param when changed', async () => {
+    mockApiGet.mockResolvedValue({ data: { data: productFixture() } })
+    const user = userEvent.setup()
+
+    renderProductDetail()
+
+    await screen.findByRole('heading', { name: 'Brake Pad' })
+    await user.click(screen.getByRole('tab', { name: 'products.tabs.financialOperations' }))
+
+    expect(screen.getByTestId('documents-tab')).toBeInTheDocument()
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?tab=financialOperations')
   })
 })

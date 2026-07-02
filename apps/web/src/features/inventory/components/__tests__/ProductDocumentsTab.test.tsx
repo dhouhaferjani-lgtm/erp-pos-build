@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { ProductDocumentsTab } from '../ProductDocumentsTab'
 import {
@@ -281,6 +282,35 @@ describe('ProductDocumentsTab', () => {
       expect(api.get).toHaveBeenCalledWith(
         expect.stringContaining('product_id=test-product-456')
       )
+    })
+  })
+
+  it('requests the selected server page when pagination is used', async () => {
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({
+        data: {
+          data: mockDocuments.slice(0, 1),
+          meta: { current_page: 1, last_page: 2, per_page: 1, total: 2, from: 1, to: 1 },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: mockDocuments.slice(1, 2),
+          meta: { current_page: 2, last_page: 2, per_page: 1, total: 2, from: 2, to: 2 },
+        },
+      })
+    const user = userEvent.setup()
+
+    renderWithProviders(<ProductDocumentsTab productId="prod-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('INV-2024-001')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /next/i }))
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith(expect.stringContaining('page=2'))
     })
   })
 

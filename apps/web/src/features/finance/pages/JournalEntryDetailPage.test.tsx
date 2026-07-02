@@ -55,6 +55,8 @@ const draftEntry = {
     },
   ],
   created_at: '2025-01-16T14:30:00Z',
+  source_type: null,
+  source_id: null,
 }
 
 function renderPage() {
@@ -95,5 +97,29 @@ describe('JournalEntryDetailPage (canonicalized)', () => {
     const numericCell = container.querySelector('td.tabular-nums')
     expect(numericCell).not.toBeNull()
     expect(numericCell?.className).toContain('text-end')
+  })
+
+  it('links document-backed sources to the source document', () => {
+    mockUseJournalEntry.mockReturnValue({
+      data: { ...draftEntry, source_type: 'invoice', source_id: 'inv-1' },
+      isLoading: false,
+    })
+
+    renderPage()
+
+    expect(screen.getByRole('link', { name: 'invoice' })).toHaveAttribute('href', '/sales/invoices/inv-1')
+  })
+
+  it('renders non-document sources as a plain badge', () => {
+    mockUseJournalEntry.mockReturnValue({
+      data: { ...draftEntry, source_type: 'payment', source_id: 'pay-1' },
+      isLoading: false,
+    })
+
+    const { container } = renderPage()
+
+    expect(screen.queryByRole('link', { name: 'payment' })).not.toBeInTheDocument()
+    const sourceBadge = container.querySelector('[data-testid="journal-source-badge"]')
+    expect(sourceBadge).toHaveTextContent('payment')
   })
 })

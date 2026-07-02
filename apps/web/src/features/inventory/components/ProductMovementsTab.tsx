@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -19,6 +18,9 @@ import { LocationSelectorMulti } from '../../locations/components/LocationSelect
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge'
 import { Button } from '@/components/atoms/Button'
+import { EntityLink } from '@/components/molecules/EntityLink'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
+import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
 
 interface StockMovement {
   id: string
@@ -31,6 +33,8 @@ interface StockMovement {
   quantity_before: string
   quantity_after: string
   reference: string
+  source_document_id: string | null
+  source_document_type: string | null
   notes: string | null
   user_id: string
   user_name: string | null
@@ -39,6 +43,14 @@ interface StockMovement {
 
 interface StockMovementsResponse {
   data: StockMovement[]
+  meta?: {
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+    from?: number | null
+    to?: number | null
+  }
 }
 
 interface ProductMovementsTabProps {
@@ -81,45 +93,22 @@ const movementTypeConfig: Record<
   },
 }
 
-/**
- * Parses a movement reference to construct a link to the source document.
- * Returns null if the reference doesn't match a known document pattern.
- */
-function getDocumentLink(reference: string): string | null {
-  // Common document prefixes and their route mappings
-  const documentPatterns: Array<{ prefix: string; basePath: string }> = [
-    { prefix: 'PO-', basePath: '/purchases/orders' },
-    { prefix: 'INV-', basePath: '/sales/invoices' },
-    { prefix: 'SO-', basePath: '/sales/orders' },
-    { prefix: 'QT-', basePath: '/sales/quotes' },
-    { prefix: 'CN-', basePath: '/sales/credit-notes' },
-    { prefix: 'DN-', basePath: '/sales/delivery-notes' },
-  ]
-
-  for (const { prefix, basePath } of documentPatterns) {
-    if (reference.startsWith(prefix)) {
-      // Return the path with document number for lookup
-      // Note: The actual document detail pages typically use document ID, not number
-      // For now, we'll link to the documents list with a search filter
-      return `${basePath}?search=${encodeURIComponent(reference)}`
-    }
-  }
-
-  return null
-}
-
 export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
   const { t } = useTranslation(['inventory', 'common'])
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([])
   const [showLocationFilter, setShowLocationFilter] = useState(false)
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['product-movements', productId, selectedLocationIds]),
+    queryKey: tenantScopedKey(['product-movements', productId, selectedLocationIds, page, perPage]),
     queryFn: async () => {
       const params = new URLSearchParams()
       params.append('product_id', productId)
+      params.append('page', String(page))
+      params.append('per_page', String(perPage))
 
       // If locations are selected, we need to fetch for each and merge
       // OR the API supports multiple location_id params
@@ -220,7 +209,10 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
         <div className={`rounded-lg border ${borderColors.light} bg-white p-4`}>
           <LocationSelectorMulti
             value={selectedLocationIds}
-            onChange={setSelectedLocationIds}
+            onChange={(ids) => {
+              setSelectedLocationIds(ids)
+              setPage(1)
+            }}
             label={t('products.movementsTab.filterByLocation')}
             {...(selectedLocationIds.length === 0 && {
               helperText: t('products.movementsTab.allLocations'),
@@ -274,7 +266,7 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
                 const Icon = config.icon
                 const qty = parseFloat(movement.quantity)
                 const isPositive = qty >= 0
-                const documentLink = getDocumentLink(movement.reference)
+                const documentType = documentRouteTypeFromSource(movement.source_document_type)
 
                 return (
                   <tr key={movement.id} className={tokens.table.rowHover}>
@@ -312,13 +304,13 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
                       className={`max-w-xs truncate px-6 py-4 text-sm ${textColors.tertiary}`}
                       title={movement.reference}
                     >
-                      {documentLink ? (
-                        <Link
-                          to={documentLink}
-                          className={`${textColors.brand} hover:underline`}
-                        >
-                          {movement.reference}
-                        </Link>
+                      {documentType ? (
+                        <EntityLink
+                          type="document"
+                          id={movement.source_document_id}
+                          documentType={documentType}
+                          label={movement.reference}
+                        />
                       ) : (
                         movement.reference
                       )}
@@ -328,6 +320,21 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
               })}
             </tbody>
           </table>
+          {data?.meta && data.meta.last_page > 1 && (
+            <OffsetPagination
+              currentPage={data.meta.current_page}
+              lastPage={data.meta.last_page}
+              total={data.meta.total}
+              perPage={data.meta.per_page}
+              from={data.meta.from ?? null}
+              to={data.meta.to ?? null}
+              onPageChange={setPage}
+              onPerPageChange={(nextPerPage) => {
+                setPerPage(nextPerPage)
+                setPage(1)
+              }}
+            />
+          )}
         </div>
       )}
     </div>
