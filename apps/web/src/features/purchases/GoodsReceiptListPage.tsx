@@ -15,10 +15,10 @@ import {
 import { toast } from 'sonner'
 import { api, apiPost } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
-import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { useCompany } from '../../hooks/useCompany'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from './components/ReceiveGoodsDialog'
 
 interface PurchaseOrderLine {
   id: string
@@ -27,6 +27,8 @@ interface PurchaseOrderLine {
   description: string
   quantity: number
   quantity_received: number
+  quantity_decimals?: number
+  requires_batch_tracking?: boolean
   unit_price: number
 }
 
@@ -58,6 +60,10 @@ interface ApiResponse {
   }
 }
 
+interface DetailApiResponse {
+  data: PurchaseOrder
+}
+
 type TabType = 'pending' | 'received'
 
 function scopedNamespacePredicate(
@@ -87,6 +93,7 @@ export function GoodsReceiptListPage() {
   const [activeTab, setActiveTab] = useState<TabType>('pending')
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [showReceiveModal, setShowReceiveModal] = useState(false)
+  const [isLoadingReceiveDetail, setIsLoadingReceiveDetail] = useState(false)
 
   // Fetch confirmed purchase orders (pending receipt)
   const { data: pendingData, isLoading: pendingLoading } = useQuery({
@@ -130,8 +137,8 @@ export function GoodsReceiptListPage() {
 
   // Receive goods mutation
   const receiveGoodsMutation = useMutation({
-    mutationFn: (poId: string) =>
-      apiPost<{ message: string }>(`/purchase-orders/${poId}/receive`, {}),
+    mutationFn: ({ poId, request }: { poId: string; request: ReceiveGoodsRequest }) =>
+      apiPost<{ message: string }>(`/purchase-orders/${poId}/receive`, request),
     onSuccess: async () => {
       toast.success(t('inventory:goodsReceipt.successMessage'))
       await Promise.all([
@@ -154,13 +161,23 @@ export function GoodsReceiptListPage() {
   })
 
   const handleReceiveClick = (po: PurchaseOrder) => {
-    setSelectedPO(po)
-    setShowReceiveModal(true)
+    setIsLoadingReceiveDetail(true)
+    api.get<DetailApiResponse>(`/purchase-orders/${po.id}`)
+      .then((response) => {
+        setSelectedPO(response.data.data)
+        setShowReceiveModal(true)
+      })
+      .catch(() => {
+        toast.error(t('common:errors.loadingFailed'))
+      })
+      .finally(() => {
+        setIsLoadingReceiveDetail(false)
+      })
   }
 
-  const handleConfirmReceive = () => {
+  const handleConfirmReceive = (request: ReceiveGoodsRequest) => {
     if (selectedPO) {
-      receiveGoodsMutation.mutate(selectedPO.id)
+      receiveGoodsMutation.mutate({ poId: selectedPO.id, request })
     }
   }
 
@@ -386,10 +403,11 @@ export function GoodsReceiptListPage() {
                           e.stopPropagation()
                           handleReceiveClick(po)
                         }}
-                        className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 transition-colors"
+                        disabled={isLoadingReceiveDetail}
+                        className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60 transition-colors"
                       >
                         <Truck className="h-4 w-4" />
-                        {t('inventory:goodsReceipt.receiveAll')}
+                        {isLoadingReceiveDetail ? t('common:status.loading') : t('inventory:goodsReceipt.receiveAll')}
                       </button>
                     )}
                     <Link
@@ -407,20 +425,19 @@ export function GoodsReceiptListPage() {
         </div>
       )}
 
-      {/* Receive Confirmation Modal */}
-      <ConfirmDialog
-        isOpen={showReceiveModal}
-        onClose={() => {
-          setShowReceiveModal(false)
-          setSelectedPO(null)
-        }}
-        onConfirm={handleConfirmReceive}
-        title={t('sales:purchaseOrders.receiveGoodsConfirm.title')}
-        message={t('sales:purchaseOrders.receiveGoodsConfirm.message')}
-        confirmText={t('sales:purchaseOrders.receiveGoodsConfirm.button')}
-        variant="info"
-        isLoading={receiveGoodsMutation.isPending}
-      />
+      {selectedPO && (
+        <ReceiveGoodsDialog
+          key={`${selectedPO.id}-${showReceiveModal ? 'open' : 'closed'}`}
+          isOpen={showReceiveModal}
+          purchaseOrder={selectedPO}
+          isLoading={receiveGoodsMutation.isPending}
+          onClose={() => {
+            setShowReceiveModal(false)
+            setSelectedPO(null)
+          }}
+          onConfirm={handleConfirmReceive}
+        />
+      )}
     </div>
   )
 }

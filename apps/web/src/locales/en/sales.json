@@ -304,6 +304,13 @@
     "receiveGoodsTitle": "Receive Goods",
     "receiveGoodsMessage": "This will create stock movements to receive the goods from this purchase order. Continue?",
     "goodsReceived": "Goods Received",
+    "receive": {
+      "remaining": "Remaining",
+      "quantity": "Quantity to receive",
+      "batchNumber": "Batch number",
+      "expiryDate": "Expiry date",
+      "submit": "Receive"
+    },
     "receiptStatus": {
       "not_received": "Not Received",
       "partially_received": "Partially Received",

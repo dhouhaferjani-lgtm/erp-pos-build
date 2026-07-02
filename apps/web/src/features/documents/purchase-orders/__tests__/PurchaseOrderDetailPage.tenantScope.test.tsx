@@ -161,9 +161,12 @@ function purchaseOrderFixture() {
     lines: [
       {
         id: 'line-1',
+        product_id: 'product-1',
+        product_name: 'Stock',
         description: 'Stock',
-        quantity: '1.00',
+        quantity: '5.00',
         quantity_received: '0.00',
+        requires_batch_tracking: false,
         unit_price: '100.00',
         line_total: '100.00',
         notes: null,
@@ -248,7 +251,7 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'receive-goods' }))
     await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receiveGoodsTitle' }))
+      await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
     })
 
     await waitFor(() => {
@@ -292,5 +295,62 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
       expect(paymentCalls).toBe(2)
     })
     expect(queryClient.getQueryData(['payments', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-payments' })
+  })
+
+  it('submits partial received quantities as strings', async () => {
+    render(<PurchaseOrderDetailPage />, { wrapper: wrapper(createClient()) })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'receive-goods' }))
+    const quantityInput = await screen.findByLabelText(/purchaseOrders.receive.quantity Stock/)
+    await userEvent.clear(quantityInput)
+    await userEvent.type(quantityInput, '2.50')
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
+        quantities: {
+          'line-1': '2.5',
+        },
+      })
+    })
+  })
+
+  it('requires and submits batch data for batch-tracked receipt lines', async () => {
+    const batchTrackedPurchaseOrder = {
+      ...purchaseOrderFixture(),
+      lines: [
+        {
+          ...purchaseOrderFixture().lines[0],
+          requires_batch_tracking: true,
+        },
+      ],
+    }
+    mockApiGet.mockImplementation(async (url: string) => {
+      if (url === '/purchase-orders/po-1') return { data: { data: batchTrackedPurchaseOrder } }
+      return { data: { data: [] } }
+    })
+
+    render(<PurchaseOrderDetailPage />, { wrapper: wrapper(createClient()) })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'receive-goods' }))
+    expect(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' })).toBeDisabled()
+
+    await userEvent.type(await screen.findByLabelText(/purchaseOrders.receive.batchNumber Stock/), 'LOT-2026-A')
+    await userEvent.type(screen.getByLabelText(/purchaseOrders.receive.expiryDate Stock/), '2027-03-31')
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
+        quantities: {
+          'line-1': '5.0000',
+        },
+        batches: {
+          'line-1': {
+            batch_number: 'LOT-2026-A',
+            expiry_date: '2027-03-31',
+          },
+        },
+      })
+    })
   })
 })

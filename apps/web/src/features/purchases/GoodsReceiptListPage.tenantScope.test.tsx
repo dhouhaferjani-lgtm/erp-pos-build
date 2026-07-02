@@ -1,5 +1,6 @@
 import { QueryClient, useQuery } from '@tanstack/react-query'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -132,6 +133,8 @@ const pendingPurchaseOrder = {
       description: 'Part',
       quantity: 2,
       quantity_received: 0,
+      quantity_decimals: 4,
+      requires_batch_tracking: false,
       unit_price: 5,
     },
   ],
@@ -152,7 +155,10 @@ const fullyReceivedPurchaseOrder = {
 beforeEach(() => {
   vi.clearAllMocks()
   setTenant('tenant-A', 'company-1')
-  mockApiGet.mockImplementation(async (_url: string, options?: { params?: { status?: string } }) => {
+  mockApiGet.mockImplementation(async (url: string, options?: { params?: { status?: string } }) => {
+    if (url === '/purchase-orders/po-1') {
+      return { data: { data: pendingPurchaseOrder } }
+    }
     if (options?.params?.status === 'received') {
       return { data: { data: [] } }
     }
@@ -206,7 +212,10 @@ describe('GoodsReceiptListPage tenant scope', () => {
       document_date: '2026-06-28',
     }
 
-    mockApiGet.mockImplementation((_url: string, options?: { params?: { status?: string } }) => {
+    mockApiGet.mockImplementation((url: string, options?: { params?: { status?: string } }) => {
+      if (url === '/purchase-orders/po-document-date') {
+        return Promise.resolve({ data: { data: poWithDocumentDate } })
+      }
       if (options?.params?.status === 'received') {
         return Promise.resolve({ data: { data: [] } })
       }
@@ -220,6 +229,25 @@ describe('GoodsReceiptListPage tenant scope', () => {
     expect(screen.getByText(new Date('2026-06-28').toLocaleDateString())).toBeInTheDocument()
   })
 
+  it('submits partial quantities from the receipt list receive dialog', async () => {
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    await userEvent.click(await screen.findByText('inventory:goodsReceipt.receiveAll'))
+    const quantityInput = await screen.findByLabelText(/purchaseOrders.receive.quantity Part/)
+    await userEvent.clear(quantityInput)
+    await userEvent.type(quantityInput, '1')
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/purchase-orders/po-1')
+      expect(mockApiPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
+        quantities: {
+          'line-1': '1',
+        },
+      })
+    })
+  })
+
   it('refetches current-tenant purchase and stock caches and preserves tenant-B cache (.584-.585)', async () => {
     const queryClient = createPersistentQueryClient()
     const counters = {
@@ -227,7 +255,10 @@ describe('GoodsReceiptListPage tenant scope', () => {
       received: 0,
       stock: 0,
     }
-    mockApiGet.mockImplementation(async (_url: string, options?: { params?: { status?: string } }) => {
+    mockApiGet.mockImplementation(async (url: string, options?: { params?: { status?: string } }) => {
+      if (url === '/purchase-orders/po-1') {
+        return { data: { data: pendingPurchaseOrder } }
+      }
       if (options?.params?.status === 'received') {
         counters.received += 1
         return { data: { data: [] } }
@@ -257,7 +288,7 @@ describe('GoodsReceiptListPage tenant scope', () => {
     })
 
     fireEvent.click(await screen.findByText('inventory:goodsReceipt.receiveAll'))
-    fireEvent.click(screen.getByText('sales:purchaseOrders.receiveGoodsConfirm.button'))
+    fireEvent.click(await screen.findByRole('button', { name: 'purchaseOrders.receive.submit' }))
 
     await waitFor(() => {
       expect(counters.confirmed).toBe(4)

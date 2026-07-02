@@ -32,6 +32,8 @@ export interface DocumentLineData {
   designation_default_snapshot: string | null
   // Unit precision (unit decimal_places) → drives the qty input step.
   quantity_decimals?: number
+  // Product batch policy for goods receipt / stock movement capture.
+  requires_batch_tracking: boolean
   // Extended fields for delivery/receipt tracking (may be in payload)
   quantity_delivered?: string
   quantity_received?: string
