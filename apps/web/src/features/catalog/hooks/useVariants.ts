@@ -31,6 +31,40 @@ export const variantKeys = {
     [...variantKeys.all, 'product', productId] as const,
 }
 
+function catalogAttributesInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 3 &&
+      k[0] === 'catalogAttributes' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
+function catalogVariantsForProductInvalidationPredicate(
+  productId: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k[0] === 'catalogVariants' &&
+      k[1] === 'product' &&
+      k[2] === productId &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 function useScope() {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
@@ -58,32 +92,41 @@ export function useAttributeValues(attributeId: string) {
 }
 
 export function useCreateAttribute() {
+  const { tenantId, companyId } = useScope()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload: CreateAttributePayload) => createAttribute(payload),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: attributeKeys.all })
+      await queryClient.invalidateQueries({
+        predicate: catalogAttributesInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useDeleteAttribute() {
+  const { tenantId, companyId } = useScope()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (attributeId: string) => deleteAttribute(attributeId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: attributeKeys.all })
+      await queryClient.invalidateQueries({
+        predicate: catalogAttributesInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
 
 export function useAddAttributeValue(attributeId: string) {
+  const { tenantId, companyId } = useScope()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload: AddAttributeValuePayload) =>
       addAttributeValue(attributeId, payload),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: attributeKeys.all })
+      await queryClient.invalidateQueries({
+        predicate: catalogAttributesInvalidationPredicate(tenantId, companyId),
+      })
     },
   })
 }
@@ -100,19 +143,21 @@ export function useVariantsForProduct(productId: string) {
 }
 
 export function useGenerateMatrix(productId: string) {
+  const { tenantId, companyId } = useScope()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (axes: GenerateMatrixAxis[]) =>
       generateVariantMatrix(productId, axes),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: variantKeys.forProduct(productId),
+        predicate: catalogVariantsForProductInvalidationPredicate(productId, tenantId, companyId),
       })
     },
   })
 }
 
 export function useUpdateVariant(productId: string) {
+  const { tenantId, companyId } = useScope()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({
@@ -124,19 +169,20 @@ export function useUpdateVariant(productId: string) {
     }) => updateVariant(variantId, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: variantKeys.forProduct(productId),
+        predicate: catalogVariantsForProductInvalidationPredicate(productId, tenantId, companyId),
       })
     },
   })
 }
 
 export function useDeleteVariant(productId: string) {
+  const { tenantId, companyId } = useScope()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (variantId: string) => deleteVariant(variantId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: variantKeys.forProduct(productId),
+        predicate: catalogVariantsForProductInvalidationPredicate(productId, tenantId, companyId),
       })
     },
   })

@@ -78,22 +78,7 @@ const APPROVED_FACTORY_CALLS = new Set([
   'tenantScopedKey',
 ]);
 
-const BASELINED_VIOLATION_KEYS = new Set([
-  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|attributeKeys.all@2039',
-  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|attributeKeys.all@2330',
-  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|attributeKeys.all@2673',
-  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|variantKeys.forProduct(productId)@3357',
-  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|variantKeys.forProduct(productId)@3788',
-  'src/features/catalog/hooks/useVariants.ts|invalidateQueries|onSuccess|variantKeys.forProduct(productId)@4119',
-  'src/features/inventory/useLoyaltyEarnRate.ts|useQuery|useLoyaltyEarnRate|[\'loyalty\', \'earn-rate\']@585',
-  'src/features/purchases/supplier-invoices/api.ts|useQuery|useSupplierInvoiceList|supplierInvoiceKeys.list(params)@1862',
-  'src/features/purchases/supplier-invoices/api.ts|useQuery|useSupplierInvoiceDetail|supplierInvoiceKeys.detail(id)@3443',
-  'src/features/purchases/supplier-invoices/api.ts|invalidateQueries|onSuccess|supplierInvoiceKeys.detail(id)@4700',
-  'src/features/purchases/supplier-invoices/api.ts|useQuery|useSupplierInvoiceAttachments|supplierInvoiceKeys.attachments(documentId)@5788',
-  'src/features/purchases/supplier-invoices/api.ts|invalidateQueries|onSuccess|supplierInvoiceKeys.attachments(documentId)@6428',
-  'src/features/purchases/supplier-invoices/api.ts|invalidateQueries|onSuccess|supplierInvoiceKeys.attachments(documentId)@6855',
-  'src/features/purchases/supplier-invoices/api.ts|invalidateQueries|onSuccess|supplierInvoiceKeys.detail(invoiceId)@7880',
-]);
+const BASELINED_VIOLATION_KEYS = new Set([]);
 
 /**
  * @param {{file: string, factory?: string, enclosing_symbol?: string | null, statement_fingerprint?: string}} violation
