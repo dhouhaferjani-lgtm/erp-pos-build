@@ -16,7 +16,7 @@ import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { Button, Checkbox, FormField, Input, Textarea, MoneyInput, Toggle, QuantityInput } from '../../components/atoms'
 import { CatalogBanner } from './components/CatalogBanner'
-import { useProductSubmission } from './api/platformQueries'
+import { useEnrichmentRefresh, useProductSubmission } from './api/platformQueries'
 import type { LookupState, SuggestedProduct } from './types/platform'
 import { ProductImageSection, ParapharmacyMetadataFields, CreateModeImageBuffer } from '../products/components'
 import { uploadProductImage } from '../products/api/productImages'
@@ -159,6 +159,7 @@ export function ProductForm() {
   const [bufferedImages, setBufferedImages] = useState<File[]>([])
 
   const submissionMutation = useProductSubmission()
+  const enrichmentRefreshMutation = useEnrichmentRefresh()
 
   const {
     register,
@@ -481,6 +482,7 @@ export function ProductForm() {
 
       if (lookupState === 'not_found' && enrichmentOptIn) {
         const payload: Parameters<typeof submissionMutation.mutate>[0] = {
+          product_id: created.id,
           barcode: data.barcode || null,
           name: data.name,
           brand: suggestedProductRef.current?.brand ?? '',
@@ -520,6 +522,17 @@ export function ProductForm() {
       e.preventDefault()
       handleAddOem()
     }
+  }
+
+  // Operator-triggered manual re-fetch of the platform enrichment status.
+  // Only meaningful once the product exists (edit mode) and has a submission;
+  // the backend returns 422 when there is nothing to refresh.
+  const handleManualRefresh = () => {
+    if (!isEditing || enrichmentRefreshMutation.isPending) return
+    enrichmentRefreshMutation.mutate(id, {
+      onSuccess: () => { toast.success(t('inventory:barcodeLookup.refreshSuccess')) },
+      onError: () => { toast.error(t('inventory:barcodeLookup.refreshError')) },
+    })
   }
 
   // --- Editor layout: sections, scroll-spy, completeness, checklist ---------
@@ -674,7 +687,7 @@ export function ProductForm() {
         onNameChange={(value) => { setValue('name', value, { shouldDirty: true }) }}
         onProductData={handleProductData}
         onLookupStateChange={handleLookupStateChange}
-        onManualRefresh={() => { /* TODO(stage-4): trigger manual Synerivia re-fetch */ }}
+        onManualRefresh={handleManualRefresh}
       />
 
       {/* Enrichment opt-in — shown under the hero when barcode not found in

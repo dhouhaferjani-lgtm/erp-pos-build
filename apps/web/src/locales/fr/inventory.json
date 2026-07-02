@@ -13,7 +13,9 @@
     "toastSavedWithEnrichment": "Produit enregistré. Soumis pour enrichissement catalogue.",
     "toastEnrichmentFailed": "Produit enregistré mais la soumission d'enrichissement a échoué.",
     "clearBarcode": "Effacer le code-barres",
-    "toastProductSaved": "Produit enregistré avec succès."
+    "toastProductSaved": "Produit enregistré avec succès.",
+    "refreshSuccess": "Statut d'enrichissement actualisé.",
+    "refreshError": "Impossible d'actualiser le statut d'enrichissement."
   },
   "goodsReceipt": {
     "title": "Bons de reception",

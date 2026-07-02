@@ -22,6 +22,7 @@ use App\Modules\Inventory\Application\Services\InventoryService;
 use App\Modules\Partner\Application\Services\PartnerService;
 use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
 use App\Modules\Product\Application\Services\ProductService;
+use App\Modules\Product\Infrastructure\Services\ProductEnrichmentCorrelationService;
 use App\Modules\Product\Infrastructure\Services\ProductEnrichmentQueryService;
 use App\Modules\Product\Infrastructure\Services\ProductInventoryQueryService;
 use App\Modules\Tenant\Domain\Tenant;
@@ -36,6 +37,7 @@ use App\Services\VerticalConfigService;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\EnrichmentQueryInterface;
+use App\Shared\Contracts\EnrichmentSubmissionCorrelatorInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
@@ -90,6 +92,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(AccountingServiceInterface::class, AccountingService::class);
         $this->app->bind(PlatformSubmissionInterface::class, ProductSubmissionService::class);
         $this->app->bind(EnrichmentQueryInterface::class, ProductEnrichmentQueryService::class);
+        $this->app->bind(EnrichmentSubmissionCorrelatorInterface::class, ProductEnrichmentCorrelationService::class);
         $this->app->bind(ProductInventoryQueryInterface::class, ProductInventoryQueryService::class);
     }
 
