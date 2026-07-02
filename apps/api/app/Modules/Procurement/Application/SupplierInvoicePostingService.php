@@ -94,6 +94,7 @@ final class SupplierInvoicePostingService
 
             // 5. Positive-net-qty guard — aggregate invoiced qty per PO line must be > 0.
             $aggregateQty = $this->aggregateInvoicedQtyPerPoLine($supplierInvoice);
+            $aggregateBonusQty = $this->aggregateBonusQtyPerPoLine($supplierInvoice);
             foreach ($aggregateQty as $sourceLineId => $qty) {
                 if (bccomp($qty, '0', 4) <= 0) {
                     throw new \DomainException(sprintf(
@@ -174,6 +175,35 @@ final class SupplierInvoicePostingService
                 $poLine->save();
             }
 
+            foreach ($aggregateBonusQty as $sourceLineId => $qty) {
+                /** @var DocumentLine|null $poLine */
+                $poLine = $lockedPoLines->get($sourceLineId);
+                if ($poLine === null) {
+                    throw new \DomainException(sprintf(
+                        'Supplier invoice [%s]: locked PO line [%s] not found for bonus quantity.',
+                        $supplierInvoice->id,
+                        $sourceLineId,
+                    ));
+                }
+
+                /** @var numeric-string $newFreeInvoiced */
+                $newFreeInvoiced = bcadd((string) ($poLine->free_quantity_invoiced ?? '0'), $qty, 4);
+
+                if (bccomp($newFreeInvoiced, (string) ($poLine->free_quantity_received ?? '0'), 4) > 0) {
+                    throw new \DomainException(sprintf(
+                        'Supplier invoice [%s] cannot be posted: PO line [%s] bonus over-clear — '
+                        .'free invoiced %s would exceed free received %s.',
+                        $supplierInvoice->id,
+                        $poLine->id,
+                        $newFreeInvoiced,
+                        $poLine->free_quantity_received,
+                    ));
+                }
+
+                $poLine->free_quantity_invoiced = $newFreeInvoiced;
+                $poLine->save();
+            }
+
             // Tax components from the invoice lines.
             /** @var numeric-string $recoverableVat */
             $recoverableVat = '0';
@@ -223,9 +253,40 @@ final class SupplierInvoicePostingService
         /** @var array<string, numeric-string> $agg */
         $agg = [];
         foreach ($supplierInvoice->lines as $line) {
+            if ((bool) ($line->is_bonus_line ?? false)) {
+                continue;
+            }
+
             if ($line->source_line_id === null) {
                 continue;
             }
+            $key = $line->source_line_id;
+            /** @var numeric-string $current */
+            $current = $agg[$key] ?? '0.0000';
+            $agg[$key] = bcadd($current, $line->quantity, 4);
+        }
+
+        return $agg;
+    }
+
+    /**
+     * Sum explicit remise-en-nature quantities per referenced PO line (scale 4).
+     *
+     * @return array<string, numeric-string>
+     */
+    private function aggregateBonusQtyPerPoLine(Document $supplierInvoice): array
+    {
+        /** @var array<string, numeric-string> $agg */
+        $agg = [];
+        foreach ($supplierInvoice->lines as $line) {
+            if (! (bool) ($line->is_bonus_line ?? false)) {
+                continue;
+            }
+
+            if ($line->source_line_id === null) {
+                continue;
+            }
+
             $key = $line->source_line_id;
             /** @var numeric-string $current */
             $current = $agg[$key] ?? '0.0000';

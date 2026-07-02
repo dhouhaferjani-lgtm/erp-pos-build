@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Enums\PriceEntryMode;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
@@ -22,10 +23,12 @@ use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
+use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
@@ -65,11 +68,61 @@ class PurchaseOrderController extends Controller
         private readonly VehicleContextBuilder $vehicleContextBuilder,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly DocumentLineTaxResolver $lineTaxResolver,
+        private readonly PurchaseBonusGate $purchaseBonusGate,
     ) {}
 
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * Normalize purchase-line pricing without changing the semantic meaning of
+     * `quantity`: it remains paid quantity. Free quantity affects inventory
+     * later, never tax or document totals.
+     *
+     * @param  array<string, mixed>  $line
+     * @return array<string, mixed>
+     */
+    private function normalizePurchaseLine(array $line): array
+    {
+        /** @var numeric-string $quantity */
+        $quantity = CurrencyScale::bcformatStrict((string) $line['quantity'], 4);
+        /** @var numeric-string $freeQuantity */
+        $freeQuantity = CurrencyScale::bcformatStrict((string) ($line['free_quantity'] ?? '0'), 4);
+        $mode = PriceEntryMode::tryFrom((string) ($line['price_entry_mode'] ?? PriceEntryMode::Unit->value))
+            ?? PriceEntryMode::Unit;
+
+        if ($mode === PriceEntryMode::Total) {
+            /** @var numeric-string $lineTotal */
+            $lineTotal = CurrencyScale::bcformatStrict((string) $line['line_total'], $this->scale());
+            /** @var numeric-string $derivedUnitPrice */
+            $derivedUnitPrice = CurrencyScale::bcformatStrict(bcdiv($lineTotal, $quantity, $this->scale() + 1), $this->scale());
+            $line['unit_price'] = $derivedUnitPrice;
+        } else {
+            /** @var numeric-string $unitPrice */
+            $unitPrice = CurrencyScale::bcformatStrict((string) $line['unit_price'], $this->scale());
+            /** @var numeric-string $lineTotal */
+            $lineTotal = DocumentLine::computeLineTotal(
+                $quantity,
+                $unitPrice,
+                isset($line['discount_percent']) ? (string) $line['discount_percent'] : null,
+                isset($line['discount_amount']) ? (string) $line['discount_amount'] : null,
+                $this->scale(),
+            );
+            $line['unit_price'] = $unitPrice;
+        }
+
+        $line['quantity'] = $quantity;
+        $line['free_quantity'] = $freeQuantity;
+        $line['line_total'] = $lineTotal;
+        $line['price_entry_mode'] = $mode->value;
+
+        if ($mode === PriceEntryMode::Total || bccomp($freeQuantity, '0', 4) > 0) {
+            $line['landed_unit_cost'] = CurrencyScale::bcformatStrict(bcdiv($lineTotal, $quantity, $this->scale() + 4), 6);
+        }
+
+        return $line;
     }
 
     /**
@@ -158,7 +211,7 @@ class PurchaseOrderController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string|null, tax_configuration_id?: string|null, discount_percent?: string, discount_amount?: string, notes?: string}> $lines */
+        /** @var array<int, array<string, mixed>> $lines */
         $lines = $validated['lines'] ?? [];
         unset($validated['lines']);
 
@@ -189,20 +242,17 @@ class PurchaseOrderController extends Controller
             /** @var Collection<array-key, Service> $services */
             $services = Service::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $serviceIds)->get()->keyBy('id');
             $lines = $this->lineTaxResolver->resolve($lines, $company, $products);
+            $lines = array_map(fn (array $line): array => $this->normalizePurchaseLine($line), $lines);
 
             // Calculate totals from lines
             $subtotal = '0.00';
             $taxAmount = '0.00';
 
             foreach ($lines as $line) {
-                /** @var numeric-string $quantity */
-                $quantity = (string) $line['quantity'];
-                /** @var numeric-string $unitPrice */
-                $unitPrice = (string) $line['unit_price'];
                 /** @var numeric-string $taxRate */
                 $taxRate = (string) ($line['tax_rate'] ?? '0');
 
-                $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                $lineSubtotal = (string) $line['line_total'];
                 $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
                 $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
@@ -240,7 +290,8 @@ class PurchaseOrderController extends Controller
                 $quantity = (string) $lineData['quantity'];
                 /** @var numeric-string $unitPrice */
                 $unitPrice = (string) $lineData['unit_price'];
-                $lineTotal = bcmul($quantity, $unitPrice, $this->scale());
+                /** @var numeric-string $lineTotal */
+                $lineTotal = (string) $lineData['line_total'];
 
                 /** @var Service|null $lineService */
                 $lineService = isset($lineData['service_id']) ? $services->get($lineData['service_id']) : null;
@@ -259,11 +310,15 @@ class PurchaseOrderController extends Controller
                     'description' => $lineData['description'],
                     'designation_default_snapshot' => $defaultName !== '' ? mb_substr($defaultName, 0, 500) : null,
                     'quantity' => $quantity,
+                    'free_quantity' => (string) ($lineData['free_quantity'] ?? '0'),
                     'unit_price' => $unitPrice,
                     'discount_percent' => isset($lineData['discount_percent']) ? (string) $lineData['discount_percent'] : null,
                     'discount_amount' => isset($lineData['discount_amount']) ? (string) $lineData['discount_amount'] : null,
                     'tax_rate' => isset($lineData['tax_rate']) ? (string) $lineData['tax_rate'] : null,
                     'line_total' => $lineTotal,
+                    'landed_unit_cost' => $lineData['landed_unit_cost'] ?? null,
+                    'price_entry_mode' => (string) ($lineData['price_entry_mode'] ?? PriceEntryMode::Unit->value),
+                    'is_bonus_line' => (bool) ($lineData['is_bonus_line'] ?? false),
                     'notes' => $lineData['notes'] ?? null,
                 ]);
             }
@@ -311,7 +366,7 @@ class PurchaseOrderController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
-        /** @var array<int, array{description: string, quantity: string, unit_price: string, product_id?: string, service_id?: string, tax_rate?: string|null, tax_configuration_id?: string|null, discount_percent?: string, discount_amount?: string, notes?: string}>|null $lines */
+        /** @var array<int, array<string, mixed>>|null $lines */
         $lines = $validated['lines'] ?? null;
         unset($validated['lines']);
 
@@ -346,20 +401,17 @@ class PurchaseOrderController extends Controller
                 /** @var Collection<array-key, Service> $updateServices */
                 $updateServices = Service::query()->where('tenant_id', $documentModel->tenant_id)->where('company_id', $documentModel->company_id)->whereIn('id', $updateServiceIds)->get()->keyBy('id');
                 $lines = $this->lineTaxResolver->resolve($lines, $company, $updateProducts);
+                $lines = array_map(fn (array $line): array => $this->normalizePurchaseLine($line), $lines);
 
                 // Calculate totals from new lines
                 $subtotal = '0.00';
                 $taxAmount = '0.00';
 
                 foreach ($lines as $index => $lineData) {
-                    /** @var numeric-string $quantity */
-                    $quantity = (string) $lineData['quantity'];
-                    /** @var numeric-string $unitPrice */
-                    $unitPrice = (string) $lineData['unit_price'];
                     /** @var numeric-string $taxRate */
                     $taxRate = (string) ($lineData['tax_rate'] ?? '0');
 
-                    $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                    $lineSubtotal = (string) $lineData['line_total'];
                     $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
                     $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
@@ -381,12 +433,16 @@ class PurchaseOrderController extends Controller
                         'line_number' => $index + 1,
                         'description' => $lineData['description'],
                         'designation_default_snapshot' => $updateDefaultName !== '' ? mb_substr($updateDefaultName, 0, 500) : null,
-                        'quantity' => $quantity,
-                        'unit_price' => $unitPrice,
+                        'quantity' => (string) $lineData['quantity'],
+                        'free_quantity' => (string) ($lineData['free_quantity'] ?? '0'),
+                        'unit_price' => (string) $lineData['unit_price'],
                         'discount_percent' => isset($lineData['discount_percent']) ? (string) $lineData['discount_percent'] : null,
                         'discount_amount' => isset($lineData['discount_amount']) ? (string) $lineData['discount_amount'] : null,
                         'tax_rate' => $taxRate,
                         'line_total' => $lineSubtotal,
+                        'landed_unit_cost' => $lineData['landed_unit_cost'] ?? null,
+                        'price_entry_mode' => (string) ($lineData['price_entry_mode'] ?? PriceEntryMode::Unit->value),
+                        'is_bonus_line' => (bool) ($lineData['is_bonus_line'] ?? false),
                         'notes' => $lineData['notes'] ?? null,
                     ]);
                 }
@@ -551,12 +607,20 @@ class PurchaseOrderController extends Controller
             /** @var array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>|null $batches */
             $batches = $request->input('batches');
 
-            if (is_array($quantities) && count($quantities) > 0) {
+            /** @var array<string, string>|null $freeQuantities */
+            $freeQuantities = $request->input('free_quantities');
+
+            if (is_array($freeQuantities) && count($freeQuantities) > 0 && ! $this->purchaseBonusGate->enabledFor($this->companyContext->requireCompany())) {
+                return $this->validationErrorResponse('GOODS_RECEIPT_FAILED', 'free_quantities is not enabled for this company.');
+            }
+
+            if ((is_array($quantities) && count($quantities) > 0) || (is_array($freeQuantities) && count($freeQuantities) > 0)) {
                 // Partial receipt with specified quantities (and optional batch data)
                 $updatedDocument = $this->goodsReceiptService->receiveGoods(
                     $documentModel,
-                    $quantities,
+                    is_array($quantities) ? $quantities : [],
                     is_array($batches) ? $batches : [],
+                    is_array($freeQuantities) ? $freeQuantities : [],
                 );
             } else {
                 // Receive all remaining quantities

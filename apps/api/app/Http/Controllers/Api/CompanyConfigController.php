@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Modules\SmartPrompts\Domain\Enums\SmartPromptsVariant;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Services\CompanyConfigService;
@@ -20,7 +21,8 @@ use Illuminate\Http\Request;
 class CompanyConfigController
 {
     public function __construct(
-        private readonly CompanyConfigService $configService
+        private readonly CompanyConfigService $configService,
+        private readonly PurchaseBonusGate $purchaseBonusGate,
     ) {}
 
     /**
@@ -75,6 +77,7 @@ class CompanyConfigController
                 'enabled_extras' => $config->enabledExtras,
                 'compatible_extras' => $config->compatibleExtras,
                 'all_enabled_modules' => $config->allEnabledModules,
+                'purchase_bonus_enabled' => $company !== null && $this->purchaseBonusGate->enabledFor($company),
                 'currency' => $currency,
                 'locale' => $locale,
                 'country_code' => $countryCode,

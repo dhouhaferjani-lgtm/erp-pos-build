@@ -30,6 +30,8 @@ export const BACKEND_MODULES = [
   'Tables',
   'CompositeItems',
   'Parapharmacy',
+  'Merchandising',
+  'PurchaseBonus',
   // Optional extras (tenants.enabled_extras)
   'Appointments',
   'Fleet',

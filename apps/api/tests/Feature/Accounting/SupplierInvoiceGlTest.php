@@ -300,6 +300,76 @@ final class SupplierInvoiceGlTest extends TestCase
     // 1. Matched invoice, all-recoverable VAT, with timbre — clean 4-leg entry.
     // =========================================================================
 
+    public function test_explicit_bonus_supplier_invoice_line_increments_free_counter_and_clears_408(): void
+    {
+        $poLine = $this->confirmedPoWithReceipt('20.0000', '5.000');
+        $poLine->free_quantity = '1.0000';
+        $poLine->free_quantity_received = '1.0000';
+        $poLine->free_quantity_invoiced = '0.0000';
+        $poLine->save();
+
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SI-BONUS-'.Str::upper(Str::random(6)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'line_tax_amount' => '19.000',
+            'stamp_duty_amount' => '0.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Paid invoice line',
+            'quantity' => '20.0000',
+            'unit_price' => '5.000',
+            'line_total' => '100.000',
+            'tax_amount' => '19.000',
+            'tax_recoverable' => true,
+            'recoverable_tax_amount' => '19.000',
+            'non_recoverable_tax_amount' => '0.000',
+            'source_line_id' => $poLine->id,
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 2,
+            'description' => 'Remise en nature',
+            'quantity' => '1.0000',
+            'unit_price' => '5.000',
+            'discount_percent' => '100.00',
+            'line_total' => '0.000',
+            'tax_amount' => '0.000',
+            'tax_recoverable' => true,
+            'recoverable_tax_amount' => '0.000',
+            'non_recoverable_tax_amount' => '0.000',
+            'source_line_id' => $poLine->id,
+            'is_bonus_line' => true,
+        ]);
+
+        $invoice->load('lines');
+
+        $this->service()->post($invoice);
+
+        $freshPoLine = $this->freshLine($poLine);
+        $freshInvoice = $this->freshDoc($invoice);
+
+        $this->assertSame('20.0000', (string) $freshPoLine->quantity_invoiced);
+        $this->assertSame('1.0000', (string) $freshPoLine->free_quantity_invoiced);
+        $this->assertSame(DocumentStatus::Posted, $freshInvoice->status);
+        $this->assertSame(SupplierInvoiceMatchStatus::Matched, $freshInvoice->match_status);
+        $this->assertSame('0.000', $this->net408());
+    }
+
     public function test_matched_invoice_clears_408_with_vat_and_timbre_no_inventory_leg(): void
     {
         $poLine = $this->confirmedPoWithReceipt('5.0000', '10.000');

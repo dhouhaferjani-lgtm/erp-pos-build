@@ -25,9 +25,14 @@ use Illuminate\Support\Carbon;
  * @property int $line_number
  * @property string $description
  * @property numeric-string $quantity
+ * @property numeric-string $free_quantity
  * @property numeric-string $quantity_delivered
  * @property numeric-string $quantity_received
+ * @property numeric-string $free_quantity_received
  * @property numeric-string $quantity_invoiced
+ * @property numeric-string $free_quantity_invoiced
+ * @property string $price_entry_mode
+ * @property bool $is_bonus_line
  * @property numeric-string $unit_price
  * @property numeric-string|null $discount_percent
  * @property numeric-string|null $discount_amount
@@ -80,9 +85,14 @@ class DocumentLine extends Model
         'line_number',
         'description',
         'quantity',
+        'free_quantity',
         'quantity_delivered',
         'quantity_received',
+        'free_quantity_received',
         'quantity_invoiced',
+        'free_quantity_invoiced',
+        'price_entry_mode',
+        'is_bonus_line',
         'unit_price',
         'discount_percent',
         'discount_amount',
@@ -119,9 +129,13 @@ class DocumentLine extends Model
         return [
             'line_number' => 'integer',
             'quantity' => 'decimal:4',
+            'free_quantity' => 'decimal:4',
             'quantity_delivered' => 'decimal:4',
             'quantity_received' => 'decimal:4',
+            'free_quantity_received' => 'decimal:4',
             'quantity_invoiced' => 'decimal:4',
+            'free_quantity_invoiced' => 'decimal:4',
+            'is_bonus_line' => 'boolean',
             'unit_price' => 'decimal:3',
             'discount_percent' => 'decimal:2',
             'discount_amount' => 'decimal:3',

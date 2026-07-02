@@ -36,6 +36,7 @@ enum ModuleName: string
     case Loyalty = 'Loyalty';
     case Ecommerce = 'Ecommerce';
     case Merchandising = 'Merchandising';
+    case PurchaseBonus = 'PurchaseBonus';
 
     /**
      * Get all module names as backing strings.

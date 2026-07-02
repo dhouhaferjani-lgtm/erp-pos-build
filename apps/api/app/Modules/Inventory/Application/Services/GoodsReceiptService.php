@@ -33,13 +33,14 @@ final class GoodsReceiptService
      * Receive goods for a purchase order.
      *
      * @param  Document  $purchaseOrder  The confirmed purchase order
-     * @param  array<string, string>  $receivedQuantities  Map of line_id => quantity to receive
+     * @param  array<string, string>  $receivedQuantities  Map of line_id => paid quantity to receive
      * @param  array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>  $batchData  Optional batch data per line_id
+     * @param  array<string, string>  $freeQuantities  Map of line_id => free quantity to receive
      * @return Document The updated purchase order
      *
      * @throws \DomainException If PO is not in valid state for receiving
      */
-    public function receiveGoods(Document $purchaseOrder, array $receivedQuantities, array $batchData = []): Document
+    public function receiveGoods(Document $purchaseOrder, array $receivedQuantities, array $batchData = [], array $freeQuantities = []): Document
     {
         if ($purchaseOrder->type !== DocumentType::PurchaseOrder) {
             throw new \DomainException('Only purchase orders can receive goods');
@@ -49,7 +50,7 @@ final class GoodsReceiptService
             throw new \DomainException('Purchase order must be confirmed before receiving goods');
         }
 
-        return DB::transaction(function () use ($purchaseOrder, $receivedQuantities, $batchData): Document {
+        return DB::transaction(function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities): Document {
             // Get the default location for this company
             $location = $purchaseOrder->location ?? $this->getDefaultLocation($purchaseOrder);
 
@@ -80,8 +81,8 @@ final class GoodsReceiptService
                 $purchaseOrder->tenant_id,
                 $purchaseOrder->company_id,
                 $productIds,
-                function () use ($purchaseOrder, $receivedQuantities, $batchData, $location): Document {
-                    return $this->processReceiptLines($purchaseOrder, $receivedQuantities, $batchData, $location);
+                function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $location): Document {
+                    return $this->processReceiptLines($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $location);
                 }
             );
         });
@@ -95,6 +96,7 @@ final class GoodsReceiptService
      *
      * @param  array<string, string>  $receivedQuantities
      * @param  array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>  $batchData
+     * @param  array<string, string>  $freeQuantities
      *
      * @throws \DomainException
      */
@@ -102,6 +104,7 @@ final class GoodsReceiptService
         Document $purchaseOrder,
         array $receivedQuantities,
         array $batchData,
+        array $freeQuantities,
         Location $location
     ): Document {
         $hasReceivedItems = false;
@@ -109,20 +112,33 @@ final class GoodsReceiptService
         foreach ($purchaseOrder->lines as $line) {
             /** @var numeric-string $qtyToReceive */
             $qtyToReceive = $receivedQuantities[$line->id] ?? '0.00';
+            /** @var numeric-string $freeQtyToReceive */
+            $freeQtyToReceive = $freeQuantities[$line->id] ?? '0.00';
 
-            if (bccomp($qtyToReceive, '0.00', 4) <= 0) {
+            if (bccomp($qtyToReceive, '0.00', 4) <= 0 && bccomp($freeQtyToReceive, '0.00', 4) <= 0) {
                 continue;
             }
 
-            // Validate not over-receiving
+            // Validate not over-receiving paid units.
             /** @var numeric-string $alreadyReceived */
             $alreadyReceived = (string) ($line->quantity_received ?? '0.00');
             $remaining = bcsub((string) $line->quantity, $alreadyReceived, 4);
 
-            if (bccomp($qtyToReceive, $remaining, 4) > 0) {
+            if (bccomp($qtyToReceive, '0.00', 4) > 0 && bccomp($qtyToReceive, $remaining, 4) > 0) {
                 throw new \DomainException(
                     "Cannot receive more than ordered for line {$line->id}. ".
                     "Ordered: {$line->quantity}, Already received: {$alreadyReceived}, Requested: {$qtyToReceive}"
+                );
+            }
+
+            /** @var numeric-string $alreadyFreeReceived */
+            $alreadyFreeReceived = (string) ($line->free_quantity_received ?? '0.00');
+            $freeRemaining = bcsub((string) ($line->free_quantity ?? '0.00'), $alreadyFreeReceived, 4);
+
+            if (bccomp($freeQtyToReceive, '0.00', 4) > 0 && bccomp($freeQtyToReceive, $freeRemaining, 4) > 0) {
+                throw new \DomainException(
+                    "Cannot receive more free quantity than ordered for line {$line->id}. ".
+                    "Free ordered: {$line->free_quantity}, Already received: {$alreadyFreeReceived}, Requested: {$freeQtyToReceive}"
                 );
             }
 
@@ -161,36 +177,7 @@ final class GoodsReceiptService
             // product-grain (§6.7); the variant only scopes the physical row.
             $variantId = $line->variant_id ?? null;
 
-            // Record purchase with WAC update and audit trail
-            // $qtyToReceive is annotated @var numeric-string (line 110); $landedUnitCost
-            // is already a string (P0-1 cast removed above) — both pass directly.
-            $movement = $this->wacService->recordPurchase(
-                product: $product,
-                location: $location,
-                quantity: $qtyToReceive,
-                landedUnitCost: $landedUnitCost,
-                reference: $purchaseOrder->document_number,
-                referenceType: 'Document',
-                referenceId: $purchaseOrder->id,
-                variantId: $variantId,
-            );
-
-            // Emit GoodsReceived so Accounting can post Dr Inventory / Cr 408 (GR-IR).
-            // The event is immutable and carries only scalars — the listener is decoupled
-            // from Inventory internals. movementId is the idempotency anchor.
-            event(new GoodsReceived(
-                tenantId: $purchaseOrder->tenant_id,
-                companyId: $purchaseOrder->company_id,
-                productId: (string) $product->id,
-                locationId: (string) $location->id,
-                poLineId: (string) $line->id,
-                movementId: (string) $movement->id,
-                receivedQty: $qtyToReceive,
-                unitCost: $unitCostStr,
-                currency: (string) ($purchaseOrder->currency ?? 'TND'),
-            ));
-
-            // Receive batch stock if batch data is provided for this line
+            $batch = null;
             if (isset($batchData[$line->id]) && ($product->requires_batch_tracking ?? false)) {
                 $lineBatch = $batchData[$line->id];
                 $batch = $this->batchStockService->findOrCreateBatch(
@@ -201,27 +188,94 @@ final class GoodsReceiptService
                     expiryDate: $lineBatch['expiry_date'],
                     manufacturingDate: $lineBatch['manufacturing_date'] ?? null,
                 );
+            }
 
-                $this->batchStockService->receiveBatchStock(
-                    tenantId: $purchaseOrder->tenant_id,
-                    batchId: (int) $batch->id,
-                    locationId: (string) $location->id,
-                    quantity: $qtyToReceive,
-                    movementId: $movement->id,
+            if (bccomp($freeQtyToReceive, '0.00', 4) > 0) {
+                $freeMovement = $this->wacService->recordPurchase(
+                    product: $product,
+                    location: $location,
+                    quantity: $freeQtyToReceive,
+                    landedUnitCost: '0',
+                    reference: $purchaseOrder->document_number,
+                    referenceType: 'Document',
+                    referenceId: $purchaseOrder->id,
+                    variantId: $variantId,
                 );
 
+                event(new GoodsReceived(
+                    tenantId: $purchaseOrder->tenant_id,
+                    companyId: $purchaseOrder->company_id,
+                    productId: (string) $product->id,
+                    locationId: (string) $location->id,
+                    poLineId: (string) $line->id,
+                    movementId: (string) $freeMovement->id,
+                    receivedQty: $freeQtyToReceive,
+                    unitCost: '0',
+                    currency: (string) ($purchaseOrder->currency ?? 'TND'),
+                ));
+
+                if ($batch !== null) {
+                    $this->batchStockService->receiveBatchStock(
+                        tenantId: $purchaseOrder->tenant_id,
+                        batchId: (int) $batch->id,
+                        locationId: (string) $location->id,
+                        quantity: $freeQtyToReceive,
+                        movementId: $freeMovement->id,
+                    );
+                }
+
+                $line->free_quantity_received = bcadd($alreadyFreeReceived, $freeQtyToReceive, 4);
+            }
+
+            if (bccomp($qtyToReceive, '0.00', 4) > 0) {
+                // Record purchase with WAC update and audit trail.
+                $movement = $this->wacService->recordPurchase(
+                    product: $product,
+                    location: $location,
+                    quantity: $qtyToReceive,
+                    landedUnitCost: $landedUnitCost,
+                    reference: $purchaseOrder->document_number,
+                    referenceType: 'Document',
+                    referenceId: $purchaseOrder->id,
+                    variantId: $variantId,
+                );
+
+                event(new GoodsReceived(
+                    tenantId: $purchaseOrder->tenant_id,
+                    companyId: $purchaseOrder->company_id,
+                    productId: (string) $product->id,
+                    locationId: (string) $location->id,
+                    poLineId: (string) $line->id,
+                    movementId: (string) $movement->id,
+                    receivedQty: $qtyToReceive,
+                    unitCost: $unitCostStr,
+                    currency: (string) ($purchaseOrder->currency ?? 'TND'),
+                ));
+
+                if ($batch !== null) {
+                    $this->batchStockService->receiveBatchStock(
+                        tenantId: $purchaseOrder->tenant_id,
+                        batchId: (int) $batch->id,
+                        locationId: (string) $location->id,
+                        quantity: $qtyToReceive,
+                        movementId: $movement->id,
+                    );
+                }
+
+                // Record the receipt-time 408 accrual basis (immutable after first paid receipt).
+                // SupplierInvoicePostingService::post() asserts against this to detect
+                // post-receipt landed-cost reallocations that would leave a 408 residue.
+                if ($line->accrual_unit_cost === null) {
+                    $line->accrual_unit_cost = $unitCostStr;
+                }
+
+                $line->quantity_received = bcadd($alreadyReceived, $qtyToReceive, 4);
+            }
+
+            if ($batch !== null) {
                 $line->batch_id = $batch->id;
             }
 
-            // Record the receipt-time 408 accrual basis (immutable after first receipt).
-            // SupplierInvoicePostingService::post() asserts against this to detect
-            // post-receipt landed-cost reallocations that would leave a 408 residue.
-            if ($line->accrual_unit_cost === null) {
-                $line->accrual_unit_cost = $unitCostStr;
-            }
-
-            // Update line's received quantity
-            $line->quantity_received = bcadd($alreadyReceived, $qtyToReceive, 4);
             $line->save();
 
             $hasReceivedItems = true;
@@ -269,7 +323,18 @@ final class GoodsReceiptService
             }
         }
 
-        return $this->receiveGoods($purchaseOrder, $receivedQuantities);
+        $freeQuantities = [];
+
+        foreach ($purchaseOrder->lines as $line) {
+            $alreadyFreeReceived = (string) ($line->free_quantity_received ?? '0.00');
+            $freeRemaining = bcsub((string) ($line->free_quantity ?? '0.00'), $alreadyFreeReceived, 4);
+
+            if (bccomp($freeRemaining, '0.00', 4) > 0) {
+                $freeQuantities[$line->id] = $freeRemaining;
+            }
+        }
+
+        return $this->receiveGoods($purchaseOrder, $receivedQuantities, [], $freeQuantities);
     }
 
     /**
@@ -286,7 +351,10 @@ final class GoodsReceiptService
         foreach ($purchaseOrder->lines as $line) {
             $qty = (string) $line->quantity;
             $received = (string) ($line->quantity_received ?? '0.00');
+            $freeQty = (string) ($line->free_quantity ?? '0.00');
+            $freeReceived = (string) ($line->free_quantity_received ?? '0.00');
             $remaining = bcsub($qty, $received, 4);
+            $freeRemaining = bcsub($freeQty, $freeReceived, 4);
 
             $totalOrdered = bcadd($totalOrdered, $qty, 4);
             $totalReceived = bcadd($totalReceived, $received, 4);
@@ -297,7 +365,10 @@ final class GoodsReceiptService
                 'quantity_ordered' => $qty,
                 'quantity_received' => $received,
                 'quantity_remaining' => $remaining,
-                'is_complete' => bccomp($remaining, '0.00', 4) <= 0,
+                'free_quantity_ordered' => $freeQty,
+                'free_quantity_received' => $freeReceived,
+                'free_quantity_remaining' => $freeRemaining,
+                'is_complete' => bccomp($remaining, '0.00', 4) <= 0 && bccomp($freeRemaining, '0.00', 4) <= 0,
             ];
         }
 
@@ -328,8 +399,10 @@ final class GoodsReceiptService
         foreach ($purchaseOrder->lines as $line) {
             $qty = (string) $line->quantity;
             $received = (string) ($line->quantity_received ?? '0.00');
+            $freeQty = (string) ($line->free_quantity ?? '0.00');
+            $freeReceived = (string) ($line->free_quantity_received ?? '0.00');
 
-            if (bccomp($received, $qty, 4) < 0) {
+            if (bccomp($received, $qty, 4) < 0 || bccomp($freeReceived, $freeQty, 4) < 0) {
                 return false;
             }
         }
@@ -344,8 +417,9 @@ final class GoodsReceiptService
     {
         foreach ($purchaseOrder->lines as $line) {
             $received = (string) ($line->quantity_received ?? '0.00');
+            $freeReceived = (string) ($line->free_quantity_received ?? '0.00');
 
-            if (bccomp($received, '0.00', 4) > 0) {
+            if (bccomp($received, '0.00', 4) > 0 || bccomp($freeReceived, '0.00', 4) > 0) {
                 return true;
             }
         }
