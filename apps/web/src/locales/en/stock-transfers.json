@@ -49,17 +49,28 @@
       "variant": "Variant",
       "selectVariant": "Select a variant"
     },
+    "entry": {
+      "search": "Search or scan a product",
+      "browseCatalog": "Browse catalog",
+      "loading": "Loading products",
+      "empty": "No products found",
+      "notFound": "No product found for {{code}}.",
+      "chooseVariantFor": "Choose variant for {{product}}"
+    },
     "batch": {
       "column": "Lots",
       "action": "Lots and expiry",
       "allocated": "{{count}} lot",
       "allocated_other": "{{count}} lots",
+      "needsAllocation": "Needs allocation",
       "title": "Lot and expiry allocation",
       "fefoHint": "FEFO defaults to earliest expiry first.",
       "quantityFor": "Quantity from {{batch}}",
       "statusLabel": "Status",
       "availableLabel": "Available",
-      "required": "Select lots for every batch-tracked product."
+      "required": "Select lots for every batch-tracked product.",
+      "cannotAllocate": "FEFO could not cover the requested quantity. Allocate lots manually.",
+      "cannotAllocateSubmit": "FEFO could not cover every batch-tracked line. Allocate lots manually."
     },
     "distribution": {
       "pro_rata_value": "Pro-rata by value",
@@ -72,7 +83,8 @@
       "linesRequired": "Add at least one line.",
       "differentLocations": "Source and destination must differ.",
       "quantityPositive": "Quantity must be greater than zero.",
-      "variantRequired": "Select a variant for this product."
+      "variantRequired": "Select a variant for this product.",
+      "sourceRequiredForEntry": "Select a source location before adding transfer lines."
     },
     "success": "Transfer created and stock moved into in-transit.",
     "error": "Could not create the transfer.",

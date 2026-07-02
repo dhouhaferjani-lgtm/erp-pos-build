@@ -49,17 +49,28 @@
       "variant": "Variante",
       "selectVariant": "Sélectionner une variante"
     },
+    "entry": {
+      "search": "Rechercher ou scanner un produit",
+      "browseCatalog": "Parcourir le catalogue",
+      "loading": "Chargement des produits",
+      "empty": "Aucun produit trouvé",
+      "notFound": "Aucun produit trouvé pour {{code}}.",
+      "chooseVariantFor": "Choisir une variante pour {{product}}"
+    },
     "batch": {
       "column": "Lots",
       "action": "Lots et péremption",
       "allocated": "{{count}} lot",
       "allocated_other": "{{count}} lots",
+      "needsAllocation": "Allocation requise",
       "title": "Affectation lots et péremption",
       "fefoHint": "FEFO propose d'abord la date de péremption la plus proche.",
       "quantityFor": "Quantité depuis {{batch}}",
       "statusLabel": "Statut",
       "availableLabel": "Disponible",
-      "required": "Sélectionnez les lots pour chaque produit suivi par lot."
+      "required": "Sélectionnez les lots pour chaque produit suivi par lot.",
+      "cannotAllocate": "FEFO ne couvre pas la quantité demandée. Allouez les lots manuellement.",
+      "cannotAllocateSubmit": "FEFO ne couvre pas toutes les lignes suivies par lot. Allouez les lots manuellement."
     },
     "distribution": {
       "pro_rata_value": "Pro-rata sur la valeur",
@@ -72,7 +83,8 @@
       "linesRequired": "Ajoutez au moins une ligne.",
       "differentLocations": "La source et la destination doivent être différentes.",
       "quantityPositive": "La quantité doit être supérieure à zéro.",
-      "variantRequired": "Sélectionnez une variante pour ce produit."
+      "variantRequired": "Sélectionnez une variante pour ce produit.",
+      "sourceRequiredForEntry": "Sélectionnez une succursale source avant d'ajouter des lignes de transfert."
     },
     "success": "Transfert créé et stock placé en transit.",
     "error": "Impossible de créer le transfert.",
