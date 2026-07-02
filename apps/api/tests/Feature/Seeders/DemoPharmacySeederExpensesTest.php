@@ -38,8 +38,9 @@ final class DemoPharmacySeederExpensesTest extends TestCase
 
     public function test_seed_tunisia_expenses_posts_paid_expenses_and_decrements_the_till_balance(): void
     {
-        [$tenant, $company, $repository] = $this->seedExpenseFixture();
+        [$tenant, $company, $repository, $bankRepository] = $this->seedExpenseFixture();
         $openingBalance = (string) $repository->balance;
+        $bankOpeningBalance = (string) $bankRepository->balance;
 
         $this->invokeSeedTunisiaExpenses($company);
 
@@ -54,6 +55,7 @@ final class DemoPharmacySeederExpensesTest extends TestCase
         $this->assertSame(10, $expenses->where('status', DocumentStatus::Posted)->count());
 
         $totalSeededExpenses = '0.000';
+        $totalBankExpenses = '0.000';
         foreach ($expenses as $expense) {
             $metadata = $expense->expenseMetadata;
             if ($metadata === null) {
@@ -61,8 +63,12 @@ final class DemoPharmacySeederExpensesTest extends TestCase
             }
 
             $this->assertTrue($metadata->is_paid);
-            $this->assertSame($repository->id, $metadata->payment_repository_id);
-            $totalSeededExpenses = bcadd($totalSeededExpenses, $expense->total ?? '0.000', self::MONEY_SCALE);
+            $this->assertContains($metadata->payment_repository_id, [$repository->id, $bankRepository->id]);
+            if ($metadata->payment_repository_id === $repository->id) {
+                $totalSeededExpenses = bcadd($totalSeededExpenses, $expense->total ?? '0.000', self::MONEY_SCALE);
+            } else {
+                $totalBankExpenses = bcadd($totalBankExpenses, $expense->total ?? '0.000', self::MONEY_SCALE);
+            }
 
             $entry = JournalEntry::query()
                 ->where('tenant_id', $tenant->id)
@@ -85,11 +91,15 @@ final class DemoPharmacySeederExpensesTest extends TestCase
         }
 
         $repository->refresh();
+        $bankRepository->refresh();
         $this->assertSame(bcsub($openingBalance, $totalSeededExpenses, self::MONEY_SCALE), (string) $repository->balance);
+        $this->assertSame(bcsub($bankOpeningBalance, $totalBankExpenses, self::MONEY_SCALE), (string) $bankRepository->balance);
+        $this->assertGreaterThanOrEqual(0, bccomp((string) $repository->balance, '0.000', self::MONEY_SCALE), 'Seeded expenses must not overdraw the till');
+        $this->assertGreaterThanOrEqual(0, bccomp((string) $bankRepository->balance, '0.000', self::MONEY_SCALE), 'Seeded expenses must not overdraw the bank account');
     }
 
     /**
-     * @return array{Tenant, Company, PaymentRepository}
+     * @return array{Tenant, Company, PaymentRepository, PaymentRepository}
      */
     private function seedExpenseFixture(): array
     {
@@ -106,7 +116,7 @@ final class DemoPharmacySeederExpensesTest extends TestCase
         ]);
 
         $cashAccount = $this->createAccount($tenant, $company, '54', AccountType::Asset, SystemAccountPurpose::Cash);
-        $this->createAccount($tenant, $company, '532', AccountType::Asset, SystemAccountPurpose::Bank);
+        $bankAccount = $this->createAccount($tenant, $company, '532', AccountType::Asset, SystemAccountPurpose::Bank);
         $this->createAccount($tenant, $company, '65', AccountType::Expense, SystemAccountPurpose::GeneralExpense);
         foreach (['613', '615', '616', '624', '626'] as $code) {
             $this->createAccount($tenant, $company, $code, AccountType::Expense, null);
@@ -122,6 +132,8 @@ final class DemoPharmacySeederExpensesTest extends TestCase
             'name' => 'Cash',
         ]);
 
+        // Mirror the REAL PaymentRepositorySeeder opening balances so this test
+        // catches a till overdraft (CASH-01 opens at 500.000, not a cushy 5000).
         $repository = PaymentRepository::factory()->create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
@@ -130,12 +142,23 @@ final class DemoPharmacySeederExpensesTest extends TestCase
             'type' => RepositoryType::CashRegister,
             'account_id' => $cashAccount->id,
             'gl_account_id' => $cashAccount->id,
-            'balance' => '5000.000',
+            'balance' => '500.000',
+        ]);
+
+        $bankRepository = PaymentRepository::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'BANK-01',
+            'name' => 'Main Bank Account',
+            'type' => RepositoryType::BankAccount,
+            'account_id' => $bankAccount->id,
+            'gl_account_id' => $bankAccount->id,
+            'balance' => '25000.000',
         ]);
 
         $this->app->make(CompanyContext::class)->setCompanyId($company->id);
 
-        return [$tenant, $company, $repository];
+        return [$tenant, $company, $repository, $bankRepository];
     }
 
     private function createAccount(

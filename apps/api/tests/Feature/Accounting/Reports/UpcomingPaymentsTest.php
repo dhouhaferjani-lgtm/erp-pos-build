@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Accounting\Reports;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Expense\Application\Services\ExpenseService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
@@ -62,6 +64,7 @@ final class UpcomingPaymentsTest extends TestCase
         Permission::findOrCreate('reports.view', 'sanctum');
         $this->user->givePermissionTo('reports.view');
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
         $this->customer = Partner::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -93,7 +96,29 @@ final class UpcomingPaymentsTest extends TestCase
         $this->createDocument('INV-BEYOND', DocumentType::Invoice, $this->customer, '999.000', '2026-08-20');
 
         $this->createDocument('SUP-DUE-7', DocumentType::SupplierInvoice, $this->supplier, '70.000', '2026-07-09');
-        $this->createDocument('EXP-DUE-3', DocumentType::Expense, null, '30.000', '2026-07-05');
+
+        // Real expense path: ExpenseService never sets balance_due, so the report
+        // must source unpaid expenses from expense_metadata.is_paid instead.
+        $expenseService = app(ExpenseService::class);
+        $unpaidExpense = $expenseService->create([
+            'company_id' => $this->company->id,
+            'total' => '30.000',
+            'payment_date' => '2026-07-05',
+            'is_paid' => false,
+            'vendor_name' => 'STEG',
+        ], $this->user);
+        $unpaidExpense = $expenseService->post($unpaidExpense, $this->user);
+        $unpaidExpenseNumber = $unpaidExpense->document_number;
+        self::assertNull($unpaidExpense->balance_due, 'Precondition: real expenses never populate balance_due');
+
+        $paidExpense = $expenseService->create([
+            'company_id' => $this->company->id,
+            'total' => '45.000',
+            'payment_date' => '2026-07-06',
+            'is_paid' => true,
+            'vendor_name' => 'Tunisie Telecom',
+        ], $this->user);
+        $paidExpense = $expenseService->post($paidExpense, $this->user);
 
         $otherPartner = Partner::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -129,8 +154,12 @@ final class UpcomingPaymentsTest extends TestCase
         $response->assertJsonPath('data.in.0.overdue', true);
         $response->assertJsonPath('data.in.2.document_number', 'INV-DUE-10');
         $response->assertJsonPath('data.in.2.days_until_due', 10);
-        $response->assertJsonPath('data.out.0.document_number', 'EXP-DUE-3');
+        $response->assertJsonPath('data.out.0.document_number', $unpaidExpenseNumber);
+        $response->assertJsonPath('data.out.0.partner_name', 'STEG');
+        $response->assertJsonPath('data.out.0.balance_due', '30.000');
         $response->assertJsonPath('data.out.1.document_number', 'SUP-DUE-7');
+        $response->assertJsonMissingPath('data.out.2');
+        $response->assertJsonMissing(['document_number' => $paidExpense->document_number]);
         $response->assertJsonMissingPath('data.in.3');
         $response->assertJsonMissing(['document_number' => 'INV-PAID']);
         $response->assertJsonMissing(['document_number' => 'INV-BEYOND']);

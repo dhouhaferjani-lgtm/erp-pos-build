@@ -49,6 +49,7 @@ use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -1130,24 +1131,42 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             return;
         }
 
+        // Large expenses are paid from the bank: CASH-01 opens at 500.000 and
+        // RepositoryOutflowService has no insufficient-funds guard, so routing
+        // everything through the till would leave it negative on the dashboard.
+        $bankRepository = PaymentRepository::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'BANK-01')
+            ->where('is_active', true)
+            ->first()
+            ?? PaymentRepository::query()
+                ->where('company_id', $company->id)
+                ->where('type', RepositoryType::BankAccount)
+                ->where('is_active', true)
+                ->orderBy('code')
+                ->first()
+            ?? $repository;
+
         /** @var ExpenseService $expenseService */
         $expenseService = $this->container->make(ExpenseService::class);
 
+        // Last element: paying repository — 'bank' for large expenses, 'cash'
+        // for small ones (cash total 273.150 stays within CASH-01's 500.000).
         $expenseSpecs = [
-            ['Loyer', '1250.000', 29, 'Loyer local Tunis Lac', 'Gestion Immobilière Carthage'],
-            ['Entretien & Réparations', '185.500', 26, 'Réparation climatisation', 'Service Froid Tunis'],
-            ['Assurances', '320.000', 23, 'Assurance multirisque', 'Assurances Maghrebia'],
-            ['Transport', '94.250', 20, 'Livraison inter-boutiques', 'Transport Express Sahel'],
-            ['Frais postaux & Télécom', '148.750', 17, 'Facture fibre et mobile', 'Tunisie Telecom'],
-            ['Fournitures & Divers', '76.300', 14, 'Fournitures caisse', 'Librairie Centrale'],
-            ['Entretien & Réparations', '210.000', 11, 'Maintenance enseigne', 'Néon Services'],
-            ['Transport', '132.600', 8, 'Courses urgentes fournisseurs', 'Coursier Pro'],
-            ['Frais postaux & Télécom', '58.900', 5, 'Affranchissement colis', 'La Poste Tunisienne'],
-            ['Fournitures & Divers', '43.700', 2, 'Consommables bureau', 'Bureau Plus'],
+            ['Loyer', '1250.000', 29, 'Loyer local Tunis Lac', 'Gestion Immobilière Carthage', 'bank'],
+            ['Entretien & Réparations', '185.500', 26, 'Réparation climatisation', 'Service Froid Tunis', 'bank'],
+            ['Assurances', '320.000', 23, 'Assurance multirisque', 'Assurances Maghrebia', 'bank'],
+            ['Transport', '94.250', 20, 'Livraison inter-boutiques', 'Transport Express Sahel', 'cash'],
+            ['Frais postaux & Télécom', '148.750', 17, 'Facture fibre et mobile', 'Tunisie Telecom', 'bank'],
+            ['Fournitures & Divers', '76.300', 14, 'Fournitures caisse', 'Librairie Centrale', 'cash'],
+            ['Entretien & Réparations', '210.000', 11, 'Maintenance enseigne', 'Néon Services', 'bank'],
+            ['Transport', '132.600', 8, 'Courses urgentes fournisseurs', 'Coursier Pro', 'bank'],
+            ['Frais postaux & Télécom', '58.900', 5, 'Affranchissement colis', 'La Poste Tunisienne', 'cash'],
+            ['Fournitures & Divers', '43.700', 2, 'Consommables bureau', 'Bureau Plus', 'cash'],
         ];
 
         $createdCount = 0;
-        foreach ($expenseSpecs as $index => [$categoryName, $amount, $daysAgo, $notes, $vendorName]) {
+        foreach ($expenseSpecs as $index => [$categoryName, $amount, $daysAgo, $notes, $vendorName, $paySource]) {
             $category = ExpenseCategory::query()
                 ->where('company_id', $company->id)
                 ->where('name', $categoryName)
@@ -1165,7 +1184,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                 'total' => $amount,
                 'expense_category_id' => $category->id,
                 'payment_method_id' => $paymentMethod->id,
-                'payment_repository_id' => $repository->id,
+                'payment_repository_id' => $paySource === 'bank' ? $bankRepository->id : $repository->id,
                 'payment_date' => now()->subDays($daysAgo)->toDateString(),
                 'is_paid' => true,
                 'receipt_number' => 'DEMO-EXP-'.$sequence,

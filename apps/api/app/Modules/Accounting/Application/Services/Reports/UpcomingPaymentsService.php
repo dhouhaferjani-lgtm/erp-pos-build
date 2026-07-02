@@ -10,10 +10,12 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Partner\Domain\Partner;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 final readonly class UpcomingPaymentsService
@@ -30,7 +32,14 @@ final readonly class UpcomingPaymentsService
         $windowEnd = $today->addDays($days);
 
         $incoming = $this->openDocuments($companyId, [DocumentType::Invoice], $windowEnd);
-        $outgoing = $this->openDocuments($companyId, [DocumentType::SupplierInvoice, DocumentType::Expense], $windowEnd);
+        $outgoing = $this->openDocuments($companyId, [DocumentType::SupplierInvoice], $windowEnd)
+            ->concat($this->openUnpaidExpenses($companyId, $windowEnd))
+            ->sortBy(fn (Document $document): string => sprintf(
+                '%s|%s',
+                CarbonImmutable::parse($document->due_date ?? $document->document_date)->toDateString(),
+                (string) $document->document_number,
+            ))
+            ->values();
 
         $incomingLines = $this->toLines($incoming, $today);
         $outgoingLines = $this->toLines($outgoing, $today);
@@ -68,6 +77,47 @@ final readonly class UpcomingPaymentsService
     }
 
     /**
+     * Expense documents never populate balance_due (no payment_allocations),
+     * so open expenses are sourced from expense_metadata.is_paid instead.
+     *
+     * @return Collection<int, Document>
+     */
+    private function openUnpaidExpenses(string $companyId, CarbonImmutable $windowEnd): Collection
+    {
+        return Document::query()
+            ->where('company_id', $companyId)
+            ->where('type', DocumentType::Expense)
+            ->where('status', DocumentStatus::Posted)
+            ->where('total', '>', 0)
+            ->whereHas('expenseMetadata', function (Builder $query): void {
+                /** @var Builder<ExpenseMetadata> $query */
+                $query->where('is_paid', false);
+            })
+            ->whereRaw('COALESCE(due_date, document_date) <= ?', [$windowEnd->toDateString()])
+            ->with(['partner:id,name', 'expenseMetadata:id,document_id,vendor_name,is_paid'])
+            ->orderByRaw('COALESCE(due_date, document_date) ASC')
+            ->orderBy('document_number')
+            ->get();
+    }
+
+    /**
+     * Open amount owed on a document: expenses carry it in total
+     * (balance_due is never populated for them), everything else in balance_due.
+     *
+     * @return numeric-string
+     */
+    private function openAmount(Document $document): string
+    {
+        if ($document->type === DocumentType::Expense) {
+            /** @var numeric-string */
+            return $document->total ?? '0';
+        }
+
+        /** @var numeric-string */
+        return $document->balance_due ?? '0';
+    }
+
+    /**
      * @param  Collection<int, Document>  $documents
      * @return array<int, UpcomingPaymentLineData>
      */
@@ -78,13 +128,17 @@ final readonly class UpcomingPaymentsService
                 $dueDate = CarbonImmutable::parse($document->due_date ?? $document->document_date);
                 $daysUntilDue = (int) $today->diffInDays($dueDate, false);
                 $partner = $document->getRelation('partner');
+                $partnerName = $partner instanceof Partner ? $partner->name : null;
+                if ($partnerName === null && $document->type === DocumentType::Expense) {
+                    $partnerName = $document->expenseMetadata?->vendor_name;
+                }
 
                 return new UpcomingPaymentLineData(
-                    partner_name: $partner instanceof Partner ? $partner->name : 'Unassigned',
+                    partner_name: $partnerName ?? 'Unassigned',
                     document_number: $document->document_number,
                     type: $document->type->value,
                     due_date: $dueDate->toDateString(),
-                    balance_due: $document->balance_due ?? '0',
+                    balance_due: $this->openAmount($document),
                     days_until_due: $daysUntilDue,
                     overdue: $daysUntilDue < 0,
                 );
@@ -103,7 +157,7 @@ final readonly class UpcomingPaymentsService
 
         foreach ($documents as $document) {
             $documentScale = $this->scaleResolver->getScale((string) $document->currency);
-            $total = bcadd($total, $document->balance_due ?? '0', $documentScale);
+            $total = bcadd($total, $this->openAmount($document), $documentScale);
         }
 
         return CurrencyScale::bcformat($total, $scale);
