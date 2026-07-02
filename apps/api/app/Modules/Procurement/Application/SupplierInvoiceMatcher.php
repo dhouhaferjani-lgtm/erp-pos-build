@@ -106,6 +106,10 @@ final class SupplierInvoiceMatcher
 
         // Per-line price check (only for groups that passed qty validation).
         foreach ($supplierInvoice->lines as $invoiceLine) {
+            if ((bool) ($invoiceLine->is_bonus_line ?? false)) {
+                continue;
+            }
+
             if ($invoiceLine->source_line_id === null) {
                 continue;
             }
@@ -208,6 +212,10 @@ final class SupplierInvoiceMatcher
 
         // ADVISORY — per-line price check (only for qty-ok groups)
         foreach ($supplierInvoice->lines as $invoiceLine) {
+            if ((bool) ($invoiceLine->is_bonus_line ?? false)) {
+                continue;
+            }
+
             if ($invoiceLine->source_line_id === null) {
                 continue;
             }
@@ -264,9 +272,30 @@ final class SupplierInvoiceMatcher
     {
         /** @var array<string, numeric-string> $groupQtys total invoiced qty per PO line (scale 4) */
         $groupQtys = [];
+        /** @var array<string, numeric-string> $bonusQtys total free invoiced qty per PO line (scale 4) */
+        $bonusQtys = [];
         $hasNullLines = false;
 
         foreach ($supplierInvoice->lines as $invoiceLine) {
+            if ((bool) ($invoiceLine->is_bonus_line ?? false)) {
+                if ($invoiceLine->source_line_id === null) {
+                    $hasNullLines = true;
+
+                    continue;
+                }
+
+                $key = $invoiceLine->source_line_id;
+
+                if (! isset($bonusQtys[$key])) {
+                    $bonusQtys[$key] = '0.0000';
+                }
+
+                /** @phpstan-ignore argument.type */
+                $bonusQtys[$key] = bcadd($bonusQtys[$key], $invoiceLine->quantity, 4);
+
+                continue;
+            }
+
             if ($invoiceLine->source_line_id === null) {
                 $hasNullLines = true;
 
@@ -334,6 +363,67 @@ final class SupplierInvoiceMatcher
 
             // Qty ok — price will be checked per line by the caller
             $groupStatuses[$sourceLineId] = SupplierInvoiceMatchStatus::Matched;
+            $poLines[$sourceLineId] = $poLine;
+        }
+
+        foreach ($bonusQtys as $sourceLineId => $totalQty) {
+            $poLine = DocumentLine::find($sourceLineId);
+
+            if ($poLine === null) {
+                $groupStatuses[$sourceLineId] = $this->worstStatus(
+                    $groupStatuses[$sourceLineId] ?? SupplierInvoiceMatchStatus::Matched,
+                    SupplierInvoiceMatchStatus::Exception,
+                );
+
+                continue;
+            }
+
+            $parentDoc = $poLine->document;
+
+            if (
+                $parentDoc->type !== DocumentType::PurchaseOrder
+                || $parentDoc->company_id !== $supplierInvoice->company_id
+            ) {
+                $groupStatuses[$sourceLineId] = $this->worstStatus(
+                    $groupStatuses[$sourceLineId] ?? SupplierInvoiceMatchStatus::Matched,
+                    SupplierInvoiceMatchStatus::Exception,
+                );
+
+                continue;
+            }
+
+            /** @var numeric-string $freeMatchable */
+            $freeMatchable = bcsub(
+                (string) ($poLine->free_quantity_received ?? '0'),
+                (string) ($poLine->free_quantity_invoiced ?? '0'),
+                4,
+            );
+
+            if (
+                bccomp($freeMatchable, '0', 4) <= 0
+                && bccomp($totalQty, '0', 4) > 0
+            ) {
+                $groupStatuses[$sourceLineId] = $this->worstStatus(
+                    $groupStatuses[$sourceLineId] ?? SupplierInvoiceMatchStatus::Matched,
+                    SupplierInvoiceMatchStatus::Exception,
+                );
+
+                continue;
+            }
+
+            if (bccomp($totalQty, $freeMatchable, 4) > 0) {
+                $groupStatuses[$sourceLineId] = $this->worstStatus(
+                    $groupStatuses[$sourceLineId] ?? SupplierInvoiceMatchStatus::Matched,
+                    SupplierInvoiceMatchStatus::QuantityVariance,
+                );
+
+                continue;
+            }
+
+            $groupStatuses[$sourceLineId] = $this->worstStatus(
+                $groupStatuses[$sourceLineId] ?? SupplierInvoiceMatchStatus::Matched,
+                SupplierInvoiceMatchStatus::Matched,
+            );
             $poLines[$sourceLineId] = $poLine;
         }
 

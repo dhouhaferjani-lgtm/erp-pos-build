@@ -283,7 +283,9 @@ class WeightedAverageCostService
 
                 // Update product cost at the internal COST_SCALE (no boundary truncation).
                 $product->cost_price = $newAvgCost;
-                $product->last_purchase_cost = CurrencyScale::bcformat($landedUnitCostStr, $costScale);
+                if (bccomp($landedUnitCostStr, '0', $costScale) > 0) {
+                    $product->last_purchase_cost = CurrencyScale::bcformat($landedUnitCostStr, $costScale);
+                }
                 $product->cost_updated_at = now();
                 $product->save();
 
