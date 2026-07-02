@@ -197,6 +197,29 @@ describe('GoodsReceiptListPage tenant scope', () => {
     expect(mockApiGet).not.toHaveBeenCalled()
   })
 
+  it('renders a clean date for purchase-order rows shaped with document_date', async () => {
+    const poWithDocumentDate = {
+      ...pendingPurchaseOrder,
+      id: 'po-document-date',
+      document_number: 'PO-DOC-DATE',
+      issue_date: undefined,
+      document_date: '2026-06-28',
+    }
+
+    mockApiGet.mockImplementation((_url: string, options?: { params?: { status?: string } }) => {
+      if (options?.params?.status === 'received') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve({ data: { data: [poWithDocumentDate] } })
+    })
+
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    expect(await screen.findByText('PO-DOC-DATE')).toBeInTheDocument()
+    expect(screen.queryByText('Invalid Date')).not.toBeInTheDocument()
+    expect(screen.getByText(new Date('2026-06-28').toLocaleDateString())).toBeInTheDocument()
+  })
+
   it('refetches current-tenant purchase and stock caches and preserves tenant-B cache (.584-.585)', async () => {
     const queryClient = createPersistentQueryClient()
     const counters = {

@@ -36,7 +36,8 @@ interface PurchaseOrder {
   partner_id: string
   partner_name: string
   status: string
-  issue_date: string
+  issue_date?: string | null
+  document_date?: string | null
   total: number
   currency: string
   lines: PurchaseOrderLine[]
@@ -173,8 +174,17 @@ export function GoodsReceiptListPage() {
     }).format(amount)
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString()
+  const formatDate = (dateString?: string | null) => {
+    if (!dateString) {
+      return t('sales:notApplicable')
+    }
+
+    const date = new Date(dateString)
+    if (Number.isNaN(date.getTime())) {
+      return t('sales:notApplicable')
+    }
+
+    return date.toLocaleDateString()
   }
 
   const calculateReceiptProgress = (po: PurchaseOrder): { received: number; total: number; percentage: number } => {
@@ -312,7 +322,7 @@ export function GoodsReceiptListPage() {
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="h-4 w-4" />
-                        {formatDate(po.issue_date)}
+                        {formatDate(po.issue_date ?? po.document_date)}
                       </span>
                       <span className="font-medium text-gray-900">
                         {formatCurrency(po.total, po.currency)}
