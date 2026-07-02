@@ -5,6 +5,7 @@
 
 import Big from 'big.js'
 import { getDecimals, getLocale } from './currencyMeta'
+import i18n from './i18n'
 
 export interface CurrencyFormatOptions {
   currency?: string
@@ -147,7 +148,7 @@ export function formatQuantity(
 export function formatDate(
   date: string | Date,
   format: 'DD/MM/YYYY' | 'MM/DD/YYYY' = 'DD/MM/YYYY',
-  locale: string = 'en-US'
+  locale?: string
 ): string {
   const d = typeof date === 'string' ? new Date(date) : date
 
@@ -155,15 +156,19 @@ export function formatDate(
     return ''
   }
 
+  // Honor the active UI language (fr/en/ar) so dates render in the user's
+  // locale (e.g. `02/07/2026` on the FR UI) instead of a hardcoded US format.
+  const resolvedLocale = locale ?? i18n.language
+
   if (format === 'DD/MM/YYYY') {
-    return new Intl.DateTimeFormat(locale, {
+    return new Intl.DateTimeFormat(resolvedLocale, {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
     }).format(d)
   }
 
-  return new Intl.DateTimeFormat(locale, {
+  return new Intl.DateTimeFormat(resolvedLocale, {
     month: '2-digit',
     day: '2-digit',
     year: 'numeric',

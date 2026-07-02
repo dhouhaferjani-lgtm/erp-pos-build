@@ -210,6 +210,10 @@
     },
     "toasts": {
       "transactionCompleted": "Transaction completed - Receipt #{{number}}"
+    },
+    "disposition": {
+      "title": "Point of sale runs in the desktop app",
+      "body": "Sales are now rung up in the IziPOS desktop checkout app. From the web you can browse receipts, process returns, and download PDFs from the shop-management screens."
     }
   },
   "productInfo": {

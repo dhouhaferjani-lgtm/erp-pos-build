@@ -12,6 +12,7 @@ import {
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { SearchInput } from '../../../components/molecules/SearchInput/SearchInput'
 import { formatCurrency } from '../../../lib/decimal'
+import { formatDate } from '../../../lib/format'
 import type { SupplierInvoiceListParams, SupplierInvoiceMatchStatus, SupplierInvoiceStatus } from './types'
 import { useSupplierInvoiceList } from './api'
 
@@ -295,7 +296,7 @@ export function SupplierInvoiceListPage() {
                     {invoice.partner.name}
                   </td>
                   <td className={`whitespace-nowrap px-6 py-4 text-sm ${textColors.tertiary}`}>
-                    {new Date(invoice.issue_date).toLocaleDateString()}
+                    {formatDate(invoice.issue_date)}
                   </td>
                   <td className={`whitespace-nowrap px-6 py-4 text-end text-sm font-medium ${textColors.primary}`}>
                     {formatCurrency(invoice.total, true, invoice.currency)}

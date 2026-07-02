@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPost } from '../../lib/api'
+import { formatDate as formatLocaleDate } from '../../lib/format'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompany } from '../../hooks/useCompany'
 import { useAuthStore } from '../../stores/authStore'
@@ -201,7 +202,7 @@ export function GoodsReceiptListPage() {
       return t('sales:notApplicable')
     }
 
-    return date.toLocaleDateString()
+    return formatLocaleDate(date)
   }
 
   const calculateReceiptProgress = (po: PurchaseOrder): { received: number; total: number; percentage: number } => {

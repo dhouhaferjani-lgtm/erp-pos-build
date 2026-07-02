@@ -101,5 +101,15 @@
       "title": "لا يوجد شركاء بعد",
       "description": "ابدأ بإضافة أول شريك."
     }
+  },
+  "documents": {
+    "statuses": {
+      "draft": "مسودة",
+      "confirmed": "مؤكَّد",
+      "posted": "مُرحَّل",
+      "paid": "مدفوع",
+      "received": "مُستلَم",
+      "cancelled": "مُلغى"
+    }
   }
 }
