@@ -16,6 +16,7 @@ import { Select } from '@/components/atoms/Select'
 import { Button } from '@/components/atoms/Button'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
 import { StatusBadge } from '@/components/atoms/StatusBadge'
+import { bcadd, bccomp, formatCurrency } from '@/lib/decimal'
 
 interface OpenInvoicesListProps {
   partnerId: string
@@ -27,6 +28,12 @@ interface OpenInvoicesListProps {
 }
 
 type SortField = 'date' | 'due_date' | 'amount'
+
+const sortFields: readonly SortField[] = ['date', 'due_date', 'amount']
+
+function isSortField(value: string): value is SortField {
+  return (sortFields as readonly string[]).includes(value)
+}
 
 /**
  * List component showing open invoices for allocation
@@ -65,7 +72,7 @@ export function OpenInvoicesList({
           compareValue = new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
           break
         case 'amount':
-          compareValue = parseFloat(b.balance_due) - parseFloat(a.balance_due)
+          compareValue = bccomp(b.balance_due || '0', a.balance_due || '0')
           break
       }
 
@@ -75,14 +82,14 @@ export function OpenInvoicesList({
 
   // Calculate total balance
   const totalBalance = useMemo(() => {
-    return invoices.reduce((sum, invoice) => {
-      return sum + parseFloat(invoice.balance_due || '0')
-    }, 0)
-  }, [invoices])
+    return invoices.reduce<string>((sum, invoice) => {
+      return bcadd(sum, invoice.balance_due || '0', decimals)
+    }, '0')
+  }, [decimals, invoices])
 
   // Format amount to currency-aware decimals
   const formatAmount = (amount: string | number): string => {
-    return parseFloat(String(amount)).toFixed(decimals)
+    return formatCurrency(amount, false, currency, decimals)
   }
 
   // Check if invoice is selected
@@ -195,7 +202,11 @@ export function OpenInvoicesList({
             </label>
             <Select
               value={sortField}
-              onChange={(e) => { handleSort(e.target.value as SortField); }}
+              onChange={(e) => {
+                if (isSortField(e.target.value)) {
+                  handleSort(e.target.value)
+                }
+              }}
               className="mt-0 w-auto px-2 py-1 text-sm"
             >
               <option value="date">
@@ -213,11 +224,11 @@ export function OpenInvoicesList({
           {/* Select All / Deselect All (Manual mode only) */}
           {isManualMode && (
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={handleSelectAll}>
+              <Button type="button" variant="ghost" size="sm" onClick={handleSelectAll}>
                 {t('treasury:smartPayment.openInvoices.selectAll')}
               </Button>
               <span className={textColors.disabled}>|</span>
-              <Button variant="ghost" size="sm" onClick={handleDeselectAll}>
+              <Button type="button" variant="ghost" size="sm" onClick={handleDeselectAll}>
                 {t('treasury:smartPayment.openInvoices.deselectAll')}
               </Button>
             </div>
@@ -254,7 +265,7 @@ export function OpenInvoicesList({
               const isOverdue = (invoice.days_overdue || 0) > 0
               const selected = isSelected(invoice.id)
               const allocationAmount = getAllocationAmount(invoice.id)
-              const invoiceBalance = parseFloat(invoice.balance_due)
+              const invoiceBalance = invoice.balance_due || '0'
 
               return (
                 <tr key={invoice.id} className={selected ? tokens.alert.info : tokens.table.rowHover}>
@@ -262,6 +273,9 @@ export function OpenInvoicesList({
                     <td className="px-4 py-3">
                       <Checkbox
                         checked={selected}
+                        aria-label={t('treasury:smartPayment.openInvoices.selectInvoice', {
+                          invoiceNumber: invoice.document_number,
+                        })}
                         onChange={(e) => { handleSelectInvoice(invoice, e.target.checked); }}
                       />
                     </td>
@@ -281,6 +295,9 @@ export function OpenInvoicesList({
                         min="0"
                         max={invoiceBalance}
                         disabled={!selected}
+                        aria-label={t('treasury:smartPayment.openInvoices.allocationAmount', {
+                          invoiceNumber: invoice.document_number,
+                        })}
                         className="mt-0 w-32 px-2 py-1 text-sm"
                       />
                     </td>

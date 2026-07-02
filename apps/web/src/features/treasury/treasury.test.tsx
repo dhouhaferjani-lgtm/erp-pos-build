@@ -114,6 +114,27 @@ const mockPartners = [
   { id: 'partner-2', name: 'Client Inc' },
 ]
 
+const mockRepositories = [
+  { id: 'repo-1', code: 'CASH-01', name: 'Main Cash Register', type: 'cash_register' },
+]
+
+const mockOpenInvoices = [
+  {
+    id: 'invoice-1',
+    document_number: 'INV-2026-0001',
+    document_date: '2026-06-01',
+    due_date: '2026-07-01',
+    total: '150.00',
+    balance_due: '150.00',
+    currency: 'TND',
+    days_overdue: 0,
+    partner: {
+      id: 'partner-1',
+      name: 'Acme Corp',
+    },
+  },
+]
+
 function setTenant(tenantId: string, companyId: string) {
   useAuthStore.setState({
     user: { id: 'user-1', name: 'User', email: 'user@example.test', tenant_id: tenantId, roles: [], email_verified_at: null },
@@ -217,10 +238,40 @@ describe('Treasury Management', () => {
         if (url.includes('/payment-methods')) {
           return Promise.resolve({ data: { data: mockPaymentMethods } })
         }
+        if (url.includes('/payment-repositories')) {
+          return Promise.resolve({ data: { data: mockRepositories } })
+        }
+        if (url.includes('/partners/partner-1/open-invoices')) {
+          return Promise.resolve({ data: { data: mockOpenInvoices } })
+        }
         if (url.includes('/partners')) {
           return Promise.resolve({ data: { data: mockPartners } })
         }
         return Promise.resolve({ data: { data: [] } })
+      })
+      mockApiPost.mockImplementation((url: string) => {
+        if (url === '/smart-payment/preview-allocation') {
+          return Promise.resolve({
+            allocation_method: 'manual',
+            allocations: [
+              {
+                document_id: 'invoice-1',
+                document_number: 'INV-2026-0001',
+                amount: '50.25',
+                original_balance: '150.00',
+              },
+            ],
+            total_to_invoices: '50.25',
+            excess_amount: '0.00',
+            excess_handling: 'none',
+          })
+        }
+
+        return Promise.resolve({
+          id: 'payment-1',
+          payment_number: 'PAY-2026-0001',
+          amount: 50,
+        })
       })
     }
 
@@ -270,6 +321,54 @@ describe('Treasury Management', () => {
       await user.selectOptions(methodSelect, 'method-1')
 
       expect(methodSelect).toHaveValue('method-1')
+    })
+
+    it('surfaces open invoices and submits partial manual allocations as strings', async () => {
+      setupFormMocks()
+      const user = userEvent.setup()
+
+      render(<PaymentForm />, { wrapper: TestWrapper })
+
+      await waitFor(() => {
+        expect(screen.getByRole('option', { name: 'Cash' })).toBeInTheDocument()
+        expect(screen.getByRole('option', { name: /Main Cash Register/ })).toBeInTheDocument()
+      })
+
+      await user.type(screen.getByLabelText(/amount/i), '50.25')
+      await user.selectOptions(screen.getByLabelText(/payment method/i), 'method-1')
+      await user.selectOptions(screen.getByLabelText(/repository/i), 'repo-1')
+      await user.selectOptions(screen.getByLabelText(/partner/i), 'partner-1')
+
+      await waitFor(() => {
+        expect(screen.getByText('INV-2026-0001')).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole('radio', { name: /manual selection/i }))
+      await user.click(screen.getByRole('checkbox', { name: /INV-2026-0001/i }))
+
+      const allocationInput = screen.getByLabelText(/amount.*INV-2026-0001/i)
+      await user.clear(allocationInput)
+      await user.type(allocationInput, '50.25')
+
+      await user.click(screen.getByRole('button', { name: /preview allocation/i }))
+
+      await waitFor(() => {
+        expect(mockApiPost).toHaveBeenCalledWith('/smart-payment/preview-allocation', {
+          partner_id: 'partner-1',
+          payment_amount: '50.25',
+          allocation_method: 'manual',
+          manual_allocations: [{ document_id: 'invoice-1', amount: '50.25' }],
+        })
+      })
+
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      await waitFor(() => {
+        expect(mockApiPost).toHaveBeenCalledWith('/payments', expect.objectContaining({
+          amount: '50.25',
+          allocations: [{ document_id: 'invoice-1', amount: '50.25' }],
+        }))
+      })
     })
   })
 

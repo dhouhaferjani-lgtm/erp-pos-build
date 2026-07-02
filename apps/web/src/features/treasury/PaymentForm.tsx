@@ -11,13 +11,15 @@ import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
 import { AddPartnerModal, AddRepositoryModal } from '../../components/organisms'
 import { Button, FormField, Input, MoneyInput, Select, Textarea } from '../../components/atoms'
-import { PaymentAllocationForm } from './components'
-import type { OpenInvoice } from '../../types/treasury'
+import { AllocationPreview, OpenInvoicesList } from './components'
+import { AllocationMethod, type ManualAllocation, type OpenInvoice } from '../../types/treasury'
 import { useWithholdingPreview } from '../withholding'
 import type { TransactionType } from '../withholding/types'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { usePaymentAllocationPreview } from './hooks/useSmartPayment'
+import { bccomp, bcsub } from '../../lib/decimal'
 
 interface PaymentMethod {
   id: string
@@ -81,6 +83,84 @@ interface PaymentFormData {
   withholding_override_reason?: string
 }
 
+interface PaymentAllocationPayload {
+  document_id: string
+  amount: string
+}
+
+function isPositiveAmount(value: string): boolean {
+  return value.trim() !== '' && bccomp(value, '0') > 0
+}
+
+function normalizeManualAllocations(allocations: ManualAllocation[]): PaymentAllocationPayload[] {
+  const normalizedAllocations: PaymentAllocationPayload[] = []
+
+  for (const allocation of allocations) {
+    if (isPositiveAmount(allocation.amount)) {
+      normalizedAllocations.push({
+        document_id: allocation.document_id,
+        amount: allocation.amount,
+      })
+    }
+  }
+
+  return normalizedAllocations
+}
+
+function buildAutomaticAllocations(
+  invoices: OpenInvoice[],
+  paymentAmountValue: string,
+  method: AllocationMethod,
+  decimals: number,
+): PaymentAllocationPayload[] {
+  let remainingAmount = paymentAmountValue || '0'
+  const sortedInvoices = [...invoices].sort((a, b) => {
+    const firstDate = method === AllocationMethod.DUE_DATE ? a.due_date : a.document_date
+    const secondDate = method === AllocationMethod.DUE_DATE ? b.due_date : b.document_date
+    return new Date(firstDate).getTime() - new Date(secondDate).getTime()
+  })
+  const allocations: PaymentAllocationPayload[] = []
+
+  for (const invoice of sortedInvoices) {
+    if (bccomp(remainingAmount, '0') <= 0) break
+
+    const balanceDue = invoice.balance_due || '0'
+    if (bccomp(balanceDue, '0') <= 0) continue
+
+    const allocationAmount = bccomp(remainingAmount, balanceDue) > 0
+      ? balanceDue
+      : remainingAmount
+
+    if (isPositiveAmount(allocationAmount)) {
+      allocations.push({
+        document_id: invoice.id,
+        amount: allocationAmount,
+      })
+      remainingAmount = bcsub(remainingAmount, allocationAmount, decimals)
+    }
+  }
+
+  return allocations
+}
+
+function buildSingleDocumentAllocation(
+  documentId: string,
+  paymentAmountValue: string,
+  balanceDueValue: string,
+): PaymentAllocationPayload[] {
+  if (!isPositiveAmount(paymentAmountValue) || !isPositiveAmount(balanceDueValue)) {
+    return []
+  }
+
+  const allocationAmount = bccomp(paymentAmountValue, balanceDueValue) > 0
+    ? balanceDueValue
+    : paymentAmountValue
+
+  return isPositiveAmount(allocationAmount)
+    ? [{ document_id: documentId, amount: allocationAmount }]
+    : []
+}
+
 function scopedNamespacePredicate(
   namespace: string,
   tenantId: string | null,
@@ -110,10 +190,11 @@ export function PaymentForm() {
   const deliveryNoteId = searchParams.get('delivery_note')
   const [showPartnerModal, setShowPartnerModal] = useState(false)
   const [showRepositoryModal, setShowRepositoryModal] = useState(false)
-  const [createdPaymentId, setCreatedPaymentId] = useState<string | null>(null)
   const [withholdingEnabled, setWithholdingEnabled] = useState(false)
   const [withholdingTransactionType, setWithholdingTransactionType] = useState<TransactionType | ''>('')
   const [withholdingRate, setWithholdingRate] = useState('')
+  const [allocationMethod, setAllocationMethod] = useState<AllocationMethod>(AllocationMethod.FIFO)
+  const [manualAllocations, setManualAllocations] = useState<ManualAllocation[]>([])
 
   const {
     register,
@@ -257,13 +338,26 @@ export function PaymentForm() {
       )
       return response.data.data
     },
-    enabled: !!selectedPartnerId && !invoiceId && tenantId !== null && companyId !== null, // Don't fetch if coming from specific invoice
+    enabled: !!selectedPartnerId &&
+      !invoiceId &&
+      !purchaseOrderId &&
+      !deliveryNoteId &&
+      tenantId !== null &&
+      companyId !== null,
   })
 
   const openInvoices: OpenInvoice[] = openInvoicesData ?? []
+  const canAllocateOpenInvoices = Boolean(
+    selectedPartnerId &&
+    !invoiceId &&
+    !purchaseOrderId &&
+    !deliveryNoteId &&
+    openInvoices.length > 0
+  )
 
   // Withholding preview - check if withholding should be applied
   const withholdingPreviewMutation = useWithholdingPreview()
+  const allocationPreviewMutation = usePaymentAllocationPreview()
 
   useEffect(() => {
     if (selectedPartnerId && paymentAmount && parseFloat(paymentAmount) > 0) {
@@ -285,44 +379,75 @@ export function PaymentForm() {
     }
   }, [withholdingPreview])
 
+  const buildPaymentAllocations = (paymentAmountValue: string): PaymentAllocationPayload[] => {
+    if (invoiceId && invoiceData) {
+      const amountResidual = invoiceData.amount_residual == null
+        ? invoiceData.total
+        : String(invoiceData.amount_residual)
+
+      return buildSingleDocumentAllocation(invoiceId, paymentAmountValue, amountResidual)
+    }
+
+    if (!canAllocateOpenInvoices || !isPositiveAmount(paymentAmountValue)) {
+      return []
+    }
+
+    if (allocationMethod === AllocationMethod.MANUAL) {
+      return normalizeManualAllocations(manualAllocations)
+    }
+
+    return buildAutomaticAllocations(openInvoices, paymentAmountValue, allocationMethod, decimals)
+  }
+
+  const handleAllocationMethodChange = (method: AllocationMethod) => {
+    setAllocationMethod(method)
+    setManualAllocations([])
+    allocationPreviewMutation.reset()
+  }
+
+  const handlePreviewAllocation = () => {
+    const allocations = buildPaymentAllocations(paymentAmount)
+
+    allocationPreviewMutation.mutate({
+      partner_id: selectedPartnerId,
+      payment_amount: paymentAmount,
+      allocation_method: allocationMethod,
+      ...(allocationMethod === AllocationMethod.MANUAL && { manual_allocations: allocations }),
+    })
+  }
+
+  const methodOptions: readonly {
+    method: AllocationMethod
+    label: string
+    description: string
+  }[] = [
+    {
+      method: AllocationMethod.FIFO,
+      label: t('treasury:smartPayment.allocation.fifo'),
+      description: t('treasury:smartPayment.allocation.fifoDescription'),
+    },
+    {
+      method: AllocationMethod.DUE_DATE,
+      label: t('treasury:smartPayment.allocation.dueDate'),
+      description: t('treasury:smartPayment.allocation.dueDateDescription'),
+    },
+    {
+      method: AllocationMethod.MANUAL,
+      label: t('treasury:smartPayment.allocation.manual'),
+      description: t('treasury:smartPayment.allocation.manualDescription'),
+    },
+  ]
+
+  const allocationPreviewDisabled =
+    allocationPreviewMutation.isPending ||
+    !canAllocateOpenInvoices ||
+    !isPositiveAmount(paymentAmount) ||
+    (allocationMethod === AllocationMethod.MANUAL && normalizeManualAllocations(manualAllocations).length === 0)
+
   const createMutation = useMutation({
     mutationFn: (data: PaymentFormData) => {
       // Prepare allocations array
-      const allocations = []
-
-      // If coming from a specific invoice, allocate to that invoice
-      if (invoiceId && invoiceData) {
-        const amountResidual = invoiceData.amount_residual ?? parseFloat(invoiceData.total)
-        const allocationAmount = Math.min(parseFloat(data.amount), amountResidual)
-
-        allocations.push({
-          document_id: invoiceId,
-          amount: allocationAmount.toFixed(decimals),
-        })
-      }
-      // If no specific invoice, auto-allocate using FIFO to open invoices
-      else if (openInvoices.length > 0 && selectedPartnerId) {
-        let remainingAmount = parseFloat(data.amount)
-
-        // Sort invoices by document_date (FIFO)
-        const sortedInvoices = [...openInvoices].sort((a, b) =>
-          new Date(a.document_date).getTime() - new Date(b.document_date).getTime()
-        )
-
-        for (const invoice of sortedInvoices) {
-          if (remainingAmount <= 0) break
-
-          const invoiceBalance = parseFloat(invoice.balance_due)
-          const allocationAmount = Math.min(remainingAmount, invoiceBalance)
-
-          allocations.push({
-            document_id: invoice.id,
-            amount: allocationAmount.toFixed(decimals),
-          })
-
-          remainingAmount -= allocationAmount
-        }
-      }
+      const allocations = buildPaymentAllocations(data.amount)
 
       return apiPost<Payment>('/payments', {
         ...data,
@@ -334,7 +459,7 @@ export function PaymentForm() {
         withholding_override_reason: data.withholding_override_reason,
       })
     },
-    onSuccess: async (payment) => {
+    onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('payments', tenantId, companyId) }),
         invoiceId
@@ -351,14 +476,7 @@ export function PaymentForm() {
       ])
       toast.success(t('treasury:payments.messages.created'))
 
-      // Store payment ID for potential manual allocation adjustment
-      setCreatedPaymentId(payment.id)
-
-      // If no open invoices or single document payment, navigate immediately
-      if (openInvoices.length === 0 || invoiceId || purchaseOrderId || deliveryNoteId) {
-        handleNavigateAway()
-      }
-      // Otherwise, user can optionally apply smart allocation below
+      handleNavigateAway()
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
@@ -376,11 +494,6 @@ export function PaymentForm() {
     } else {
       void navigate('/treasury/payments')
     }
-  }
-
-  // Handle allocation success
-  const handleAllocationSuccess = () => {
-    handleNavigateAway()
   }
 
   const onSubmit = (data: PaymentFormData) => {
@@ -723,25 +836,77 @@ export function PaymentForm() {
         )}
 
         {/* Smart Payment Allocation Section */}
-        {createdPaymentId && openInvoices.length > 0 && !invoiceId && (
+        {canAllocateOpenInvoices && (
           <div className={tokens.card.base}>
             <div className="mb-4">
               <h3 className={cn(tokens.heading.section, 'mb-1')}>
-                {t('treasury:allocation.title')}
+                {t('treasury:smartPayment.allocation.title')}
               </h3>
               <p className={cn('mt-1 text-sm', textColors.tertiary)}>
-                {t('treasury:allocation.description')}
+                {t('treasury:smartPayment.allocation.description')}
               </p>
             </div>
 
-            <PaymentAllocationForm
-              paymentId={createdPaymentId}
-              partnerId={selectedPartnerId}
-              paymentAmount={paymentAmount}
-              invoices={openInvoices}
-              onSuccess={handleAllocationSuccess}
-              onCancel={handleNavigateAway}
-            />
+            <div className="space-y-6">
+              <div className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
+                <h4 className={cn('mb-4 text-sm font-medium', textColors.primary)}>
+                  {t('treasury:smartPayment.allocation.method')}
+                </h4>
+                <div className="space-y-3">
+                  {methodOptions.map(({ method, label, description }) => (
+                    <label
+                      key={method}
+                      className={cn(
+                        'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+                        borderColors.light,
+                        colors.hover.gray50
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="allocation-method"
+                        value={method}
+                        checked={allocationMethod === method}
+                        onChange={() => { handleAllocationMethodChange(method) }}
+                        className={cn('mt-1', tokens.radio.base)}
+                      />
+                      <span className="flex-1">
+                        <span className={cn('block font-medium', textColors.primary)}>{label}</span>
+                        <span className={cn('block text-sm', textColors.tertiary)}>{description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <OpenInvoicesList
+                partnerId={selectedPartnerId}
+                invoices={openInvoices}
+                allocationMethod={allocationMethod}
+                selectedAllocations={manualAllocations}
+                onAllocationChange={setManualAllocations}
+              />
+
+              {allocationPreviewMutation.data && (
+                <AllocationPreview
+                  preview={allocationPreviewMutation.data}
+                  isLoading={allocationPreviewMutation.isPending}
+                />
+              )}
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handlePreviewAllocation}
+                  disabled={allocationPreviewDisabled}
+                >
+                  {allocationPreviewMutation.isPending
+                    ? t('common:status.loading')
+                    : t('treasury:smartPayment.allocation.previewButton')}
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 

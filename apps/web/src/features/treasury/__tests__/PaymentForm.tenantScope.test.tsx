@@ -190,6 +190,34 @@ describe('PaymentForm tenant scope', () => {
     })
   })
 
+  it('submits invoice-specific payment allocations as strings', async () => {
+    mockSearchParams.set('invoice', 'invoice-1')
+    render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('INV-1')).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Cash' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Cash Register (CASH)' })).toBeInTheDocument()
+    })
+
+    const amountInput = screen.getByLabelText('treasury:payments.form.amount *')
+    await userEvent.clear(amountInput)
+    await userEvent.type(amountInput, '25.50')
+    await userEvent.selectOptions(screen.getByLabelText('treasury:payments.form.paymentMethod *'), 'method-1')
+    await userEvent.selectOptions(screen.getByLabelText('treasury:payments.form.repository *'), 'repo-1')
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'common:save' }))
+    })
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/payments', expect.objectContaining({
+        amount: '25.5',
+        allocations: [{ document_id: 'invoice-1', amount: '25.5' }],
+      }))
+    })
+  })
+
   it('invalidates active-tenant payment cascades and leaves tenant-B cache untouched (.681-.686)', async () => {
     let paymentCalls = 0
     let invoiceCalls = 0
