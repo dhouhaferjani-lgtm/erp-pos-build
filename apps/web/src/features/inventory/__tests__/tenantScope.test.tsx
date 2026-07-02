@@ -22,6 +22,7 @@ import { ProductDocumentsTab } from '../components/ProductDocumentsTab'
 import { ProductMovementsTab } from '../components/ProductMovementsTab'
 import { ProductStockLevels } from '../components/ProductStockLevels'
 import { PriceInputWithMargin } from '../components/pricing/PriceInputWithMargin'
+import { useLoyaltyEarnRate } from '../useLoyaltyEarnRate'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPostMethod = vi.hoisted(() => vi.fn())
@@ -213,6 +214,11 @@ describe('inventory queryKey shapes', () => {
     return null
   }
 
+  function LoyaltyEarnRateProbe() {
+    useLoyaltyEarnRate()
+    return null
+  }
+
   it('wraps product page keys (.300, .302, .306)', async () => {
     const queryClient = createTestQueryClient()
     renderWithProviders(
@@ -290,6 +296,25 @@ describe('inventory queryKey shapes', () => {
     expectScoped(keys.find((k) => k[0] === 'product-movements'), ['product-movements', 'prod-1', []])
     expectScoped(keys.find((k) => k[0] === 'product-stock'), ['product-stock', 'prod-1'])
     expectScoped(keys.find((k) => k[0] === 'margin-check'), ['margin-check', 'prod-1', 20])
+  })
+
+  it('wraps loyalty earn-rate key and gates missing tenant/company', async () => {
+    mockApiGetHelper.mockReset()
+    mockApiGetHelper.mockResolvedValue({ rate: '0.1000' })
+    const queryClient = createTestQueryClient()
+
+    renderWithProviders(<LoyaltyEarnRateProbe />, { queryClient })
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['loyalty', 'earn-rate', 'tenant-A', 'company-1'])).toEqual({ rate: '0.1000' })
+    })
+
+    const earnRateCalls = mockApiGetHelper.mock.calls.length
+    useAuthStore.setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+    useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+    renderWithProviders(<LoyaltyEarnRateProbe />, { queryClient: createTestQueryClient() })
+
+    expect(mockApiGetHelper).toHaveBeenCalledTimes(earnRateCalls)
   })
 })
 
