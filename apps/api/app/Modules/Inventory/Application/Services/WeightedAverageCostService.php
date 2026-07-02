@@ -663,7 +663,7 @@ class WeightedAverageCostService
      *    still "owns" stock that has left the source but not yet been received.
      *
      * @param  Product  $product  The product whose WAC is being adjusted
-     * @param  float  $additionalCost  Cost amount to capitalize (positive = increases WAC)
+     * @param  numeric-string  $additionalCost  Cost amount to capitalize (positive = increases WAC)
      * @param  string  $reason  Free-text reason for audit trail (e.g. "transfer freight")
      * @param  string  $tenantId  Owning tenant (resolved from the product, never a location)
      * @param  string  $companyId  Owning company (WAC is company-wide)
@@ -673,7 +673,7 @@ class WeightedAverageCostService
      */
     public function recordCostAdjustment(
         Product $product,
-        float $additionalCost,
+        string $additionalCost,
         string $reason,
         string $tenantId,
         string $companyId,
@@ -718,7 +718,7 @@ class WeightedAverageCostService
                 // the internal COST_SCALE with NO truncation to the currency scale.
                 $costScale = $this->costScale();
                 $currentCostStr = CurrencyScale::bcformat($product->cost_price ?? '0', $working);
-                $additionalCostStr = CurrencyScale::bcformat($additionalCost, $working);
+                $additionalCostStr = CurrencyScale::bcformatStrict($additionalCost, $working);
                 $delta = bcdiv($additionalCostStr, $totalOwned, $working);
                 $newAvgCost = CurrencyScale::bcformat(bcadd($currentCostStr, $delta, $working), $costScale);
 
