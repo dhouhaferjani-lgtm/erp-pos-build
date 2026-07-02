@@ -14,6 +14,7 @@ use App\Modules\Product\Presentation\Controllers\EnrichmentReviewController;
 use App\Modules\Product\Presentation\Controllers\HealthClaimController;
 use App\Modules\Product\Presentation\Controllers\IngredientController;
 use App\Modules\Product\Presentation\Controllers\KeyComponentController;
+use App\Modules\Product\Presentation\Controllers\LineEntryController;
 use App\Modules\Product\Presentation\Controllers\ProductController;
 use Illuminate\Support\Facades\Route;
 
@@ -42,6 +43,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
 // Group 2: Products and all product-related routes — gated behind Inventory module
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'module:Inventory'])->group(function () {
+    Route::get('line-entry/resolve-code', [LineEntryController::class, 'resolveCode'])
+        ->middleware('can:products.view')
+        ->name('line-entry.resolve-code');
+
     // Product CRUD with permission middleware
     Route::get('products', [ProductController::class, 'index'])
         ->middleware('can:products.view')
