@@ -293,8 +293,12 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
                     <td className="whitespace-nowrap px-6 py-4 text-sm">
                       {doc.partner_id && doc.partner_name ? (
                         <Link
-                          to={`/partners/${doc.partner_id}`}
-                          className={`${textColors.primary} hover:${textColors.brand}`}
+                          to={
+                            doc.type === 'purchase_order'
+                              ? `/purchases/suppliers/${doc.partner_id}`
+                              : `/sales/customers/${doc.partner_id}`
+                          }
+                          className={`${textColors.brand} hover:underline`}
                         >
                           {doc.partner_name}
                         </Link>

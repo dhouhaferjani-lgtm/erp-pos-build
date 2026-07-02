@@ -200,7 +200,12 @@ export function StockTransferDetailPage() {
               {(transfer.lines ?? []).map((line) => (
                 <tr key={line.id}>
                   <td className={`px-6 py-3 text-sm ${textColors.primary}`}>
-                    {line.product_name ?? '—'}
+                    <Link
+                      to={`/inventory/products/${line.product_id}`}
+                      className={`font-medium ${textColors.hoverPrimary}`}
+                    >
+                      {line.product_name ?? '—'}
+                    </Link>
                     {line.variant_id !== null && line.variant_name !== null ? (
                       <span className={`block text-xs ${textColors.tertiary}`}>{line.variant_name}</span>
                     ) : null}
