@@ -124,6 +124,7 @@ import arAdmin from '../locales/ar/admin.json'
 import arPurchases from '../locales/ar/purchases.json'
 import arProducts from '../locales/ar/products.json'
 import arSales from '../locales/ar/sales.json'
+import arFinance from '../locales/ar/finance.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -280,7 +281,18 @@ const resources = {
     treasury: enTreasury,
     validation: arValidation,
     pricing: enPricing,
-    finance: enFinance,
+    finance: {
+      ...enFinance,
+      ...arFinance,
+      reports: {
+        ...enFinance.reports,
+        ...arFinance.reports,
+        profitLossReport: {
+          ...enFinance.reports.profitLossReport,
+          ...arFinance.reports.profitLossReport,
+        },
+      },
+    },
     expenses: enExpenses,
     import: enImport,
     settings: enSettings,

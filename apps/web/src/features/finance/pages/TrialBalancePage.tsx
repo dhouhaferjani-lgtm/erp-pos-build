@@ -6,17 +6,18 @@ import { PageHeader } from '../../../components/molecules/PageHeader'
 import { Button, FormField, Input } from '../../../components/atoms'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
-import { formatCurrency } from '../../../lib/format'
 import { bccomp } from '../../../lib/decimal'
 import { useCompany } from '../../../hooks/useCompany'
+import {
+  formatReportCurrency,
+  getTodayDateInputValue,
+} from './reportPageUtils'
 import type { TrialBalanceLine } from '../types'
 
 export function TrialBalancePage() {
   const { t } = useTranslation(['finance'])
   const { currentCompany } = useCompany()
-  const [asOfDate, setAsOfDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  )
+  const [asOfDate, setAsOfDate] = useState<string>(() => getTodayDateInputValue())
 
   const { data: trialBalanceData, isLoading, error, refetch } = useTrialBalance({
     as_of_date: asOfDate,
@@ -25,15 +26,7 @@ export function TrialBalancePage() {
   const lines = trialBalanceData?.lines ?? []
   const totalDebit = trialBalanceData?.total_debit ?? '0'
   const totalCredit = trialBalanceData?.total_credit ?? '0'
-  const currency = currentCompany?.currency ?? 'EUR'
-  const locale = currentCompany?.locale.replace('_', '-')
-
-  const formatMoney = (amount: string) => {
-    return formatCurrency(amount, {
-      currency,
-      ...(locale ? { locale } : {}),
-    })
-  }
+  const formatMoney = (amount: string) => formatReportCurrency(amount, currentCompany)
 
   const numericCell = cn('whitespace-nowrap px-6 py-4 text-end text-sm tabular-nums', textColors.primary)
   const numericHeader = cn(
