@@ -585,7 +585,9 @@ describe('PaymentAllocationForm', () => {
     )
 
     expect(screen.getByText('Payment Amount')).toBeInTheDocument()
-    expect(screen.getByText('1500.00')).toBeInTheDocument()
+    // Consolidated locale-aware formatting: EUR default company -> fr-FR
+    // (comma decimal, grouped thousands normalized to ' ' by testing-library).
+    expect(screen.getByText('1 500,00')).toBeInTheDocument()
   })
 
   it('validates allocation behavior with manual mode', async () => {
@@ -630,7 +632,8 @@ describe('PaymentAllocationForm', () => {
     const selectButton = screen.getByText('Select Invoice')
     await user.click(selectButton)
 
-    expect(screen.getByText('Total allocated: 100.00')).toBeInTheDocument()
+    // Locale-aware rendering of the bcmath total (fr-FR comma decimal).
+    expect(screen.getByText('Total allocated: 100,00')).toBeInTheDocument()
   })
 
   it('allows switching between allocation methods', async () => {

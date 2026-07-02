@@ -151,7 +151,9 @@ describe('treasury tenant scope', () => {
 
     await waitFor(() => {
       expect(queryClient.getQueryData(['instruments', 'tenant-A', 'company-1'])).toBeDefined()
-      expect(queryClient.getQueryData(['payments', 'tenant-A', 'company-1'])).toBeDefined()
+      // PaymentListPage keys its query as ['payments', search, tenant, company]
+      // since the list-search branch; the initial search term is ''.
+      expect(queryClient.getQueryData(['payments', '', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['payment-repositories', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['payment-methods', 'tenant-A', 'company-1'])).toBeDefined()
     })

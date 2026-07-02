@@ -268,11 +268,13 @@ describe('PaymentForm method-driven conditional fields', () => {
     const amount = await screen.findByLabelText('treasury:payments.form.amount *')
     fireEvent.change(amount, { target: { value: '100' } })
 
-    // Mixed fee: 0.500 fixed + 1% of 100 = 1.500 → net 98.500 (displayed at 2 decimals)
+    // Mixed fee: 0.500 fixed + 1% of 100 = 1.500 → net 98.500 (displayed at
+    // 2 decimals via the consolidated locale-aware formatter: TND -> fr-TN
+    // locale, comma decimal separator -> "1,50 TND" / "98,50 TND").
     const feeLine = await screen.findByTestId('payment-fee-line')
-    expect(within(feeLine).getByText(/1\.50/)).toBeInTheDocument()
+    expect(within(feeLine).getByText(/1,50/)).toBeInTheDocument()
     const netLine = await screen.findByTestId('payment-net-line')
-    expect(within(netLine).getByText(/98\.50/)).toBeInTheDocument()
+    expect(within(netLine).getByText(/98,50/)).toBeInTheDocument()
   })
 })
 
