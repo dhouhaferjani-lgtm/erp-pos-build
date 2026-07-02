@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { BankReconciliationPage } from './BankReconciliationPage'
 import type { BankReconciliation } from '@/types/treasury'
 
@@ -13,8 +13,9 @@ vi.mock('react-i18next', () => ({
 
 // Router: list view (no `id` search param), capture setSearchParams.
 const mockSetSearchParams = vi.fn()
+const mockSearchParams = new URLSearchParams('')
 vi.mock('react-router-dom', () => ({
-  useSearchParams: () => [new URLSearchParams(''), mockSetSearchParams],
+  useSearchParams: () => [mockSearchParams, mockSetSearchParams],
   Link: ({ to, children, ...props }: { to: string; children: React.ReactNode; className?: string }) => (
     <a href={to} {...props}>{children}</a>
   ),
@@ -53,12 +54,17 @@ const reconciliationsReturn: {
   error: null,
 }
 
+const mockStartMutate = vi.fn()
+
 vi.mock('./hooks/useReconciliation', () => ({
   useReconciliations: () => reconciliationsReturn,
   useReconciliation: () => ({ data: undefined, isLoading: false, error: null }),
   useReconciliationSummary: () => ({ data: undefined }),
-  usePaymentRepositories: () => ({ data: [], isLoading: false }),
-  useStartReconciliation: () => ({ mutate: vi.fn(), isPending: false }),
+  usePaymentRepositories: () => ({
+    data: [{ id: 'repo-1', name: 'Main Bank Account', balance: '25000.000', currency: 'TND' }],
+    isLoading: false,
+  }),
+  useStartReconciliation: () => ({ mutate: mockStartMutate, isPending: false }),
   useMatchItem: () => ({ mutate: vi.fn(), isPending: false }),
   useUnmatchItem: () => ({ mutate: vi.fn(), isPending: false }),
   useCompleteReconciliation: () => ({ mutate: vi.fn(), isPending: false }),
@@ -66,6 +72,12 @@ vi.mock('./hooks/useReconciliation', () => ({
 }))
 
 describe('BankReconciliationPage (canonical list)', () => {
+  beforeEach(() => {
+    mockStartMutate.mockClear()
+    mockSetSearchParams.mockClear()
+    mockSearchParams.delete('id')
+  })
+
   it('renders exactly one h1 page title', () => {
     render(<BankReconciliationPage />)
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
@@ -88,5 +100,41 @@ describe('BankReconciliationPage (canonical list)', () => {
     const { container } = render(<BankReconciliationPage />)
     const tabularCells = container.querySelectorAll('.tabular-nums')
     expect(tabularCells.length).toBeGreaterThan(0)
+  })
+
+  it('links back to the finance hub', () => {
+    render(<BankReconciliationPage />)
+    expect(screen.getByRole('link', { name: 'back' })).toHaveAttribute('href', '/finance')
+  })
+
+  it('submits an explicit opening balance when starting a reconciliation', () => {
+    render(<BankReconciliationPage />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'reconciliation.startNew' })[0])
+
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/reconciliation\.repository/), {
+      target: { value: 'repo-1' },
+    })
+    fireEvent.change(within(dialog).getByLabelText(/reconciliation\.statementDate/), {
+      target: { value: '2026-07-03' },
+    })
+    fireEvent.change(within(dialog).getByLabelText(/treasury:reconciliation\.openingBalance/), {
+      target: { value: '25000.000' },
+    })
+    fireEvent.change(within(dialog).getByLabelText(/reconciliation\.statementBalance/), {
+      target: { value: '25500.000' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'reconciliation.startNew' }))
+
+    expect(mockStartMutate).toHaveBeenCalledWith(
+      {
+        repository_id: 'repo-1',
+        statement_date: '2026-07-03',
+        opening_balance: '25000.000',
+        statement_balance: '25500.000',
+      },
+      expect.any(Object)
+    )
   })
 })

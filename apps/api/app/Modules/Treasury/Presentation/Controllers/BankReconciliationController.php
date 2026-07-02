@@ -9,7 +9,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\Services\BankReconciliationService;
 use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\BankReconciliationItem;
-use App\Shared\Presentation\Validation\ScopedExists;
+use App\Modules\Treasury\Presentation\Requests\StartBankReconciliationRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -72,7 +72,7 @@ class BankReconciliationController extends Controller
     /**
      * Start a new reconciliation session.
      */
-    public function store(Request $request): JsonResponse
+    public function store(StartBankReconciliationRequest $request): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
@@ -81,18 +81,8 @@ class BankReconciliationController extends Controller
         $user = $request->user();
         $userId = (string) $user->id;
 
-        $validated = $request->validate([
-            'repository_id' => [
-                'required',
-                'uuid',
-                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
-            ],
-            'statement_date' => ['required', 'date'],
-            'statement_balance' => ['required', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
-            'notes' => ['nullable', 'string', 'max:1000'],
-        ], [
-            'statement_balance.regex' => 'Statement balance must have at most 3 decimal places.',
-        ]);
+        /** @var array{repository_id: string, statement_date: string, opening_balance?: string, statement_balance: string, notes?: string} $validated */
+        $validated = $request->validated();
 
         $reconciliation = $this->reconciliationService->startReconciliation(
             $companyId,

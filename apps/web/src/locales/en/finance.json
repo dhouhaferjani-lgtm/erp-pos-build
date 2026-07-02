@@ -137,6 +137,7 @@
       "expenses": "Expenses",
       "totalRevenue": "Total Revenue",
       "totalExpenses": "Total Expenses",
+      "revenueVsExpenses": "Revenue vs Expenses",
       "netIncome": "Net Income"
     },
     "balanceSheetReport": {

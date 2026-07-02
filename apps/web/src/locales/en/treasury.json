@@ -469,5 +469,12 @@
         "button": "Deactivate"
       }
     }
+  },
+  "reconciliation": {
+    "openingBalance": "Opening Balance",
+    "startModal": {
+      "openingBalanceHelp": "Defaults to {{amount}} if left blank.",
+      "liveDifference": "Current difference"
+    }
   }
 }

@@ -20,9 +20,9 @@ class BankReconciliationService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
-    private function scale(): int
+    private function scale(?string $currencyCode = null): int
     {
-        return $this->scaleResolver->getScale();
+        return $this->scaleResolver->getScale($currencyCode);
     }
 
     /**
@@ -31,6 +31,7 @@ class BankReconciliationService
      * @param array{
      *   repository_id: string,
      *   statement_date: string,
+     *   opening_balance?: string,
      *   statement_balance: string,
      *   notes?: string
      * } $data
@@ -50,23 +51,24 @@ class BankReconciliationService
             ->where('company_id', $companyId)
             ->findOrFail($data['repository_id']);
 
-        // Get opening balance (last reconciled or 0)
-        $openingBalance = $repository->last_reconciled_balance ?? '0.00';
+        $scale = $this->scale($repository->company->currency);
 
-        return DB::transaction(function () use ($companyId, $tenantId, $userId, $data, $repository, $openingBalance) {
+        // Get opening balance from explicit statement input, last reconciled balance, or zero.
+        $openingBalance = $data['opening_balance'] ?? $repository->last_reconciled_balance ?? '0.00';
+
+        return DB::transaction(function () use ($companyId, $tenantId, $userId, $data, $repository, $openingBalance, $scale) {
             /** @var numeric-string $stmtBalance */
             $stmtBalance = $data['statement_balance'];
-            /** @var numeric-string $repoBalance */
-            $repoBalance = (string) $repository->balance;
+            /** @var numeric-string $openingBalance */
             $reconciliation = BankReconciliation::create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
                 'repository_id' => $repository->id,
                 'statement_date' => $data['statement_date'],
                 'opening_balance' => $openingBalance,
-                'closing_balance' => $repository->balance,
+                'closing_balance' => $openingBalance,
                 'statement_balance' => $data['statement_balance'],
-                'difference' => bcsub($stmtBalance, $repoBalance, $this->scale()),
+                'difference' => bcsub($stmtBalance, $openingBalance, $scale),
                 'status' => ReconciliationStatus::Draft,
                 'created_by' => $userId,
                 'notes' => $data['notes'] ?? null,
@@ -201,8 +203,8 @@ class BankReconciliationService
             $matchedTotal = '0.000';
             foreach ($matchedItems as $item) {
                 /** @var numeric-string $itemAmount */
-                $itemAmount = (string) ($item->amount ?? '0');
-                $matchedTotal = bcadd($matchedTotal, $itemAmount, $this->scaleResolver->getScale());
+                $itemAmount = (string) $item->payment->amount;
+                $matchedTotal = bcadd($matchedTotal, $itemAmount, $this->scale($item->payment->currency));
             }
 
             DB::afterCommit(function () use ($reconciliation, $matchedCount, $matchedTotal): void {
@@ -260,7 +262,7 @@ class BankReconciliationService
         $matchedItems = $reconciliation->items->where('is_matched', true);
         $unmatchedItems = $reconciliation->items->where('is_matched', false);
 
-        $scale = $this->scale();
+        $scale = $this->scale($reconciliation->repository->company->currency);
 
         $matchedTotal = '0';
         foreach ($matchedItems as $item) {
@@ -296,7 +298,7 @@ class BankReconciliationService
     {
         $matchedItems = $reconciliation->items()->where('is_matched', true)->with('payment')->get();
 
-        $scale = $this->scale();
+        $scale = $this->scale($reconciliation->repository->company->currency);
         $matchedTotal = '0';
         foreach ($matchedItems as $item) {
             $matchedTotal = bcadd($matchedTotal, (string) $item->payment->amount, $scale);

@@ -1584,7 +1584,7 @@ export function AppRoutes() {
           <Route
             path="reconciliation"
             element={
-              <RequirePermission permission="repositories.manage">
+              <RequirePermission permission="repositories.view">
                 <SuspenseWrapper>
                   <BankReconciliationPage />
                 </SuspenseWrapper>

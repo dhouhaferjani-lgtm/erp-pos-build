@@ -137,6 +137,7 @@
       "expenses": "Charges",
       "totalRevenue": "Total produits",
       "totalExpenses": "Total charges",
+      "revenueVsExpenses": "Produits vs charges",
       "netIncome": "Resultat net"
     },
     "balanceSheetReport": {

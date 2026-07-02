@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { StatCard } from './StatCard'
 import { TrendingUp } from 'lucide-react'
+import { colors, textColors } from '../../lib/designTokens'
 
 describe('StatCard', () => {
   it('renders label and value', () => {
@@ -57,7 +58,7 @@ describe('StatCard', () => {
     )
     expect(screen.getByText('+12.5%')).toBeInTheDocument()
     expect(screen.getByText('from last month')).toBeInTheDocument()
-    expect(screen.getByText('+12.5%')).toHaveClass('text-green-600')
+    expect(screen.getByText('+12.5%')).toHaveClass(textColors.success)
   })
 
   it('renders negative trend with correct styling', () => {
@@ -70,7 +71,7 @@ describe('StatCard', () => {
     )
     expect(screen.getByText('-5.2%')).toBeInTheDocument()
     expect(screen.getByText('from last month')).toBeInTheDocument()
-    expect(screen.getByText('-5.2%')).toHaveClass('text-red-600')
+    expect(screen.getByText('-5.2%')).toHaveClass(textColors.error)
   })
 
   it('renders trend without plus sign when isPositive is false', () => {
@@ -104,7 +105,7 @@ describe('StatCard', () => {
       />
     )
     const trendValue = screen.getByText('5%')
-    expect(trendValue).toHaveClass('text-red-600')
+    expect(trendValue).toHaveClass(textColors.error)
   })
 
   it('applies custom className', () => {
@@ -146,7 +147,7 @@ describe('StatCard', () => {
     const label = screen.getByText('Test Label')
     expect(label).toHaveClass('text-sm')
     expect(label).toHaveClass('font-medium')
-    expect(label).toHaveClass('text-gray-600')
+    expect(label).toHaveClass(textColors.tertiary)
   })
 
   it('renders value with correct styling', () => {
@@ -154,7 +155,7 @@ describe('StatCard', () => {
     const value = screen.getByText('100')
     expect(value).toHaveClass('text-3xl')
     expect(value).toHaveClass('font-semibold')
-    expect(value).toHaveClass('text-gray-900')
+    expect(value).toHaveClass(textColors.primary)
   })
 
   it('renders trend label with correct styling', () => {
@@ -168,7 +169,7 @@ describe('StatCard', () => {
     const trendLabel = screen.getByText('trend label')
     const trendContainer = trendLabel.closest('p')
     expect(trendContainer).toHaveClass('text-sm')
-    expect(trendContainer).toHaveClass('text-gray-600')
+    expect(trendContainer).toHaveClass(textColors.tertiary)
   })
 
   it('handles decimal trend values', () => {
@@ -196,7 +197,7 @@ describe('StatCard', () => {
   it('icon container has correct background', () => {
     const { container } = render(<StatCard label="Test" value={100} icon={TrendingUp} />)
     const iconContainer = container.querySelector('.w-12.h-12')
-    expect(iconContainer).toHaveClass('bg-gray-100')
+    expect(iconContainer).toHaveClass(colors.neutral[100])
     expect(iconContainer).toHaveClass('rounded-lg')
   })
 
@@ -204,6 +205,6 @@ describe('StatCard', () => {
     const { container } = render(<StatCard label="Test" value={100} icon={TrendingUp} />)
     const icon = container.querySelector('.w-6.h-6')
     expect(icon).toBeInTheDocument()
-    expect(icon).toHaveClass('text-gray-600')
+    expect(icon).toHaveClass(textColors.tertiary)
   })
 })
