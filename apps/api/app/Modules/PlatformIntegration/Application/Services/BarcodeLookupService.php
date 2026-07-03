@@ -8,10 +8,12 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Application\DTOs\BarcodeLookupResultData;
 use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformProductData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
+use App\Shared\Contracts\CatalogLookupInterface;
+use App\Shared\DTOs\CatalogProductDTO;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
-final class BarcodeLookupService
+final class BarcodeLookupService implements CatalogLookupInterface
 {
     private const CACHE_PREFIX = 'platform:lookup:';
 
@@ -90,6 +92,30 @@ final class BarcodeLookupService
 
             return BarcodeLookupResultData::error($normalizedBarcode, 'platform_error');
         }
+    }
+
+    public function lookupCatalogProduct(string $barcode, string $vertical): ?CatalogProductDTO
+    {
+        $result = $this->lookup($barcode, $vertical);
+
+        if ($result->status !== 'found' || $result->product === null) {
+            return null;
+        }
+
+        $product = $result->product;
+
+        return new CatalogProductDTO(
+            platformProductId: $product->id,
+            barcode: $product->barcode,
+            name: $product->name,
+            brand: $product->brand,
+            description: $product->description,
+            classification: $product->classification,
+            ingredients: $product->ingredients,
+            images: $product->images,
+            confidenceScore: $product->confidenceScore,
+            enrichmentTier: $product->enrichmentTier,
+        );
     }
 
     /**
