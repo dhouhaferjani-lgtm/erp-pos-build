@@ -87,6 +87,43 @@
     "accountsReceivable": "Créances clients",
     "accountsPayable": "Dettes fournisseurs"
   },
+  "overview": {
+    "title": "Trésorerie",
+    "subtitle": "Position de caisse, encaissements attendus et paiements à venir",
+    "cash": {
+      "totalCash": "Trésorerie totale",
+      "cashRegisters": "Caisses",
+      "bankAccounts": "Comptes bancaires",
+      "safes": "Coffres",
+      "loading": "Chargement de la position de trésorerie...",
+      "loadError": "Échec du chargement de la position de trésorerie"
+    },
+    "upcoming": {
+      "moneyIn": "Entrées prévues",
+      "moneyOut": "Sorties prévues",
+      "totalIn": "Encaissements attendus",
+      "totalOut": "Paiements à venir",
+      "emptyIn": "Aucun encaissement attendu sur cette période.",
+      "emptyOut": "Aucun paiement à venir sur cette période.",
+      "loading": "Chargement des paiements à venir...",
+      "loadError": "Échec du chargement des paiements à venir",
+      "overdue": "En retard",
+      "daysUntilDue": "Échéance dans {{count}} jour",
+      "daysUntilDue_other": "Échéance dans {{count}} jours",
+      "buckets": {
+        "overdue": "En retard",
+        "current": "Courant",
+        "days1To30": "1-30 jours",
+        "days31To60": "31-60 jours",
+        "days90Plus": "90+ jours"
+      }
+    },
+    "trend": {
+      "revenueVsExpenses": "Produits vs charges de la période",
+      "revenue": "Produits",
+      "expenses": "Charges"
+    }
+  },
   "ledger": {
     "title": "Grand livre",
     "description": "Consulter toutes les ecritures comptables et soldes de comptes",
@@ -203,6 +240,10 @@
       "withholdingCertificates": {
         "title": "Certificats de retenue",
         "description": "Gérer les certificats de retenue à la source"
+      },
+      "treasuryOverview": {
+        "title": "Trésorerie",
+        "description": "Suivre la position de trésorerie et les mouvements à venir"
       },
       "chartOfAccounts": {
         "title": "Plan comptable",

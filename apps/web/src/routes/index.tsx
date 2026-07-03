@@ -140,6 +140,7 @@ const PosRefundPoliciesPage = lazy(() => import('../features/settings/pages/PosR
 const CustomerHistoryAuditPage = lazy(() => import('../features/customer-history-audit').then((m) => ({ default: m.CustomerHistoryAuditPage })))
 
 // Finance module
+const TreasuryOverviewPage = lazy(() => import('../features/finance/pages/TreasuryOverviewPage').then((m) => ({ default: m.TreasuryOverviewPage })))
 const ChartOfAccountsPage = lazy(() => import('../features/finance/pages/ChartOfAccountsPage').then((m) => ({ default: m.ChartOfAccountsPage })))
 const GeneralLedgerPage = lazy(() => import('../features/finance/pages/GeneralLedgerPage').then((m) => ({ default: m.GeneralLedgerPage })))
 const TrialBalancePage = lazy(() => import('../features/finance/pages/TrialBalancePage').then((m) => ({ default: m.TrialBalancePage })))
@@ -1658,6 +1659,16 @@ export function AppRoutes() {
               </SuspenseWrapper>
             </RequirePermission>
           } />
+          <Route
+            path="overview"
+            element={
+              <RequirePermission permission="reports.view">
+                <SuspenseWrapper>
+                  <TreasuryOverviewPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
           <Route
             path="chart-of-accounts"
             element={

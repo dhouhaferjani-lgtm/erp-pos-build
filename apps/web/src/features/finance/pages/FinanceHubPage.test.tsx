@@ -20,12 +20,17 @@ vi.mock('../../../hooks/usePageTitle', () => ({
 }))
 
 const mockCanAccessModule = vi.fn()
+const mockHasPermission = vi.fn()
 vi.mock('../../../hooks/usePermissions', () => ({
-  usePermissions: () => ({ canAccessModule: mockCanAccessModule }),
+  usePermissions: () => ({
+    canAccessModule: mockCanAccessModule,
+    hasPermission: mockHasPermission,
+  }),
 }))
 
 beforeEach(() => {
   mockCanAccessModule.mockReturnValue(true)
+  mockHasPermission.mockReturnValue(true)
 })
 
 describe('FinanceHubPage canonicalization', () => {
@@ -49,6 +54,15 @@ describe('FinanceHubPage canonicalization', () => {
     expect(chips.length).toBeGreaterThan(0)
     const classes = new Set(Array.from(chips).map((c) => c.className))
     expect(classes.size).toBe(1)
+  })
+
+  it('links to the treasury overview page from the banking and payments section', () => {
+    render(<FinanceHubPage />)
+
+    const link = screen.getByRole('link', {
+      name: /hub\.cards\.treasuryOverview\.title/i,
+    })
+    expect(link).toHaveAttribute('href', '/finance/overview')
   })
 
   it('hides a whole section when none of its cards are accessible', () => {

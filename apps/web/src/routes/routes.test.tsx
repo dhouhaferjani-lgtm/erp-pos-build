@@ -63,4 +63,12 @@ describe('route module guards', () => {
     expect(fragment).toContain('permission="repositories.view"')
     expect(fragment).not.toContain('permission="repositories.manage"')
   })
+
+  it('registers treasury overview under finance with reports.view permission', () => {
+    const idx = routesSource.indexOf('path="overview"')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    const fragment = routesSource.slice(Math.max(0, idx - 200), idx + 500)
+    expect(fragment).toContain('TreasuryOverviewPage')
+    expect(fragment).toContain('permission="reports.view"')
+  })
 })
