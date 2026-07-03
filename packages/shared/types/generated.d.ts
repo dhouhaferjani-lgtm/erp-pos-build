@@ -1524,6 +1524,8 @@ oem_numbers: Array<any> | null;
 cross_references: Array<any> | null;
 target_margin_override: string | null;
 minimum_margin_override: string | null;
+enrichment_status: string | null;
+platform_product_id: string | null;
 created_at: string;
 updated_at: string | null;
 has_variants: boolean;

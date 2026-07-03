@@ -96,8 +96,12 @@ final class EnrichmentReviewService
                 foreach ($acceptedFields as $field) {
                     match ($field) {
                         'name' => $productUpdates['name'] = $enrichedData->name,
-                        'description' => $productUpdates['description'] = $enrichedData->description,
-                        'barcode' => $productUpdates['barcode'] = $enrichedData->assigned_barcode,
+                        'description' => $enrichedData->description !== null
+                            ? $productUpdates['description'] = $enrichedData->description
+                            : null,
+                        'barcode' => $enrichedData->assigned_barcode !== null
+                            ? $productUpdates['barcode'] = $enrichedData->assigned_barcode
+                            : null,
                         default => null,
                     };
                 }
@@ -173,6 +177,7 @@ final class EnrichmentReviewService
         string $companyId,
         ?EnrichmentReviewStatus $status,
         ?string $quality,
+        ?string $productId = null,
     ): LengthAwarePaginator {
         $query = EnrichmentResult::query()
             ->where('tenant_id', $tenantId)
@@ -186,6 +191,10 @@ final class EnrichmentReviewService
 
         if ($quality !== null) {
             $query->where('enrichment_quality', $quality);
+        }
+
+        if ($productId !== null) {
+            $query->where('product_id', $productId);
         }
 
         return $query->paginate(25);
