@@ -245,7 +245,7 @@ function ProductCardInner({
         />
       )}
 
-      {isInCart && (
+      {isInCart && displayMode === 'visual' && (
         <span
           data-testid="in-cart-badge"
           className={cn(
@@ -304,49 +304,108 @@ function ProductCardInner({
         </div>
       )}
 
-      {/* Brand name in caps — rendered only when present. */}
-      {product.brand_name && (
-        <p
-          className={cn(
-            'w-full text-[10px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
-            isOutOfStock ? 'text-ink-faint' : 'text-ink-muted',
-          )}
-        >
-          {product.brand_name}
-        </p>
-      )}
+      {displayMode === 'grid' ? (
+        <div className="flex w-full items-start gap-2">
+          <div className="min-w-0 flex-1">
+            {/* Brand name in caps — rendered only when present. */}
+            {product.brand_name && (
+              <p
+                className={cn(
+                  'w-full truncate text-[10px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
+                  isOutOfStock ? 'text-ink-faint' : 'text-ink-muted',
+                )}
+              >
+                {product.brand_name}
+              </p>
+            )}
 
-      <h3
-        title={product.name}
-        className={cn(
-          // Fixed two-line slot: line-clamp-2 caps the visible text and the
-          // min-height pins the box to exactly two lines, so a long name can
-          // never leak a sliced third line nor push the price/stock rows up.
-          'w-full line-clamp-2 overflow-hidden font-semibold',
-          nameMinHClass,
-          isOutOfStock ? 'text-ink-faint' : 'text-ink',
-          displayMode === 'visual' ? 'text-[13.5px] leading-[1.3]' : 'text-base',
-        )}
-      >
-        {product.name}
-      </h3>
+            <h3
+              title={product.name}
+              className={cn(
+                // Fixed two-line slot: line-clamp-2 caps the visible text and the
+                // min-height pins the box to exactly two lines, so a long name can
+                // never leak a sliced third line nor push the price/stock rows up.
+                'w-full line-clamp-2 overflow-hidden text-[13.5px] leading-[1.3] font-semibold',
+                nameMinHClass,
+                isOutOfStock ? 'text-ink-faint' : 'text-ink',
+              )}
+            >
+              {product.name}
+            </h3>
+          </div>
+
+          <div
+            data-testid="compact-card-header-actions"
+            className="flex shrink-0 items-center gap-1"
+          >
+            {isInCart && (
+              <span
+                data-testid="in-cart-badge"
+                className={cn(
+                  tokens.badge.neutral,
+                  'border-accent/40 bg-accent-tint text-accent-strong',
+                )}
+                title={t('products.inCart')}
+              >
+                <Check className="h-3 w-3" aria-hidden="true" />
+                {t('products.inCart')}
+              </span>
+            )}
+            {onViewDetails && (
+              <ViewDetailsButton
+                className="h-7 w-7 border-0 bg-surface-sunken"
+                label={viewDetailsLabel}
+                product={product}
+                onViewDetails={onViewDetails}
+              />
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Brand name in caps — rendered only when present. */}
+          {product.brand_name && (
+            <p
+              className={cn(
+                'w-full text-[10px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
+                isOutOfStock ? 'text-ink-faint' : 'text-ink-muted',
+              )}
+            >
+              {product.brand_name}
+            </p>
+          )}
+
+          <h3
+            title={product.name}
+            className={cn(
+              // Fixed two-line slot: line-clamp-2 caps the visible text and the
+              // min-height pins the box to exactly two lines, so a long name can
+              // never leak a sliced third line nor push the price/stock rows up.
+              'w-full line-clamp-2 overflow-hidden text-[13.5px] leading-[1.3] font-semibold',
+              nameMinHClass,
+              isOutOfStock ? 'text-ink-faint' : 'text-ink',
+            )}
+          >
+            {product.name}
+          </h3>
+        </>
+      )}
 
       {/* Price + stock share ONE row (mock layout: space-between), anchored to
           the card bottom via mt-auto so prices align across a row. */}
       <div
         data-testid="price-stock-block"
         className={cn(
-          'mt-auto flex w-full gap-2 pt-2',
+          'mt-auto flex w-full gap-2',
           displayMode === 'visual'
-            ? 'flex-col items-start'
-            : 'items-center justify-between',
+            ? 'flex-col items-start pt-2'
+            : 'items-center justify-between border-t border-border-subtle pt-[9px]',
         )}
       >
         <p
           data-testid="price-row"
           className={cn(
-            'shrink-0 font-mono font-semibold tabular-nums',
-            displayMode === 'visual' ? 'text-[15px]' : 'text-lg font-bold',
+            'shrink-0 font-mono text-[15px] font-semibold tabular-nums',
             isOutOfStock ? 'text-ink-faint' : 'text-accent-strong',
           )}
         >
@@ -365,21 +424,10 @@ function ProductCardInner({
             <StockBadge
               data-testid="stock-row"
               status={isOutOfStock ? 'out' : isLowStock ? 'low' : 'ok'}
-              className={cn(
-                'max-w-full shrink-0',
-                displayMode === 'visual' && 'px-[7px] py-[3px] text-[10.5px] font-semibold',
-              )}
+              className="max-w-full shrink-0 px-[7px] py-[3px] text-[10.5px] font-semibold"
             >
               {stockLabel}
             </StockBadge>
-          )}
-          {displayMode === 'grid' && onViewDetails && (
-            <ViewDetailsButton
-              className="h-7 w-7"
-              label={viewDetailsLabel}
-              product={product}
-              onViewDetails={onViewDetails}
-            />
           )}
         </div>
       </div>
