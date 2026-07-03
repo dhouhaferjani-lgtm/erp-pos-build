@@ -186,16 +186,214 @@ final class CashMovementsReportTest extends TestCase
 
     public function test_cash_movements_report_deduplicates_payment_backed_journal_lines(): void
     {
-        $payment = $this->payment(
+        $this->assertPaymentBackedJournalLineIsDeduplicated(
+            sourceType: 'customer_payment',
+            paymentType: PaymentType::DocumentPayment,
+            cashDebit: '42.000',
+            cashCredit: '0.000',
+            expectedDirection: 'in',
+            expectedAmount: '42.00',
+        );
+    }
+
+    public function test_cash_movements_report_deduplicates_supplier_payment_journal_lines(): void
+    {
+        $this->assertPaymentBackedJournalLineIsDeduplicated(
+            sourceType: 'supplier_payment',
+            paymentType: PaymentType::SupplierPayment,
+            cashDebit: '0.000',
+            cashCredit: '55.000',
+            expectedDirection: 'out',
+            expectedAmount: '55.00',
+        );
+    }
+
+    public function test_cash_movements_report_deduplicates_advance_journal_lines(): void
+    {
+        $this->assertPaymentBackedJournalLineIsDeduplicated(
+            sourceType: 'advance',
+            paymentType: PaymentType::Advance,
+            cashDebit: '67.000',
+            cashCredit: '0.000',
+            expectedDirection: 'in',
+            expectedAmount: '67.00',
+        );
+    }
+
+    public function test_cash_movements_report_deduplicates_supplier_advance_refund_and_reports_it_as_cash_in(): void
+    {
+        $this->assertPaymentBackedJournalLineIsDeduplicated(
+            sourceType: 'supplier_advance_refund',
+            paymentType: PaymentType::Refund,
+            cashDebit: '79.000',
+            cashCredit: '0.000',
+            expectedDirection: 'in',
+            expectedAmount: '79.00',
+        );
+    }
+
+    public function test_cash_movements_report_requires_authentication(): void
+    {
+        $response = $this->getJson('/api/v1/reports/cash-movements?from=2026-07-02&to=2026-07-02');
+
+        $response->assertUnauthorized();
+    }
+
+    public function test_cash_movements_report_requires_reports_view_permission(): void
+    {
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'No Reports User',
+            'email' => 'no-reports-user@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-02&to=2026-07-02');
+
+        $response->assertForbidden();
+    }
+
+    public function test_cash_movements_report_excludes_other_company_payments_and_journal_lines(): void
+    {
+        $ownPayment = $this->payment(
             repository: $this->cashRepository,
             amount: '42.000',
             paymentDate: '2026-07-02',
             paymentType: PaymentType::DocumentPayment,
         );
 
-        $entry = $this->journalEntry('2026-07-02', 'payment', $payment->id);
-        $this->journalLine($entry, $this->cashAccount, '42.000', '0.000', 'Duplicated payment cash line');
-        $this->journalLine($entry, $this->revenueAccount, '0.000', '42.000', 'Offset');
+        $ownEntry = $this->journalEntry('2026-07-02', 'manual_cash_sale', Str::uuid()->toString());
+        $this->journalLine($ownEntry, $this->cashAccount, '24.000', '0.000', 'Own cash sale');
+        $this->journalLine($ownEntry, $this->revenueAccount, '0.000', '24.000', 'Own revenue');
+
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Cash Movements Company',
+            'legal_name' => 'Other Cash Movements Company LLC',
+            'tax_id' => 'CM999',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        $otherCashAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'code' => '1100',
+            'name' => 'Other Cash',
+            'type' => AccountType::Asset,
+        ]);
+
+        $otherRevenueAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'code' => '7000',
+            'name' => 'Other Sales Revenue',
+            'type' => AccountType::Revenue,
+        ]);
+
+        $otherRepository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'code' => 'OTHER-CASH',
+            'name' => 'Other Cash',
+            'type' => RepositoryType::CashRegister,
+            'balance' => '0.000',
+            'gl_account_id' => $otherCashAccount->id,
+            'is_active' => true,
+        ]);
+
+        $otherPartner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'name' => 'Other Counterparty SARL',
+            'type' => PartnerType::Both,
+            'code' => 'CP-999',
+        ]);
+
+        $otherPayment = Payment::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'partner_id' => $otherPartner->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'repository_id' => $otherRepository->id,
+            'amount' => '99.000',
+            'currency' => 'EUR',
+            'payment_date' => '2026-07-02',
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+            'origin' => PaymentOrigin::WebAdmin,
+            'reference' => 'PAY-'.Str::uuid()->toString(),
+        ]);
+
+        $otherEntry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'entry_number' => 'JE-'.Str::uuid()->toString(),
+            'entry_date' => '2026-07-02',
+            'description' => 'Other cash movement test entry',
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => 'other_manual_cash_sale',
+            'source_id' => Str::uuid()->toString(),
+            'posted_at' => now(),
+        ]);
+        JournalLine::create([
+            'journal_entry_id' => $otherEntry->id,
+            'account_id' => $otherCashAccount->id,
+            'debit' => '88.000',
+            'credit' => '0.000',
+            'description' => 'Other cash sale',
+            'line_order' => 0,
+        ]);
+        JournalLine::create([
+            'journal_entry_id' => $otherEntry->id,
+            'account_id' => $otherRevenueAccount->id,
+            'debit' => '0.000',
+            'credit' => '88.000',
+            'description' => 'Other revenue',
+            'line_order' => 1,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-02&to=2026-07-02');
+
+        $response->assertOk();
+        $response->assertJsonCount(2, 'data');
+
+        $response->assertJsonFragment(['source_id' => $ownPayment->id]);
+        $response->assertJsonFragment(['source_id' => $ownEntry->source_id]);
+        $response->assertJsonMissing(['source_id' => $otherPayment->id]);
+        $response->assertJsonMissing(['source_id' => $otherEntry->source_id]);
+    }
+
+    private function assertPaymentBackedJournalLineIsDeduplicated(
+        string $sourceType,
+        PaymentType $paymentType,
+        string $cashDebit,
+        string $cashCredit,
+        string $expectedDirection,
+        string $expectedAmount,
+    ): void {
+        $payment = $this->payment(
+            repository: $this->cashRepository,
+            amount: $expectedAmount.'0',
+            paymentDate: '2026-07-02',
+            paymentType: $paymentType,
+        );
+
+        $entry = $this->journalEntry('2026-07-02', $sourceType, $payment->id);
+        $this->journalLine($entry, $this->cashAccount, $cashDebit, $cashCredit, 'Duplicated payment cash line');
+        $this->journalLine($entry, $this->revenueAccount, $cashCredit, $cashDebit, 'Offset');
 
         $response = $this->actingAs($this->user, 'sanctum')
             ->getJson('/api/v1/reports/cash-movements?from=2026-07-02&to=2026-07-02');
@@ -204,7 +402,8 @@ final class CashMovementsReportTest extends TestCase
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.source_type', 'payment');
         $response->assertJsonPath('data.0.source_id', $payment->id);
-        $response->assertJsonPath('data.0.amount', '42.00');
+        $response->assertJsonPath('data.0.direction', $expectedDirection);
+        $response->assertJsonPath('data.0.amount', $expectedAmount);
     }
 
     public function test_cash_movements_report_deduplicates_pos_receipt_journal_lines_represented_by_payments(): void

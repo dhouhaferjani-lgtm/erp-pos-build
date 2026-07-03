@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -147,7 +148,7 @@ class VendorPrepaymentRefundTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->cashRegister->account_id = $cashAccount->id;
+        $this->cashRegister->gl_account_id = $cashAccount->id;
         $this->cashRegister->save();
     }
 
@@ -219,6 +220,14 @@ class VendorPrepaymentRefundTest extends TestCase
         $this->assertSame($this->user->id, $entry->posted_by);
         $this->assertNotNull($entry->posted_at);
         $this->assertNotNull($entry->fiscal_hash);
+
+        $cashLine = JournalLine::query()
+            ->where('journal_entry_id', $entry->id)
+            ->where('debit', '400.000')
+            ->firstOrFail();
+
+        $this->cashRegister->refresh();
+        $this->assertSame($this->cashRegister->gl_account_id, $cashLine->account_id);
     }
 
     public function test_over_refund_is_rejected(): void
@@ -415,6 +424,9 @@ class VendorPrepaymentRefundTest extends TestCase
         $response->assertJsonPath('error.code', 'REFUND_FAILED');
     }
 
+    /**
+     * @param  numeric-string  $total
+     */
     private function createPurchaseOrder(string $total): Document
     {
         return Document::create([
@@ -434,6 +446,9 @@ class VendorPrepaymentRefundTest extends TestCase
         ]);
     }
 
+    /**
+     * @param  numeric-string  $amount
+     */
     private function allocatePaymentToPO(Document $po, string $amount): Payment
     {
         $payment = Payment::create([
@@ -456,8 +471,16 @@ class VendorPrepaymentRefundTest extends TestCase
             'amount' => $amount,
         ]);
 
-        // Update balance
-        $po->balance_due = bcsub($po->balance_due ?? $po->total, $amount, 2);
+        $currentBalance = $po->balance_due;
+        if ($currentBalance === null) {
+            $currentBalance = $po->total;
+        }
+
+        if ($currentBalance === null) {
+            throw new \LogicException('Purchase order balance is required for prepayment refund tests.');
+        }
+
+        $po->balance_due = bcsub($currentBalance, $amount, 2);
         $po->save();
 
         return $payment;

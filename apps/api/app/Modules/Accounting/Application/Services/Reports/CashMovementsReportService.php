@@ -14,6 +14,7 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use stdClass;
 
@@ -43,6 +44,8 @@ final readonly class CashMovementsReportService
         CashMovementSourceType::Payment->value,
         CashMovementSourceType::CustomerPayment->value,
         CashMovementSourceType::SupplierPayment->value,
+        'advance',
+        'supplier_advance_refund',
     ];
 
     /**
@@ -128,7 +131,10 @@ final readonly class CashMovementsReportService
         $query = DB::table('payments')
             ->join('payment_repositories', 'payment_repositories.id', '=', 'payments.repository_id')
             ->join('accounts', 'accounts.id', '=', 'payment_repositories.gl_account_id')
-            ->leftJoin('partners', 'partners.id', '=', 'payments.partner_id')
+            ->leftJoin('partners', function (JoinClause $join) use ($companyId): void {
+                $join->on('partners.id', '=', 'payments.partner_id')
+                    ->where('partners.company_id', $companyId);
+            })
             ->where('payments.company_id', $companyId)
             ->where('payment_repositories.company_id', $companyId)
             ->where('accounts.company_id', $companyId)
@@ -138,8 +144,41 @@ final readonly class CashMovementsReportService
             ->whereNotNull('payment_repositories.gl_account_id')
             ->selectRaw('payments.payment_date as date')
             ->selectRaw(
-                'CASE WHEN payments.payment_type IN (?, ?) THEN ? ELSE ? END as direction',
+                'CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM journal_entries as direction_entries
+                        JOIN journal_lines as direction_lines
+                            ON direction_lines.journal_entry_id = direction_entries.id
+                        WHERE direction_entries.company_id = payments.company_id
+                            AND direction_entries.status = ?
+                            AND direction_entries.source_id = payments.id
+                            AND direction_entries.source_type IN (?, ?, ?, ?, ?)
+                            AND direction_lines.account_id = payment_repositories.gl_account_id
+                            AND direction_lines.debit > 0
+                    ) THEN ?
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM journal_entries as direction_entries
+                        JOIN journal_lines as direction_lines
+                            ON direction_lines.journal_entry_id = direction_entries.id
+                        WHERE direction_entries.company_id = payments.company_id
+                            AND direction_entries.status = ?
+                            AND direction_entries.source_id = payments.id
+                            AND direction_entries.source_type IN (?, ?, ?, ?, ?)
+                            AND direction_lines.account_id = payment_repositories.gl_account_id
+                            AND direction_lines.credit > 0
+                    ) THEN ?
+                    WHEN payments.payment_type IN (?, ?) THEN ?
+                    ELSE ?
+                END as direction',
                 [
+                    JournalEntryStatus::Posted->value,
+                    ...self::PAYMENT_BACKED_SOURCE_TYPES,
+                    CashMovementDirection::In->value,
+                    JournalEntryStatus::Posted->value,
+                    ...self::PAYMENT_BACKED_SOURCE_TYPES,
+                    CashMovementDirection::Out->value,
                     PaymentType::Refund->value,
                     PaymentType::SupplierPayment->value,
                     CashMovementDirection::Out->value,
@@ -168,7 +207,10 @@ final readonly class CashMovementsReportService
         $query = DB::table('journal_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
-            ->leftJoin('partners', 'partners.id', '=', 'journal_lines.partner_id')
+            ->leftJoin('partners', function (JoinClause $join) use ($companyId): void {
+                $join->on('partners.id', '=', 'journal_lines.partner_id')
+                    ->where('partners.company_id', $companyId);
+            })
             ->where('journal_entries.company_id', $companyId)
             ->where('accounts.company_id', $companyId)
             ->where('journal_entries.status', JournalEntryStatus::Posted->value)
