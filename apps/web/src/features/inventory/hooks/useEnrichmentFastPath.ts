@@ -16,6 +16,8 @@ export function useEnrichmentFastPath(opts: {
   const { productId, enabled } = opts
   const [state, setState] = useState<FastPathState>({ phase: 'idle' })
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stateRef = useRef(state)
+  stateRef.current = state
 
   useEffect(() => {
     if (timerRef.current !== null) {
@@ -24,7 +26,13 @@ export function useEnrichmentFastPath(opts: {
     }
 
     if (!enabled) {
-      setState({ phase: 'idle' })
+      // Latch a ready card: the successful poll itself flips the product's
+      // enrichment_status to completed server-side, so any product refetch
+      // turns `enabled` off — that must not dismiss the card before the user
+      // acts on it.
+      if (stateRef.current.phase !== 'ready') {
+        setState({ phase: 'idle' })
+      }
       return undefined
     }
 

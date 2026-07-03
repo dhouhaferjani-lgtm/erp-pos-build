@@ -52,6 +52,25 @@ describe('useEnrichmentFastPath', () => {
     })
   })
 
+  it('latches the ready card when enabled flips false after ready (product refetch must not dismiss it)', async () => {
+    const result = makeResult()
+    mockRefreshEnrichment.mockResolvedValueOnce({ enrichment_status: 'completed' })
+    mockGetEnrichmentResults.mockResolvedValueOnce(makePage([result]))
+
+    const { result: hook, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useEnrichmentFastPath({ productId: 'product-1', enabled }),
+      { initialProps: { enabled: true } },
+    )
+
+    await advance(3_000)
+    expect(hook.current.phase).toBe('ready')
+
+    // The successful poll flips enrichment_status to completed server-side, so
+    // any product refetch turns the gate off — the card must survive that.
+    rerender({ enabled: false })
+    expect(hook.current.phase).toBe('ready')
+  })
+
   it('times out after all pending polls', async () => {
     mockRefreshEnrichment.mockResolvedValue({ enrichment_status: 'pending' })
 

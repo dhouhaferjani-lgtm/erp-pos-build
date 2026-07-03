@@ -9,6 +9,7 @@ use App\Modules\PlatformIntegration\Application\Services\BarcodeLookupService;
 use App\Modules\PlatformIntegration\Domain\Services\BarcodeNormalizer;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Exceptions\PlatformCatalogUnavailableException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Mockery;
@@ -84,11 +85,25 @@ final class CatalogLookupAdapterTest extends TestCase
         $this->assertNull($service->lookupCatalogProduct('3017620422003', 'parapharmacy'));
     }
 
-    public function test_lookup_catalog_product_returns_null_on_lookup_error(): void
+    public function test_lookup_catalog_product_returns_null_on_permanent_error(): void
     {
         $service = $this->makeService();
 
+        // invalid_barcode is permanent — "cannot confirm", not "try again later"
         $this->assertNull($service->lookupCatalogProduct('!!!', 'parapharmacy'));
+    }
+
+    public function test_lookup_catalog_product_throws_on_transient_platform_failure(): void
+    {
+        $service = $this->makeService();
+
+        Http::fake([
+            'platform.test/*' => Http::response(['error' => 'boom'], 500),
+        ]);
+
+        $this->expectException(PlatformCatalogUnavailableException::class);
+
+        $service->lookupCatalogProduct('3017620422003', 'parapharmacy');
     }
 
     private function makeService(): BarcodeLookupService

@@ -44,6 +44,7 @@ final class ProductSubmissionController extends Controller
             'photo_ids' => ['sometimes', 'array', 'max:5'],
             'photo_ids.*' => ['string', 'max:255'],
             'attributes' => ['sometimes', 'nullable', 'array'],
+            'attributes.*' => ['string', 'max:255'],
         ]);
 
         $barcode = $validated['barcode'] ?? null;
@@ -99,7 +100,7 @@ final class ProductSubmissionController extends Controller
         }
 
         $holder = $this->correlator->findTrackingIdHolder($result->trackingId, $company->id);
-        if ($holder !== null && $holder->productId !== $validated['product_id']) {
+        if ($holder !== null && ! hash_equals(Str::lower($holder->productId), Str::lower($validated['product_id']))) {
             return $this->trackingConflictResponse($holder);
         }
 

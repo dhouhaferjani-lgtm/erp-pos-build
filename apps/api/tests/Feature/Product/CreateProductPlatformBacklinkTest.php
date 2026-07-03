@@ -130,6 +130,33 @@ class CreateProductPlatformBacklinkTest extends TestCase
         Queue::assertNotPushed(ApplyCatalogEnrichmentJob::class);
     }
 
+    public function test_platform_product_id_without_barcode_rejected(): void
+    {
+        // A backlink is only verifiable through the barcode that produced the
+        // FOUND hit; without it the verification job never runs.
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'X',
+                'sku' => 'SKU-NOBAR',
+                'platform_product_id' => (string) Str::uuid(),
+            ]);
+
+        $this->assertApiValidationErrors($response, ['barcode']);
+    }
+
+    public function test_float_opening_qty_still_requires_opening_cost(): void
+    {
+        // JSON-number opening_qty must not bypass the cost-required guard.
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/products', [
+                'name' => 'X',
+                'sku' => 'SKU-FLOATQTY',
+                'opening_qty' => 5.5,
+            ]);
+
+        $this->assertApiValidationErrors($response, ['opening_unit_cost']);
+    }
+
     public function test_invalid_platform_product_id_rejected(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')

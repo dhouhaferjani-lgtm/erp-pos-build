@@ -17,6 +17,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CatalogLookupInterface;
 use App\Shared\DTOs\CatalogProductDTO;
 use App\Shared\Enums\EnrichmentStatus;
+use App\Shared\Exceptions\PlatformCatalogUnavailableException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -97,6 +98,25 @@ final class ApplyCatalogEnrichmentJobTest extends TestCase
         $this->assertSame(0, EnrichmentResult::query()->where('product_id', $product->id)->count());
     }
 
+    public function test_handle_preserves_backlink_when_platform_unavailable(): void
+    {
+        $product = $this->makeProduct('platform-product-001');
+        $this->app->instance(CatalogLookupInterface::class, new ThrowingCatalogLookup);
+
+        try {
+            $this->runJob($product, 'platform-product-001');
+            $this->fail('Expected PlatformCatalogUnavailableException to bubble for queue retry.');
+        } catch (PlatformCatalogUnavailableException) {
+            // rethrown so the queue's retry/backoff owns the transient outage
+        }
+
+        $product->refresh();
+        // A transient platform outage must NOT be treated as not_found:
+        // the verified backlink survives and no enrichment state is touched.
+        $this->assertSame('platform-product-001', $product->platform_product_id);
+        $this->assertSame(0, EnrichmentResult::query()->where('product_id', $product->id)->count());
+    }
+
     private function makeProduct(string $platformProductId): Product
     {
         return Product::factory()->create([
@@ -151,5 +171,13 @@ final readonly class FakeCatalogLookup implements CatalogLookupInterface
     public function lookupCatalogProduct(string $barcode, string $vertical): ?CatalogProductDTO
     {
         return $this->catalog;
+    }
+}
+
+final readonly class ThrowingCatalogLookup implements CatalogLookupInterface
+{
+    public function lookupCatalogProduct(string $barcode, string $vertical): ?CatalogProductDTO
+    {
+        throw new PlatformCatalogUnavailableException('platform_error');
     }
 }

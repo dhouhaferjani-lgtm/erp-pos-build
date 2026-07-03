@@ -27,6 +27,8 @@ import { ProductImageSection, ParapharmacyMetadataFields, CreateModeImageBuffer 
 import { uploadProductImage } from '../products/api/productImages'
 import { ProductVariantMatrixEditor } from '../catalog/components/ProductVariantMatrixEditor'
 import { useVariantsForProduct } from '../catalog/hooks/useVariants'
+import { useCategoryTree } from '../catalog/api/queries'
+import type { CategoryTreeNode } from '../catalog/types'
 import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
@@ -236,6 +238,15 @@ export interface ProductFormData {
   opening_unit_cost: string
 }
 
+function findCategoryName(nodes: CategoryTreeNode[], id: number): string | null {
+  for (const node of nodes) {
+    if (node.id === id) return node.name
+    const child = findCategoryName(node.children ?? [], id)
+    if (child !== null) return child
+  }
+  return null
+}
+
 export function ProductForm() {
   const { t } = useTranslation()
   const { id = '' } = useParams<{ id: string }>()
@@ -269,6 +280,7 @@ export function ProductForm() {
   // create-mode image buffer: files held client-side until product id is known
   const [bufferedImages, setBufferedImages] = useState<File[]>([])
 
+  const { data: categoryTree } = useCategoryTree()
   const submissionMutation = useProductSubmission()
   const enrichmentRefreshMutation = useEnrichmentRefresh()
 
@@ -623,6 +635,14 @@ export function ProductForm() {
         }
         if (data.description) {
           payload.description = data.description
+        }
+        // Optional category context for the platform: send the selected local
+        // category's NAME (the platform maps free-text category hints).
+        const categoryName = data.category_id !== null
+          ? findCategoryName(categoryTree ?? [], data.category_id)
+          : null
+        if (categoryName) {
+          payload.category = categoryName
         }
         const attributes = Object.fromEntries(
           captureAttributes
@@ -1072,8 +1092,11 @@ export function ProductForm() {
       ) : null}
 
       {/* Enrichment opt-in — shown under the hero when barcode not found in
-          catalog so the operator can submit for enrichment on save. */}
-      {lookupState === 'not_found' && (
+          catalog so the operator can submit for enrichment on save.
+          CREATE MODE ONLY: the enrichment submission fires from the create
+          path; in edit mode the panel would collect photos/brand and silently
+          discard them on save. */}
+      {!isEditing && lookupState === 'not_found' && (
         <div className="space-y-3">
           <div className={cn('flex items-center gap-2.5 rounded-lg px-3.5 py-3', colors.neutral[100])}>
             <Checkbox

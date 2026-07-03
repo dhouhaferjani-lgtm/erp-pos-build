@@ -11,6 +11,7 @@ use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformProductData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
 use App\Shared\Contracts\CatalogLookupInterface;
 use App\Shared\DTOs\CatalogProductDTO;
+use App\Shared\Exceptions\PlatformCatalogUnavailableException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -99,6 +100,13 @@ final class BarcodeLookupService implements CatalogLookupInterface
     public function lookupCatalogProduct(string $barcode, string $vertical): ?CatalogProductDTO
     {
         $result = $this->lookup($barcode, $vertical);
+
+        // A transient outage must never read as "not in the catalog" — callers
+        // (e.g. ApplyCatalogEnrichmentJob) clear state on a genuine miss.
+        if ($result->status === 'error'
+            && in_array($result->errorReason, ['platform_unavailable', 'platform_error'], true)) {
+            throw new PlatformCatalogUnavailableException($result->errorReason);
+        }
 
         if ($result->status !== 'found' || $result->product === null) {
             return null;

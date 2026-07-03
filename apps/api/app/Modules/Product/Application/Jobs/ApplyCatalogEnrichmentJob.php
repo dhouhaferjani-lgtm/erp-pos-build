@@ -24,6 +24,15 @@ final class ApplyCatalogEnrichmentJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
+    /**
+     * Transient platform outages rethrow PlatformCatalogUnavailableException;
+     * the queue retries with backoff and the backlink is left untouched.
+     */
+    public int $tries = 3;
+
+    /** @var array<int, int> */
+    public array $backoff = [60, 300];
+
     public function __construct(
         public readonly string $productId,
         public readonly string $expectedPlatformProductId,
@@ -43,6 +52,11 @@ final class ApplyCatalogEnrichmentJob implements ShouldQueue
 
         if ($catalog === null) {
             $product->update(['platform_product_id' => null]);
+
+            Log::info('Cleared platform backlink: catalog lookup returned a genuine miss', [
+                'product_id' => $this->productId,
+                'expected_platform_product_id' => $this->expectedPlatformProductId,
+            ]);
 
             return;
         }

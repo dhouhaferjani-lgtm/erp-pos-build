@@ -107,8 +107,19 @@ vi.mock('../catalog/hooks/useVariants', () => ({
 }))
 
 // child components that fetch / render heavy trees — stub them out
+vi.mock('../catalog/api/queries', () => ({
+  useCategoryTree: () => ({
+    data: [
+      { id: 7, name: 'Solaires', children: [] },
+      { id: 8, name: 'Hygiene', children: [{ id: 9, name: 'Dentaire', children: [] }] },
+    ],
+  }),
+}))
+
 vi.mock('../../components/catalog/CategorySelect', () => ({
-  CategorySelect: () => <div data-testid="category-select" />,
+  CategorySelect: ({ onChange }: { onChange?: (id: number | null) => void }) => (
+    <button type="button" data-testid="category-select" onClick={() => onChange?.(7)} />
+  ),
 }))
 // BarcodeHero: keep the real component but mock the lookup hook it now uses
 vi.mock('@/features/inventory/hooks/useCatalogBarcodeLookup', () => ({
@@ -327,6 +338,32 @@ describe('ProductForm (canonical layout)', () => {
 
     await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
     expect(getProductsPostPayload()).not.toHaveProperty('platform_product_id')
+  })
+
+  it('does NOT render the capture panel in edit mode (submission path is create-only)', async () => {
+    mockParams = { id: 'prod-edit-1' }
+    mockNotFoundLookup()
+
+    render(<ProductForm />)
+
+    await screen.findByTestId('category-select')
+    expect(screen.queryByText('barcodeLookup.capturePhotoHelp')).not.toBeInTheDocument()
+    mockParams = {}
+  })
+
+  it('sends the selected category NAME with the not_found submission', async () => {
+    mockNotFoundLookup()
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-cat' })
+
+    render(<ProductForm />)
+
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Cat Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-CAT' } })
+    fireEvent.click(screen.getAllByTestId('category-select')[0])
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockSubmitForEnrichment).toHaveBeenCalled())
+    expect(mockSubmitForEnrichment.mock.calls[0][0]).toMatchObject({ category: 'Solaires' })
   })
 
   it('renders the capture panel for not_found opt-in submissions', async () => {

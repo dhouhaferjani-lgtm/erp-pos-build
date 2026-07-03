@@ -27,7 +27,13 @@ final class CatalogEnrichmentService
     {
         $attempt = function () use ($product, $catalog): void {
             DB::transaction(function () use ($product, $catalog): void {
-                $product->refresh();
+                // Row lock serializes concurrent redeliveries of the same job so
+                // the check-then-insert idempotency guard below cannot race.
+                $locked = Product::query()->lockForUpdate()->find($product->id);
+                if ($locked === null) {
+                    return;
+                }
+                $product = $locked;
 
                 // Queue delivery is at-least-once: a re-delivered job must not
                 // mint a second accepted result row for the same catalog hit.

@@ -91,12 +91,9 @@ class CreateProductRequest extends FormRequest
         $validator->after(function (Validator $validator): void {
             $qty = $this->input('opening_qty');
             $cost = $this->input('opening_unit_cost');
-            $hasPositiveQty = false;
-            if (is_int($qty)) {
-                $hasPositiveQty = bccomp((string) $qty, '0', 4) > 0;
-            } elseif (is_string($qty) && $qty !== '' && is_numeric($qty)) {
-                $hasPositiveQty = bccomp($qty, '0', 4) > 0;
-            }
+            // is_numeric covers int, float AND numeric-string — a JSON-number
+            // opening_qty must not silently bypass the cost-required guard.
+            $hasPositiveQty = is_numeric($qty) && bccomp((string) $qty, '0', 4) > 0;
 
             if ($hasPositiveQty && ($cost === null || $cost === '')) {
                 $validator->errors()->add('opening_unit_cost', __('validation.opening_cost_required_with_qty'));
@@ -204,7 +201,7 @@ class CreateProductRequest extends FormRequest
             // Without this the API could not set it, so new products defaulted
             // to 4-decimal quantities regardless of their unit.
             'unit_id' => ['nullable', 'exists:units,id'],
-            'barcode' => ['nullable', 'string', 'max:100'],
+            'barcode' => ['nullable', 'string', 'max:100', 'required_with:platform_product_id'],
             'platform_product_id' => ['nullable', 'uuid'],
             'units_per_pack' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'shelf_location' => ['sometimes', 'nullable', 'string', 'max:100'],
