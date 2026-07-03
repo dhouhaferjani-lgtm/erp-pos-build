@@ -156,6 +156,31 @@ final class PlatformHttpClient
     }
 
     /**
+     * POST returning status + full body. Unlike postRaw(), non-2xx responses
+     * are returned so callers can treat 4xx as terminal reconciliation states.
+     * Only 429/5xx/transport failures feed the circuit breaker.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function postWithStatus(string $path, array $data = []): PlatformHttpResponse
+    {
+        if ($this->isCircuitOpen()) {
+            throw new \RuntimeException('Platform circuit breaker is open');
+        }
+
+        try {
+            $response = $this->buildRequest()->post($this->buildUrl($path), $data);
+
+            return $this->toStatusResponse($response->status(), $response->json());
+        } catch (RequestException $e) {
+            return $this->toStatusResponse($e->response->status(), $e->response->json());
+        } catch (\Throwable $e) {
+            $this->recordFailure();
+            throw $e;
+        }
+    }
+
+    /**
      * GET request returning the full response body (no 'data' unwrapping).
      *
      * @param  array<string, string>  $queryParams
@@ -249,6 +274,17 @@ final class PlatformHttpClient
     private function buildUrl(string $path): string
     {
         return ltrim($path, '/');
+    }
+
+    private function toStatusResponse(int $status, mixed $body): PlatformHttpResponse
+    {
+        if ($status >= 200 && $status < 300) {
+            $this->resetCircuitFailures();
+        } elseif ($status === 429 || $status >= 500) {
+            $this->recordFailure();
+        }
+
+        return new PlatformHttpResponse($status, is_array($body) ? $body : null);
     }
 
     private function recordFailure(): void

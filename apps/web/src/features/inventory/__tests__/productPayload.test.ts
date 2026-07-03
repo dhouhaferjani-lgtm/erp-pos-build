@@ -64,6 +64,22 @@ describe('buildProductPayload', () => {
     expect(payload).not.toHaveProperty('parapharmacy_metadata')
   })
 
+  it('includes brand_id when suggestedBrandId is provided', () => {
+    const payload = buildProductPayload(
+      makeFormData(),
+      { isParapharmacy: false, suggestedBrandId: 'brand-uuid-1' },
+    )
+
+    expect(payload.brand_id).toBe('brand-uuid-1')
+  })
+
+  it('omits brand_id when suggestedBrandId is null or absent', () => {
+    expect(
+      buildProductPayload(makeFormData(), { isParapharmacy: false, suggestedBrandId: null }),
+    ).not.toHaveProperty('brand_id')
+    expect(buildProductPayload(makeFormData(), { isParapharmacy: false })).not.toHaveProperty('brand_id')
+  })
+
   it('includes parapharmacy_metadata for a parapharmacy vertical', () => {
     const meta = {
       ...makeFormData().parapharmacy_metadata,

@@ -506,17 +506,19 @@ export function ProductForm() {
 
   const createMutation = useMutation({
     mutationFn: (data: ProductFormData) => {
-      // Review M3: lookupState does NOT reset to idle when the barcode is edited to a
-      // different ≥8-char value (useCatalogBarcodeLookup only idles below 8 chars), so a
-      // stale FOUND suggestion can outlive a barcode edit through the debounce window.
-      // Trust the suggestion only when its barcode still matches the form value.
+      // A stale FOUND suggestion can outlive a barcode edit: lookupState only idles
+      // below 8 chars, and a cache-fresh lookup for a different barcode fires no
+      // state transition, so the ref can still hold the previous product. Trust the
+      // suggestion — platform product id AND server-resolved brand — only while its
+      // barcode still matches the submitted form value. (No-op in the healthy flow:
+      // handleProductData writes the suggested barcode into the form on a genuine found.)
       const suggestion = suggestedProductRef.current
-      const platformProductId =
-        lookupState === 'found' && suggestion && suggestion.barcode === data.barcode
-          ? suggestion.platform_product_id
-          : null
+      const suggestionIsCurrent =
+        lookupState === 'found' && suggestion !== null && suggestion.barcode === data.barcode
+      const suggestedBrandId = suggestionIsCurrent ? suggestion.brand_id ?? null : null
+      const platformProductId = suggestionIsCurrent ? suggestion.platform_product_id : null
       const basePayload = {
-        ...buildProductPayload(data, { isParapharmacy }),
+        ...buildProductPayload(data, { isParapharmacy, suggestedBrandId }),
         ...(platformProductId ? { platform_product_id: platformProductId } : {}),
       }
       const hasOpeningQty =

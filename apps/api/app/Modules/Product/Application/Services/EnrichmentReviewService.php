@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Services;
 
+use App\Modules\Product\Application\DTOs\BrandResolution;
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
 use App\Modules\Product\Application\Jobs\SendEnrichmentFeedbackJob;
-use App\Modules\Product\Domain\Brand;
 use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\EnrichmentResultOrigin;
@@ -25,6 +25,7 @@ final class EnrichmentReviewService
 {
     public function __construct(
         private readonly PlatformSubmissionInterface $submissionService,
+        private readonly BrandResolutionService $brandResolution,
     ) {}
 
     /**
@@ -128,14 +129,15 @@ final class EnrichmentReviewService
         $enrichedData = $enrichmentResult->enriched_data;
         $trackingId = $enrichmentResult->tracking_id;
         $companyId = $enrichmentResult->company_id;
+        $brandResolutionOutcome = null;
 
         // Wrap the entire transaction in a closure so the retry restarts a FRESH transaction.
         // On PostgreSQL a unique-constraint violation inside a transaction aborts the whole
         // transaction, meaning any subsequent query (including the retry firstOrCreate) fails
         // with "current transaction is aborted". Moving the retry outside DB::transaction()
         // avoids that aborted-state problem.
-        $attempt = function () use ($product, $enrichedData, $acceptedFields, $enrichmentResult, $reviewedBy): void {
-            DB::transaction(function () use ($product, $enrichedData, $acceptedFields, $enrichmentResult, $reviewedBy): void {
+        $attempt = function () use ($product, $enrichedData, $acceptedFields, $enrichmentResult, $reviewedBy, &$brandResolutionOutcome): void {
+            DB::transaction(function () use ($product, $enrichedData, $acceptedFields, $enrichmentResult, $reviewedBy, &$brandResolutionOutcome): void {
                 // Start with mandatory tracking clear; merge scalar-field updates on top.
                 // platform_product_id is written at product create (CreateProductRequest)
                 // when the product originated from a FOUND catalog lookup - it is NOT set
@@ -158,17 +160,19 @@ final class EnrichmentReviewService
                     };
                 }
 
-                // Brand upsert: firstOrCreate on (tenant_id, slug).
-                // Concurrent-race retry is handled by the outer try/catch — it restarts a fresh
-                // transaction so the retry firstOrCreate finds the row inserted by the racing request.
+                // Brand resolution ladder: platform external mapping -> canonical id -> slug -> create.
+                // Concurrent-race retry is handled by the outer try/catch: it restarts a fresh
+                // transaction so the retry resolve() finds the row inserted by the racing request.
                 if (in_array('brand', $acceptedFields, true) && filled($enrichedData->brand)) {
-                    $slug = Brand::slugFor($enrichedData->brand);
-                    $criteria = ['tenant_id' => $product->tenant_id, 'slug' => $slug];
-                    $createAttrs = ['name' => $enrichedData->brand, 'is_active' => true];
+                    $resolution = $this->brandResolution->resolve(
+                        $product->tenant_id,
+                        $enrichedData->brand,
+                        $enrichedData->canonical_brand_id,
+                        $enrichedData->external_brand_id,
+                    );
+                    $brandResolutionOutcome = $resolution;
 
-                    $brand = Brand::firstOrCreate($criteria, $createAttrs);
-
-                    $productUpdates['brand_id'] = $brand->id;
+                    $productUpdates['brand_id'] = $resolution->brand->id;
                     $productUpdates['brand_source'] = BrandSource::Enriched;
                 }
 
@@ -197,7 +201,11 @@ final class EnrichmentReviewService
             if (! $this->isUniqueViolation($e)) {
                 throw $e;
             }
-            $attempt(); // fresh transaction; firstOrCreate now finds the racing row
+            $attempt(); // fresh transaction; resolve() now finds the racing row
+        }
+
+        if ($brandResolutionOutcome instanceof BrandResolution) {
+            $this->brandResolution->dispatchPushIfNeeded($brandResolutionOutcome, $companyId);
         }
 
         try {
@@ -316,6 +324,9 @@ final class EnrichmentReviewService
             assigned_barcode: is_string($payload['assigned_barcode'] ?? null) ? $payload['assigned_barcode'] : null,
             assigned_barcode_type: is_string($payload['assigned_barcode_type'] ?? null) ? $payload['assigned_barcode_type'] : null,
             locale: $locale ?? (is_string($payload['locale'] ?? null) ? $payload['locale'] : null),
+            canonical_brand_id: is_string($payload['canonical_brand_id'] ?? null) ? $payload['canonical_brand_id'] : null,
+            canonical_brand_slug: is_string($payload['canonical_brand_slug'] ?? null) ? $payload['canonical_brand_slug'] : null,
+            external_brand_id: is_string($payload['external_brand_id'] ?? null) ? $payload['external_brand_id'] : null,
         );
     }
 
@@ -342,7 +353,15 @@ final class EnrichmentReviewService
     private function comparableEnrichedData(EnrichedProductData $enrichedData): array
     {
         $data = $enrichedData->toArray();
-        unset($data['locale']);
+        // Locale and brand-mapping metadata are not reviewable content. If the
+        // platform later mirrors lookup mapping fields into enriched_data, our
+        // own push-back must not mint spurious curated_update versions.
+        unset(
+            $data['locale'],
+            $data['canonical_brand_id'],
+            $data['canonical_brand_slug'],
+            $data['external_brand_id'],
+        );
 
         return $data;
     }

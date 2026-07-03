@@ -9,6 +9,7 @@ use App\Modules\PlatformIntegration\Application\DTOs\BarcodeLookupResultData;
 use App\Modules\PlatformIntegration\Domain\Services\BarcodeNormalizer;
 use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformProductData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
+use App\Modules\Product\Application\Services\BrandResolutionService;
 use App\Shared\Contracts\CatalogLookupInterface;
 use App\Shared\DTOs\CatalogProductDTO;
 use App\Shared\Exceptions\PlatformCatalogUnavailableException;
@@ -17,13 +18,14 @@ use Illuminate\Support\Facades\Log;
 
 final class BarcodeLookupService implements CatalogLookupInterface
 {
-    private const CACHE_PREFIX = 'platform:lookup:';
+    private const CACHE_PREFIX = 'platform:lookup:v2:';
 
     private const CACHE_TTL_SECONDS = 3600;
 
     public function __construct(
         private readonly PlatformHttpClient $platformClient,
         private readonly CompanyContext $companyContext,
+        private readonly BrandResolutionService $brandResolution,
         private readonly BarcodeNormalizer $barcodeNormalizer,
     ) {}
 
@@ -49,7 +51,7 @@ final class BarcodeLookupService implements CatalogLookupInterface
         // Check cache — stores BarcodeLookupResultData objects directly
         $cached = Cache::get($cacheKey);
         if ($cached instanceof BarcodeLookupResultData) {
-            return $cached;
+            return $this->withLocalBrand($cached);
         }
 
         // Check circuit breaker
@@ -77,7 +79,7 @@ final class BarcodeLookupService implements CatalogLookupInterface
 
                 Cache::put($cacheKey, $result, self::CACHE_TTL_SECONDS);
 
-                return $result;
+                return $this->withLocalBrand($result);
             }
 
             $trackingId = $response['tracking_id'] ?? null;
@@ -94,6 +96,43 @@ final class BarcodeLookupService implements CatalogLookupInterface
             ]);
 
             return BarcodeLookupResultData::error($normalizedBarcode, 'platform_error');
+        }
+    }
+
+    private function withLocalBrand(BarcodeLookupResultData $result): BarcodeLookupResultData
+    {
+        $product = $result->product;
+
+        if ($result->status !== 'found' || $product === null) {
+            return $result;
+        }
+
+        if ($product->canonicalBrandId === null && $product->externalBrandId === null) {
+            return $result;
+        }
+
+        if (! filled($product->brand)) {
+            return $result;
+        }
+
+        try {
+            $company = $this->companyContext->requireCompany();
+            $resolution = $this->brandResolution->resolve(
+                $company->tenant_id,
+                (string) $product->brand,
+                $product->canonicalBrandId,
+                $product->externalBrandId,
+            );
+            $this->brandResolution->dispatchPushIfNeeded($resolution, $company->id);
+
+            return BarcodeLookupResultData::found((string) $result->barcode, $product, $resolution->brand->id);
+        } catch (\Throwable $e) {
+            Log::warning('Brand resolution during lookup failed', [
+                'barcode' => $result->barcode,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $result;
         }
     }
 
@@ -114,6 +153,10 @@ final class BarcodeLookupService implements CatalogLookupInterface
 
         $product = $result->product;
 
+        // lookup() already ran withLocalBrand(), so a resolved local brand id
+        // (if any) is carried in the suggested product payload.
+        $suggestedBrandId = $result->suggestedProduct['brand_id'] ?? null;
+
         return new CatalogProductDTO(
             platformProductId: $product->id,
             barcode: $product->barcode,
@@ -125,6 +168,10 @@ final class BarcodeLookupService implements CatalogLookupInterface
             images: $product->images,
             confidenceScore: $product->confidenceScore,
             enrichmentTier: $product->enrichmentTier,
+            canonicalBrandId: $product->canonicalBrandId,
+            canonicalBrandSlug: $product->canonicalBrandSlug,
+            externalBrandId: $product->externalBrandId,
+            localBrandId: is_string($suggestedBrandId) ? $suggestedBrandId : null,
         );
     }
 }

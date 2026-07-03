@@ -194,6 +194,79 @@ final class CatalogEnrichmentServiceTest extends TestCase
         $this->assertArrayNotHasKey('description', $result->accepted_fields);
     }
 
+    public function test_apply_reuses_resolved_local_brand_without_creating_duplicate(): void
+    {
+        $brand = Brand::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'La Roche Posay Officiel',
+            'slug' => 'la-roche-posay-officiel',
+            'is_active' => true,
+        ]);
+
+        $product = $this->makeProduct([
+            'platform_product_id' => 'platform-product-001',
+            'brand_id' => null,
+            'brand_source' => null,
+        ]);
+
+        $brandCountBefore = Brand::query()->where('tenant_id', $this->tenant->id)->count();
+
+        // catalog->brand slugs to 'la-roche-posay' — WITHOUT localBrandId the
+        // legacy firstOrCreate would mint a duplicate brand row.
+        $this->service->applyCatalogHit($product, $this->makeCatalogProduct(localBrandId: $brand->id));
+
+        $product->refresh();
+        $this->assertSame($brand->id, $product->brand_id);
+        $this->assertSame(BrandSource::Enriched, $product->brand_source);
+        $this->assertSame($brandCountBefore, Brand::query()->where('tenant_id', $this->tenant->id)->count());
+
+        $brand->refresh();
+        $this->assertSame('La Roche Posay Officiel', $brand->name);
+
+        $result = EnrichmentResult::query()->where('product_id', $product->id)->sole();
+        $this->assertTrue($result->accepted_fields['brand'] ?? false);
+    }
+
+    public function test_apply_falls_back_to_slug_first_or_create_when_resolved_brand_is_gone(): void
+    {
+        $product = $this->makeProduct([
+            'platform_product_id' => 'platform-product-001',
+            'brand_id' => null,
+            'brand_source' => null,
+        ]);
+
+        $this->service->applyCatalogHit($product, $this->makeCatalogProduct(localBrandId: (string) Str::uuid()));
+
+        $brand = Brand::query()->where('tenant_id', $this->tenant->id)->where('slug', 'la-roche-posay')->sole();
+
+        $product->refresh();
+        $this->assertSame($brand->id, $product->brand_id);
+        $this->assertSame(BrandSource::Enriched, $product->brand_source);
+    }
+
+    public function test_apply_passes_canonical_brand_fields_through_to_audit_snapshot(): void
+    {
+        $canonicalBrandId = (string) Str::uuid();
+        $externalBrandId = (string) Str::uuid();
+
+        $product = $this->makeProduct([
+            'platform_product_id' => 'platform-product-001',
+            'brand_id' => null,
+            'brand_source' => null,
+        ]);
+
+        $this->service->applyCatalogHit($product, $this->makeCatalogProduct(
+            canonicalBrandId: $canonicalBrandId,
+            canonicalBrandSlug: 'la-roche-posay',
+            externalBrandId: $externalBrandId,
+        ));
+
+        $result = EnrichmentResult::query()->where('product_id', $product->id)->sole();
+        $this->assertSame($canonicalBrandId, $result->enriched_data->canonical_brand_id);
+        $this->assertSame('la-roche-posay', $result->enriched_data->canonical_brand_slug);
+        $this->assertSame($externalBrandId, $result->enriched_data->external_brand_id);
+    }
+
     /**
      * @param  array<string, object|string|null>  $overrides
      */
@@ -213,6 +286,10 @@ final class CatalogEnrichmentServiceTest extends TestCase
     private function makeCatalogProduct(
         ?string $classificationCategory = 'cosmetic',
         ?array $ingredients = null,
+        ?string $canonicalBrandId = null,
+        ?string $canonicalBrandSlug = null,
+        ?string $externalBrandId = null,
+        ?string $localBrandId = null,
     ): CatalogProductDTO {
         return new CatalogProductDTO(
             platformProductId: 'platform-product-001',
@@ -225,6 +302,10 @@ final class CatalogEnrichmentServiceTest extends TestCase
             images: [['url' => 'https://example.test/front.jpg', 'thumbnail' => null, 'type' => 'front']],
             confidenceScore: 96,
             enrichmentTier: 'catalog',
+            canonicalBrandId: $canonicalBrandId,
+            canonicalBrandSlug: $canonicalBrandSlug,
+            externalBrandId: $externalBrandId,
+            localBrandId: $localBrandId,
         );
     }
 

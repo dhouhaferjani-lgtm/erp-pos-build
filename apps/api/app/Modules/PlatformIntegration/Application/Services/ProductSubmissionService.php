@@ -9,6 +9,7 @@ use App\Modules\PlatformIntegration\Application\DTOs\SubmissionResultData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
 use App\Shared\Contracts\PlatformSubmissionInterface;
 use App\Shared\DTOs\SubmissionStatusDTO;
+use App\Shared\Enums\BrandMappingPushResult;
 use App\Shared\Enums\EnrichmentFeedbackAction;
 use App\Shared\Enums\EnrichmentFeedbackReason;
 use Illuminate\Support\Facades\Http;
@@ -181,6 +182,56 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
         ], $exceptionContext));
 
         return false;
+    }
+
+    public function pushBrandMapping(string $canonicalBrandId, string $externalBrandId): BrandMappingPushResult
+    {
+        try {
+            $response = $this->platformClient->postWithStatus(
+                "/api/v1/brands/{$canonicalBrandId}/external-mapping",
+                ['external_brand_id' => $externalBrandId],
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to push brand mapping to platform', [
+                'canonical_brand_id' => $canonicalBrandId,
+                'external_brand_id' => $externalBrandId,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return BrandMappingPushResult::Failed;
+        }
+
+        if ($response->status >= 200 && $response->status < 300) {
+            return BrandMappingPushResult::Mapped;
+        }
+
+        if ($response->status === 422) {
+            Log::error('Brand mapping conflict: local brand id already mapped to another canonical brand', [
+                'canonical_brand_id' => $canonicalBrandId,
+                'external_brand_id' => $externalBrandId,
+                'platform_message' => $response->body['error']['message'] ?? null,
+            ]);
+
+            return BrandMappingPushResult::Conflict;
+        }
+
+        if ($response->status === 404) {
+            Log::error('Brand mapping push rejected: canonical brand not found on platform', [
+                'canonical_brand_id' => $canonicalBrandId,
+                'external_brand_id' => $externalBrandId,
+            ]);
+
+            return BrandMappingPushResult::NotFound;
+        }
+
+        Log::warning('Brand mapping push failed', [
+            'canonical_brand_id' => $canonicalBrandId,
+            'external_brand_id' => $externalBrandId,
+            'status' => $response->status,
+        ]);
+
+        return BrandMappingPushResult::Failed;
     }
 
     /**

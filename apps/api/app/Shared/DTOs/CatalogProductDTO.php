@@ -22,5 +22,12 @@ final readonly class CatalogProductDTO
         public array $images,
         public int $confidenceScore,
         public ?string $enrichmentTier,
+        // Cross-ERP brand mapping passthrough from the platform payload (audit).
+        public ?string $canonicalBrandId = null,
+        public ?string $canonicalBrandSlug = null,
+        public ?string $externalBrandId = null,
+        // Local ERP brand row resolved by the lookup's BrandResolutionService;
+        // null for legacy payloads without mapping fields.
+        public ?string $localBrandId = null,
     ) {}
 }

@@ -25,11 +25,13 @@ export interface ProductApiPayload
   opening_qty?: string
   /** Included only on create when opening_qty > 0. */
   opening_unit_cost?: string
+  /** Set only when creating from a found catalog lookup with a server-resolved local brand. */
+  brand_id?: string
 }
 
 export function buildProductPayload(
   data: ProductFormData,
-  opts: { isParapharmacy: boolean },
+  opts: { isParapharmacy: boolean; suggestedBrandId?: string | null },
 ): ProductApiPayload {
   const {
     tax_rate: _taxRate,
@@ -48,6 +50,11 @@ export function buildProductPayload(
   // Vertical-gated: only the parapharmacy vertical may submit this block.
   if (opts.isParapharmacy) {
     payload.parapharmacy_metadata = parapharmacy_metadata
+  }
+
+  // Server-resolved local brand from a found catalog lookup.
+  if (opts.suggestedBrandId) {
+    payload.brand_id = opts.suggestedBrandId
   }
 
   return payload

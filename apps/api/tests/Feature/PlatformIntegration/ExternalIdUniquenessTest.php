@@ -17,6 +17,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener;
+use App\Modules\Product\Application\Services\BrandResolutionService;
 use App\Modules\Product\Application\Services\EnrichmentReviewService;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
 use App\Modules\Product\Domain\Product;
@@ -286,7 +287,7 @@ final class ExternalIdUniquenessTest extends TestCase
         ]);
 
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
-        $reviewService = new EnrichmentReviewService($mockSubmission);
+        $reviewService = new EnrichmentReviewService($mockSubmission, new BrandResolutionService);
         $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $event = new EnrichmentWebhookReceived(
@@ -311,7 +312,7 @@ final class ExternalIdUniquenessTest extends TestCase
         // ">1 row = collision" — both can occur, only one is an error.
 
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
-        $reviewService = new EnrichmentReviewService($mockSubmission);
+        $reviewService = new EnrichmentReviewService($mockSubmission, new BrandResolutionService);
         $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $event = new EnrichmentWebhookReceived(

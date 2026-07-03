@@ -12,6 +12,7 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
 use App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener;
+use App\Modules\Product\Application\Services\BrandResolutionService;
 use App\Modules\Product\Application\Services\EnrichmentReviewService;
 use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Enums\EnrichmentResultOrigin;
@@ -94,7 +95,7 @@ class EnrichmentEventFlowTest extends TestCase
             vertical: 'automotive',
         ));
 
-        $reviewService = new EnrichmentReviewService($mockSubmission);
+        $reviewService = new EnrichmentReviewService($mockSubmission, new BrandResolutionService);
         $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $webhookEvent = new EnrichmentWebhookReceived(
@@ -166,7 +167,7 @@ class EnrichmentEventFlowTest extends TestCase
             locale: null,
         ));
 
-        $reviewService = new EnrichmentReviewService($mockSubmission);
+        $reviewService = new EnrichmentReviewService($mockSubmission, new BrandResolutionService);
         $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $listener->handle(new EnrichmentWebhookReceived(
@@ -225,7 +226,7 @@ class EnrichmentEventFlowTest extends TestCase
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
         $mockSubmission->expects($this->never())->method('checkStatus');
 
-        $reviewService = new EnrichmentReviewService($mockSubmission);
+        $reviewService = new EnrichmentReviewService($mockSubmission, new BrandResolutionService);
         $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $listener->handle(new EnrichmentWebhookReceived(
@@ -268,7 +269,7 @@ class EnrichmentEventFlowTest extends TestCase
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
         $mockSubmission->expects($this->never())->method('checkStatus');
 
-        $reviewService = new EnrichmentReviewService($mockSubmission);
+        $reviewService = new EnrichmentReviewService($mockSubmission, new BrandResolutionService);
         $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $webhookEvent = new EnrichmentWebhookReceived(
@@ -310,7 +311,7 @@ class EnrichmentEventFlowTest extends TestCase
         // checkStatus should not be called for non-terminal status
         $mockSubmission->expects($this->never())->method('checkStatus');
 
-        $reviewService = new EnrichmentReviewService($mockSubmission);
+        $reviewService = new EnrichmentReviewService($mockSubmission, new BrandResolutionService);
         $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $webhookEvent = new EnrichmentWebhookReceived(
@@ -367,7 +368,7 @@ class EnrichmentEventFlowTest extends TestCase
         ));
 
         $listener = new ProcessEnrichmentEventListener(
-            new EnrichmentReviewService($mockSubmission),
+            new EnrichmentReviewService($mockSubmission, new BrandResolutionService),
             app(CompanyContext::class),
         );
 
@@ -435,7 +436,7 @@ class EnrichmentEventFlowTest extends TestCase
         ));
 
         $listener = new ProcessEnrichmentEventListener(
-            new EnrichmentReviewService($mockSubmission),
+            new EnrichmentReviewService($mockSubmission, new BrandResolutionService),
             app(CompanyContext::class),
         );
 
@@ -467,7 +468,7 @@ class EnrichmentEventFlowTest extends TestCase
         $mockSubmission->method('checkStatus')->willThrowException(new RuntimeException('Platform lookup failed'));
 
         $listener = new ProcessEnrichmentEventListener(
-            new EnrichmentReviewService($mockSubmission),
+            new EnrichmentReviewService($mockSubmission, new BrandResolutionService),
             app(CompanyContext::class),
         );
 
