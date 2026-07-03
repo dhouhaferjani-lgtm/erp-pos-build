@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Application\DTOs;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 
 class CompanySettingsData
@@ -32,7 +33,7 @@ class CompanySettingsData
     /**
      * Create from a Tenant model.
      *
-     * @return array<string, mixed>
+     * @return array{name: string, legal_name: string|null, tax_id: string|null, registration_number: string|null, address: array{street: string|null, city: string|null, postal_code: string|null, country: string|null}, phone: string|null, email: string|null, website: string|null, logo_url: string|null, primary_color: string|null, country_code: string|null, currency_code: string|null, timezone: string|null, date_format: string|null, locale: string|null}
      */
     public static function fromTenant(Tenant $tenant): array
     {
@@ -59,6 +60,37 @@ class CompanySettingsData
             'timezone' => $tenant->timezone,
             'date_format' => $tenant->date_format,
             'locale' => $tenant->locale,
+        ];
+    }
+
+    /**
+     * Create from a Company model.
+     *
+     * @return array{name: string, legal_name: string|null, tax_id: string|null, registration_number: string|null, address: array{street: string|null, city: string|null, postal_code: string|null, country: string|null}, phone: string|null, email: string|null, website: string|null, logo_url: string|null, primary_color: string|null, country_code: string|null, currency_code: string|null, timezone: string|null, date_format: string|null, locale: string|null}
+     */
+    public static function fromCompany(Company $company): array
+    {
+        return [
+            'name' => $company->name,
+            'legal_name' => $company->legal_name,
+            'tax_id' => $company->tax_id,
+            'registration_number' => $company->registration_number,
+            'address' => [
+                'street' => $company->address_street,
+                'city' => $company->address_city,
+                'postal_code' => $company->address_postal_code,
+                'country' => $company->country_code,
+            ],
+            'phone' => $company->phone,
+            'email' => $company->email,
+            'website' => $company->website,
+            'logo_url' => $company->logo_path ? asset('storage/'.$company->logo_path) : null,
+            'primary_color' => $company->primary_color,
+            'country_code' => $company->country_code,
+            'currency_code' => $company->currency,
+            'timezone' => $company->timezone,
+            'date_format' => $company->date_format,
+            'locale' => $company->locale,
         ];
     }
 }

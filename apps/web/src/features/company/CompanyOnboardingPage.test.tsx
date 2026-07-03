@@ -42,10 +42,24 @@ describe('CompanyOnboardingPage (canonical primitives)', () => {
 
   it('exposes the first-step (country) options as real buttons', () => {
     render(<CompanyOnboardingPage />)
-    // The country step renders one selectable button per country (France first).
+    // The country step renders one selectable button per country.
     expect(
       screen.getByRole('button', { name: /France/ }),
     ).toBeInTheDocument()
+  })
+
+  it('orders the country options alphabetically (no hardcoded France-first bias)', () => {
+    render(<CompanyOnboardingPage />)
+    // Country buttons are the ones showing "currency • timezone".
+    const countryButtons = screen
+      .getAllByRole('button')
+      .filter((button) => (button.textContent ?? '').includes('•'))
+    expect(countryButtons.length).toBeGreaterThan(0)
+    expect(countryButtons[0]).toHaveTextContent('Algeria')
+    const names = countryButtons.map((button) => button.textContent ?? '')
+    expect(names.findIndex((text) => text.includes('Algeria'))).toBeLessThan(
+      names.findIndex((text) => text.includes('France')),
+    )
   })
 
   it('renders the Next navigation control as a <button>', () => {

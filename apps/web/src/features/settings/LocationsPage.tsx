@@ -4,6 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truck, Store } from 'lucide-react'
 import { fetchLocations, createLocation, updateLocation, deleteLocation, setDefaultLocation } from '../location/api'
 import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput } from '../location/api'
+import { isBranchTaxIdRequiredCountry } from '../location/branchTaxCountries'
+import { useCountryProfile } from './hooks/useCountryProfile'
+import { getCountryPlaceholders } from '../../lib/countryPlaceholders'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { cn } from '../../lib/utils'
@@ -29,8 +32,6 @@ const typeBadgeTones: Record<LocationType, string> = {
   office: tokens.badge.purple,
   mobile: tokens.badge.yellow,
 }
-
-const BRANCH_TAX_REQUIRED_COUNTRIES = new Set(['FR', 'TN', 'MA'])
 
 interface LocationFormData {
   name: string
@@ -79,7 +80,7 @@ function scopedNamespacePredicate(
 }
 
 export function LocationsPage() {
-  const { t } = useTranslation('common')
+  const { t } = useTranslation(['common', 'settings'])
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -212,9 +213,14 @@ export function LocationsPage() {
   }
 
   const isMutating = createMutation.isPending || updateMutation.isPending
-  const isTaxIdRequiredHint = formData.type === 'shop' && BRANCH_TAX_REQUIRED_COUNTRIES.has(
-    formData.addressCountry.trim().toUpperCase(),
-  )
+  const isTaxIdRequiredHint =
+    formData.type === 'shop' && isBranchTaxIdRequiredCountry(formData.addressCountry)
+
+  // Country-profile-driven tax label + placeholder for the form's country
+  const formCountry = formData.addressCountry.trim().toUpperCase()
+  const { profile: countryProfile } = useCountryProfile(formCountry)
+  const taxIdLabel = countryProfile?.taxIdLabel ?? t('locations.form.taxId')
+  const countryPlaceholders = getCountryPlaceholders(formCountry, countryProfile?.phonePrefix)
 
   if (isLoading) {
     return (
@@ -231,6 +237,7 @@ export function LocationsPage() {
         <div>
           <h1 className={cn('text-2xl font-bold', textColors.primary)}>{t('locations.title')}</h1>
           <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('locations.subtitle')}</p>
+          <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('settings:locations.scopeHint')}</p>
         </div>
         <Button className="gap-2" onClick={openCreateModal}>
           <Plus className="h-4 w-4" />
@@ -450,7 +457,7 @@ export function LocationsPage() {
             {/* Tax Identity */}
             <div className="grid grid-cols-2 gap-4">
               <FormField
-                label={isTaxIdRequiredHint ? `${t('locations.form.taxId')} *` : t('locations.form.taxId')}
+                label={isTaxIdRequiredHint ? `${taxIdLabel} *` : taxIdLabel}
                 htmlFor="taxId"
                 helperText={isTaxIdRequiredHint ? t('locations.form.taxIdRequiredHint') : undefined}
               >
@@ -459,6 +466,7 @@ export function LocationsPage() {
                   id="taxId"
                   value={formData.taxId}
                   onChange={(e) => { setFormData({ ...formData, taxId: e.target.value }) }}
+                  placeholder={countryPlaceholders.taxId}
                   aria-required={isTaxIdRequiredHint}
                   aria-describedby={isTaxIdRequiredHint ? 'taxId-required-hint' : undefined}
                 />
