@@ -206,6 +206,9 @@ export function CompanyPage() {
   }
   const companyCountryCode = formData.country_code ?? formData.address?.country ?? settings?.country_code ?? 'TN'
   const usesTunisiaDefaults = companyCountryCode === 'TN'
+  // Scope banner needs a company name to be meaningful; degrade to no banner
+  // (never a malformed sentence) when company context is absent.
+  const companyDisplayName = currentCompany?.name ?? settings?.name ?? ''
 
   if (isLoading) {
     return (
@@ -258,15 +261,17 @@ export function CompanyPage() {
       />
 
       {/* Company-scope banner: these settings apply company-wide; branch data lives in Locations & Branches */}
-      <div className={cn(tokens.alert.base, tokens.alert.info)}>
-        <Trans
-          i18nKey="settings:company.scopeBanner"
-          values={{ company: currentCompany?.name ?? settings?.name ?? '' }}
-          components={{
-            locationsLink: <Link to="/settings/locations" className="font-medium underline" />,
-          }}
-        />
-      </div>
+      {companyDisplayName !== '' && (
+        <div className={cn(tokens.alert.base, tokens.alert.info)}>
+          <Trans
+            i18nKey="settings:company.scopeBanner"
+            values={{ company: companyDisplayName }}
+            components={{
+              locationsLink: <Link to="/settings/locations" className="font-medium underline" />,
+            }}
+          />
+        </div>
+      )}
 
       {/* Tabs */}
       <div className={cn('border-b', borderColors.light)}>
