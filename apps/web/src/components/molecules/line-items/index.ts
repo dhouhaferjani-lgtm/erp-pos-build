@@ -12,7 +12,12 @@ export {
   type ProductCellProps,
 } from './ProductCell'
 export {
+  ProductLineSelect,
+  type ProductLineSelectProps,
+} from './ProductLineSelect'
+export {
   LineItemEntryBar,
+  type LineEntryMatchedCodeType,
   type LineItemEntryAddMeta,
   type LineItemEntryBarProps,
 } from './LineItemEntryBar'

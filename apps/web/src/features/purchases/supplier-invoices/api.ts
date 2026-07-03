@@ -27,12 +27,65 @@ import type {
 
 export const supplierInvoiceKeys = {
   list: (params: SupplierInvoiceListParams) =>
-    tenantScopedKey(['supplier-invoices', 'list', params]),
+    ['supplier-invoices', 'list', params] as const,
   detail: (id: string) =>
-    tenantScopedKey(['supplier-invoices', 'detail', id]),
+    ['supplier-invoices', 'detail', id] as const,
   attachments: (id: string) =>
-    tenantScopedKey(['supplier-invoices', 'attachments', id]),
+    ['supplier-invoices', 'attachments', id] as const,
 } as const
+
+function supplierInvoiceListInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 4 &&
+      k[0] === 'supplier-invoices' &&
+      k[1] === 'list' &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
+function supplierInvoiceDetailInvalidationPredicate(
+  id: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k[0] === 'supplier-invoices' &&
+      k[1] === 'detail' &&
+      k[2] === id &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
+function supplierInvoiceAttachmentsInvalidationPredicate(
+  documentId: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k[0] === 'supplier-invoices' &&
+      k[1] === 'attachments' &&
+      k[2] === documentId &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
 
 // ── List ───────────────────────────────────────────────────────────────────
 
@@ -46,7 +99,7 @@ export function useSupplierInvoiceList(params: SupplierInvoiceListParams) {
   const enabled = tenantId !== null && companyId !== null
 
   return useQuery({
-    queryKey: supplierInvoiceKeys.list(params),
+    queryKey: tenantScopedKey([...supplierInvoiceKeys.list(params)]),
     queryFn: async () => {
       // Strip undefined values so axios doesn't send empty query params.
       // Backend uses cursor-based pagination — pass cursor token, not page number.
@@ -79,7 +132,7 @@ export function useSupplierInvoiceDetail(id: string) {
   const enabled = tenantId !== null && companyId !== null && id !== ''
 
   return useQuery({
-    queryKey: supplierInvoiceKeys.detail(id),
+    queryKey: tenantScopedKey([...supplierInvoiceKeys.detail(id)]),
     queryFn: () => apiGet<SupplierInvoiceDetail>(`/supplier-invoices/${id}`),
     enabled,
   })
@@ -89,16 +142,15 @@ export function useSupplierInvoiceDetail(id: string) {
 
 export function useCreateSupplierInvoice() {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (payload: CreateSupplierInvoicePayload) =>
       apiPost<SupplierInvoiceDetail>('/supplier-invoices', payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        predicate: (q) => {
-          const k = q.queryKey
-          return Array.isArray(k) && k[0] === 'supplier-invoices' && k[1] === 'list'
-        },
+        predicate: supplierInvoiceListInvalidationPredicate(tenantId, companyId),
       })
     },
   })
@@ -108,6 +160,8 @@ export function useCreateSupplierInvoice() {
 
 export function useRematchSupplierInvoice(id: string) {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     // The /match endpoint returns only the match block (InvoiceMatch), NOT the full detail.
@@ -116,7 +170,7 @@ export function useRematchSupplierInvoice(id: string) {
       apiPost<InvoiceMatch>(`/supplier-invoices/${id}/match`, {}),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: supplierInvoiceKeys.detail(id),
+        predicate: supplierInvoiceDetailInvalidationPredicate(id, tenantId, companyId),
       })
     },
   })
@@ -126,17 +180,16 @@ export function useRematchSupplierInvoice(id: string) {
 
 export function usePostSupplierInvoice(id: string) {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: () =>
       apiPost<SupplierInvoiceDetail>(`/supplier-invoices/${id}/post`, {}),
     onSuccess: (updated) => {
-      queryClient.setQueryData(supplierInvoiceKeys.detail(id), updated)
+      queryClient.setQueryData(tenantScopedKey([...supplierInvoiceKeys.detail(id)]), updated)
       void queryClient.invalidateQueries({
-        predicate: (q) => {
-          const k = q.queryKey
-          return Array.isArray(k) && k[0] === 'supplier-invoices' && k[1] === 'list'
-        },
+        predicate: supplierInvoiceListInvalidationPredicate(tenantId, companyId),
       })
     },
   })
@@ -150,7 +203,7 @@ export function useSupplierInvoiceAttachments(documentId: string) {
   const enabled = tenantId !== null && companyId !== null && documentId !== ''
 
   return useQuery({
-    queryKey: supplierInvoiceKeys.attachments(documentId),
+    queryKey: tenantScopedKey([...supplierInvoiceKeys.attachments(documentId)]),
     queryFn: () => apiGet<DocumentAttachment[]>(`/documents/${documentId}/attachments`),
     enabled,
   })
@@ -158,6 +211,8 @@ export function useSupplierInvoiceAttachments(documentId: string) {
 
 export function useUploadAttachment(documentId: string) {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (file: File) => {
@@ -171,7 +226,7 @@ export function useUploadAttachment(documentId: string) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: supplierInvoiceKeys.attachments(documentId),
+        predicate: supplierInvoiceAttachmentsInvalidationPredicate(documentId, tenantId, companyId),
       })
     },
   })
@@ -179,6 +234,8 @@ export function useUploadAttachment(documentId: string) {
 
 export function useDeleteAttachment(documentId: string) {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (attachmentId: string) =>
@@ -187,7 +244,7 @@ export function useDeleteAttachment(documentId: string) {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: supplierInvoiceKeys.attachments(documentId),
+        predicate: supplierInvoiceAttachmentsInvalidationPredicate(documentId, tenantId, companyId),
       })
     },
   })
@@ -212,13 +269,15 @@ export function downloadAttachment(documentId: string, attachmentId: string, fil
  */
 export function useRecordSupplierPayment(invoiceId: string) {
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
     mutationFn: (payload: RecordPaymentPayload) =>
       apiPost<{ id: string }>('/payments', payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: supplierInvoiceKeys.detail(invoiceId),
+        predicate: supplierInvoiceDetailInvalidationPredicate(invoiceId, tenantId, companyId),
       })
     },
   })

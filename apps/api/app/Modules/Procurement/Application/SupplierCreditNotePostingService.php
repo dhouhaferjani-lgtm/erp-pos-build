@@ -10,7 +10,11 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
+use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -158,9 +162,13 @@ final class SupplierCreditNotePostingService
             // 4. Cumulative over-credit guard (FIX 2): bound against the invoice's actual HT.
             $this->assertCumulativeHtWithinInvoice($creditNote, $supplierInvoice, $scale);
 
+            /** @var numeric-string $bonusReturnInventoryValue */
+            $bonusReturnInventoryValue = '0.000000';
+
             // 5. GoodsReturn per-line quantity guard + decrement (PriceAdjustment: no-op).
             if ($reason->decrementsQuantityInvoiced()) {
                 $this->guardAndDecrementGoodsReturn($creditNote, $lockedPoLines);
+                $bonusReturnInventoryValue = $this->guardDecrementAndIssueBonusGoodsReturn($creditNote, $lockedPoLines);
             }
 
             // Tax components from the credit-note lines.
@@ -181,12 +189,22 @@ final class SupplierCreditNotePostingService
             $ht = $creditNote->subtotal ?? '0';
 
             // 6. Post the GL reversing entry (in-transaction system path).
-            $this->generalLedgerService->createSupplierCreditNoteEntry(
-                $creditNote,
-                $ht,
-                $recoverableVat,
-                $nonRecoverableVat,
-            );
+            if (bccomp($bonusReturnInventoryValue, '0', 6) > 0) {
+                $this->generalLedgerService->createSupplierCreditNoteEntryWithBonusReturn(
+                    $creditNote,
+                    $ht,
+                    $recoverableVat,
+                    $nonRecoverableVat,
+                    $bonusReturnInventoryValue,
+                );
+            } else {
+                $this->generalLedgerService->createSupplierCreditNoteEntry(
+                    $creditNote,
+                    $ht,
+                    $recoverableVat,
+                    $nonRecoverableVat,
+                );
+            }
 
             // 7. Draft → Posted.
             $creditNote->status = DocumentStatus::Posted;
@@ -379,7 +397,7 @@ final class SupplierCreditNotePostingService
      */
     private function guardAndDecrementGoodsReturn(Document $creditNote, Collection $lockedPoLines): void
     {
-        foreach ($this->aggregateReturnedQtyPerPoLine($creditNote) as $sourceLineId => $qty) {
+        foreach ($this->aggregateReturnedQtyPerPoLine($creditNote, false) as $sourceLineId => $qty) {
             $poLine = $this->resolveLockedPoLine($creditNote, $lockedPoLines, $sourceLineId);
 
             if (bccomp($qty, '0', 4) <= 0) {
@@ -411,6 +429,162 @@ final class SupplierCreditNotePostingService
     }
 
     /**
+     * Bonus GoodsReturn: returned free qty must be > 0 and ≤ free_quantity_invoiced;
+     * decrement only the free counter and issue stock at the current diluted WAC.
+     *
+     * @param  Collection<int, DocumentLine>  $lockedPoLines
+     * @return numeric-string
+     */
+    private function guardDecrementAndIssueBonusGoodsReturn(Document $creditNote, Collection $lockedPoLines): string
+    {
+        /** @var numeric-string $inventoryValue */
+        $inventoryValue = '0.000000';
+
+        foreach ($this->aggregateReturnedQtyPerPoLine($creditNote, true) as $sourceLineId => $qty) {
+            $poLine = $this->resolveLockedPoLine($creditNote, $lockedPoLines, $sourceLineId);
+
+            if (bccomp($qty, '0', 4) <= 0) {
+                throw new \DomainException(sprintf(
+                    'Supplier credit note [%s] cannot be posted: PO line [%s] has a non-positive returned bonus quantity (%s).',
+                    $creditNote->id,
+                    $sourceLineId,
+                    $qty,
+                ));
+            }
+
+            /** @var numeric-string $freeInvoiced */
+            $freeInvoiced = $poLine->free_quantity_invoiced ?? '0.0000';
+            /** @var numeric-string $newFreeInvoiced */
+            $newFreeInvoiced = bcsub($freeInvoiced, $qty, 4);
+
+            if (bccomp($newFreeInvoiced, '0', 4) < 0) {
+                throw new \DomainException(sprintf(
+                    'Supplier credit note [%s] cannot be posted: PO line [%s] over-credit — '
+                    .'returning %s bonus units would exceed invoiced free quantity %s.',
+                    $creditNote->id,
+                    $poLine->id,
+                    $qty,
+                    $freeInvoiced,
+                ));
+            }
+
+            $poLine->free_quantity_invoiced = $newFreeInvoiced;
+            $poLine->save();
+
+            $inventoryValue = bcadd(
+                $inventoryValue,
+                $this->issueBonusReturnStock($creditNote, $poLine, $qty),
+                6,
+            );
+        }
+
+        return $inventoryValue;
+    }
+
+    /**
+     * @param  numeric-string  $qty
+     * @return numeric-string
+     */
+    private function issueBonusReturnStock(Document $creditNote, DocumentLine $poLine, string $qty): string
+    {
+        $productId = $poLine->product_id;
+        if ($productId === null) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot return bonus stock for PO line [%s]: no product_id is attached.',
+                $creditNote->id,
+                $poLine->id,
+            ));
+        }
+
+        /** @var Product $product */
+        $product = Product::query()
+            ->whereKey($productId)
+            ->where('tenant_id', $creditNote->tenant_id)
+            ->where('company_id', $creditNote->company_id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        $stockLevelQuery = StockLevel::query()
+            ->where('tenant_id', $creditNote->tenant_id)
+            ->where('company_id', $creditNote->company_id)
+            ->where('product_id', $productId)
+            ->where('quantity', '>', '0');
+
+        if ($poLine->variant_id === null) {
+            $stockLevelQuery->whereNull('variant_id');
+        } else {
+            $stockLevelQuery->where('variant_id', $poLine->variant_id);
+        }
+
+        /** @var StockLevel|null $stockLevel */
+        $stockLevel = $stockLevelQuery
+            ->orderByDesc('quantity')
+            ->lockForUpdate()
+            ->first();
+
+        if ($stockLevel === null) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot return bonus stock for PO line [%s]: no stock level is available.',
+                $creditNote->id,
+                $poLine->id,
+            ));
+        }
+
+        /** @var numeric-string $quantityBefore */
+        $quantityBefore = $stockLevel->quantity;
+        /** @var numeric-string $quantityAfter */
+        $quantityAfter = bcsub($quantityBefore, $qty, 4);
+
+        if (bccomp($quantityAfter, '0', 4) < 0) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot return %s bonus units for PO line [%s]: stock would go negative from %s.',
+                $creditNote->id,
+                $qty,
+                $poLine->id,
+                $quantityBefore,
+            ));
+        }
+
+        $rawUnitCost = $product->cost_price;
+        if (! is_numeric($rawUnitCost)) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot return bonus stock for PO line [%s]: product [%s] has a non-numeric WAC cost.',
+                $creditNote->id,
+                $poLine->id,
+                $productId,
+            ));
+        }
+
+        $unitCost = bcadd($rawUnitCost, '0', 6);
+        /** @var numeric-string $totalCost */
+        $totalCost = bcmul($qty, $unitCost, 6);
+
+        $stockLevel->quantity = $quantityAfter;
+        $stockLevel->save();
+
+        StockMovement::create([
+            'tenant_id' => $creditNote->tenant_id,
+            'company_id' => $creditNote->company_id,
+            'product_id' => $productId,
+            'variant_id' => $poLine->variant_id,
+            'location_id' => $stockLevel->location_id,
+            'movement_type' => MovementType::Issue,
+            'quantity' => bcmul($qty, '-1', 4),
+            'quantity_before' => $quantityBefore,
+            'quantity_after' => $quantityAfter,
+            'unit_cost' => $unitCost,
+            'total_cost' => $totalCost,
+            'avg_cost_before' => $unitCost,
+            'avg_cost_after' => $unitCost,
+            'reference' => $creditNote->document_number,
+            'reference_type' => Document::class,
+            'reference_id' => $creditNote->id,
+        ]);
+
+        return $totalCost;
+    }
+
+    /**
      * @param  Collection<int, DocumentLine>  $lockedPoLines
      */
     private function resolveLockedPoLine(Document $creditNote, Collection $lockedPoLines, string $sourceLineId): DocumentLine
@@ -433,11 +607,14 @@ final class SupplierCreditNotePostingService
      *
      * @return array<string, numeric-string>
      */
-    private function aggregateReturnedQtyPerPoLine(Document $creditNote): array
+    private function aggregateReturnedQtyPerPoLine(Document $creditNote, bool $bonusLines): array
     {
         /** @var array<string, numeric-string> $agg */
         $agg = [];
         foreach ($creditNote->lines as $line) {
+            if ($line->is_bonus_line !== $bonusLines) {
+                continue;
+            }
             if ($line->source_line_id === null) {
                 continue;
             }

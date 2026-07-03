@@ -47,6 +47,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: mockTranslate,
   }),
+  Trans: ({ i18nKey }: { i18nKey: string }) => <span>{i18nKey}</span>,
 }))
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))

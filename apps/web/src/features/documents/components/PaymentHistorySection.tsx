@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, Calendar, CreditCard, Hash, Receipt } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { EntityLink } from '@/components/molecules/EntityLink'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -110,9 +111,12 @@ export function PaymentHistorySection({
                 {/* Payment date */}
                 <div className="flex items-center gap-2 text-sm">
                   <Calendar className="h-4 w-4 text-gray-400" />
-                  <span className="font-medium text-gray-900">
-                    {format(new Date(allocation.payment_date), 'PPP')}
-                  </span>
+                  <EntityLink
+                    type="payment"
+                    id={allocation.payment_id}
+                    label={format(new Date(allocation.payment_date), 'PPP')}
+                    className="font-medium"
+                  />
                 </div>
 
                 {/* Payment method */}

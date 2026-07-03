@@ -73,6 +73,21 @@ export const productKeys = {
 // Usage: queryKey: productKeys.list(params) → ['products', 'list', params]
 ```
 
+## Tenant-Scoped Query Keys
+
+Tenant-owned data must use `tenantScopedKey([...])` from `apps/web/src/lib/tenantScopedKey.ts`:
+
+```typescript
+useQuery({
+  queryKey: tenantScopedKey(['products', 'list', params]),
+  queryFn: () => getProducts(params),
+})
+```
+
+The architecture gate `apps/web/tools/audit-tanstack-keys.mjs` scans production TS/TSX for unscoped TanStack query keys. It is wired into `pnpm --filter @autoerp/web lint`, `./scripts/preflight.sh`, and the frontend lint CI job; new unscoped tenant-data keys fail those gates.
+
+`tenantScopedKey()` appends tenant/company at the **suffix**, so naive prefix invalidation can miss filtered leaf keys. For list cascades, use a `predicate` that checks the resource prefix and the final two tenant/company entries; see `apps/web/src/features/inventory/_invalidation.ts` for the inventory predicate pattern.
+
 ## Query Hook Pattern
 
 ```typescript

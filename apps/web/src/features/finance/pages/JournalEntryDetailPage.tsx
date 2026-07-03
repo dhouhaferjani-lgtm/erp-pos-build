@@ -7,7 +7,9 @@ import { usePostJournalEntry } from '../hooks/useJournalEntryMutations'
 import type { JournalEntryStatus } from '../types'
 import { cn } from '../../../lib/utils'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
+import { documentRouteTypeFromSource } from '../../../lib/entityRoutes'
 import { Button } from '../../../components/atoms'
+import { EntityLink } from '../../../components/molecules/EntityLink'
 import {
   StatusBadge,
   statusTone,
@@ -24,6 +26,37 @@ import { PageHeader } from '../../../components/molecules/PageHeader'
  */
 const statusToneOverrides: Record<string, StatusTone> = {
   posted: 'success',
+}
+
+function JournalSourceLink({
+  sourceId,
+  sourceType,
+}: {
+  sourceId: string | null
+  sourceType: string | null
+}) {
+  if (!sourceId || !sourceType) return <span>-</span>
+
+  const documentType = documentRouteTypeFromSource(sourceType)
+  if (documentType) {
+    return (
+      <EntityLink
+        type="document"
+        id={sourceId}
+        documentType={documentType}
+        label={sourceType}
+        className="font-semibold"
+      />
+    )
+  }
+
+  return (
+    <span data-testid="journal-source-badge">
+      <StatusBadge tone="neutral">
+        {sourceType}
+      </StatusBadge>
+    </span>
+  )
 }
 
 export function JournalEntryDetailPage() {
@@ -126,7 +159,7 @@ export function JournalEntryDetailPage() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
         <div className={tokens.card.base}>
           <h3 className={cn('mb-1 text-sm font-medium', textColors.tertiary)}>
             {t('finance:journalEntry.entryDate')}
@@ -149,6 +182,14 @@ export function JournalEntryDetailPage() {
           </h3>
           <p className={cn('text-lg font-semibold', textColors.primary)}>
             {entry.lines.length} {t('finance:journalEntry.lines')}
+          </p>
+        </div>
+        <div className={tokens.card.base}>
+          <h3 className={cn('mb-1 text-sm font-medium', textColors.tertiary)}>
+            {t('finance:journalEntry.source', { defaultValue: 'Source' })}
+          </h3>
+          <p className={cn('text-lg', textColors.primary)}>
+            <JournalSourceLink sourceId={entry.source_id} sourceType={entry.source_type} />
           </p>
         </div>
       </div>

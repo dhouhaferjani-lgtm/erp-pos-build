@@ -15,11 +15,14 @@ interface ProductsResponse {
   data: ProductLineProduct[]
 }
 
+export type LineEntryMatchedCodeType = 'product_barcode' | 'product_sku' | 'variant_barcode' | 'variant_sku'
+
 export interface LineItemEntryAddMeta {
   source: 'search' | 'scan'
   incrementBy: number
   variantId?: string | null
-  matchedCodeType?: ProductLineLookupOutcome extends { matched_code_type: infer T } ? T : never
+  code?: string
+  matchedCodeType?: LineEntryMatchedCodeType
 }
 
 export interface LineItemEntryBarProps {
@@ -27,6 +30,18 @@ export interface LineItemEntryBarProps {
   onCreateFromCode?: (code: string) => void
   onRequiresVariant?: (product: ProductLineProduct, code: string) => void
   onMultipleMatches?: (outcome: ProductLineLookupOutcome) => void
+  /**
+   * Fired when a scanned code resolves to nothing. Distinct from
+   * `onCreateFromCode`: consumers that cannot create products in-context (e.g.
+   * stock transfers) use this to surface an error instead of a create modal.
+   */
+  onNotFound?: (code: string) => void
+  /**
+   * Transfer-specific guard grafted for the stock-transfer flow: return `false`
+   * to veto a search-add or scan before it happens (e.g. no source location
+   * selected yet). Returning `true`/`undefined` allows the add.
+   */
+  onBeforeAdd?: (source: LineItemEntryAddMeta['source']) => boolean
   disabled?: boolean
 }
 
@@ -35,6 +50,8 @@ export function LineItemEntryBar({
   onCreateFromCode,
   onRequiresVariant,
   onMultipleMatches,
+  onNotFound,
+  onBeforeAdd,
   disabled = false,
 }: LineItemEntryBarProps) {
   const { t } = useTranslation(['sales'])
@@ -69,13 +86,33 @@ export function LineItemEntryBar({
     })
   }, [])
 
-  const addProduct = useCallback((product: ProductLineProduct, source: LineItemEntryAddMeta['source'], incrementBy = 1, variantId: string | null = null) => {
-    onAddProduct(product, { source, incrementBy, variantId })
+  const resetAfterAdd = useCallback(() => {
     setQuery('')
     setIsOpen(false)
     setMessage(null)
     focusInput()
-  }, [focusInput, onAddProduct])
+  }, [focusInput])
+
+  const addProduct = useCallback((
+    product: ProductLineProduct,
+    source: LineItemEntryAddMeta['source'],
+    incrementBy = 1,
+    variantId: string | null = null,
+    extra: { code?: string; matchedCodeType?: LineEntryMatchedCodeType } = {},
+  ) => {
+    onAddProduct(product, { source, incrementBy, variantId, ...extra })
+    resetAfterAdd()
+  }, [onAddProduct, resetAfterAdd])
+
+  // Search-add commit path. Grafted `onBeforeAdd('search')` guard vetoes the add
+  // (e.g. transfer without a source location) and simply resets the field.
+  const commitSearchAdd = useCallback((product: ProductLineProduct) => {
+    if (onBeforeAdd?.('search') === false) {
+      resetAfterAdd()
+      return
+    }
+    addProduct(product, 'search')
+  }, [addProduct, onBeforeAdd, resetAfterAdd])
 
   const handleLookupOutcome = useCallback((outcome: ProductLineLookupOutcome, code: string) => {
     const incrementBy = outcome.incrementBy ?? 1
@@ -86,12 +123,12 @@ export function LineItemEntryBar({
         onRequiresVariant?.(outcome.product, code)
         return
       }
-      addProduct(outcome.product, 'scan', incrementBy)
+      addProduct(outcome.product, 'scan', incrementBy, null, { code, matchedCodeType: outcome.matched_code_type })
       return
     }
 
     if (outcome.kind === 'variant') {
-      addProduct(outcome.product, 'scan', incrementBy, outcome.variant.id)
+      addProduct(outcome.product, 'scan', incrementBy, outcome.variant.id, { code, matchedCodeType: outcome.matched_code_type })
       return
     }
 
@@ -101,17 +138,22 @@ export function LineItemEntryBar({
     }
 
     setMessage(t('sales:lineItems.entry.productNotFound', { code: outcome.code }))
+    onNotFound?.(outcome.code)
     onCreateFromCode?.(outcome.code)
-  }, [addProduct, onCreateFromCode, onMultipleMatches, onRequiresVariant, t])
+  }, [addProduct, onCreateFromCode, onMultipleMatches, onNotFound, onRequiresVariant, t])
 
   const resolveScan = useCallback((code: string) => {
     const trimmed = code.trim()
     if (trimmed === '') return
 
+    // Grafted scan guard: veto before we ever hit the code resolver so a
+    // transfer without a source never fires a resolve-code request.
+    if (onBeforeAdd?.('scan') === false) return
+
     void enqueueScan(trimmed).then((outcome) => {
       handleLookupOutcome(outcome, trimmed)
     })
-  }, [enqueueScan, handleLookupOutcome])
+  }, [enqueueScan, handleLookupOutcome, onBeforeAdd])
 
   useBarcodeScanner({
     enabled: !disabled,
@@ -149,7 +191,7 @@ export function LineItemEntryBar({
     event.stopPropagation()
 
     if (isOpen && products.length > 0) {
-      addProduct(products[highlightedIndex] ?? products[0], 'search')
+      commitSearchAdd(products[highlightedIndex] ?? products[0])
       return
     }
 
@@ -216,11 +258,12 @@ export function LineItemEntryBar({
                     type="button"
                     role="option"
                     aria-selected={index === highlightedIndex}
+                    aria-label={`${product.sku ?? ''} ${product.name}`.trim()}
                     onMouseEnter={() => {
                       setHighlightedIndex(index)
                     }}
                     onClick={() => {
-                      addProduct(product, 'search')
+                      commitSearchAdd(product)
                     }}
                     className={`w-full px-3 py-2 ${index === highlightedIndex ? colors.neutral[50] : colors.white} ${colors.hover.gray50}`}
                   >

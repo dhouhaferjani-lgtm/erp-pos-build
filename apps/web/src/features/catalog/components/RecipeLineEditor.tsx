@@ -35,7 +35,7 @@ function BlurQuantityInput({
 }
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Badge } from '@/components/atoms/Badge/Badge'
-import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
+import { ProductLineSelect } from '@/components/molecules/line-items'
 import { CompositeItemSearchSelect } from './CompositeItemSearchSelect'
 import { textColors, borderColors, colors } from '@/lib/designTokens'
 import type { RecipeData, RecipeLineData, RecipeCostData, VerticalType, ComponentType } from '../types/compositeItem'
@@ -309,7 +309,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                     <option value="composite_item">{t('catalog:componentTypes.composite_item')}</option>
                   </Select>
                   {newLine.component_type === 'product' ? (
-                    <ProductSearchSelect
+                    <ProductLineSelect
                       value={newLine.component_id}
                       onChange={(id) => { setNewLine({ ...newLine, component_id: id }); }}
                       placeholder={t(verticalType === 'fnb' || verticalType === 'bakery' ? 'catalog:searchIngredient' : 'catalog:searchComponent')}

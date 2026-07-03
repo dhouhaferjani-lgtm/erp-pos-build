@@ -14,6 +14,10 @@
       "title": "Company Information",
       "description": "Update company details and business information"
     },
+    "locations": {
+      "title": "Locations & Branches",
+      "description": "Manage each branch's address, contact details, and tax ID"
+    },
     "tax": {
       "title": "Tax Settings",
       "description": "Configure tax rates and fiscal year settings"
@@ -49,6 +53,7 @@
   },
   "company": {
     "title": "Company Settings",
+    "scopeBanner": "These are company-wide settings for {{company}}. Branch details (address, tax ID) are edited in <locationsLink>Locations & Branches</locationsLink>.",
     "tabs": {
       "general": "General",
       "receipt": "Receipt"
@@ -89,15 +94,15 @@
       "legalNamePlaceholder": "My Company SARL",
       "tunisiaLegalNamePlaceholder": "PharmaBio Tunisie SARL",
       "emailPlaceholder": "contact@company.com",
-      "phonePlaceholder": "+33 1 23 45 67 89",
+      "phonePlaceholder": "",
       "tunisiaPhonePlaceholder": "+216 71 123 456",
-      "streetPlaceholder": "123 Main Street",
+      "streetPlaceholder": "",
       "tunisiaStreetPlaceholder": "12 Avenue Habib Bourguiba",
-      "cityPlaceholder": "Paris",
+      "cityPlaceholder": "",
       "tunisiaCityPlaceholder": "Tunis",
-      "postalCodePlaceholder": "75001",
+      "postalCodePlaceholder": "",
       "tunisiaPostalCodePlaceholder": "1000",
-      "taxIdPlaceholder": "FR12345678901",
+      "taxIdPlaceholder": "",
       "tunisiaTaxIdPlaceholder": "1234567/A/M/000",
       "selectCountry": "Select Your Country",
       "selectCountryHint": "This will determine your default currency, timezone, and regional settings",
@@ -121,14 +126,6 @@
       "replaceLogo": "Replace"
     },
     "placeholders": {
-      "taxId": "FR12345678901",
-      "tunisiaTaxId": "1234567/A/M/000",
-      "registrationNumber": "123 456 789 RCS Paris",
-      "tunisiaRegistrationNumber": "B123456789",
-      "street": "123 Business Street",
-      "tunisiaStreet": "12 Avenue Habib Bourguiba",
-      "city": "City",
-      "tunisiaCity": "Tunis",
       "primaryColor": "#2563EB"
     },
     "currencies": {
@@ -169,6 +166,9 @@
       "uploadLogo": "Click to upload company logo",
       "logoFormats": "PNG, JPG, SVG up to 2MB"
     }
+  },
+  "locations": {
+    "scopeHint": "Per-branch data. Blank tax fields inherit the company values."
   },
   "receipt": {
     "title": "Receipt Settings",

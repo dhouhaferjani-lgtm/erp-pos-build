@@ -55,11 +55,18 @@ final class EnrichmentReviewController extends Controller
             ? $request->string('quality')->toString()
             : null;
 
+        $validated = $request->validate([
+            'product_id' => ['sometimes', 'uuid'],
+        ]);
+
+        $productId = isset($validated['product_id']) ? (string) $validated['product_id'] : null;
+
         $paginator = $this->enrichmentReviewService->listForReview(
             $company->tenant_id,
             $company->id,
             $status,
             $quality,
+            $productId,
         );
 
         $items = collect($paginator->items())->map(function (EnrichmentResult $result): EnrichmentResultData {

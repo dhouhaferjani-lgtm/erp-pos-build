@@ -6,6 +6,7 @@ namespace App\Modules\Document\Providers;
 
 use App\Modules\Document\Application\Observers\DocumentMediaCascadeObserver;
 use App\Modules\Document\Application\Projections\DocumentAccountChargeFactureBridge;
+use App\Modules\Document\Application\Services\OperationResolver;
 use App\Modules\Document\Domain\Contracts\DocumentVehicleContextWriterInterface;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Services\Conversion\Converters\DeliveryNoteToInvoiceConverter;
@@ -18,6 +19,7 @@ use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Infrastructure\Persistence\EloquentDocumentVehicleContextWriter;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
+use App\Shared\Contracts\Document\OperationResolverInterface;
 use Illuminate\Support\ServiceProvider;
 
 class DocumentServiceProvider extends ServiceProvider
@@ -29,6 +31,11 @@ class DocumentServiceProvider extends ServiceProvider
         $this->app->bind(
             DocumentVehicleContextWriterInterface::class,
             EloquentDocumentVehicleContextWriter::class,
+        );
+
+        $this->app->bind(
+            OperationResolverInterface::class,
+            OperationResolver::class,
         );
 
         $this->app->singleton(DocumentConverterRegistry::class, function ($app) {

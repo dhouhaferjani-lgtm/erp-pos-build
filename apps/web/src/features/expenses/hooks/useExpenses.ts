@@ -17,6 +17,9 @@ export const expenseKeys = {
   list: (filters?: ExpenseFilters) => [...expenseKeys.lists(), filters] as const,
   details: () => [...expenseKeys.all, 'detail'] as const,
   detail: (id: string) => [...expenseKeys.details(), id] as const,
+  linkableInvoices: () => [...expenseKeys.all, 'linkable-invoices'] as const,
+  linkableOperations: (invoiceId: string) =>
+    [...expenseKeys.all, 'linkable-operations', invoiceId] as const,
 }
 
 /**
@@ -42,6 +45,26 @@ export function useExpense(id: string) {
     queryKey: tenantScopedKey([...expenseKeys.detail(id)]),
     queryFn: () => expenseApi.get(id),
     enabled: !!id && !!tenantId && !!companyId,
+  })
+}
+
+export function useLinkableExpenseInvoices(enabled = true) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+  return useQuery({
+    queryKey: tenantScopedKey([...expenseKeys.linkableInvoices()]),
+    queryFn: () => expenseApi.listLinkableInvoices(),
+    enabled: enabled && !!tenantId && !!companyId,
+  })
+}
+
+export function useLinkableExpenseOperations(invoiceId: string | undefined) {
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
+  return useQuery({
+    queryKey: tenantScopedKey([...expenseKeys.linkableOperations(invoiceId ?? '')]),
+    queryFn: () => expenseApi.resolveLinkableOperations(invoiceId ?? ''),
+    enabled: !!invoiceId && !!tenantId && !!companyId,
   })
 }
 

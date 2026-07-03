@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Application\DTOs\BarcodeLookupResultData;
 use App\Modules\PlatformIntegration\Application\Services\BarcodeLookupService;
+use App\Modules\PlatformIntegration\Domain\Services\BarcodeNormalizer;
 use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformProductData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
 use App\Modules\Tenant\Domain\Tenant;
@@ -202,6 +203,7 @@ class BarcodeLookupServiceTest extends TestCase
         $this->service = new BarcodeLookupService(
             new PlatformHttpClient($companyContext),
             $companyContext,
+            new BarcodeNormalizer,
         );
     }
 }

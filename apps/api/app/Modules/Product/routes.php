@@ -46,6 +46,9 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('line-entry/resolve-code', [LineEntryController::class, 'resolveCode'])
         ->middleware('can:products.view')
         ->name('line-entry.resolve-code');
+    Route::post('line-entry/pricing-context/bulk', [LineEntryController::class, 'bulkPricingContext'])
+        ->middleware('can:products.view')
+        ->name('line-entry.pricing-context.bulk');
 
     // Product CRUD with permission middleware
     Route::get('products', [ProductController::class, 'index'])

@@ -200,7 +200,10 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         id: line.id,
         product_id: line.product_id,
         quantity: line.quantity,
+        free_quantity: line.free_quantity ?? '0',
         unit_price: line.unit_price,
+        line_total: line.line_total,
+        price_entry_mode: line.price_entry_mode ?? 'unit',
         discount_percent: line.discount_percent ?? null,
         discount_amount: line.discount_amount ?? null,
         tax_rate: line.tax_rate || 0,
@@ -305,12 +308,18 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       product_code: '',
       product_name: l.product_name,
       description: l.description,
-      quantity: parseFloat(l.quantity),
-      unit_price: parseFloat(l.unit_price),
+      quantity: l.quantity,
+      free_quantity: l.free_quantity ?? '0',
+      free_quantity_received: l.free_quantity_received ?? '0',
+      free_quantity_invoiced: l.free_quantity_invoiced ?? '0',
+      unit_price: l.unit_price,
       discount_percent: l.discount_percent ?? null,
       discount_amount: l.discount_amount ?? null,
-      tax_rate: parseFloat(l.tax_rate ?? '0'),
-      line_total: parseFloat(l.line_total),
+      tax_rate: l.tax_rate ?? '0',
+      line_total: l.line_total,
+      price_entry_mode: l.price_entry_mode ?? 'unit',
+      landed_unit_cost: l.landed_unit_cost ?? null,
+      is_bonus_line: l.is_bonus_line ?? false,
       quantity_decimals: l.quantity_decimals ?? null,
     }))
     setLines(initialLines)
@@ -391,7 +400,10 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         product_id: line.product_id,
         description: line.description,
         quantity: line.quantity,
+        free_quantity: line.free_quantity ?? '0',
         unit_price: line.unit_price,
+        line_total: line.line_total,
+        price_entry_mode: line.price_entry_mode ?? 'unit',
         discount_percent: line.discount_percent ?? null,
         discount_amount: line.discount_amount ?? null,
         tax_rate: line.tax_rate,
@@ -573,7 +585,12 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
         </div>
 
         {/* Document Lines */}
-        <DocumentLineEditor lines={lines} onChange={setLines} {...(effectiveType ? { documentType: effectiveType } : {})} />
+        <DocumentLineEditor
+          lines={lines}
+          onChange={setLines}
+          partnerId={watchedPartnerId || null}
+          {...(effectiveType ? { documentType: effectiveType } : {})}
+        />
 
         {/* Additional Costs (Purchase Orders only - after document is created) */}
         {effectiveType === 'purchase_order' && isEditing && id && (

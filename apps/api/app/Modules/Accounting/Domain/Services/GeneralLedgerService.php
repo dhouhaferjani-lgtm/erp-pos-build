@@ -15,6 +15,7 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentAdditionalCost;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Partner\Domain\Partner;
@@ -1512,6 +1513,189 @@ final class GeneralLedgerService
     }
 
     /**
+     * Post a supplier-credit-note reversing entry with a bonus-quantity stock return.
+     *
+     * Bonus free goods have no supplier-payable reduction. When they are returned
+     * after invoice matching, the stock leaves inventory at the current diluted WAC:
+     *
+     *   Dr PurchaseExpenses      = returned bonus stock value
+     *   Cr Inventory             = returned bonus stock value
+     *
+     * For mixed credit notes, the normal supplier-credit-note legs are included in
+     * the same source entry, preserving the source_type/source_id uniqueness model.
+     *
+     * @param  string  $ht  credit-note subtotal (Σ paid return qty × price) — numeric string
+     * @param  string  $recoverableVat  Σ document_lines.recoverable_tax_amount — numeric string
+     * @param  string  $nonRecoverableVat  Σ document_lines.non_recoverable_tax_amount — numeric string
+     * @param  string  $bonusInventoryValue  returned free stock valued at current WAC — numeric string, scale 6
+     */
+    public function createSupplierCreditNoteEntryWithBonusReturn(
+        Document $creditNote,
+        string $ht,
+        string $recoverableVat,
+        string $nonRecoverableVat,
+        string $bonusInventoryValue,
+    ): JournalEntry {
+        if (DB::transactionLevel() === 0) {
+            throw new \LogicException(
+                'createSupplierCreditNoteEntryWithBonusReturn must run inside the orchestration transaction '
+                .'so the GL post is atomic with the PO-line lock and bonus stock issue.'
+            );
+        }
+
+        foreach (
+            [
+                'ht' => $ht,
+                'recoverableVat' => $recoverableVat,
+                'nonRecoverableVat' => $nonRecoverableVat,
+                'bonusInventoryValue' => $bonusInventoryValue,
+            ] as $name => $value
+        ) {
+            if (! is_numeric($value)) {
+                throw new \InvalidArgumentException("Supplier credit note: {$name} must be a numeric string, got: {$value}");
+            }
+        }
+
+        $companyId = $creditNote->company_id;
+        $currency = $creditNote->currency;
+        $scale = $this->scaleResolver->getScale($currency);
+
+        /** @var numeric-string $total */
+        $total = $creditNote->total ?? '0';
+
+        /** @var numeric-string $htR */
+        $htR = CurrencyScale::bcround($ht, $scale);
+        /** @var numeric-string $recoverableVatR */
+        $recoverableVatR = CurrencyScale::bcround($recoverableVat, $scale);
+        /** @var numeric-string $nonRecoverableVatR */
+        $nonRecoverableVatR = CurrencyScale::bcround($nonRecoverableVat, $scale);
+        /** @var numeric-string $totalR */
+        $totalR = CurrencyScale::bcround($total, $scale);
+        /** @var numeric-string $bonusInventoryValueR */
+        $bonusInventoryValueR = CurrencyScale::bcround($bonusInventoryValue, $scale);
+
+        $expectedTotal = bcadd(bcadd($htR, $recoverableVatR, $scale), $nonRecoverableVatR, $scale);
+        if (bccomp($expectedTotal, $totalR, $scale) !== 0) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] is internally inconsistent: total %s != HT %s + recoverableVAT %s + nonRecoverableVAT %s (= %s). Refusing to post an unbalanced reversing entry.',
+                $creditNote->id, $totalR, $htR, $recoverableVatR, $nonRecoverableVatR, $expectedTotal,
+            ));
+        }
+
+        /** @var numeric-string $plug */
+        $plug = bcsub($totalR, $recoverableVatR, $scale);
+
+        $vatAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::VatDeductible);
+        $inventoryAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::Inventory);
+        $payableAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::SupplierPayable);
+        $purchaseExpensesAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::PurchaseExpenses);
+
+        $company = Company::findOrFail($companyId);
+
+        $entry = JournalEntry::create([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $companyId,
+            'entry_number' => $this->generateEntryNumber($companyId),
+            'entry_date' => $creditNote->document_date,
+            'description' => "Supplier credit note {$creditNote->document_number} — reversal",
+            'status' => JournalEntryStatus::Draft,
+            'source_type' => 'supplier_credit_note',
+            'source_id' => $creditNote->id,
+        ]);
+
+        $lineOrder = 0;
+
+        if (bccomp($totalR, '0', $scale) > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $payableAccount->id,
+                'partner_id' => $creditNote->partner_id,
+                'debit' => $totalR,
+                'credit' => '0',
+                'description' => 'Supplier payable reduction (401)',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        if (bccomp($recoverableVatR, '0', $scale) > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $vatAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $recoverableVatR,
+                'description' => 'VAT deductible reversal (input)',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        $plugCmp = bccomp($plug, '0', $scale);
+        if ($plugCmp > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $plug,
+                'description' => 'Inventory reversal (HT / non-recoverable VAT)',
+                'line_order' => $lineOrder++,
+            ]);
+        } elseif ($plugCmp < 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => bcmul($plug, '-1', $scale),
+                'credit' => '0',
+                'description' => 'Inventory reversal (HT / non-recoverable VAT)',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        if (bccomp($bonusInventoryValueR, '0', $scale) > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $purchaseExpensesAccount->id,
+                'partner_id' => null,
+                'debit' => $bonusInventoryValueR,
+                'credit' => '0',
+                'description' => 'Returned bonus stock expense',
+                'line_order' => $lineOrder++,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $bonusInventoryValueR,
+                'description' => 'Returned bonus stock inventory issue',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        $entry->load('lines');
+
+        /** @var numeric-string $debitSum */
+        $debitSum = '0';
+        /** @var numeric-string $creditSum */
+        $creditSum = '0';
+        foreach ($entry->lines as $line) {
+            $debitSum = bcadd($debitSum, $line->debit, $scale);
+            $creditSum = bcadd($creditSum, $line->credit, $scale);
+        }
+        if (bccomp($debitSum, $creditSum, $scale) !== 0) {
+            throw new \DomainException(
+                "Supplier credit note bonus return entry does not balance: debit {$debitSum} != credit {$creditSum}."
+            );
+        }
+
+        $this->postSystemGeneratedEntryAndDispatchPostedEvent($entry, $companyId, $currency);
+
+        return $entry;
+    }
+
+    /**
      * Create a GL journal entry for a voucher ledger event.
      *
      * IMPORTANT: Voucher redemption MUST NOT route through createPOSPaymentEntry()
@@ -2119,6 +2303,270 @@ final class GeneralLedgerService
         $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
 
         return $entry;
+    }
+
+    /**
+     * Create journal entry from a posted income (the mirror of createFromExpense).
+     *
+     * Income is money received into a cash/bank repository against a class-7
+     * revenue account.
+     * Debit: Cash/Bank Account — the receiving payment repository's GL account
+     *        (repository->gl_account_id, NOT account_id). Falls back to the
+     *        Cash/Bank system account by repository type when the repository
+     *        has no linked GL account, and to Cash when no repository is set.
+     * Credit: Income Account — the selected class-7 account
+     *        (metadata->income_account_id) or ProductRevenue by default.
+     */
+    public function createFromIncome(Document $income, User $user): JournalEntry
+    {
+        $entry = DB::transaction(function () use ($income): JournalEntry {
+            $companyId = $income->company_id;
+            $metadata = $income->incomeMetadata;
+
+            // Determine income account (from selection or default to ProductRevenue).
+            if ($metadata?->income_account_id !== null) {
+                // Pin the Account by both tenant_id + company_id of the source
+                // income to refuse any cross-tenant account_id smuggled into
+                // metadata.income_account_id.
+                $incomeAccount = Account::query()
+                    ->where('tenant_id', $income->tenant_id)
+                    ->where('company_id', $income->company_id)
+                    ->whereKey($metadata->income_account_id)
+                    ->firstOrFail();
+            } else {
+                $incomeAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+            }
+
+            // Determine the receiving cash/bank account. Prefer the repository's
+            // linked GL account (gl_account_id — the account_id column is a
+            // DIFFERENT, legacy link and must NOT be used here). Fall back to the
+            // Cash/Bank system account by repository type, then to Cash.
+            $repository = $metadata?->paymentRepository;
+            if ($repository?->gl_account_id !== null) {
+                $paymentAccount = Account::query()
+                    ->where('tenant_id', $income->tenant_id)
+                    ->where('company_id', $income->company_id)
+                    ->whereKey($repository->gl_account_id)
+                    ->firstOrFail();
+            } else {
+                $repositoryType = $repository !== null ? $repository->type : RepositoryType::CashRegister;
+                $paymentAccount = match ($repositoryType) {
+                    RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
+                    default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
+                };
+            }
+
+            $entryNumber = $this->generateEntryNumber($companyId);
+            $sourceName = $metadata->source_name ?? 'Income';
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $income->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $metadata->payment_date ?? $income->document_date,
+                'description' => "Income: {$income->document_number} - {$sourceName}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'income',
+                'source_id' => $income->id,
+            ]);
+
+            $lineOrder = 0;
+
+            // Debit: Cash/Bank Account (money received)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentAccount->id,
+                'partner_id' => null,
+                'debit' => $income->total ?? '0',
+                'credit' => '0',
+                'description' => 'Income received',
+                'line_order' => $lineOrder++,
+            ]);
+
+            // Credit: Income Account (class-7 revenue)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $incomeAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $income->total ?? '0',
+                'description' => $sourceName,
+                'line_order' => $lineOrder,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $income->company_id, (string) $income->currency);
+
+        return $entry;
+    }
+
+    /**
+     * @param  array{inventory_total: numeric-string, cogs_total: numeric-string}  $application
+     */
+    public function createLinkedCostCapitalizationEntry(
+        Document $expense,
+        DocumentAdditionalCost $cost,
+        array $application,
+        User $user,
+    ): JournalEntry {
+        $existing = JournalEntry::query()
+            ->where('source_type', 'linked_cost_capitalization')
+            ->where('source_id', $cost->id)
+            ->first();
+        if ($existing !== null) {
+            return $existing->load('lines');
+        }
+
+        $entry = DB::transaction(function () use ($expense, $cost, $application): JournalEntry {
+            $companyId = $expense->company_id;
+            $metadata = $expense->expenseMetadata;
+            $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
+            $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
+            $paymentAccount = $this->expensePaymentAccount($expense);
+            $scale = $this->scaleResolver->getScale((string) $expense->currency);
+            $inventoryTotal = CurrencyScale::bcformatStrict($application['inventory_total'], $scale);
+            $cogsTotal = CurrencyScale::bcformatStrict($application['cogs_total'], $scale);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $expense->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $metadata->payment_date ?? $expense->document_date,
+                'description' => "Linked cost capitalization: {$expense->document_number}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'linked_cost_capitalization',
+                'source_id' => $cost->id,
+            ]);
+
+            $lineOrder = 0;
+            if ($this->isPositive($inventoryTotal, $scale)) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $inventoryAccount->id,
+                    'debit' => $inventoryTotal,
+                    'credit' => '0',
+                    'description' => 'Linked landed cost inventory capitalization',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
+            if ($this->isPositive($cogsTotal, $scale)) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $cogsAccount->id,
+                    'debit' => $cogsTotal,
+                    'credit' => '0',
+                    'description' => 'Linked landed cost sold portion',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentAccount->id,
+                'debit' => '0',
+                'credit' => $expense->total ?? '0',
+                'description' => 'Linked cost cash payment',
+                'line_order' => $lineOrder,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+
+        return $entry;
+    }
+
+    /**
+     * @param  array{inventory_total: numeric-string, cogs_total: numeric-string}  $application
+     */
+    public function createLinkedCostCapitalizationReversalEntry(
+        Document $expense,
+        DocumentAdditionalCost $reversalCost,
+        array $application,
+        User $user,
+    ): JournalEntry {
+        $existing = JournalEntry::query()
+            ->where('source_type', 'linked_cost_capitalization_reversal')
+            ->where('source_id', $reversalCost->id)
+            ->first();
+        if ($existing !== null) {
+            return $existing->load('lines');
+        }
+
+        $entry = DB::transaction(function () use ($expense, $reversalCost, $application): JournalEntry {
+            $companyId = $expense->company_id;
+            $metadata = $expense->expenseMetadata;
+            $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
+            $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
+            $paymentAccount = $this->expensePaymentAccount($expense);
+            $scale = $this->scaleResolver->getScale((string) $expense->currency);
+            $inventoryTotal = CurrencyScale::bcformatStrict($application['inventory_total'], $scale);
+            $cogsTotal = CurrencyScale::bcformatStrict($application['cogs_total'], $scale);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $expense->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => now()->toDateString(),
+                'description' => "Linked cost reversal: {$expense->document_number}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'linked_cost_capitalization_reversal',
+                'source_id' => $reversalCost->id,
+            ]);
+
+            $lineOrder = 0;
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentAccount->id,
+                'debit' => $expense->total ?? '0',
+                'credit' => '0',
+                'description' => 'Linked cost cash reversal',
+                'line_order' => $lineOrder++,
+            ]);
+
+            if ($this->isPositive($inventoryTotal, $scale)) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $inventoryAccount->id,
+                    'debit' => '0',
+                    'credit' => $inventoryTotal,
+                    'description' => 'Linked landed cost inventory reversal',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
+            if ($this->isPositive($cogsTotal, $scale)) {
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $cogsAccount->id,
+                    'debit' => '0',
+                    'credit' => $cogsTotal,
+                    'description' => 'Linked landed cost COGS reversal',
+                    'line_order' => $lineOrder,
+                ]);
+            }
+
+            return $entry->load('lines');
+        });
+
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+
+        return $entry;
+    }
+
+    private function expensePaymentAccount(Document $expense): Account
+    {
+        $metadata = $expense->expenseMetadata;
+        $repositoryType = $metadata !== null && $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : RepositoryType::CashRegister;
+
+        return match ($repositoryType) {
+            RepositoryType::BankAccount => $this->getAccountByPurpose($expense->company_id, SystemAccountPurpose::Bank),
+            default => $this->getAccountByPurpose($expense->company_id, SystemAccountPurpose::Cash),
+        };
     }
 
     /**

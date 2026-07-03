@@ -14,6 +14,7 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Product\Infrastructure\Services\ProductEnrichmentCorrelationService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -154,6 +155,87 @@ class ProductSubmissionCorrelationTest extends TestCase
         Http::assertNothingSent();
         $product->refresh();
         $this->assertSame('trk-existing-001', $product->platform_submission_id);
+    }
+
+    public function test_find_tracking_id_holder_returns_holder(): void
+    {
+        $trackingId = 'trk-holder-001';
+        $holder = $this->makeProduct([
+            'name' => 'Holder Product',
+            'platform_submission_id' => $trackingId,
+            'enrichment_status' => EnrichmentStatus::Completed,
+        ]);
+
+        $holderDto = app(ProductEnrichmentCorrelationService::class)
+            ->findTrackingIdHolder($trackingId, $this->company->id);
+
+        $this->assertNotNull($holderDto);
+        $this->assertSame($holder->id, $holderDto->productId);
+        $this->assertSame('Holder Product', $holderDto->productName);
+    }
+
+    public function test_find_tracking_id_holder_returns_null_when_unbound(): void
+    {
+        $holderDto = app(ProductEnrichmentCorrelationService::class)
+            ->findTrackingIdHolder('trk-unbound-001', $this->company->id);
+
+        $this->assertNull($holderDto);
+    }
+
+    public function test_submit_conflict_when_tracking_id_held_by_other_product(): void
+    {
+        $trackingId = 'trk-held-by-other';
+        $holder = $this->makeProduct([
+            'name' => 'Holder Product',
+            'platform_submission_id' => $trackingId,
+            'enrichment_status' => EnrichmentStatus::Completed,
+        ]);
+        $candidate = $this->makeProduct(['name' => 'Candidate Product']);
+
+        Http::fake([
+            'platform.test/api/v1/products/submit' => Http::response([
+                'tracking_id' => $trackingId,
+                'status' => 'submitted',
+                'status_url' => 'https://platform.test/status/'.$trackingId,
+            ], 200),
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/platform/submit-for-enrichment', [
+                'product_id' => $candidate->id,
+                'name' => 'Brake Pad',
+                'brand' => 'Bosch',
+            ]);
+
+        $response->assertStatus(409);
+        $response->assertJsonPath('error.code', 'enrichment_tracking_conflict');
+        $response->assertJsonPath('error.details.holder_product_id', $holder->id);
+        $response->assertJsonPath('error.details.holder_product_name', 'Holder Product');
+
+        $candidate->refresh();
+        $this->assertNull($candidate->platform_submission_id);
+        $this->assertNull($candidate->enrichment_status);
+    }
+
+    public function test_submit_for_same_pending_product_keeps_current_already_pending_response(): void
+    {
+        $product = $this->makeProduct([
+            'platform_submission_id' => 'trk-same-product',
+            'enrichment_status' => EnrichmentStatus::Pending,
+        ]);
+
+        Http::fake();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/platform/submit-for-enrichment', [
+                'product_id' => $product->id,
+                'name' => 'Brake Pad',
+                'brand' => 'Bosch',
+            ]);
+
+        $response->assertStatus(409);
+        $response->assertJsonPath('error.code', 'enrichment_already_pending');
+        Http::assertNothingSent();
     }
 
     public function test_submit_returns_404_for_unknown_product(): void

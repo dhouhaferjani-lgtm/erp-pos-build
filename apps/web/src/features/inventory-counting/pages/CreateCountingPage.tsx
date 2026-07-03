@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Trash2 } from 'lucide-react'
 import { useCreateCounting } from '../api/queries'
 import type {
   CountingScopeType,
@@ -10,10 +10,11 @@ import type {
 } from '../types'
 import { cn } from '@/lib/utils'
 import { UserSelector } from '@/features/users/components/UserSelector'
-import { ProductSelector } from '@/features/products/components/ProductSelector'
+import { LineItemEntryBar, ProductCell, type ProductLineProduct } from '@/components/molecules/line-items'
 import { LocationSelectorMulti } from '@/features/locations/components/LocationSelectorMulti'
 import { CategorySelector } from '@/features/categories/components/CategorySelector'
 import { useUsers } from '@/features/users/hooks/useUsers'
+import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 
 const STEPS = ['scope', 'selection', 'configuration', 'assignment', 'review'] as const
 type Step = (typeof STEPS)[number]
@@ -296,6 +297,9 @@ interface ProductSelectionStepProps {
 
 function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionStepProps) {
   const { t } = useTranslation(['inventory', 'products', 'locations'])
+  const [selectedProducts, setSelectedProducts] = useState<ProductLineProduct[]>([])
+
+  const productIds = data.scope_filters?.product_ids ?? []
 
   const handleProductsChange = (productIds: string[]) => {
     onChange({
@@ -304,6 +308,17 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
         product_ids: productIds,
       },
     })
+  }
+
+  const handleAddProduct = (product: ProductLineProduct) => {
+    if (productIds.includes(product.id)) return
+    setSelectedProducts((current) => [...current, product])
+    handleProductsChange([...productIds, product.id])
+  }
+
+  const handleRemoveProduct = (productId: string) => {
+    setSelectedProducts((current) => current.filter((product) => product.id !== productId))
+    handleProductsChange(productIds.filter((id) => id !== productId))
   }
 
   const handleLocationsChange = (locationIds: string[]) => {
@@ -353,11 +368,41 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
 
       {/* Product Selection */}
       {(scopeType === 'product' || scopeType === 'product_location') && (
-        <ProductSelector
-          value={data.scope_filters?.product_ids ?? []}
-          onChange={handleProductsChange}
-          helperText={t('counting.create.productSelectionHelper')}
-        />
+        <div className="space-y-4">
+          <LineItemEntryBar
+            onAddProduct={handleAddProduct}
+            onNotFound={() => undefined}
+          />
+          <p className={`text-sm ${textColors.tertiary}`}>{t('counting.create.productSelectionHelper')}</p>
+
+          {productIds.length > 0 && (
+            <div className={`rounded-md border ${borderColors.light} ${colors.neutral[50]} p-3`}>
+              <div className={`mb-2 text-sm font-medium ${textColors.secondary}`}>
+                {t('products:selectedProducts', { count: productIds.length })}
+              </div>
+              <div className="space-y-2">
+                {selectedProducts.map((product) => (
+                  <div
+                    key={product.id}
+                    className={`flex items-center gap-3 rounded-md border ${borderColors.light} ${colors.white} p-2`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <ProductCell product={product} size="sm" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { handleRemoveProduct(product.id); }}
+                      className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm} ${textColors.error}`}
+                      aria-label={t('common:remove')}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Location Selection */}

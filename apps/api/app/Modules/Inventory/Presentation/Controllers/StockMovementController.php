@@ -6,6 +6,7 @@ namespace App\Modules\Inventory\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
+use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
@@ -49,10 +50,28 @@ class StockMovementController extends Controller
             $query->where('movement_type', $request->input('movement_type'));
         }
 
-        $movements = $query->orderBy('created_at', 'desc')->get();
+        if (! $request->has('page')) {
+            $movements = $query->orderBy('created_at', 'desc')->get();
+
+            return response()->json([
+                'data' => $movements->map(fn (StockMovement $movement) => $this->formatMovement($movement))->values(),
+            ]);
+        }
+
+        $perPage = min(max($request->integer('per_page', 25), 1), 100);
+        $page = max($request->integer('page', 1), 1);
+        $movements = $query->orderBy('created_at', 'desc')->paginate($perPage, ['*'], 'page', $page);
 
         return response()->json([
-            'data' => $movements->map(fn (StockMovement $movement) => $this->formatMovement($movement)),
+            'data' => $movements->getCollection()->map(fn (StockMovement $movement) => $this->formatMovement($movement))->values(),
+            'meta' => [
+                'current_page' => $movements->currentPage(),
+                'last_page' => $movements->lastPage(),
+                'per_page' => $movements->perPage(),
+                'total' => $movements->total(),
+                'from' => $movements->firstItem(),
+                'to' => $movements->lastItem(),
+            ],
         ]);
     }
 
@@ -255,6 +274,8 @@ class StockMovementController extends Controller
      */
     private function formatMovement(StockMovement $movement): array
     {
+        $sourceDocument = $this->resolveSourceDocument($movement);
+
         return [
             'id' => $movement->id,
             'product_id' => $movement->product_id,
@@ -269,6 +290,8 @@ class StockMovementController extends Controller
             'quantity_before' => $movement->quantity_before,
             'quantity_after' => $movement->quantity_after,
             'reference' => $movement->reference,
+            'source_document_id' => $sourceDocument?->id,
+            'source_document_type' => $sourceDocument?->type->value,
             'notes' => $movement->notes,
             'user_id' => $movement->user_id,
             'user_name' => $movement->user?->name,
@@ -281,5 +304,21 @@ class StockMovementController extends Controller
                 : false,
             'created_at' => $movement->created_at?->toIso8601String(),
         ];
+    }
+
+    private function resolveSourceDocument(StockMovement $movement): ?Document
+    {
+        if ($movement->reference_id === null) {
+            return null;
+        }
+
+        if ($movement->reference_type !== 'Document' && $movement->reference_type !== Document::class) {
+            return null;
+        }
+
+        return Document::query()
+            ->where('tenant_id', $movement->tenant_id)
+            ->where('company_id', $movement->company_id)
+            ->find($movement->reference_id);
     }
 }

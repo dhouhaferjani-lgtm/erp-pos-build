@@ -10,7 +10,17 @@
       "enrichmentSuccess": "Synerivia · {{count}} champs",
       "enrichmentFields": "{{count}} champs",
       "enrichmentUnavailable": "Synerivia · indisponible",
-      "helper": "Récupération automatique peu après l'arrêt de la saisie du code-barres (repli sur le nom du produit s'il n'y a pas de code-barres). Le bouton actualiser la relance manuellement."
+      "helper": "Récupération automatique peu après l'arrêt de la saisie du code-barres (repli sur le nom du produit s'il n'y a pas de code-barres). Le bouton actualiser la relance manuellement.",
+      "replacePhoto": "Remplacer la photo",
+      "addPhoto": "Ajouter une photo",
+      "statusPending": "Enrichissement…",
+      "statusReview": "À valider",
+      "statusEnriched": "Enrichi · Synerivia",
+      "statusUnavailable": "Non disponible",
+      "refreshNothing": "Rien à actualiser",
+      "equivalentsCount": "+{{count}} équivalents",
+      "complementsCount": "+{{count}} compléments",
+      "routineSteps": "Routine · {{count}} étapes"
     },
     "subtitle": "Scannez un code-barres pour pré-remplir depuis Synerivia, ou saisissez manuellement.",
     "sectionLabels": {

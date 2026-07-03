@@ -1,0 +1,49 @@
+{
+  "title": "Income",
+  "description": "Record money received into your cash and bank accounts",
+  "recordIncome": "Record Income",
+  "createIncome": "Record Income",
+  "editIncome": "Edit Income",
+  "noIncome": "No income recorded",
+  "noIncomeDescription": "Get started by recording your first income",
+  "searchPlaceholder": "Search income by source, reference…",
+  "confirmPost": "Post this income? This action cannot be undone.",
+  "post": "Post",
+  "status": {
+    "draft": "Draft",
+    "posted": "Posted"
+  },
+  "form": {
+    "sourceInfo": "Source Information",
+    "sourceName": "Received From",
+    "sourceNamePlaceholder": "Customer, tenant, or source name",
+    "referenceNumber": "Reference Number",
+    "referenceNumberPlaceholder": "Receipt or reference number",
+    "incomeAccount": "Income Category",
+    "selectIncomeAccount": "Select an income account",
+    "noIncomeAccounts": "No income accounts available",
+    "noIncomeAccountsDescription": "Configure revenue (class 7) accounts in the chart of accounts",
+    "amount": "Amount",
+    "date": "Date",
+    "paymentDetails": "Receipt Details",
+    "paymentDate": "Received Date",
+    "paymentMethod": "Payment Method",
+    "paymentRepository": "Received Into",
+    "isReceived": "Mark as received",
+    "notes": "Notes",
+    "notesPlaceholder": "Add any additional notes",
+    "noPaymentMethods": "No payment methods available",
+    "noPaymentMethodsDescription": "Configure payment methods in Treasury settings",
+    "noRepositories": "No payment repositories available",
+    "noRepositoriesDescription": "Configure payment repositories in Treasury settings"
+  },
+  "messages": {
+    "created": "Income recorded successfully",
+    "updated": "Income updated successfully",
+    "posted": "Income posted successfully",
+    "deleted": "Income deleted successfully"
+  },
+  "errors": {
+    "notFound": "Income not found"
+  }
+}

@@ -21,6 +21,7 @@ import { useCompanyStore } from '../../stores/companyStore'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { Button } from '../../components/atoms/Button'
+import { EntityLink } from '../../components/molecules/EntityLink'
 import { MoneyInput } from '../../components/atoms/MoneyInput'
 import { Textarea } from '../../components/atoms/Textarea'
 import {
@@ -35,6 +36,7 @@ interface PaymentAllocation {
   id: string
   document_id: string
   document_number: string
+  document_type?: 'invoice' | 'sales_order' | 'purchase_order' | 'supplier_invoice'
   amount: string
 }
 
@@ -101,6 +103,16 @@ interface CanRefundResponse {
  */
 const statusToneOverrides: Record<string, StatusTone> = {
   reversed: 'neutral',
+}
+
+function allocationDocumentType(
+  paymentType: PaymentType | null,
+  allocationType: PaymentAllocation['document_type'],
+): 'invoice' | 'sales_order' | 'purchase_order' | 'supplier_invoice' {
+  if (allocationType) return allocationType
+  if (paymentType === 'supplier_payment') return 'supplier_invoice'
+  if (paymentType === 'advance') return 'sales_order'
+  return 'invoice'
 }
 
 function scopedNamespacePredicate(
@@ -467,16 +479,13 @@ export function PaymentDetailPage() {
           </h2>
           {payment.partner ? (
             <div>
-              <Link
-                to={
-                  payment.partner.type === 'supplier' || payment.payment_type === 'supplier_payment'
-                    ? `/purchases/suppliers/${payment.partner.id}`
-                    : `/sales/customers/${payment.partner.id}`
-                }
-                className={cn('font-medium', textColors.brand)}
-              >
-                {payment.partner.name}
-              </Link>
+              <EntityLink
+                type="partner"
+                id={payment.partner.id}
+                partnerType={payment.partner.type === 'supplier' || payment.payment_type === 'supplier_payment' ? 'supplier' : 'customer'}
+                label={payment.partner.name}
+                className="font-medium"
+              />
               {payment.payment_type && (
                 <div className="mt-2">
                   <StatusBadge tone="info">
@@ -514,12 +523,13 @@ export function PaymentDetailPage() {
                 {payment.allocations.map((allocation) => (
                   <tr key={allocation.id}>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <Link
-                        to={`/sales/invoices/${allocation.document_id}`}
-                        className={cn('font-medium', textColors.brand)}
-                      >
-                        {allocation.document_number}
-                      </Link>
+                      <EntityLink
+                        type="document"
+                        id={allocation.document_id}
+                        documentType={allocationDocumentType(payment.payment_type, allocation.document_type)}
+                        label={allocation.document_number}
+                        className="font-medium"
+                      />
                     </td>
                     <td className={cn('whitespace-nowrap px-4 py-3 text-end text-sm font-medium tabular-nums', textColors.primary)}>
                       {formatCurrency(allocation.amount)}

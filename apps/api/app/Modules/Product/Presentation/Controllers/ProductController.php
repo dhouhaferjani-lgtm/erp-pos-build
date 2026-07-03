@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Product\Presentation\Controllers;
 
 use App\Enums\Vertical;
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Catalog\Application\DTOs\ProductMediaData;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
@@ -22,6 +23,7 @@ use App\Modules\Inventory\Domain\Exceptions\OpeningLockedException;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\OpeningStateData;
 use App\Modules\Product\Application\DTOs\ProductData;
+use App\Modules\Product\Application\Jobs\ApplyCatalogEnrichmentJob;
 use App\Modules\Product\Application\Services\ProductTombstoneService;
 use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -61,6 +63,7 @@ class ProductController extends Controller
         private readonly InventoryServiceInterface $inventory,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly ResetOpeningBalanceService $resetOpening,
+        private readonly BatchStockService $batchStockService,
     ) {}
 
     /**
@@ -286,7 +289,8 @@ class ProductController extends Controller
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('id', $product)
-            ->with(['unitOfMeasure', 'brand'])
+            ->with(['unitOfMeasure', 'brand', 'category', 'latestEnrichmentResult'])
+            ->withSum('stockLevels as stock_quantity', 'quantity')
             ->first();
 
         if (! $productModel) {
@@ -511,6 +515,19 @@ class ProductController extends Controller
             return $product;
         });
 
+        $platformVertical = $company->tenant->vertical->platformVertical();
+        $platformProductId = $validated['platform_product_id'] ?? null;
+        $backlinkBarcode = $validated['barcode'] ?? null;
+
+        if (is_string($platformProductId) && is_string($backlinkBarcode) && $platformVertical !== null) {
+            ApplyCatalogEnrichmentJob::dispatch(
+                $product->id,
+                $platformProductId,
+                $backlinkBarcode,
+                $platformVertical,
+            )->onQueue('enrichment');
+        }
+
         // Load metadata for response if Parapharmacy vertical
         if ($company->tenant->vertical === Vertical::Parapharmacy) {
             $product->load([
@@ -692,6 +709,7 @@ class ProductController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
         $validated = $this->resolveUnitId($validated, $company->tenant_id);
+        $wasBatchTracked = $productModel->requires_batch_tracking;
 
         // Extract parapharmacy metadata if provided
         $parapharmacyMetadata = null;
@@ -719,6 +737,10 @@ class ProductController extends Controller
 
         // Update product core fields
         $productModel->update($validated);
+
+        if (! $wasBatchTracked && $productModel->requires_batch_tracking) {
+            $this->backfillDefaultBatchesForExistingStock($productModel, $company->tenant_id);
+        }
 
         $changes = $productModel->getChanges();
         unset($changes['updated_at']);
@@ -815,6 +837,28 @@ class ProductController extends Controller
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
             ],
         ]);
+    }
+
+    private function backfillDefaultBatchesForExistingStock(Product $product, string $tenantId): void
+    {
+        StockLevel::query()
+            ->where('company_id', $product->company_id)
+            ->where('product_id', $product->id)
+            ->where('quantity', '>', 0)
+            ->orderBy('location_id')
+            ->get()
+            ->each(function (StockLevel $stockLevel) use ($product, $tenantId): void {
+                $this->batchStockService->ensureDefaultBatch(
+                    companyId: $product->company_id,
+                    tenantId: $tenantId,
+                    productId: $product->id,
+                    locationId: $stockLevel->location_id,
+                    targetQuantity: (string) $stockLevel->quantity,
+                    shelfLifeDays: $product->default_shelf_life_days,
+                    asOfDate: now()->toDateString(),
+                    variantId: $stockLevel->variant_id,
+                );
+            });
     }
 
     /**

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -101,8 +101,39 @@ beforeEach(() => {
   mockFetchOnboardingStatus.mockResolvedValue([])
   mockApiGet.mockImplementation(async (url: string) => {
     if (url === '/dashboard/stats') return { data: { data: dashboardStats() } }
-    if (url.startsWith('/documents')) return { data: { data: [] } }
-    if (url.startsWith('/payments')) return { data: { data: [] } }
+    if (url.startsWith('/documents')) {
+      return {
+        data: {
+          data: [
+            {
+              id: 'dn-1',
+              document_number: 'DN-001',
+              type: 'delivery_note',
+              partner_name: 'Customer A',
+              total_amount: '42.00',
+              status: 'posted',
+              created_at: '2026-05-11T10:00:00Z',
+            },
+          ],
+        },
+      }
+    }
+    if (url.startsWith('/payments')) {
+      return {
+        data: {
+          data: [
+            {
+              id: 'payment-1',
+              payment_number: 'PAY-001',
+              partner_name: 'Customer A',
+              amount: '42.00',
+              payment_method_name: 'Cash',
+              created_at: '2026-05-11T10:00:00Z',
+            },
+          ],
+        },
+      }
+    }
     return { data: { data: [] } }
   })
 })
@@ -132,5 +163,12 @@ describe('Dashboard tenant scope', () => {
 
     expect(mockApiGet).toHaveBeenCalledTimes(apiCalls)
     expect(mockFetchOnboardingStatus).toHaveBeenCalledTimes(onboardingCalls)
+  })
+
+  it('links recent document and payment rows to their detail pages', async () => {
+    render(<Dashboard />, { wrapper: wrapper(createClient()) })
+
+    expect(await screen.findByRole('link', { name: /DN-001/ })).toHaveAttribute('href', '/inventory/delivery-notes/dn-1')
+    expect(screen.getByRole('link', { name: /PAY-001/ })).toHaveAttribute('href', '/treasury/payments/payment-1')
   })
 })

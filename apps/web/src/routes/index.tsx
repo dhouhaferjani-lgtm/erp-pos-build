@@ -192,6 +192,8 @@ const ExpenseListPage = lazy(() => import('../features/expenses/pages/ExpenseLis
 const ExpenseFormPage = lazy(() => import('../features/expenses/pages/ExpenseFormPage').then((m) => ({ default: m.ExpenseFormPage })))
 const ExpenseDetailPage = lazy(() => import('../features/expenses/pages/ExpenseDetailPage').then((m) => ({ default: m.ExpenseDetailPage })))
 const ExpenseCategoryPage = lazy(() => import('../features/expenses/pages/ExpenseCategoryPage').then((m) => ({ default: m.ExpenseCategoryPage })))
+const IncomeListPage = lazy(() => import('../features/income/pages/IncomeListPage').then((m) => ({ default: m.IncomeListPage })))
+const IncomeFormPage = lazy(() => import('../features/income/pages/IncomeFormPage').then((m) => ({ default: m.IncomeFormPage })))
 
 // Compliance module
 const FraudSettingsPage = lazy(() => import('../features/compliance/pages/FraudSettingsPage').then((m) => ({ default: m.FraudSettingsPage })))
@@ -1488,6 +1490,40 @@ export function AppRoutes() {
               <RequirePermission permission="expenses.update">
                 <SuspenseWrapper>
                   <ExpenseFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+        </Route>
+
+        {/* Income Module */}
+        <Route path="income">
+          <Route
+            index
+            element={
+              <RequirePermission permission="income.view">
+                <SuspenseWrapper>
+                  <IncomeListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="income.create">
+                <SuspenseWrapper>
+                  <IncomeFormPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path=":id/edit"
+            element={
+              <RequirePermission permission="income.update">
+                <SuspenseWrapper>
+                  <IncomeFormPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

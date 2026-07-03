@@ -229,6 +229,14 @@ describe('GoodsReceiptListPage tenant scope', () => {
     expect(screen.getByText(new Date('2026-06-28').toLocaleDateString())).toBeInTheDocument()
   })
 
+  it('links purchase orders, suppliers, and product previews from receipt rows', async () => {
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    expect(await screen.findByRole('link', { name: 'PO-1' })).toHaveAttribute('href', '/purchases/orders/po-1')
+    expect(screen.getByRole('link', { name: 'Supplier' })).toHaveAttribute('href', '/purchases/suppliers/partner-1')
+    expect(screen.getByRole('link', { name: 'Part' })).toHaveAttribute('href', '/inventory/products/product-1')
+  })
+
   it('submits partial quantities from the receipt list receive dialog', async () => {
     renderWithProviders(<GoodsReceiptListPage />)
 

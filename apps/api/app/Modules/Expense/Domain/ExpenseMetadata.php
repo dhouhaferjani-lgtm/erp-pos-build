@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Expense\Domain;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Expense\Domain\Enums\ExpenseKind;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -24,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property bool $is_paid
  * @property string|null $receipt_number
  * @property string|null $vendor_name
+ * @property ExpenseKind $expense_kind
  * @property string|null $idempotency_key
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -53,6 +55,7 @@ class ExpenseMetadata extends Model
         'is_paid',
         'receipt_number',
         'vendor_name',
+        'expense_kind',
         'idempotency_key',
     ];
 
@@ -61,6 +64,7 @@ class ExpenseMetadata extends Model
      */
     protected $attributes = [
         'is_paid' => false,
+        'expense_kind' => 'generic',
     ];
 
     /**
@@ -71,6 +75,7 @@ class ExpenseMetadata extends Model
         return [
             'payment_date' => 'date',
             'is_paid' => 'boolean',
+            'expense_kind' => ExpenseKind::class,
         ];
     }
 

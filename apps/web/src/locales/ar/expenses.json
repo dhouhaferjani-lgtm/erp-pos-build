@@ -1,0 +1,131 @@
+{
+  "title": "المصاريف",
+  "description": "إدارة مصاريف النشاط ومتابعة الإنفاق",
+  "createExpense": "إنشاء مصروف",
+  "editExpense": "تعديل المصروف",
+  "viewExpense": "عرض المصروف",
+  "deleteExpense": "حذف المصروف",
+  "postExpense": "ترحيل المصروف",
+  "noExpenses": "لا توجد مصاريف",
+  "noExpensesDescription": "ابدأ بإنشاء أول مصروف",
+  "searchPlaceholder": "ابحث حسب المورد أو رقم الإيصال…",
+  "confirmDelete": "هل تريد حذف هذا المصروف؟",
+  "confirmPost": "هل تريد ترحيل هذا المصروف؟ لا يمكن التراجع عن هذا الإجراء.",
+  "paid": "مدفوع",
+  "vendorName": "اسم المورد",
+  "category": "الفئة",
+  "amount": "المبلغ",
+  "date": "التاريخ",
+  "paymentMethod": "طريقة الدفع",
+  "paymentRepository": "مدفوع من",
+  "receiptNumber": "رقم الإيصال",
+  "notes": "ملاحظات",
+  "status": {
+    "draft": "مسودة",
+    "confirmed": "مؤكد",
+    "posted": "مرحل",
+    "cancelled": "ملغى",
+    "paid": "مدفوع"
+  },
+  "actions": {
+    "post": "ترحيل المصروف",
+    "delete": "حذف المصروف",
+    "save": "حفظ",
+    "cancel": "إلغاء"
+  },
+  "form": {
+    "vendorInfo": "معلومات المورد",
+    "vendorName": "اسم المورد",
+    "vendorNamePlaceholder": "أدخل اسم المورد",
+    "receiptNumber": "رقم الإيصال",
+    "receiptNumberPlaceholder": "أدخل رقم الإيصال أو الفاتورة",
+    "category": "الفئة",
+    "selectCategory": "اختر فئة",
+    "amount": "المبلغ",
+    "amountPlaceholder": "0.00",
+    "date": "التاريخ",
+    "paymentDetails": "تفاصيل الدفع",
+    "paymentDate": "تاريخ الدفع",
+    "paymentMethod": "طريقة الدفع",
+    "paymentRepository": "مدفوع من",
+    "isPaid": "تعليم كمدفوع",
+    "notes": "ملاحظات",
+    "notesPlaceholder": "أضف ملاحظات",
+    "internalNotes": "ملاحظات داخلية",
+    "internalNotesPlaceholder": "أضف ملاحظات داخلية",
+    "noPaymentMethods": "لا توجد طرق دفع",
+    "noPaymentMethodsDescription": "اضبط طرق الدفع في إعدادات الخزينة",
+    "noRepositories": "لا توجد خزائن دفع",
+    "noRepositoriesDescription": "اضبط خزائن الدفع في إعدادات الخزينة",
+    "classification": "التصنيف",
+    "kindGeneric": "مصروف عام",
+    "kindLinked": "تكلفة مرتبطة بعملية",
+    "linkedInvoice": "الفاتورة المرتبطة",
+    "linkedOperation": "العملية المرتبطة",
+    "linkedTo": "مرتبط بـ",
+    "downgradeToGeneric": "تسجيل كمصروف عام",
+    "costType": "نوع التكلفة",
+    "splitMethod": "طريقة التوزيع"
+  },
+  "costTypes": {
+    "transport": "نقل",
+    "shipping": "شحن",
+    "insurance": "تأمين",
+    "customs": "جمارك",
+    "handling": "مناولة",
+    "other": "أخرى"
+  },
+  "splitMethods": {
+    "byValue": "حسب القيمة",
+    "byQuantity": "حسب الكمية"
+  },
+  "filters": {
+    "status": "الحالة",
+    "category": "الفئة",
+    "dateFrom": "من تاريخ",
+    "dateTo": "إلى تاريخ"
+  },
+  "list": {
+    "noExpenses": "لا توجد مصاريف",
+    "total": "المجموع",
+    "filter": "تصفية"
+  },
+  "messages": {
+    "created": "تم إنشاء المصروف",
+    "updated": "تم تحديث المصروف",
+    "posted": "تم ترحيل المصروف",
+    "deleted": "تم حذف المصروف",
+    "confirmDelete": "هل تريد حذف هذا المصروف؟"
+  },
+  "errors": {
+    "notFound": "المصروف غير موجود"
+  },
+  "noVendor": "لا يوجد مورد",
+  "attachments": "المرفقات",
+  "categories": {
+    "title": "فئات المصاريف",
+    "description": "نظم المصاريف حسب الفئة",
+    "create": "إنشاء فئة",
+    "createCategory": "إنشاء فئة",
+    "edit": "تعديل الفئة",
+    "editCategory": "تعديل الفئة",
+    "confirmDelete": "هل تريد حذف هذه الفئة؟",
+    "noCategories": "لا توجد فئات",
+    "noCategoriesDescription": "أنشئ فئات لتنظيم المصاريف",
+    "name": "اسم الفئة",
+    "description": "الوصف",
+    "parentCategory": "الفئة الأصلية",
+    "account": "الحساب الافتراضي",
+    "form": {
+      "name": "اسم الفئة",
+      "description": "الوصف",
+      "parentCategory": "الفئة الأصلية",
+      "glAccount": "حساب الأستاذ العام"
+    },
+    "messages": {
+      "created": "تم إنشاء الفئة",
+      "updated": "تم تحديث الفئة",
+      "deleted": "تم حذف الفئة"
+    }
+  }
+}

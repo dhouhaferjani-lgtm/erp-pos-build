@@ -256,7 +256,26 @@
     "item": "Item",
     "description": "Description",
     "quantity": "Qty",
+    "freeQuantity": "Free qty",
     "unitPrice": "Unit Price",
+    "priceEntryMode": {
+      "unit": "PU",
+      "total": "Total"
+    },
+    "effectiveUnitCost": "Effective unit cost: {{amount}}",
+    "bonusSavings": "Bonus savings: {{amount}}",
+    "pricing": {
+      "cost": "Cost {{amount}}",
+      "lastBuy": "Last buy {{amount}}",
+      "margin": "Margin {{percent}}%",
+      "details": "Pricing details",
+      "suggested": "Suggested {{amount}}",
+      "lastSale": "Last sale {{amount}}",
+      "minimumMargin": "Minimum {{percent}}%",
+      "useSuggested": "Use suggested",
+      "policyBlocked": "Margin blocked: {{permission}}",
+      "policyWarning": "Margin warning"
+    },
     "discount": "Discount",
     "tax": "Tax",
     "taxPercent": "Tax %",
@@ -329,7 +348,10 @@
     "receivedOfTotal": "{{received}} of {{total}}",
     "receive": {
       "remaining": "Remaining",
+      "remainingFree": "Remaining free",
       "quantity": "Quantity to receive",
+      "freeQuantity": "Free quantity to receive",
+      "freeOrderedSummary": "Free ordered: {{ordered}} · received: {{received}}",
       "batchNumber": "Batch number",
       "expiryDate": "Expiry date",
       "submit": "Receive"

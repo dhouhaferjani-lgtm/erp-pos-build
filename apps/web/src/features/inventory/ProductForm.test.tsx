@@ -1,7 +1,10 @@
+import { useEffect } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ProductForm } from './ProductForm'
 import { bcsub, bcdiv, bcmul } from '../../lib/decimal'
+import { useCatalogBarcodeLookup } from '@/features/inventory/hooks/useCatalogBarcodeLookup'
+import type { SuggestedProduct } from './types/platform'
 
 // i18n → return the key (string 2nd arg = default value)
 vi.mock('react-i18next', () => ({
@@ -23,15 +26,44 @@ vi.mock('react-router-dom', () => ({
 }))
 
 // Shared mutateAsync handle so tests can configure per-test resolution.
-const mockMutateAsync = vi.fn()
+const { mockMutateAsync, mockApiPost, mockApiPatch, mockSubmitForEnrichment, mockUploadEnrichmentPhoto } = vi.hoisted(() => {
+  const mutateAsync = vi.fn()
+
+  return {
+    mockMutateAsync: mutateAsync,
+    mockApiPost: vi.fn((_: string, payload: unknown) => mutateAsync(payload)),
+    mockApiPatch: vi.fn((_: string, payload: unknown) => mutateAsync(payload)),
+    mockSubmitForEnrichment: vi.fn(),
+    mockUploadEnrichmentPhoto: vi.fn(),
+  }
+})
+
+vi.mock('../../lib/api', () => ({
+  api: {},
+  apiPost: mockApiPost,
+  apiPatch: mockApiPatch,
+}))
 
 // decouple from network
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
+  type MutationOptions = {
+    mutationFn?: (variables: unknown) => unknown
+  }
   return {
     ...actual,
     useQuery: () => ({ data: undefined, isLoading: false }),
-    useMutation: () => ({ mutate: vi.fn(), mutateAsync: mockMutateAsync, isPending: false }),
+    useMutation: (options?: MutationOptions) => ({
+      mutate: vi.fn(),
+      mutateAsync: (variables: unknown) => {
+        if (options?.mutationFn != null) {
+          return Promise.resolve(options.mutationFn(variables))
+        }
+
+        return mockMutateAsync(variables)
+      },
+      isPending: false,
+    }),
     useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   }
 })
@@ -63,15 +95,31 @@ vi.mock('../../hooks/useCurrency', () => ({
   getDecimals: () => 2,
 }))
 vi.mock('./api/platformQueries', () => ({
-  useProductSubmission: () => ({ mutate: vi.fn() }),
+  useProductSubmission: () => ({ mutate: mockSubmitForEnrichment }),
+  useEnrichmentRefresh: () => ({ mutate: vi.fn(), isPending: false }),
+}))
+vi.mock('./api/enrichmentPhotos', () => ({
+  MAX_PHOTO_BYTES: 5_242_880,
+  uploadEnrichmentPhoto: mockUploadEnrichmentPhoto,
 }))
 vi.mock('../catalog/hooks/useVariants', () => ({
   useVariantsForProduct: () => ({ data: [] }),
 }))
 
 // child components that fetch / render heavy trees — stub them out
+vi.mock('../catalog/api/queries', () => ({
+  useCategoryTree: () => ({
+    data: [
+      { id: 7, name: 'Solaires', children: [] },
+      { id: 8, name: 'Hygiene', children: [{ id: 9, name: 'Dentaire', children: [] }] },
+    ],
+  }),
+}))
+
 vi.mock('../../components/catalog/CategorySelect', () => ({
-  CategorySelect: () => <div data-testid="category-select" />,
+  CategorySelect: ({ onChange }: { onChange?: (id: number | null) => void }) => (
+    <button type="button" data-testid="category-select" onClick={() => onChange?.(7)} />
+  ),
 }))
 // BarcodeHero: keep the real component but mock the lookup hook it now uses
 vi.mock('@/features/inventory/hooks/useCatalogBarcodeLookup', () => ({
@@ -117,7 +165,59 @@ beforeEach(() => {
   mockParams = {}
   mockNavigate.mockReset()
   mockMutateAsync.mockReset()
+  mockApiPost.mockClear()
+  mockApiPatch.mockClear()
+  mockSubmitForEnrichment.mockClear()
+  mockUploadEnrichmentPhoto.mockReset()
+  vi.mocked(useCatalogBarcodeLookup).mockImplementation(() => ({ isSearching: false }))
 })
+
+function makeSuggestedProduct(overrides: Partial<SuggestedProduct> = {}): SuggestedProduct {
+  return {
+    name: 'Catalog Cream',
+    barcode: '3017620422003',
+    brand: 'La Roche-Posay',
+    description: 'Hydrating care',
+    platform_product_id: 'platform-product-001',
+    classification: {},
+    ingredients: [],
+    images: [],
+    ...overrides,
+  }
+}
+
+function mockFoundLookup(suggestion: SuggestedProduct): void {
+  vi.mocked(useCatalogBarcodeLookup).mockImplementation(({ onProductData, onLookupStateChange }) => {
+    useEffect(() => {
+      onLookupStateChange('found')
+      onProductData(suggestion)
+    }, [onLookupStateChange, onProductData])
+
+    return { isSearching: false }
+  })
+}
+
+function mockNotFoundLookup(): void {
+  vi.mocked(useCatalogBarcodeLookup).mockImplementation(({ onLookupStateChange }) => {
+    useEffect(() => {
+      onLookupStateChange('not_found')
+    }, [onLookupStateChange])
+
+    return { isSearching: false }
+  })
+}
+
+function getProductsPostPayload(): Record<string, unknown> {
+  const call = mockApiPost.mock.calls.find(([url]) => url === '/products')
+  expect(call).toBeDefined()
+
+  const payload = call?.[1]
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Expected /products payload to be an object')
+  }
+
+  return payload as Record<string, unknown>
+}
 
 describe('ProductForm (canonical layout)', () => {
   it('renders a single page-level heading', () => {
@@ -191,6 +291,153 @@ describe('ProductForm (canonical layout)', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/inventory/products'))
     // And NOT to the detail route.
     expect(mockNavigate).not.toHaveBeenCalledWith('/inventory/products/prod-10')
+  })
+
+  it('sends platform_product_id when creating from a current FOUND suggestion', async () => {
+    mockFoundLookup(makeSuggestedProduct())
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-found' })
+
+    render(<ProductForm />)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('editor.hero.namePlaceholder')).toHaveValue('Catalog Cream')
+    })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-FOUND' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    expect(getProductsPostPayload()).toMatchObject({
+      platform_product_id: 'platform-product-001',
+    })
+  })
+
+  it('omits platform_product_id when creating manually without lookup', async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-manual' })
+
+    render(<ProductForm />)
+
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Manual Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-MANUAL' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    expect(getProductsPostPayload()).not.toHaveProperty('platform_product_id')
+  })
+
+  it('omits platform_product_id when a stale FOUND suggestion barcode no longer matches the form barcode', async () => {
+    mockFoundLookup(makeSuggestedProduct())
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-stale' })
+
+    render(<ProductForm />)
+
+    const barcodeInput = screen.getByLabelText('editor.hero.barcodePlaceholder')
+    await waitFor(() => expect(barcodeInput).toHaveValue('3017620422003'))
+    fireEvent.change(barcodeInput, { target: { value: '9999999999999' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-STALE' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    expect(getProductsPostPayload()).not.toHaveProperty('platform_product_id')
+  })
+
+  it('does NOT render the capture panel in edit mode (submission path is create-only)', async () => {
+    mockParams = { id: 'prod-edit-1' }
+    mockNotFoundLookup()
+
+    render(<ProductForm />)
+
+    await screen.findByTestId('category-select')
+    expect(screen.queryByText('barcodeLookup.capturePhotoHelp')).not.toBeInTheDocument()
+    mockParams = {}
+  })
+
+  it('sends the selected category NAME with the not_found submission', async () => {
+    mockNotFoundLookup()
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-cat' })
+
+    render(<ProductForm />)
+
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Cat Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-CAT' } })
+    fireEvent.click(screen.getAllByTestId('category-select')[0])
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockSubmitForEnrichment).toHaveBeenCalled())
+    expect(mockSubmitForEnrichment.mock.calls[0][0]).toMatchObject({ category: 'Solaires' })
+  })
+
+  it('renders the capture panel for not_found opt-in submissions', async () => {
+    mockNotFoundLookup()
+
+    render(<ProductForm />)
+
+    expect(await screen.findByText('barcodeLookup.capturePhotoHelp')).toBeInTheDocument()
+  })
+
+  it('submits capture panel brand and uploaded photo ids for not_found opt-in', async () => {
+    mockNotFoundLookup()
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-not-found' })
+    mockUploadEnrichmentPhoto.mockResolvedValueOnce({ photoId: 'ph_1', filename: 'front.jpg' })
+
+    render(<ProductForm />)
+
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Manual Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-NF' } })
+    fireEvent.change(await screen.findByLabelText('barcodeLookup.captureAddPhoto'), {
+      target: { files: [new File(['front'], 'front.jpg', { type: 'image/jpeg' })] },
+    })
+    await waitFor(() => expect(mockUploadEnrichmentPhoto).toHaveBeenCalled())
+    fireEvent.change(screen.getByLabelText('barcodeLookup.captureBrandLabel'), {
+      target: { value: 'BrandX' },
+    })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => {
+      expect(mockSubmitForEnrichment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          brand: 'BrandX',
+          photo_ids: ['ph_1'],
+        }),
+        expect.objectContaining({ onError: expect.any(Function) }),
+      )
+    })
+  })
+
+  it('submits null brand for not_found opt-in when capture brand is empty', async () => {
+    mockNotFoundLookup()
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-null-brand' })
+
+    render(<ProductForm />)
+
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Manual Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-NULL' } })
+    await screen.findByText('barcodeLookup.capturePhotoHelp')
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => {
+      expect(mockSubmitForEnrichment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          brand: null,
+          photo_ids: [],
+        }),
+        expect.objectContaining({ onError: expect.any(Function) }),
+      )
+    })
+  })
+
+  it('does not render the capture panel in idle or found lookup states', async () => {
+    // Fresh mounts per lookup state: swapping the hook mock's implementation
+    // on a live mount changes the hook count and trips React's rules-of-hooks.
+    const idleRender = render(<ProductForm />)
+    expect(screen.queryByText('barcodeLookup.capturePhotoHelp')).not.toBeInTheDocument()
+    idleRender.unmount()
+
+    mockFoundLookup(makeSuggestedProduct())
+    render(<ProductForm />)
+
+    await waitFor(() => {
+      expect(screen.queryByText('barcodeLookup.capturePhotoHelp')).not.toBeInTheDocument()
+    })
   })
 })
 
@@ -344,13 +591,11 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     expect(inputs[1]).toHaveAttribute('id', 'sale_price')
   })
 
-  it('does not render Margin when both prices are empty (default state)', () => {
+  it('renders the ready-to-sell margin input EMPTY when both prices are empty (default state)', () => {
+    // post-demo design: the ready-to-sell strip always renders the margin
+    // input; an empty value (not absence) is the "no margin yet" state.
     render(<ProductForm />)
-    // With empty defaults, margin should not be shown
-    const marginLabel = screen.queryByLabelText(/inventory:products\.margin/i, { exact: false })
-    expect(marginLabel).not.toBeInTheDocument()
-    // Also check by text content — the label text itself
-    expect(screen.queryByText(/inventory:products\.margin/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue('')
   })
 
   it('shows Margin when both purchase_price and sale_price are entered', () => {
@@ -366,18 +611,15 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     expect(screen.getByLabelText(/inventory:products\.margin/i, { exact: false })).toBeInTheDocument()
   })
 
-  it('hides Margin when sale_price is cleared back to empty', () => {
+  it('empties the margin value when sale_price is cleared back to empty', () => {
     render(<ProductForm />)
     const purchaseInput = screen.getByLabelText(/inventory:products\.purchasePrice/i, { exact: false })
     const saleInput = screen.getByLabelText(/inventory:products\.salePrice/i, { exact: false })
 
     fireEvent.change(purchaseInput, { target: { value: '60' } })
     fireEvent.change(saleInput, { target: { value: '100' } })
-    // Margin visible
-    expect(screen.getByLabelText(/inventory:products\.margin/i, { exact: false })).toBeInTheDocument()
-    // Clear sale_price → margin should disappear
     fireEvent.change(saleInput, { target: { value: '' } })
-    expect(screen.queryByLabelText(/inventory:products\.margin/i, { exact: false })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue('')
   })
 
   it('WAC display (edit mode) — uses formatCurrency (no raw parseFloat in rendered output)', () => {

@@ -20,6 +20,8 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
+import { documentRouteTypeFromSource } from '../../lib/entityRoutes'
+import { EntityLink } from '../../components/molecules/EntityLink'
 import { fetchOnboardingStatus } from '../settings/api/onboardingApi'
 
 interface DashboardStats {
@@ -68,20 +70,6 @@ interface DocumentsResponse {
 
 interface PaymentsResponse {
   data: RecentPayment[]
-}
-
-// Map document type to correct route
-const getDocumentRoute = (type: string, id: string): string => {
-  const routes: Record<string, string> = {
-    quote: '/sales/quotes',
-    sales_order: '/sales/orders',
-    invoice: '/sales/invoices',
-    delivery_note: '/sales/delivery-notes',
-    credit_note: '/sales/credit-notes',
-    return_note: '/sales/return-notes',
-    purchase_order: '/purchases/orders',
-  }
-  return `${routes[type] || '/sales/documents'}/${id}`
 }
 
 export function Dashboard() {
@@ -332,26 +320,40 @@ export function Dashboard() {
                 {t('dashboard.noRecentDocuments')}
               </div>
             ) : (
-              recentDocuments.map((doc) => (
-                <Link
-                  key={doc.id}
-                  to={getDocumentRoute(doc.type, doc.id)}
-                  className="flex items-center justify-between px-6 py-4 hover:bg-gray-50"
-                >
-                  <div>
-                    <p className="font-medium text-gray-900">{getDocumentNumberLabel(doc.document_number)}</p>
-                    <p className="text-sm text-gray-500">{doc.partner_name}</p>
-                  </div>
-                  <div className="text-end">
-                    <p className="font-medium text-gray-900">
-                      {formatAmount(doc.total)}
-                    </p>
-                    <p className="text-sm text-gray-500 capitalize">
-                      {t(`sales:documents.statuses.${doc.status}`, doc.status)}
-                    </p>
-                  </div>
-                </Link>
-              ))
+              recentDocuments.map((doc) => {
+                const documentType = documentRouteTypeFromSource(doc.type)
+                const row = (
+                  <>
+                    <div>
+                      <p className="font-medium text-gray-900">{getDocumentNumberLabel(doc.document_number)}</p>
+                      <p className="text-sm text-gray-500">{doc.partner_name}</p>
+                    </div>
+                    <div className="text-end">
+                      <p className="font-medium text-gray-900">
+                        {formatAmount(doc.total)}
+                      </p>
+                      <p className="text-sm text-gray-500 capitalize">
+                        {t(`sales:documents.statuses.${doc.status}`, doc.status)}
+                      </p>
+                    </div>
+                  </>
+                )
+
+                return documentType ? (
+                  <EntityLink
+                    key={doc.id}
+                    type="document"
+                    id={doc.id}
+                    documentType={documentType}
+                    label={row}
+                    className="flex items-center justify-between px-6 py-4 hover:bg-gray-50"
+                  />
+                ) : (
+                  <span key={doc.id} className="flex items-center justify-between px-6 py-4">
+                    {row}
+                  </span>
+                )
+              })
             )}
           </div>
         </div>
@@ -375,22 +377,26 @@ export function Dashboard() {
               </div>
             ) : (
               recentPayments.map((payment) => (
-                <Link
+                <EntityLink
                   key={payment.id}
-                  to={`/treasury/payments/${payment.id}`}
+                  type="payment"
+                  id={payment.id}
+                  label={(
+                    <>
+                      <div>
+                        <p className="font-medium text-gray-900">{payment.payment_number}</p>
+                        <p className="text-sm text-gray-500">{payment.partner_name}</p>
+                      </div>
+                      <div className="text-end">
+                        <p className="font-medium text-gray-900">
+                          {formatAmount(payment.amount)}
+                        </p>
+                        <p className="text-sm text-gray-500">{payment.payment_method_name}</p>
+                      </div>
+                    </>
+                  )}
                   className="flex items-center justify-between px-6 py-4 hover:bg-gray-50"
-                >
-                  <div>
-                    <p className="font-medium text-gray-900">{payment.payment_number}</p>
-                    <p className="text-sm text-gray-500">{payment.partner_name}</p>
-                  </div>
-                  <div className="text-end">
-                    <p className="font-medium text-gray-900">
-                      {formatAmount(payment.amount)}
-                    </p>
-                    <p className="text-sm text-gray-500">{payment.payment_method_name}</p>
-                  </div>
-                </Link>
+                />
               ))
             )}
           </div>

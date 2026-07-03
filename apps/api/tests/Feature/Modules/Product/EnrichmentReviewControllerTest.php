@@ -89,6 +89,87 @@ class EnrichmentReviewControllerTest extends TestCase
         $response->assertStatus(401);
     }
 
+    public function test_index_serializes_catalog_result_with_null_tracking_id(): void
+    {
+        $this->user->assignRole('admin');
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $enrichmentResult = EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => null,
+            'status' => EnrichmentReviewStatus::Accepted,
+            'enriched_data' => new EnrichedProductData(
+                name: 'Catalog Cream',
+                brand: null,
+                description: null,
+                classification: [],
+                ingredients: [],
+                images: [],
+                confidence_score: 95,
+                enrichment_tier: 'catalog',
+                field_confidence: null,
+                enrichment_sources: null,
+                assigned_barcode: $product->barcode,
+                assigned_barcode_type: null,
+            ),
+            'enrichment_quality' => 'catalog',
+            'reviewed_at' => now(),
+            'reviewed_by' => null,
+            'accepted_fields' => ['name' => true],
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/enrichment-results');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $enrichmentResult->id);
+        $response->assertJsonPath('data.0.tracking_id', null);
+    }
+
+    public function test_index_filters_by_product_id(): void
+    {
+        $this->user->assignRole('admin');
+
+        $firstProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'First Product',
+        ]);
+        $secondProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Second Product',
+        ]);
+
+        $firstResult = $this->makePendingResult($firstProduct, (string) Str::uuid());
+        $this->makePendingResult($secondProduct, (string) Str::uuid());
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/enrichment-results?product_id='.$firstProduct->id);
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $firstResult->id);
+        $response->assertJsonPath('data.0.product_id', $firstProduct->id);
+    }
+
+    public function test_index_rejects_invalid_product_id_filter(): void
+    {
+        $this->user->assignRole('admin');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/enrichment-results?product_id=not-a-uuid');
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+    }
+
     public function test_accept_requires_enrichment_review_permission(): void
     {
         // Assign a role without enrichment.review permission
@@ -392,5 +473,31 @@ class EnrichmentReviewControllerTest extends TestCase
         $enrichmentResult->refresh();
         $this->assertSame(EnrichmentFeedbackReason::BadData->value, $enrichmentResult->rejection_reason);
         $this->assertSame('Quality too low for our needs', $enrichmentResult->rejection_notes);
+    }
+
+    private function makePendingResult(Product $product, string $trackingId): EnrichmentResult
+    {
+        return EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => $trackingId,
+            'status' => EnrichmentReviewStatus::PendingReview,
+            'enriched_data' => new EnrichedProductData(
+                name: 'Enriched Name',
+                brand: null,
+                description: null,
+                classification: [],
+                ingredients: [],
+                images: [],
+                confidence_score: 50,
+                enrichment_tier: null,
+                field_confidence: null,
+                enrichment_sources: null,
+                assigned_barcode: null,
+                assigned_barcode_type: null,
+            ),
+            'enrichment_quality' => 'partial',
+        ]);
     }
 }

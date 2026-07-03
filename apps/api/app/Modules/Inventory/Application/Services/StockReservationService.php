@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Company;
@@ -43,7 +44,8 @@ use Illuminate\Support\Str;
 class StockReservationService implements InventoryReservationServiceInterface
 {
     public function __construct(
-        private FEFOInventoryService $fefoService
+        private FEFOInventoryService $fefoService,
+        private BatchStockService $batchStockService,
     ) {}
 
     /**
@@ -83,6 +85,12 @@ class StockReservationService implements InventoryReservationServiceInterface
             $notes,
             $batchId
         ): StockReservation {
+            $batchId = $batchId ?? $this->resolveDefaultBatchIdForImplicitReservation(
+                company: $company,
+                productId: $productId,
+                locationId: $locationId,
+            );
+
             // If batch_id provided, validate batch stock instead of aggregate stock
             /** @var numeric-string $quantity */
             if ($batchId !== null) {
@@ -142,10 +150,14 @@ class StockReservationService implements InventoryReservationServiceInterface
             // Update reserved quantities
             if ($batchId !== null) {
                 // Update batch stock reserved quantity
-                $batchStock->increment('reserved_quantity', (float) $quantity);
+                $batchStock->update([
+                    'reserved_quantity' => bcadd((string) $batchStock->reserved_quantity, $quantity, 4),
+                ]);
             } else {
                 // Update aggregate stock level reserved field
-                $stockLevel->increment('reserved', (float) $quantity);
+                $stockLevel->update([
+                    'reserved' => bcadd((string) $stockLevel->reserved, $quantity, 4),
+                ]);
             }
 
             // Dispatch event after transaction commits
@@ -186,6 +198,42 @@ class StockReservationService implements InventoryReservationServiceInterface
 
             return $reservation;
         });
+    }
+
+    private function resolveDefaultBatchIdForImplicitReservation(
+        Company $company,
+        string $productId,
+        string $locationId,
+    ): ?int {
+        $product = Product::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($productId);
+
+        if (! $product->requires_batch_tracking) {
+            return null;
+        }
+
+        $stockLevel = StockLevel::query()
+            ->where('product_id', $productId)
+            ->where('location_id', $locationId)
+            ->where('company_id', $company->id)
+            ->whereNull('variant_id')
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        $batch = $this->batchStockService->ensureDefaultBatch(
+            companyId: $company->id,
+            tenantId: $company->tenant_id,
+            productId: $productId,
+            locationId: $locationId,
+            targetQuantity: (string) $stockLevel->quantity,
+            shelfLifeDays: $product->default_shelf_life_days,
+            asOfDate: now()->toDateString(),
+            variantId: $stockLevel->variant_id,
+        );
+
+        return $batch?->id;
     }
 
     /**

@@ -10,7 +10,17 @@
       "enrichmentSuccess": "Synerivia · {{count}} حقول",
       "enrichmentFields": "{{count}} حقول",
       "enrichmentUnavailable": "Synerivia · غير متاح",
-      "helper": "يتم الجلب تلقائيًا بعد فترة وجيزة من توقفك عن كتابة الباركود (يعود إلى اسم المنتج عند عدم وجود باركود). زر التحديث يعيد تشغيله يدويًا."
+      "helper": "يتم الجلب تلقائيًا بعد فترة وجيزة من توقفك عن كتابة الباركود (يعود إلى اسم المنتج عند عدم وجود باركود). زر التحديث يعيد تشغيله يدويًا.",
+      "replacePhoto": "استبدال الصورة",
+      "addPhoto": "إضافة صورة",
+      "statusPending": "جارٍ الإثراء…",
+      "statusReview": "بانتظار المراجعة",
+      "statusEnriched": "مُثرى · Synerivia",
+      "statusUnavailable": "غير متوفر",
+      "refreshNothing": "لا يوجد ما يتم تحديثه",
+      "equivalentsCount": "+{{count}} مكافئات",
+      "complementsCount": "+{{count}} مكمّلات",
+      "routineSteps": "روتين · {{count}} خطوات"
     },
     "subtitle": "امسح الباركود للتعبئة التلقائية من Synerivia، أو اكتب يدويًا.",
     "sectionLabels": {

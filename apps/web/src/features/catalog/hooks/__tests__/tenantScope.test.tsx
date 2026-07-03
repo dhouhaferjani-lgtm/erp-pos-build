@@ -27,8 +27,19 @@ import {
   useCreateVariant,
   useRecipe,
   useRecipes,
-  useVariants,
+  useVariants as useRecipeVariants,
 } from '../useRecipes'
+import {
+  useAddAttributeValue,
+  useAttributes,
+  useAttributeValues,
+  useCreateAttribute,
+  useDeleteAttribute,
+  useDeleteVariant,
+  useGenerateMatrix,
+  useUpdateVariant,
+  useVariantsForProduct,
+} from '../useVariants'
 
 const mockGetCategories = vi.hoisted(() => vi.fn())
 const mockGetCategoryTree = vi.hoisted(() => vi.fn())
@@ -45,6 +56,15 @@ const mockGetRecipe = vi.hoisted(() => vi.fn())
 const mockGetVariants = vi.hoisted(() => vi.fn())
 const mockCreateRecipe = vi.hoisted(() => vi.fn())
 const mockCreateVariant = vi.hoisted(() => vi.fn())
+const mockGetProductAttributes = vi.hoisted(() => vi.fn())
+const mockGetAttributeValues = vi.hoisted(() => vi.fn())
+const mockGetVariantsForProduct = vi.hoisted(() => vi.fn())
+const mockCreateProductAttribute = vi.hoisted(() => vi.fn())
+const mockDeleteProductAttribute = vi.hoisted(() => vi.fn())
+const mockAddAttributeValue = vi.hoisted(() => vi.fn())
+const mockGenerateVariantMatrix = vi.hoisted(() => vi.fn())
+const mockUpdateProductVariant = vi.hoisted(() => vi.fn())
+const mockDeleteProductVariant = vi.hoisted(() => vi.fn())
 
 vi.mock('../../api/categories', () => ({
   createCategory: vi.fn(),
@@ -94,6 +114,18 @@ vi.mock('../../api/recipeApi', () => ({
   updateVariant: vi.fn(),
 }))
 
+vi.mock('../../api/variantApi', () => ({
+  addAttributeValue: mockAddAttributeValue,
+  createAttribute: mockCreateProductAttribute,
+  deleteAttribute: mockDeleteProductAttribute,
+  deleteVariant: mockDeleteProductVariant,
+  generateVariantMatrix: mockGenerateVariantMatrix,
+  getAttributes: mockGetProductAttributes,
+  getAttributeValues: mockGetAttributeValues,
+  getVariantsForProduct: mockGetVariantsForProduct,
+  updateVariant: mockUpdateProductVariant,
+}))
+
 function setTenant(tenantId: string, companyId: string) {
   useAuthStore.setState({
     user: { id: 'user-1', name: 'User', email: 'user@example.test', tenant_id: tenantId, roles: [], email_verified_at: null },
@@ -139,6 +171,15 @@ beforeEach(() => {
   mockGetVariants.mockResolvedValue([])
   mockCreateRecipe.mockResolvedValue({ id: 'r-new' })
   mockCreateVariant.mockResolvedValue({ id: 'v-new' })
+  mockGetProductAttributes.mockResolvedValue([])
+  mockGetAttributeValues.mockResolvedValue([])
+  mockGetVariantsForProduct.mockResolvedValue([])
+  mockCreateProductAttribute.mockResolvedValue({ id: 'attr-new' })
+  mockDeleteProductAttribute.mockResolvedValue(undefined)
+  mockAddAttributeValue.mockResolvedValue({ id: 'value-new' })
+  mockGenerateVariantMatrix.mockResolvedValue({ data: [], meta: { created_count: 0, skipped_count: 0, restored_count: 0 } })
+  mockUpdateProductVariant.mockResolvedValue({ id: 'variant-1' })
+  mockDeleteProductVariant.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -159,7 +200,7 @@ describe('catalog tenant scope', () => {
       modifierGroup: useModifierGroup('mg-1'),
       recipes: useRecipes('ci-1'),
       recipe: useRecipe('r-1'),
-      variants: useVariants('ci-1'),
+      variants: useRecipeVariants('ci-1'),
     }), { wrapper: wrapper(queryClient) })
 
     await waitFor(() => {
@@ -213,7 +254,7 @@ describe('catalog tenant scope', () => {
       compositeItems: useCompositeItems(),
       modifierGroups: useModifierGroups(),
       recipes: useRecipes('ci-1'),
-      variants: useVariants('ci-1'),
+      variants: useRecipeVariants('ci-1'),
       assignModifierGroup: useAssignModifierGroup(),
       createRecipe: useCreateRecipe(),
       createVariant: useCreateVariant(),
@@ -297,5 +338,118 @@ describe('catalog tenant scope', () => {
     })
     expect(detailCalls.get(99)).toBe(1)
     expect(queryClient.getQueryData(['categories', 'list', undefined, 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-categories' })
+  })
+
+  it('wraps product attribute and product variant read keys and gates missing scope', async () => {
+    const queryClient = createClient()
+    const { result } = renderHook(() => ({
+      attributes: useAttributes(),
+      values: useAttributeValues('attribute-1'),
+      variants: useVariantsForProduct('product-1'),
+    }), { wrapper: wrapper(queryClient) })
+
+    await waitFor(() => {
+      expect(result.current.attributes.isSuccess).toBe(true)
+      expect(result.current.values.isSuccess).toBe(true)
+      expect(result.current.variants.isSuccess).toBe(true)
+    })
+
+    expect(queryClient.getQueryData(['catalogAttributes', 'list', 'tenant-A', 'company-1'])).toBeDefined()
+    expect(queryClient.getQueryData(['catalogAttributes', 'values', 'attribute-1', 'tenant-A', 'company-1'])).toBeDefined()
+    expect(queryClient.getQueryData(['catalogVariants', 'product', 'product-1', 'tenant-A', 'company-1'])).toBeDefined()
+
+    const attributeCalls = mockGetProductAttributes.mock.calls.length
+    const valueCalls = mockGetAttributeValues.mock.calls.length
+    const variantCalls = mockGetVariantsForProduct.mock.calls.length
+    resetTenant()
+    renderHook(() => ({
+      attributes: useAttributes(),
+      values: useAttributeValues('attribute-2'),
+      variants: useVariantsForProduct('product-2'),
+    }), { wrapper: wrapper(createClient()) })
+
+    expect(mockGetProductAttributes).toHaveBeenCalledTimes(attributeCalls)
+    expect(mockGetAttributeValues).toHaveBeenCalledTimes(valueCalls)
+    expect(mockGetVariantsForProduct).toHaveBeenCalledTimes(variantCalls)
+  })
+
+  it('refetches only active-tenant attribute and product variant cascades', async () => {
+    let attributeCalls = 0
+    let valueCalls = 0
+    let variantCalls = 0
+    mockGetProductAttributes.mockImplementation(async () => [`attribute-${++attributeCalls}`])
+    mockGetAttributeValues.mockImplementation(async () => [`value-${++valueCalls}`])
+    mockGetVariantsForProduct.mockImplementation(async () => [`variant-${++variantCalls}`])
+
+    const queryClient = createClient()
+    queryClient.setQueryData(['catalogAttributes', 'list', 'tenant-B', 'company-1'], { marker: 'tenant-B-attributes' })
+    queryClient.setQueryData(['catalogAttributes', 'values', 'attribute-1', 'tenant-B', 'company-1'], { marker: 'tenant-B-values' })
+    queryClient.setQueryData(['catalogVariants', 'product', 'product-1', 'tenant-B', 'company-1'], { marker: 'tenant-B-variants' })
+
+    const { result } = renderHook(() => ({
+      attributes: useAttributes(),
+      values: useAttributeValues('attribute-1'),
+      variants: useVariantsForProduct('product-1'),
+      createAttribute: useCreateAttribute(),
+      deleteAttribute: useDeleteAttribute(),
+      addValue: useAddAttributeValue('attribute-1'),
+      generateMatrix: useGenerateMatrix('product-1'),
+      updateVariant: useUpdateVariant('product-1'),
+      deleteVariant: useDeleteVariant('product-1'),
+    }), { wrapper: wrapper(queryClient) })
+
+    await waitFor(() => {
+      expect(attributeCalls).toBe(1)
+      expect(valueCalls).toBe(1)
+      expect(variantCalls).toBe(1)
+    })
+
+    await act(async () => {
+      await result.current.createAttribute.mutateAsync({
+        code: 'size',
+        name: 'Size',
+        data_type: 'text',
+        is_variant_axis: true,
+      })
+    })
+    await waitFor(() => {
+      expect(attributeCalls).toBe(2)
+      expect(valueCalls).toBe(2)
+    })
+
+    await act(async () => {
+      await result.current.deleteAttribute.mutateAsync('attribute-1')
+    })
+    await waitFor(() => {
+      expect(attributeCalls).toBe(3)
+      expect(valueCalls).toBe(3)
+    })
+
+    await act(async () => {
+      await result.current.addValue.mutateAsync({ code: 'red', label: 'Red' })
+    })
+    await waitFor(() => {
+      expect(attributeCalls).toBe(4)
+      expect(valueCalls).toBe(4)
+    })
+
+    await act(async () => {
+      await result.current.generateMatrix.mutateAsync([{ attribute_id: 'attribute-1', value_ids: ['value-1'] }])
+    })
+    await waitFor(() => expect(variantCalls).toBe(2))
+
+    await act(async () => {
+      await result.current.updateVariant.mutateAsync({ variantId: 'variant-1', payload: { sku: 'SKU-1' } })
+    })
+    await waitFor(() => expect(variantCalls).toBe(3))
+
+    await act(async () => {
+      await result.current.deleteVariant.mutateAsync('variant-1')
+    })
+    await waitFor(() => expect(variantCalls).toBe(4))
+
+    expect(queryClient.getQueryData(['catalogAttributes', 'list', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-attributes' })
+    expect(queryClient.getQueryData(['catalogAttributes', 'values', 'attribute-1', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-values' })
+    expect(queryClient.getQueryData(['catalogVariants', 'product', 'product-1', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-variants' })
   })
 })

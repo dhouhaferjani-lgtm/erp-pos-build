@@ -56,7 +56,28 @@
     "noPaymentMethods": "Aucun mode de paiement disponible",
     "noPaymentMethodsDescription": "Configurez les modes de paiement dans les paramètres de trésorerie",
     "noRepositories": "Aucun dépôt de paiement disponible",
-    "noRepositoriesDescription": "Configurez les dépôts de paiement dans les paramètres de trésorerie"
+    "noRepositoriesDescription": "Configurez les dépôts de paiement dans les paramètres de trésorerie",
+    "classification": "Classification",
+    "kindGeneric": "Dépense générale",
+    "kindLinked": "Coût lié à une opération",
+    "linkedInvoice": "Facture liée",
+    "linkedOperation": "Opération liée",
+    "linkedTo": "Lié à",
+    "downgradeToGeneric": "Enregistrer comme dépense générale",
+    "costType": "Type de coût",
+    "splitMethod": "Méthode de répartition"
+  },
+  "costTypes": {
+    "transport": "Transport",
+    "shipping": "Expédition",
+    "insurance": "Assurance",
+    "customs": "Douane",
+    "handling": "Manutention",
+    "other": "Autre"
+  },
+  "splitMethods": {
+    "byValue": "Valeur",
+    "byQuantity": "Quantité"
   },
   "filters": {
     "status": "Statut",

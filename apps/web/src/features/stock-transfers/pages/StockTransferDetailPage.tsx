@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/atoms/Button'
+import { EntityLink } from '@/components/molecules/EntityLink'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { textColors, borderColors, tokens } from '@/lib/designTokens'
 import {
@@ -200,12 +201,12 @@ export function StockTransferDetailPage() {
               {(transfer.lines ?? []).map((line) => (
                 <tr key={line.id}>
                   <td className={`px-6 py-3 text-sm ${textColors.primary}`}>
-                    <Link
-                      to={`/inventory/products/${line.product_id}`}
+                    <EntityLink
+                      type="product"
+                      id={line.product_id}
+                      label={line.product_name ?? '—'}
                       className={`font-medium ${textColors.hoverPrimary}`}
-                    >
-                      {line.product_name ?? '—'}
-                    </Link>
+                    />
                     {line.variant_id !== null && line.variant_name !== null ? (
                       <span className={`block text-xs ${textColors.tertiary}`}>{line.variant_name}</span>
                     ) : null}

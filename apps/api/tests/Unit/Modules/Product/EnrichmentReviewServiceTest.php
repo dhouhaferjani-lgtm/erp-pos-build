@@ -519,6 +519,49 @@ class EnrichmentReviewServiceTest extends TestCase
         $this->assertSame(['name' => true], $enrichmentResult->accepted_fields);
     }
 
+    public function test_accept_does_not_overwrite_existing_product_fields_with_null_enriched_values(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Original Name',
+            'description' => 'Original Description',
+            'barcode' => '3017620422003',
+            'enrichment_status' => EnrichmentStatus::Completed,
+            'platform_submission_id' => (string) Str::uuid(),
+        ]);
+
+        $enrichmentResult = EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => (string) Str::uuid(),
+            'status' => EnrichmentReviewStatus::PendingReview,
+            'enriched_data' => new EnrichedProductData(
+                name: 'Enriched Name',
+                brand: null,
+                description: null,
+                classification: [],
+                ingredients: [],
+                images: [],
+                confidence_score: 85,
+                enrichment_tier: 'high',
+                field_confidence: null,
+                enrichment_sources: null,
+                assigned_barcode: null,
+                assigned_barcode_type: null,
+            ),
+            'enrichment_quality' => 'full',
+        ]);
+
+        $this->service->accept($enrichmentResult, ['name', 'brand', 'description', 'barcode'], $this->user->id);
+
+        $product->refresh();
+        $this->assertSame('Enriched Name', $product->name);
+        $this->assertSame('Original Description', $product->description);
+        $this->assertSame('3017620422003', $product->barcode);
+    }
+
     public function test_reject_updates_statuses(): void
     {
         Queue::fake();

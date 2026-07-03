@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
+import { EntityLink } from '@/components/molecules/EntityLink'
 import { borderColors, colors, textColors } from '@/lib/designTokens'
 import { OwnerTableFrame } from './OwnerTableFrame'
 import type { StockAlertReport } from '../api/ownerReportsApi'
@@ -19,7 +20,13 @@ export function LowStockAlertsList({ data }: LowStockAlertsListProps) {
             <div className="flex items-center gap-3">
               <AlertTriangle className={`h-4 w-4 ${severityText(row.severity)}`} />
               <div>
-                <p className={`text-sm font-medium ${textColors.primary}`}>{row.product_name}</p>
+                <p className={`text-sm font-medium ${textColors.primary}`}>
+                  <EntityLink
+                    type="product"
+                    id={row.product_id}
+                    label={row.product_name}
+                  />
+                </p>
                 <p className={`text-xs ${textColors.tertiary}`}>{row.location_name}</p>
               </div>
             </div>

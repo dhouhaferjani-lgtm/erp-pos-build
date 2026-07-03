@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useAgedPayables } from '../hooks/useAgedPayables'
 import { PageHeader } from '../../../components/molecules/PageHeader'
 import { Button, FormField, Input } from '../../../components/atoms'
+import { EntityLink } from '../../../components/molecules/EntityLink'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
 import { useCompany } from '../../../hooks/useCompany'
@@ -107,7 +108,11 @@ export function AgedPayablesPage() {
               {lines.map((line: AgedPayablesLine) => (
                 <tr key={line.vendor_id}>
                   <td className={nameCell}>
-                    {line.vendor_name}
+                    <EntityLink
+                      type="supplier"
+                      id={line.vendor_id}
+                      label={line.vendor_name}
+                    />
                   </td>
                   <td className={numCell}>
                     {formatMoney(line.current)}

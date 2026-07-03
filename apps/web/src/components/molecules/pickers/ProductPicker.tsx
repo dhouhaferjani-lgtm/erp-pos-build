@@ -9,6 +9,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
+import { ProductCell } from '@/components/molecules/line-items'
 
 /**
  * Minimal product shape the picker hands back. Callers needing the full
@@ -225,13 +226,8 @@ export function ProductPicker({
         <div
           className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
         >
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className={`${tokens.table.cellMonoBadge} max-w-24 truncate whitespace-nowrap`}>
-                {value.sku}
-              </span>
-              <span className={`truncate text-sm font-medium ${textColors.primary}`}>{value.name}</span>
-            </div>
+            <div className="min-w-0 flex-1">
+            <ProductCell product={value} size="sm" />
           </div>
           <button
             type="button"
@@ -301,8 +297,9 @@ export function ProductPicker({
                   key={product.id}
                   type="button"
                   role="option"
+                  aria-label={`${product.sku} ${product.name}`}
                   aria-selected={active}
-                  className={`flex w-full items-center gap-3 px-3 py-2 text-left ${
+                  className={`w-full px-3 py-2 text-left ${
                     active ? colors.primary[50] : `${colors.white} ${colors.hover.gray50}`
                   }`}
                   onMouseEnter={() => {
@@ -315,15 +312,10 @@ export function ProductPicker({
                     setIsOpen(false)
                   }}
                 >
-                  <span className={`${tokens.table.cellMonoBadge} max-w-24 truncate whitespace-nowrap`}>
-                    {product.sku}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className={`truncate text-sm font-medium ${textColors.primary}`}>
-                      {product.name}
-                    </div>
+                  <div className="min-w-0">
+                    <ProductCell product={product} size="sm" />
                     {product.sale_price !== undefined && product.sale_price !== null ? (
-                      <div className={`truncate text-xs ${textColors.tertiary}`}>
+                      <div className={`mt-1 ps-11 truncate text-xs ${textColors.tertiary}`}>
                         {product.sale_price} {product.currency ?? ''}
                       </div>
                     ) : null}

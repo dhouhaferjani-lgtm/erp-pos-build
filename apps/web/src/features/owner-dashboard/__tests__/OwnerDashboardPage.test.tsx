@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OwnerDashboardPage } from '../OwnerDashboardPage'
 import type { OwnerDateRangeParams, SalesByLocationParams, StockAlertsParams, TopSkusParams } from '../api/ownerReportsApi'
@@ -122,8 +123,16 @@ describe('OwnerDashboardPage', () => {
     vi.clearAllMocks()
   })
 
+  function renderPage() {
+    return render(
+      <MemoryRouter>
+        <OwnerDashboardPage />
+      </MemoryRouter>,
+    )
+  }
+
   it('renders the owner reporting widgets in the dashboard layout', () => {
-    render(<OwnerDashboardPage />)
+    renderPage()
 
     expect(screen.getByText('reports:ownerDashboard.salesTrend.title')).toBeInTheDocument()
     expect(screen.getByText('reports:ownerDashboard.branchLeaderboard.title')).toBeInTheDocument()
@@ -136,18 +145,18 @@ describe('OwnerDashboardPage', () => {
   })
 
   it('renders chart-backed widgets through the shared owner chart wrapper', () => {
-    render(<OwnerDashboardPage />)
+    renderPage()
 
     expect(screen.getAllByTestId('owner-chart')).toHaveLength(3)
   })
 
   it('renders the KPI summary row', () => {
-    render(<OwnerDashboardPage />)
+    renderPage()
     expect(screen.getByText('reports:ownerDashboard.kpi.totalSales')).toBeInTheDocument()
   })
 
   it('defaults the dashboard query to today with hour granularity', () => {
-    render(<OwnerDashboardPage />)
+    renderPage()
 
     expect(ownerReportHookMocks.useSalesSummary).toHaveBeenCalledWith(
       expect.objectContaining<OwnerDateRangeParams>({ from: '2026-07-03', to: '2026-07-03' }),
@@ -160,7 +169,7 @@ describe('OwnerDashboardPage', () => {
   })
 
   it('passes preset date ranges into the owner report hooks', () => {
-    render(<OwnerDashboardPage />)
+    renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'reports:ownerDashboard.filters.last7Days' }))
     expect(ownerReportHookMocks.useSalesByLocation).toHaveBeenCalledWith(
@@ -184,11 +193,18 @@ describe('OwnerDashboardPage', () => {
   })
 
   it('requests a same-weekday-last-week comparison series for the hourly today trend', () => {
-    render(<OwnerDashboardPage />)
+    renderPage()
 
     expect(ownerReportHookMocks.useSalesByLocation).toHaveBeenCalledWith(
       expect.objectContaining<SalesByLocationParams>({ from: '2026-06-26', to: '2026-06-26', granularity: 'hour' }),
       true,
     )
+  })
+
+  it('links product names in owner widgets to product detail pages', () => {
+    renderPage()
+
+    expect(screen.getByRole('link', { name: 'Brake Pads' })).toHaveAttribute('href', '/inventory/products/prod-1')
+    expect(screen.getByRole('link', { name: 'No Stock' })).toHaveAttribute('href', '/inventory/products/prod-2')
   })
 })

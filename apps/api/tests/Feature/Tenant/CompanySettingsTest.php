@@ -113,23 +113,20 @@ class CompanySettingsTest extends TestCase
 
     public function test_can_get_company_settings(): void
     {
-        $this->tenant->update([
+        $this->company->update([
             'name' => 'Acme Garage',
             'legal_name' => 'Acme Garage SARL',
             'tax_id' => 'FR12345678901',
             'registration_number' => 'RCS 123 456 789',
-            'address' => [
-                'street' => '123 Main Street',
-                'city' => 'Paris',
-                'postal_code' => '75001',
-                'country' => 'FR',
-            ],
+            'address_street' => '123 Main Street',
+            'address_city' => 'Paris',
+            'address_postal_code' => '75001',
             'phone' => '+33 1 23 45 67 89',
             'email' => 'contact@acme-garage.fr',
             'website' => 'https://acme-garage.fr',
             'primary_color' => '#FF5733',
             'country_code' => 'FR',
-            'currency_code' => 'EUR',
+            'currency' => 'EUR',
             'timezone' => 'Europe/Paris',
             'date_format' => 'DD/MM/YYYY',
             'locale' => 'fr',
@@ -169,6 +166,75 @@ class CompanySettingsTest extends TestCase
             ->assertJsonPath('data.tax_id', 'FR12345678901')
             ->assertJsonPath('data.primary_color', '#FF5733')
             ->assertJsonPath('data.timezone', 'Europe/Paris');
+    }
+
+    public function test_show_returns_company_entity_values_not_tenant_values(): void
+    {
+        $this->tenant->update([
+            'tax_id' => 'TENANT-TAX',
+            'currency_code' => 'EUR',
+            'name' => 'Tenant Shell',
+        ]);
+        $this->company->update([
+            'tax_id' => '1234567AM000',
+            'currency' => 'TND',
+            'name' => 'PharmaBio Tunis',
+            'address_street' => 'Av. Habib Bourguiba',
+            'address_city' => 'Tunis',
+            'address_postal_code' => '1000',
+            'country_code' => 'TN',
+        ]);
+
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/settings/company');
+
+        $response->assertOk()
+            ->assertJsonPath('data.name', 'PharmaBio Tunis')
+            ->assertJsonPath('data.tax_id', '1234567AM000')
+            ->assertJsonPath('data.currency_code', 'TND')
+            ->assertJsonPath('data.address.street', 'Av. Habib Bourguiba')
+            ->assertJsonPath('data.address.country', 'TN');
+    }
+
+    public function test_update_persists_to_company_and_never_touches_tenant(): void
+    {
+        $tenantBefore = $this->tenant->fresh()->only(['tax_id', 'currency_code', 'name', 'address']);
+
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'tax_id' => '7654321BM000',
+                'currency_code' => 'TND',
+                'address' => [
+                    'street' => 'Rue de Marseille',
+                    'city' => 'Sfax',
+                    'postal_code' => '3000',
+                    'country' => 'TN',
+                ],
+            ]);
+
+        $response->assertOk();
+        $company = $this->company->fresh();
+        $this->assertSame('7654321BM000', $company->tax_id);
+        $this->assertSame('TND', $company->currency);
+        $this->assertSame('Rue de Marseille', $company->address_street);
+        $this->assertSame('Sfax', $company->address_city);
+        $this->assertSame($tenantBefore, $this->tenant->fresh()->only(['tax_id', 'currency_code', 'name', 'address']));
+    }
+
+    public function test_show_response_contract_keys_are_unchanged(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/settings/company');
+
+        $response->assertOk()->assertJsonStructure(['data' => [
+            'name', 'legal_name', 'tax_id', 'registration_number',
+            'address' => ['street', 'city', 'postal_code', 'country'],
+            'phone', 'email', 'website', 'logo_url', 'primary_color',
+            'country_code', 'currency_code', 'timezone', 'date_format', 'locale',
+        ]]);
     }
 
     public function test_viewer_can_get_company_settings(): void
@@ -236,10 +302,10 @@ class CompanySettingsTest extends TestCase
             ->assertJsonPath('data.timezone', 'Europe/London');
 
         // Verify database was updated
-        $this->tenant->refresh();
-        $this->assertEquals('Updated Company Name', $this->tenant->name);
-        $this->assertEquals('Updated Legal Name SARL', $this->tenant->legal_name);
-        $this->assertEquals('Europe/London', $this->tenant->timezone);
+        $this->company->refresh();
+        $this->assertEquals('Updated Company Name', $this->company->name);
+        $this->assertEquals('Updated Legal Name SARL', $this->company->legal_name);
+        $this->assertEquals('Europe/London', $this->company->timezone);
     }
 
     public function test_can_update_address(): void
@@ -256,10 +322,10 @@ class CompanySettingsTest extends TestCase
 
         $response->assertOk();
 
-        $this->tenant->refresh();
-        $this->assertEquals('456 New Street', $this->tenant->address['street']);
-        $this->assertEquals('Lyon', $this->tenant->address['city']);
-        $this->assertEquals('69001', $this->tenant->address['postal_code']);
+        $this->company->refresh();
+        $this->assertEquals('456 New Street', $this->company->address_street);
+        $this->assertEquals('Lyon', $this->company->address_city);
+        $this->assertEquals('69001', $this->company->address_postal_code);
     }
 
     public function test_viewer_cannot_update_company_settings(): void
@@ -272,8 +338,8 @@ class CompanySettingsTest extends TestCase
         $response->assertForbidden();
 
         // Verify database was NOT updated
-        $this->tenant->refresh();
-        $this->assertEquals('Test Company', $this->tenant->name);
+        $this->company->refresh();
+        $this->assertEquals('Test Company', $this->company->name);
     }
 
     public function test_unauthenticated_user_cannot_update_company_settings(): void
@@ -416,7 +482,7 @@ class CompanySettingsTest extends TestCase
 
     public function test_partial_update_only_changes_provided_fields(): void
     {
-        $this->tenant->update([
+        $this->company->update([
             'name' => 'Original Name',
             'phone' => '+33 1 11 11 11 11',
             'timezone' => 'Europe/Paris',
@@ -429,10 +495,10 @@ class CompanySettingsTest extends TestCase
 
         $response->assertOk();
 
-        $this->tenant->refresh();
-        $this->assertEquals('Original Name', $this->tenant->name); // Unchanged
-        $this->assertEquals('+33 2 22 22 22 22', $this->tenant->phone); // Changed
-        $this->assertEquals('Europe/Paris', $this->tenant->timezone); // Unchanged
+        $this->company->refresh();
+        $this->assertEquals('Original Name', $this->company->name); // Unchanged
+        $this->assertEquals('+33 2 22 22 22 22', $this->company->phone); // Changed
+        $this->assertEquals('Europe/Paris', $this->company->timezone); // Unchanged
     }
 
     // ==================== LOGO Upload Tests ====================
@@ -669,12 +735,12 @@ class CompanySettingsTest extends TestCase
 
     // ==================== Currency/Country Regression Tests ====================
 
-    public function test_tunisian_tenant_returns_tnd_currency(): void
+    public function test_tunisian_company_returns_tnd_currency(): void
     {
-        $this->tenant->update([
+        $this->company->update([
             'name' => 'Cafe Tunis',
             'country_code' => 'TN',
-            'currency_code' => 'TND',
+            'currency' => 'TND',
             'timezone' => 'Africa/Tunis',
             'locale' => 'fr',
         ]);
@@ -689,8 +755,10 @@ class CompanySettingsTest extends TestCase
 
     public function test_address_country_falls_back_to_country_code_when_address_is_null(): void
     {
-        $this->tenant->update([
-            'address' => null,
+        $this->company->update([
+            'address_street' => null,
+            'address_city' => null,
+            'address_postal_code' => null,
             'country_code' => 'TN',
         ]);
 
@@ -706,13 +774,10 @@ class CompanySettingsTest extends TestCase
 
     public function test_address_country_uses_address_value_when_set(): void
     {
-        $this->tenant->update([
-            'address' => [
-                'street' => '10 Avenue Habib Bourguiba',
-                'city' => 'Tunis',
-                'postal_code' => '1000',
-                'country' => 'TN',
-            ],
+        $this->company->update([
+            'address_street' => '10 Avenue Habib Bourguiba',
+            'address_city' => 'Tunis',
+            'address_postal_code' => '1000',
             'country_code' => 'TN',
         ]);
 

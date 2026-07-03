@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, it, expect, vi } from 'vitest'
 import { formatCurrency } from '../../../lib/format'
 import type { AgedReceivablesData } from '../types'
@@ -51,6 +52,14 @@ function normalizeSpaces(value: string): string {
 }
 
 describe('AgedReceivablesPage', () => {
+  function renderPage() {
+    return render(
+      <MemoryRouter>
+        <AgedReceivablesPage />
+      </MemoryRouter>,
+    )
+  }
+
   it('renders exactly one h1', () => {
     mockUseAgedReceivables.mockReturnValue({
       data: fixture,
@@ -59,7 +68,7 @@ describe('AgedReceivablesPage', () => {
       refetch: vi.fn(),
     })
 
-    const { container } = render(<AgedReceivablesPage />)
+    const { container } = renderPage()
 
     expect(container.querySelectorAll('h1').length).toBe(1)
   })
@@ -72,7 +81,7 @@ describe('AgedReceivablesPage', () => {
       refetch: vi.fn(),
     })
 
-    render(<AgedReceivablesPage />)
+    renderPage()
 
     expect(screen.getByRole('button')).toBeInTheDocument()
   })
@@ -85,7 +94,7 @@ describe('AgedReceivablesPage', () => {
       refetch: vi.fn(),
     })
 
-    const { container } = render(<AgedReceivablesPage />)
+    const { container } = renderPage()
     const formattedCurrent = normalizeSpaces(formatCurrency('1000.00', {
       currency: 'TND',
       locale: 'fr-TN',
@@ -107,7 +116,7 @@ describe('AgedReceivablesPage', () => {
       refetch: vi.fn(),
     })
 
-    render(<AgedReceivablesPage />)
+    renderPage()
 
     const formattedCurrent = formatCurrency('1000.00', {
       currency: 'TND',
@@ -130,11 +139,27 @@ describe('AgedReceivablesPage', () => {
         refetch: vi.fn(),
       })
 
-      render(<AgedReceivablesPage />)
+      renderPage()
 
       expect(screen.getByLabelText('finance:reports.common.asOfDate')).toHaveValue('2026-07-15')
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('links customer names to customer detail pages', () => {
+    mockUseAgedReceivables.mockReturnValue({
+      data: fixture,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(screen.getByRole('link', { name: 'ACME Corp' })).toHaveAttribute(
+      'href',
+      '/sales/customers/00000000-0000-4000-8000-000000000001',
+    )
   })
 })

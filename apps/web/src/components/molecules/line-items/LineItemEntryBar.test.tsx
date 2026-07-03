@@ -198,4 +198,97 @@ describe('LineItemEntryBar', () => {
     })
     expect(onSubmit).not.toHaveBeenCalled()
   })
+
+  it('highlights the first search result and emits it on Enter with an explicit accessible name', async () => {
+    const user = userEvent.setup()
+    const onAddProduct = vi.fn()
+    const paracetamol = {
+      id: 'product-2',
+      name: 'Paracetamol 500',
+      sku: 'PARA-1',
+      barcode: null,
+      sale_price: '2.500',
+      tax_rate: '19.00',
+      default_tax_configuration_id: null,
+      quantity_decimals: 0,
+      primary_image_url: null,
+      has_variants: false,
+      requires_batch_tracking: false,
+    }
+    apiClientGetMock.mockResolvedValue({ data: { data: [paracetamol] } })
+
+    render(<LineItemEntryBar onAddProduct={onAddProduct} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.type(input, 'para')
+
+    expect(await screen.findByRole('option', { name: /PARA-1 Paracetamol 500/i })).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{Enter}')
+
+    expect(onAddProduct).toHaveBeenCalledTimes(1)
+    expect(onAddProduct).toHaveBeenCalledWith(
+      paracetamol,
+      expect.objectContaining({ source: 'search', variantId: null }),
+    )
+    expect(input).toHaveValue('')
+    expect(input).toHaveFocus()
+  })
+
+  it('resolves a variant scanner code and emits a direct variant add', async () => {
+    const onAddProduct = vi.fn()
+    const tshirt = {
+      id: 'product-1',
+      name: 'T-Shirt',
+      sku: 'TSHIRT',
+      barcode: null,
+      sale_price: '10.000',
+      tax_rate: '19.00',
+      default_tax_configuration_id: null,
+      quantity_decimals: 0,
+      primary_image_url: null,
+      has_variants: false,
+      requires_batch_tracking: false,
+    }
+    apiClientGetMock.mockResolvedValue({ data: { data: [] } })
+    apiGetMock.mockResolvedValue({
+      kind: 'variant',
+      matched_code_type: 'variant_barcode',
+      product: tshirt,
+      variant: {
+        id: 'variant-red',
+        product_id: 'product-1',
+        sku: 'TSHIRT-RED',
+        variant_code: 'RED',
+        barcode: '999',
+        name_suffix: 'Red',
+        is_default: false,
+        price_override: null,
+        cost_override: null,
+        image_url: null,
+      },
+    })
+
+    render(<LineItemEntryBar onAddProduct={onAddProduct} />, { wrapper: wrapper() })
+
+    // Scanner wedge: rapid keystrokes on window followed by Enter.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '9' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '9' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '9' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+
+    await waitFor(() => {
+      expect(onAddProduct).toHaveBeenCalledTimes(1)
+    })
+    expect(onAddProduct).toHaveBeenCalledWith(
+      tshirt,
+      expect.objectContaining({
+        source: 'scan',
+        variantId: 'variant-red',
+        code: '999',
+        matchedCodeType: 'variant_barcode',
+      }),
+    )
+    expect(apiGetMock).toHaveBeenCalledWith('/line-entry/resolve-code', expect.objectContaining({ code: '999' }))
+  })
 })

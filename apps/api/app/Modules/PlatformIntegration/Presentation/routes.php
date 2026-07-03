@@ -8,6 +8,7 @@ use App\Modules\PlatformIntegration\Infrastructure\Middleware\VerifySynerivaWebh
 use App\Modules\PlatformIntegration\Presentation\Controllers\BarcodeLookupController;
 use App\Modules\PlatformIntegration\Presentation\Controllers\CatalogBrowseController;
 use App\Modules\PlatformIntegration\Presentation\Controllers\EnrichmentWebhookController;
+use App\Modules\PlatformIntegration\Presentation\Controllers\PhotoUploadUrlController;
 use App\Modules\PlatformIntegration\Presentation\Controllers\ProductSubmissionController;
 use App\Modules\PlatformIntegration\Presentation\Controllers\VinDecodeController;
 use Illuminate\Support\Facades\Route;
@@ -87,4 +88,7 @@ Route::prefix('api/v1/platform')->middleware(['api', 'auth:sanctum', SetPermissi
 
     Route::post('submit-for-enrichment', ProductSubmissionController::class)
         ->name('platform.submit-for-enrichment');
+
+    Route::post('upload-url', PhotoUploadUrlController::class)
+        ->name('platform.upload-url');
 });

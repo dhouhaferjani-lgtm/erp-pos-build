@@ -4,7 +4,26 @@
     "article": "الصنف",
     "description": "الوصف",
     "quantity": "الكمية",
+    "freeQuantity": "الكمية المجانية",
     "unitPrice": "سعر الوحدة",
+    "priceEntryMode": {
+      "unit": "سعر الوحدة",
+      "total": "المجموع"
+    },
+    "effectiveUnitCost": "الكلفة الفعلية للوحدة: {{amount}}",
+    "bonusSavings": "قيمة المجاني: {{amount}}",
+    "pricing": {
+      "cost": "الكلفة {{amount}}",
+      "lastBuy": "آخر شراء {{amount}}",
+      "margin": "الهامش {{percent}}%",
+      "details": "تفاصيل التسعير",
+      "suggested": "السعر المقترح {{amount}}",
+      "lastSale": "آخر بيع {{amount}}",
+      "minimumMargin": "الحد الأدنى {{percent}}%",
+      "useSuggested": "استخدام المقترح",
+      "policyBlocked": "الهامش محظور: {{permission}}",
+      "policyWarning": "تحذير الهامش"
+    },
     "discount": "الخصم",
     "tax": "الضريبة",
     "taxPercent": "نسبة الضريبة",
@@ -120,6 +139,16 @@
       "not_received": "غير مُستلَم",
       "partially_received": "مُستلَم جزئيًا",
       "fully_received": "مُستلَم بالكامل"
+    },
+    "receive": {
+      "remaining": "المتبقي",
+      "remainingFree": "المتبقي المجاني",
+      "quantity": "الكمية المستلمة المدفوعة",
+      "freeQuantity": "الكمية المجانية المستلمة",
+      "freeOrderedSummary": "المجاني المطلوب: {{ordered}} · المستلم: {{received}}",
+      "batchNumber": "رقم الدفعة",
+      "expiryDate": "تاريخ انتهاء الصلاحية",
+      "submit": "استلام"
     }
   }
 }

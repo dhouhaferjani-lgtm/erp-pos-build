@@ -18,7 +18,7 @@ use Illuminate\Support\Carbon;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $product_id
- * @property string $tracking_id
+ * @property string|null $tracking_id
  * @property int $version
  * @property EnrichmentResultOrigin $origin
  * @property EnrichmentReviewStatus $status
