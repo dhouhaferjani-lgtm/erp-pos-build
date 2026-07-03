@@ -136,6 +136,13 @@ export const languages = [
 
 export type LanguageCode = (typeof languages)[number]['code']
 
+const arFinanceOverview = arFinance.overview as typeof enFinance.overview
+const arFinanceHub = arFinance.hub as {
+  cards: {
+    treasuryOverview: typeof enFinance.hub.cards.treasuryOverview
+  }
+}
+
 const resources = {
   en: {
     common: enCommon,
@@ -286,12 +293,44 @@ const resources = {
     finance: {
       ...enFinance,
       ...arFinance,
+      overview: {
+        ...enFinance.overview,
+        ...arFinanceOverview,
+        cash: {
+          ...enFinance.overview.cash,
+          ...arFinanceOverview.cash,
+        },
+        upcoming: {
+          ...enFinance.overview.upcoming,
+          ...arFinanceOverview.upcoming,
+          buckets: {
+            ...enFinance.overview.upcoming.buckets,
+            ...arFinanceOverview.upcoming.buckets,
+          },
+        },
+        trend: {
+          ...enFinance.overview.trend,
+          ...arFinanceOverview.trend,
+        },
+      },
       reports: {
         ...enFinance.reports,
         ...arFinance.reports,
         profitLossReport: {
           ...enFinance.reports.profitLossReport,
           ...arFinance.reports.profitLossReport,
+        },
+      },
+      hub: {
+        ...enFinance.hub,
+        ...arFinance.hub,
+        cards: {
+          ...enFinance.hub.cards,
+          ...arFinanceHub.cards,
+          treasuryOverview: {
+            ...enFinance.hub.cards.treasuryOverview,
+            ...arFinanceHub.cards.treasuryOverview,
+          },
         },
       },
     },

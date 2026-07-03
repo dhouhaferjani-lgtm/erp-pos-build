@@ -87,6 +87,43 @@
     "accountsReceivable": "Accounts Receivable",
     "accountsPayable": "Accounts Payable"
   },
+  "overview": {
+    "title": "Treasury",
+    "subtitle": "Cash position, expected receipts, and upcoming payments",
+    "cash": {
+      "totalCash": "Total Cash",
+      "cashRegisters": "Cash Registers",
+      "bankAccounts": "Bank Accounts",
+      "safes": "Safes",
+      "loading": "Loading cash position...",
+      "loadError": "Failed to load cash position"
+    },
+    "upcoming": {
+      "moneyIn": "Money In",
+      "moneyOut": "Money Out",
+      "totalIn": "Expected receipts",
+      "totalOut": "Upcoming payments",
+      "emptyIn": "No expected receipts in this period.",
+      "emptyOut": "No upcoming payments in this period.",
+      "loading": "Loading upcoming payments...",
+      "loadError": "Failed to load upcoming payments",
+      "overdue": "Overdue",
+      "daysUntilDue": "Due in {{count}} day",
+      "daysUntilDue_other": "Due in {{count}} days",
+      "buckets": {
+        "overdue": "Overdue",
+        "current": "Current",
+        "days1To30": "1-30 days",
+        "days31To60": "31-60 days",
+        "days90Plus": "90+ days"
+      }
+    },
+    "trend": {
+      "revenueVsExpenses": "Current-period revenue vs expenses",
+      "revenue": "Revenue",
+      "expenses": "Expenses"
+    }
+  },
   "ledger": {
     "title": "General Ledger",
     "description": "View all journal entries and account balances",
@@ -203,6 +240,10 @@
       "withholdingCertificates": {
         "title": "Withholding Certificates",
         "description": "Manage tax withholding certificates"
+      },
+      "treasuryOverview": {
+        "title": "Treasury",
+        "description": "Review cash position and upcoming cash movements"
       },
       "chartOfAccounts": {
         "title": "Chart of Accounts",

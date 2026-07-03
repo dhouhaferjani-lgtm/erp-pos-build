@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-syntax -- Legacy Sidebar palette predates design-token enforcement; C5 adds only a finance-namespace link. */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -99,6 +100,7 @@ interface NavChild {
   key: string
   href: string
   icon: React.ComponentType<{ className?: string }>
+  labelKey?: string
   module?: BackendModule | BackendModule[]
   permission?: string
 }
@@ -107,6 +109,7 @@ interface NavModule {
   key: string
   icon: React.ComponentType<{ className?: string }>
   href?: string
+  labelKey?: string
   children?: NavChild[]
   module?: BackendModule | BackendModule[]
   permission?: string
@@ -270,6 +273,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       module: 'Accounting',
       permission: 'accounts',
       children: [
+        { key: 'treasuryOverview', labelKey: 'finance:hub.cards.treasuryOverview.title', href: '/finance/overview', icon: Wallet, permission: 'reports' },
         { key: 'chartOfAccounts', href: '/finance/chart-of-accounts', icon: BookOpen, permission: 'accounts' },
         { key: 'generalLedger', href: '/finance/ledger', icon: FileSpreadsheet, permission: 'accounts' },
         { key: 'journalEntries', href: '/finance/journal-entries', icon: FileSpreadsheet, permission: 'accounts' },
@@ -333,8 +337,17 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
   return nav
 }
 
+function parseExpandedModules(value: string | null): Set<string> {
+  if (!value) return new Set<string>()
+
+  const parsed: unknown = JSON.parse(value)
+  if (!Array.isArray(parsed)) return new Set<string>()
+
+  return new Set(parsed.filter((item): item is string => typeof item === 'string'))
+}
+
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
-  const { t } = useTranslation(['common', 'catalog'])
+  const { t } = useTranslation(['common', 'catalog', 'finance'])
   const location = useLocation()
   const { canAccessModule } = usePermissions()
   const { hasModule, config } = useCompanyConfig()
@@ -343,7 +356,10 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const isAutomotiveVertical = AUTOMOTIVE_VERTICALS.has(config?.vertical ?? '')
 
   const getNavLabel = useCallback(
-    (key: string): string => {
+    (key: string, labelKey?: string): string => {
+      if (labelKey) {
+        return t(labelKey)
+      }
       const verticalLabelKey = VERTICAL_NAV_KEYS[key]
       if (verticalLabelKey && catalogVertical !== 'generic') {
         return t(`catalog:vertical.${catalogVertical}.${verticalLabelKey}`)
@@ -406,7 +422,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       })
       .filter((module) => {
         // A group whose children are all gated away has nothing to show.
-        if (module.children && module.children.length === 0) return false
+        if (module.children?.length === 0) return false
         return true
       })
   }, [navigation, isNavItemVisible])
@@ -424,11 +440,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   // Load expanded state from localStorage
   const [expandedModules, setExpandedModules] = useState<Set<string>>(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored) as string[]
-        return new Set(parsed)
-      }
+      return parseExpandedModules(localStorage.getItem(STORAGE_KEY))
     } catch {
       // Ignore parsing errors
     }
@@ -509,10 +521,10 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             to={module.href}
             onClick={onClose}
             className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${parentActiveClass} ${isCollapsed ? 'justify-center' : ''}`}
-            title={isCollapsed ? getNavLabel(module.key) : undefined}
+            title={isCollapsed ? getNavLabel(module.key, module.labelKey) : undefined}
           >
             <Icon className="h-5 w-5 flex-shrink-0" />
-            {!isCollapsed && getNavLabel(module.key)}
+            {!isCollapsed && getNavLabel(module.key, module.labelKey)}
           </Link>
         </li>
       )
@@ -525,13 +537,13 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           onClick={() => { toggleModule(module.key) }}
           className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${parentActiveClass} ${isCollapsed ? 'justify-center' : ''}`}
           aria-expanded={isExpanded}
-          aria-label={`${getNavLabel(module.key)} - ${isExpanded ? t('actions.collapse') : t('actions.expand')}`}
-          title={isCollapsed ? getNavLabel(module.key) : undefined}
+          aria-label={`${getNavLabel(module.key, module.labelKey)} - ${isExpanded ? t('actions.collapse') : t('actions.expand')}`}
+          title={isCollapsed ? getNavLabel(module.key, module.labelKey) : undefined}
         >
           <Icon className="h-5 w-5 flex-shrink-0" />
           {!isCollapsed && (
             <>
-              <span className="flex-1 text-start">{getNavLabel(module.key)}</span>
+              <span className="flex-1 text-start">{getNavLabel(module.key, module.labelKey)}</span>
               {isExpanded ? (
                 <ChevronDown className="h-4 w-4 flex-shrink-0" />
               ) : (
@@ -559,7 +571,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                     className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${childActiveClass}`}
                   >
                     <ChildIcon className="h-4 w-4 flex-shrink-0" />
-                    {getNavLabel(child.key)}
+                    {getNavLabel(child.key, child.labelKey)}
                   </Link>
                 </li>
               )

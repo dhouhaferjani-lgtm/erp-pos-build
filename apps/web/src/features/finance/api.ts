@@ -65,7 +65,7 @@ export async function getJournalEntries(page = 1): Promise<{
     total: number
   }
 }> {
-  return apiGet(`/journal-entries?page=${page}`)
+  return apiGet(`/journal-entries?page=${String(page)}`)
 }
 
 export async function getJournalEntry(id: string): Promise<JournalEntry> {
@@ -215,4 +215,12 @@ export async function getAgedPayables(
 
 export async function getFinanceSummary(): Promise<FinanceSummary> {
   return apiGet<FinanceSummary>('/reports/finance-summary')
+}
+
+export async function getUpcomingPayments(
+  days: number
+): Promise<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentsData> {
+  return apiGet<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentsData>(
+    `/reports/upcoming-payments?days=${String(days)}`
+  )
 }
