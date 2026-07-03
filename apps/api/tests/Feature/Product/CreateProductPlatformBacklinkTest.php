@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Product;
 
+use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
@@ -11,12 +12,14 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Product\Application\Jobs\ApplyCatalogEnrichmentJob;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -42,6 +45,7 @@ class CreateProductPlatformBacklinkTest extends TestCase
             'slug' => 'test-tenant',
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
+            'vertical' => Vertical::Parapharmacy,
         ]);
 
         $this->company = Company::create([
@@ -79,6 +83,7 @@ class CreateProductPlatformBacklinkTest extends TestCase
 
     public function test_create_persists_platform_product_id(): void
     {
+        Queue::fake();
         $platformProductId = (string) Str::uuid();
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -94,10 +99,22 @@ class CreateProductPlatformBacklinkTest extends TestCase
             'id' => $response->json('data.id'),
             'platform_product_id' => $platformProductId,
         ]);
+
+        $productId = $response->json('data.id');
+        $this->assertIsString($productId);
+
+        Queue::assertPushedOn('enrichment', ApplyCatalogEnrichmentJob::class, function (ApplyCatalogEnrichmentJob $job) use ($productId, $platformProductId): bool {
+            return $job->productId === $productId
+                && $job->expectedPlatformProductId === $platformProductId
+                && $job->barcode === '3017620422003'
+                && $job->vertical === 'parapharmacy';
+        });
     }
 
     public function test_create_without_lookup_leaves_platform_product_id_null(): void
     {
+        Queue::fake();
+
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/products', [
                 'name' => 'Manual',
@@ -110,6 +127,7 @@ class CreateProductPlatformBacklinkTest extends TestCase
         $this->assertIsString($productId);
 
         $this->assertNull(Product::query()->whereKey($productId)->firstOrFail()->platform_product_id);
+        Queue::assertNotPushed(ApplyCatalogEnrichmentJob::class);
     }
 
     public function test_invalid_platform_product_id_rejected(): void
