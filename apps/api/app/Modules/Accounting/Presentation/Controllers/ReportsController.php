@@ -12,6 +12,7 @@ use App\Modules\Accounting\Application\Services\FiscalPeriodResolverService;
 use App\Modules\Accounting\Application\Services\Reports\AgedPayablesService;
 use App\Modules\Accounting\Application\Services\Reports\AgedReceivablesService;
 use App\Modules\Accounting\Application\Services\Reports\BalanceSheetService;
+use App\Modules\Accounting\Application\Services\Reports\CashMovementsReportService;
 use App\Modules\Accounting\Application\Services\Reports\CashRegisterReportService;
 use App\Modules\Accounting\Application\Services\Reports\OwnerReportScope;
 use App\Modules\Accounting\Application\Services\Reports\OwnerSalesSummaryService;
@@ -22,6 +23,7 @@ use App\Modules\Accounting\Application\Services\Reports\TrialBalanceService;
 use App\Modules\Accounting\Presentation\Requests\GetAgedPayablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetAgedReceivablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetBalanceSheetRequest;
+use App\Modules\Accounting\Presentation\Requests\GetCashMovementsRequest;
 use App\Modules\Accounting\Presentation\Requests\GetOwnerCashReconciliationRequest;
 use App\Modules\Accounting\Presentation\Requests\GetOwnerSalesReportRequest;
 use App\Modules\Accounting\Presentation\Requests\GetOwnerStockAlertsRequest;
@@ -76,6 +78,7 @@ class ReportsController extends Controller
         private readonly TrialBalanceService $trialBalanceService,
         private readonly ProfitLossService $profitLossService,
         private readonly BalanceSheetService $balanceSheetService,
+        private readonly CashMovementsReportService $cashMovementsReportService,
         private readonly AgedReceivablesService $agedReceivablesService,
         private readonly AgedPayablesService $agedPayablesService,
         private readonly OwnerReportScope $ownerReportScope,
@@ -191,6 +194,30 @@ class ReportsController extends Controller
                 locationIds: $locationIds,
             ),
         ]);
+    }
+
+    public function cashMovements(GetCashMovementsRequest $request): JsonResponse
+    {
+        try {
+            $company = $this->companyContext->requireCompany();
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COMPANY_CONTEXT_REQUIRED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 401);
+        }
+
+        return response()->json($this->cashMovementsReportService->generate(
+            companyId: $company->id,
+            companyCurrency: $company->currency,
+            from: $request->fromDate(),
+            to: $request->toDate(),
+            repositoryId: $request->repositoryId(),
+            page: $request->page(),
+            perPage: $request->perPage(),
+        ));
     }
 
     private function ownerUser(?Authenticatable $user): User

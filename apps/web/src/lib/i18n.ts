@@ -13,6 +13,7 @@ import enPricing from '../locales/en/pricing.json'
 import enFinance from '../locales/en/finance.json'
 import enExpenses from '../locales/en/expenses.json'
 import enImport from '../locales/en/import.json'
+import enIncome from '../locales/en/income.json'
 import enSettings from '../locales/en/settings.json'
 import enUom from '../locales/en/uom.json'
 import enProducts from '../locales/en/products.json'
@@ -62,6 +63,7 @@ import frPricing from '../locales/fr/pricing.json'
 import frFinance from '../locales/fr/finance.json'
 import frExpenses from '../locales/fr/expenses.json'
 import frImport from '../locales/fr/import.json'
+import frIncome from '../locales/fr/income.json'
 import frSettings from '../locales/fr/settings.json'
 import frUom from '../locales/fr/uom.json'
 import frProducts from '../locales/fr/products.json'
@@ -104,6 +106,7 @@ import frPurchases from '../locales/fr/purchases.json'
 // Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
 // Other namespaces still fall back to the EN bundle below.
 import arCommon from '../locales/ar/common.json'
+import arIncome from '../locales/ar/income.json'
 import arInventory from '../locales/ar/inventory.json'
 import arValidation from '../locales/ar/validation.json'
 import arWorkshopBundles from '../locales/ar/workshop-bundles.json'
@@ -145,6 +148,7 @@ const resources = {
     pricing: enPricing,
     finance: enFinance,
     expenses: enExpenses,
+    income: enIncome,
     import: enImport,
     settings: enSettings,
     uom: enUom,
@@ -195,6 +199,7 @@ const resources = {
     pricing: frPricing,
     finance: frFinance,
     expenses: frExpenses,
+    income: frIncome,
     import: frImport,
     settings: frSettings,
     uom: frUom,
@@ -283,6 +288,7 @@ const resources = {
     pricing: enPricing,
     finance: enFinance,
     expenses: enExpenses,
+    income: arIncome,
     import: enImport,
     settings: {
       ...enSettings,
@@ -342,7 +348,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'admin', 'purchases'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'income', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'admin', 'purchases'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],
