@@ -6,6 +6,7 @@ namespace App\Modules\Import\Domain\Enums;
 
 enum ImportType: string
 {
+    case Parties = 'parties';
     case Partners = 'partners';
     case Products = 'products';
     case StockLevels = 'stock_levels';
@@ -21,6 +22,7 @@ enum ImportType: string
     public function getRequiredColumns(): array
     {
         return match ($this) {
+            self::Parties => ['name', 'type'],
             self::Partners => ['name', 'type'],
             self::Products => ['name', 'sku', 'type'],
             self::StockLevels => ['product_sku', 'location_code', 'quantity'],
@@ -38,6 +40,21 @@ enum ImportType: string
     public function getOptionalColumns(): array
     {
         return match ($this) {
+            self::Parties => [
+                'code',
+                'email',
+                'phone',
+                'tax_id',
+                'address_line1',
+                'address_city',
+                'address_postal_code',
+                'address_country',
+                'opening_balance',
+                'opening_balance_customer',
+                'opening_balance_supplier',
+                'balance_date',
+                'reference',
+            ],
             self::Partners => ['email', 'phone', 'vat_number', 'address', 'city', 'country'],
             self::Products => ['description', 'sale_price', 'purchase_price', 'barcode', 'category_name', 'tax_rate', 'unit', 'is_active'],
             self::StockLevels => ['notes'],
@@ -55,6 +72,19 @@ enum ImportType: string
     public function getValidationRules(): array
     {
         return match ($this) {
+            self::Parties => [
+                'name' => ['required', 'string', 'max:255'],
+                'type' => ['required', 'in:customer,supplier,both'],
+                'code' => ['nullable', 'string', 'max:100'],
+                'email' => ['nullable', 'email', 'max:255'],
+                'phone' => ['nullable', 'string', 'max:50'],
+                'tax_id' => ['nullable', 'string', 'max:50'],
+                'opening_balance' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
+                'opening_balance_customer' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
+                'opening_balance_supplier' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
+                'balance_date' => ['nullable', 'date'],
+                'reference' => ['nullable', 'string', 'max:100'],
+            ],
             self::Partners => [
                 'name' => ['required', 'string', 'max:255'],
                 'type' => ['required', 'in:customer,supplier,both'],
