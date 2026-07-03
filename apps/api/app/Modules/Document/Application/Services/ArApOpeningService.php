@@ -58,6 +58,7 @@ class ArApOpeningService
         $this->assertValidBatchType($batch);
 
         $isAr = $batch->type === OpeningBatchType::ArOpenItems;
+        $companyCurrency = $batch->company->currency;
         $rows = $batch->rows()->where('status', '!=', OpeningImportRowStatus::Skipped)->get();
         $validationResults = [];
         $errors = [];
@@ -66,7 +67,7 @@ class ArApOpeningService
         $totalOpenAmount = '0.00';
 
         foreach ($rows as $row) {
-            $result = $this->validateRow($row, $batch->company_id, $isAr);
+            $result = $this->validateRow($row, $batch->company_id, $isAr, $companyCurrency);
             $validationResults[$row->id] = $result;
 
             if ($result['valid']) {
@@ -105,14 +106,14 @@ class ArApOpeningService
      *   "due_date": "2024-12-15",
      *   "total": "1500.00",
      *   "open_amount": "1500.00",
-     *   "currency": "TND",
+     *   "currency": "EUR",
      *   "document_type": "invoice",  // or "credit_note"
      *   "notes": "Optional notes"
      * }
      *
      * @return array{valid: bool, errors: array<string, array<string>>, mapped_data: array<string, mixed>}
      */
-    private function validateRow(OpeningBalanceImportRow $row, string $companyId, bool $isAr): array
+    private function validateRow(OpeningBalanceImportRow $row, string $companyId, bool $isAr, string $companyCurrency): array
     {
         $rawData = $row->raw_data;
         $errors = [];
@@ -213,7 +214,13 @@ class ArApOpeningService
         $mappedData['external_invoice_number'] = $rawData['external_invoice_number'] ?? null;
 
         // Optional: currency (default to company currency)
-        $mappedData['currency'] = $rawData['currency'] ?? 'TND';
+        $currency = trim((string) ($rawData['currency'] ?? ''));
+        if ($currency === '') {
+            $currency = $companyCurrency;
+        } elseif ($currency !== $companyCurrency) {
+            $errors['currency'] = ["Currency must match company currency ({$companyCurrency})."];
+        }
+        $mappedData['currency'] = $currency;
 
         // Optional: notes
         $mappedData['notes'] = $rawData['notes'] ?? null;
@@ -278,8 +285,9 @@ class ArApOpeningService
                     continue;
                 }
 
-                /** @var DocumentType $docType */
-                $docType = $mappedData['document_type'];
+                $docType = $mappedData['document_type'] instanceof DocumentType
+                    ? $mappedData['document_type']
+                    : DocumentType::from((string) $mappedData['document_type']);
                 $documentNumber = $this->generateHistoricalDocumentNumber($company->id, $docType);
 
                 $document = Document::create([
@@ -293,7 +301,7 @@ class ArApOpeningService
                     'document_number' => $documentNumber,
                     'document_date' => $mappedData['document_date'],
                     'due_date' => $mappedData['due_date'],
-                    'currency' => $mappedData['currency'] ?? 'TND',
+                    'currency' => $mappedData['currency'],
                     'subtotal' => $mappedData['total'],
                     'discount_amount' => '0.00',
                     'tax_amount' => '0.00',
@@ -319,11 +327,11 @@ class ArApOpeningService
                 $rowEntityMap[$row->id] = $document->id;
             }
 
-            // Mark rows as posted
-            $this->batchService->markRowsPosted($rowEntityMap);
-
-            // Mark batch as validated (posted)
+            // Transition the batch first — markBatchValidated requires the rows
+            // to still be in Valid status (a Posted row no longer counts as valid).
             $this->batchService->markBatchValidated($batch, $userId);
+
+            $this->batchService->markRowsPosted($rowEntityMap);
 
             return [
                 'documents_created' => count($documentsCreated),
