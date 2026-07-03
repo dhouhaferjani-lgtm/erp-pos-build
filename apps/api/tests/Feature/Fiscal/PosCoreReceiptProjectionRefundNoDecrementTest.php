@@ -184,21 +184,25 @@ final class PosCoreReceiptProjectionRefundNoDecrementTest extends TestCase
         app(CompanyContext::class)->clear();
         $projector->apply($refundEvent);
 
-        // Assert: stock level is UNCHANGED (still 8.0000 — the refund must NOT decrement).
+        // Assert: refund RESTOCKS — stock returns to the pre-sale level
+        // (sale 10→8, refund adds the returned magnitude back → 10). The
+        // Phase 0 "leave stock untouched" interim guard is superseded by the
+        // restock fix (fix/pos-refund-void-restock); RefundStockTest pins the
+        // detailed movement contract.
         $stockLevel->refresh();
         $this->assertSame(
-            '8.0000',
+            '10.0000',
             $stockLevel->quantity,
-            'Phase 0 §5.1: REFUND must NOT decrement stock (would compound the loss). '.
-            'Disposition-gated restock is Phase 3.',
+            'REFUND must restock the returned quantity (never decrement — that would compound the loss).',
         );
 
-        // Assert: ZERO new pos_sale stock movements for the refund event.
+        // Assert: exactly ONE new movement for the refund event, and it is a
+        // restock (Receipt/POSReturn), never a pos_sale decrement.
         $movementsAfterRefund = DB::table('stock_movements')->count();
         $this->assertSame(
-            $movementsAfterSale,
+            $movementsAfterSale + 1,
             $movementsAfterRefund,
-            'Phase 0 §5.1: REFUND projection must not write any additional pos_sale stock_movements.',
+            'REFUND projection must write exactly one restock movement (no pos_sale decrement).',
         );
     }
 
@@ -279,14 +283,15 @@ final class PosCoreReceiptProjectionRefundNoDecrementTest extends TestCase
         app(CompanyContext::class)->clear();
         $projector->apply($voidEvent);
 
-        // VOID must not decrement stock.
+        // VOID restocks the voided quantity (sale 5→4, void restores → 5);
+        // it must never decrement.
         $stockLevel->refresh();
-        $this->assertSame('4.0000', $stockLevel->quantity, 'Phase 0 §5.1: VOID must NOT decrement stock.');
+        $this->assertSame('5.0000', $stockLevel->quantity, 'VOID must restock the voided quantity, never decrement.');
 
         $this->assertSame(
-            $movementsAfterSale,
+            $movementsAfterSale + 1,
             DB::table('stock_movements')->count(),
-            'Phase 0 §5.1: VOID projection must not write any additional stock_movements.',
+            'VOID projection must write exactly one restock movement (no pos_sale decrement).',
         );
     }
 

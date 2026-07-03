@@ -424,10 +424,14 @@ final class ReceiptReturnService
                 $alreadyReturnedQty = $returnLine['already_returned'];
 
                 // Variant symmetry rule: the restore must target the exact
-                // stock row the sale decremented. Draft-path lines carry
-                // variant_id (variant-scoped decrement); projection-path
-                // lines carry NULL (variant_id IS NULL decrement). Never
-                // re-derive the variant for NULL lines.
+                // stock row the sale decremented. Both paths now decrement at
+                // the line's grain — a VARIANT line (whether draft-path or
+                // projection-path) decrements the variant row and its
+                // pos_receipt_lines.variant_id is the resolved variant; only a
+                // NON-variant line carries NULL (variant_id IS NULL decrement).
+                // restoreStock targets $originalLine->variant_id verbatim, so
+                // it is symmetric in both cases. Never re-derive the variant
+                // for NULL lines.
                 $this->restoreStock(
                     tenantId: $terminal->tenant_id,
                     companyId: $companyId,
