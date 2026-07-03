@@ -87,6 +87,21 @@ final class ProductShowLatestEnrichmentTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
     }
 
+    public function test_latest_enrichment_relation_is_not_one_of_many(): void
+    {
+        // The PHPUnit suite runs on SQLite, which happily aggregates any type —
+        // the max(uuid) failure only reproduces on PostgreSQL. Guard the
+        // regression structurally instead: one-of-many is precisely the relation
+        // shape that emits the MAX(<primary key>) tiebreaker PG rejects.
+        $relation = (new Product)->latestEnrichmentResult();
+
+        $this->assertFalse(
+            $relation->isOneOfMany(),
+            'latestEnrichmentResult must stay an ordered hasOne (->latest()); '
+            .'one-of-many aggregates MAX() over the UUID primary key, which PostgreSQL cannot do.',
+        );
+    }
+
     public function test_show_returns_latest_enrichment_result_without_uuid_aggregate(): void
     {
         $product = Product::create([
