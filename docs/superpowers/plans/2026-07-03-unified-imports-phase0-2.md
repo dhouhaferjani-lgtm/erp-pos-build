@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 > **Codex workers in this worktree: NO git write commands** (worktree index lives outside your sandbox). After each task's green verification, append the task number, exact file list, and red/green evidence to `docs/sessions/UNIFIED-IMPORTS-TASKLOG.md`. The orchestrator cuts commits.
 
-**Goal:** Ship the unified two-file import — parties with signed opening balances, sell-ready products with price resolution and opening stock — per spec `docs/superpowers/specs/2026-07-02-unified-imports-design.md` (FINAL v3, Codex verdict READY), phases 0–2 only. Phase 3 (enrichment) is a separate follow-up plan.
+**Goal:** Ship the unified two-file import — parties with signed opening balances, sell-ready products with price resolution and opening stock — per spec `docs/superpowers/specs/2026-07-02-unified-imports-design.md` (FINAL v3 + plan-phase addendum v4; the addendum is authoritative where they differ), phases 0–2 only. Phase 3 (enrichment) is a separate follow-up plan.
 
 **Architecture:** New import type `parties` and extended `products` type inside the existing Import module engine. Two engine-level additions (row warnings channel, job options ingestion) land first, then the parties pipeline (partner code upsert → signed-balance → AR/AP open-item batches via repaired `ArApOpeningService`), then the products pipeline (price resolver → product upsert contract → opening stock via `OpeningBalancePostingService` → result workbook). Cross-module boundary: Import consumes `ArApOpeningService`, `OpeningBalanceBatchService`, and `OpeningBalancePostingService` as **module-public application services** (explicitly allowed by CLAUDE.md rule 6: "Shared/Contracts interfaces, Events, or a module's public Service class" — the spec's contracts table is amended accordingly); the one NEW Shared contract is `TaxDefaultResolverInterface` (TaxResolutionService sits in Taxation's Domain layer, not a public application service).
 
@@ -484,7 +484,7 @@ Behavior of `run()` (implement exactly):
   - customer −50 → AR `credit_note` document;
   - supplier +80 → AP batch posted;
   - partner-only row (no balance) → no batch row, no warnings;
-  - batch `import_file_reference === $job->id`, names `IMPORT-…-AR/AP`;
+  - batch `import_file_reference['import_job_id'] === $job->id` and `import_file_reference['source'] === 'unified-import'` (jsonb array cast), names `IMPORT-…-AR/AP`;
   - warnings empty; `_results.ar_balance === 'ok'` on the +100 row.
   Second test: pre-create an unlocked AR batch (Advanced-wizard style) → import runs, partners import fine, balance rows carry `balance_not_posted` warning, no new AR batch.
   Third test: re-run `finalizeImport` on the same job (retry) → no duplicate documents (count unchanged).

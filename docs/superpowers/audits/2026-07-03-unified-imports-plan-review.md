@@ -120,3 +120,53 @@ The main missing or wrong coverage within scope is: scalar-vs-json idempotency f
 NOT-READY
 
 The plan is close in intent, but it is not safe to hand to implementers yet. At least the `import_file_reference` contract, `ImportServiceProvider` constructor wiring, Task 1 fixture, deterministic SKU rule, and boundary-contract decisions need to be repaired before execution starts.
+
+## Re-review (round 2)
+
+Scope: verified the repaired plan against the new disposition section, the spec's "Plan-phase addendum (v4)", and the actual `apps/api` / `apps/web` code paths that matter for phases 0-2. I spot-checked all major/nit dispositions and re-checked the four original blockers in detail.
+
+### Per-fix Verdicts
+
+| Round-1 item | Round-2 verdict | Evidence |
+| --- | --- | --- |
+| B1 jsonb `import_file_reference` | PARTIAL | The production instructions are now code-correct: plan:464-468 uses the existing jsonb/array shape and an expression index; actual column/cast/signature are jsonb + array at apps/api/database/migrations/tenant/2025_12_11_100000_create_opening_balance_tables.php:23, apps/api/app/Modules/Accounting/Domain/OpeningBalanceBatch.php:89-96, apps/api/app/Modules/Accounting/Application/Services/OpeningBalanceBatchService.php:461-474. But Task 8's test still asserts the old scalar contract at plan:487. |
+| B2 `ImportServiceProvider` wiring | PASS | Tasks 7/8/14 now explicitly include `app/Modules/Import/Providers/ImportServiceProvider.php` and warn that `ImportService` is manually constructed (plan:407-409, plan:455-458, plan:619-621). Actual provider manually calls `new ImportService(...)` at apps/api/app/Modules/Import/Providers/ImportServiceProvider.php:33-44. |
+| B3 Task 1 fixture | PASS | Task 1 now says `Tests\TestCase` has no fixture helpers and tells the implementer to copy `OpeningBalanceBatchTest` setup, then uses `$this->user->id` (plan:81-84, plan:99, plan:113). The referenced setup exists at apps/api/tests/Feature/Accounting/OpeningBalanceBatchTest.php:51-107. |
+| B4 deterministic generated SKU | PASS | Task 13 replaces ULID/random SKU with deterministic `Str::slug(name)` uppercased and adds a count-stays-1 idempotency test (plan:604-612). This matches the v4 addendum (spec:319-321) and fixes the current SKU-only `updateOrCreate` behavior in apps/api/app/Modules/Product/Application/Services/ProductService.php:103-110. |
+| M1 boundary | PASS | Plan architecture and self-review now state Import consumes module-public application services, with only `TaxDefaultResolverInterface` as a new shared contract (plan:8, plan:670). The v4 addendum explicitly amends the spec (spec:317-320). |
+| M2 direct Partner model path | PASS | Task 8 now forbids direct Partner model writes from Import and moves generated code before partner import (plan:473-474). The only `Partner::` occurrence in the repaired plan is the Task 1 test fixture setup (plan:89), not Import production code. |
+| M3 `balance_date` default | PASS | Task 8 now derives the default from `Company::$fiscal_year_start_month` with future-year rollback (plan:473), and the property/column exists in code (apps/api/app/Modules/Company/Domain/Company.php:60, apps/api/database/migrations/tenant/2025_11_30_104000_create_companies_table.php:65). Spec v4 matches (spec:321). |
+| M4 product opening lock | PASS | Task 14 now says no product-level lock exists today, reserves `opening_locked`, and maps unexpected failures to `opening_failed` (plan:631). Spec v4 matches that code reality (spec:322). |
+| M5 hardcoded scale | PASS | Task 14 now injects/uses `CurrencyScaleResolverInterface` and follows the `ProductController` pattern instead of hardcoding 3 (plan:630). The resolver binding exists at apps/api/app/Providers/AppServiceProvider.php:81-87. |
+| M6 `MigrationWizardService` touchpoints | PASS | Task 5 now enumerates all six type-keyed structures and FR aliases, plus exhaustive `ImportType::` grep guidance (plan:343-369). |
+| M7 route prefix | PASS | Task 9 now asserts `/api/v1/imports` and `/api/v1/migration-wizard/order`, and explicitly says never assert bare `/imports` (plan:505). Actual routes are under `prefix('api/v1')` at apps/api/app/Modules/Import/Providers/ImportServiceProvider.php:59-79. |
+| M8 directory test run | PASS | Task 9 now uses an explicit import feature file list, not `tests/Feature/Import/` as a directory run (plan:507). |
+| M9 PATCH options | PASS | Task 4 now says `PATCH /imports/{id}/options` validates an options object and the FE uses `api.patch`/`response.data` if no helper exists (plan:316-320, plan:655). |
+| M10 Arabic locale | PASS | The plan records the deliberate `ar/import.json` fallback exception (plan:18), and spec v4 now permits en/fr-only new keys for this namespace (spec:323). |
+| N1 brand service | PASS | Task 13 now names `BrandResolutionService`, references the actual `EnrichmentReviewService::accept()` delegation, and forbids hand-rolled `Brand::firstOrCreate` (plan:609). Actual delegation is apps/api/app/Modules/Product/Application/Services/EnrichmentReviewService.php:163-177. |
+| N2 warning rows semantics | PASS | Task 3 now documents null-clear semantics and uses `jsonb_array_length(warnings) > 0` for `warning_rows` (plan:303). |
+| N3 workbook sheets | PASS | Task 15 now states the two-sheet workbook is a phase-scoped deviation until enrichment states exist in phase 3 (plan:643-645). |
+
+### Remaining Findings
+
+### MAJOR - Task 8 still tells implementers to assert the old scalar `import_file_reference`
+
+The main Task 8 implementation text was repaired correctly: it says `import_file_reference` is jsonb cast to array, stores `['import_job_id' => $job->id, 'source' => 'unified-import']`, looks up with `import_file_reference->import_job_id`, and creates a jsonb path index (plan:464-468, plan:477-478). That matches actual code: the migration creates `jsonb`, the model casts it to `array`, and `updateFileReference()` requires `array<string,mixed>` (apps/api/database/migrations/tenant/2025_12_11_100000_create_opening_balance_tables.php:23; apps/api/app/Modules/Accounting/Domain/OpeningBalanceBatch.php:89-96; apps/api/app/Modules/Accounting/Application/Services/OpeningBalanceBatchService.php:461-474).
+
+But the failing feature-test checklist still says `batch import_file_reference === $job->id` (plan:487). Implemented literally, that assertion fails against both the repaired task body and the actual model contract. Change it to assert `import_file_reference['import_job_id'] === $job->id` and `import_file_reference['source'] === 'unified-import'`.
+
+### MAJOR - Spec v4 still leaves the old scalar traceability sentence in force
+
+The spec's v4 addendum reconciles five plan-phase corrections, but it does not include the jsonb `import_file_reference` correction. The old scalar sentence remains: "`opening_balance_batches.import_file_reference` = import job id" and "partial unique index on `(import_file_reference, type)`" (spec:88). The repaired plan now says the plan-owned implementation is jsonb object shape + expression index over `import_file_reference->>'import_job_id'` (plan:464-468).
+
+Because the user explicitly asked to verify plan/spec/code consistency, this is still a cross-doc contradiction. Either add a sixth v4 addendum item for the jsonb shape/index or update spec §1 directly.
+
+### NIT - Plan header still says FINAL v3 after relying on v4 addendum
+
+The plan goal still references the spec as "FINAL v3" (plan:6), while the repaired plan relies on the spec's "Plan-phase addendum (v4)" (spec:315-323). This is not implementation-breaking, but it is a stale cue for future reviewers.
+
+### Round-2 Verdict
+
+READY-WITH-FIXES
+
+No original blocker remains as an implementation blocker in the production task instructions. However, B1 is not fully repaired because the test checklist and spec wording still preserve the old scalar `import_file_reference` contract. Fix those two doc lines before handing the plan to implementers; the rest of the round-1 dispositions check out against the repo.
