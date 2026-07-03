@@ -14,6 +14,10 @@
       "title": "Informations de l'entreprise",
       "description": "Mettre à jour les détails de l'entreprise et les informations commerciales"
     },
+    "locations": {
+      "title": "Sites & succursales",
+      "description": "Gérez l'adresse, les contacts et l'identifiant fiscal de chaque succursale"
+    },
     "tax": {
       "title": "Paramètres fiscaux",
       "description": "Configurer les taux de taxe et les paramètres de l'exercice fiscal"

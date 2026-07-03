@@ -14,6 +14,10 @@
       "title": "Company Information",
       "description": "Update company details and business information"
     },
+    "locations": {
+      "title": "Locations & Branches",
+      "description": "Manage each branch's address, contact details, and tax ID"
+    },
     "tax": {
       "title": "Tax Settings",
       "description": "Configure tax rates and fiscal year settings"

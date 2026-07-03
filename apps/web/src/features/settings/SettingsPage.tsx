@@ -4,6 +4,7 @@ import {
   Users,
   Shield,
   Building2,
+  MapPin,
   Upload,
   Calculator,
   Package,
@@ -44,6 +45,12 @@ const sections: SettingsSection[] = [
     descriptionKey: 'sections.company.description',
     icon: Building2,
     href: '/settings/company',
+  },
+  {
+    titleKey: 'sections.locations.title',
+    descriptionKey: 'sections.locations.description',
+    icon: MapPin,
+    href: '/settings/locations',
   },
   {
     titleKey: 'sections.tax.title',
