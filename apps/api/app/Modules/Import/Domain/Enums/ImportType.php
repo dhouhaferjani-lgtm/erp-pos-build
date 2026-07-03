@@ -24,7 +24,7 @@ enum ImportType: string
         return match ($this) {
             self::Parties => ['name', 'type'],
             self::Partners => ['name', 'type'],
-            self::Products => ['name', 'sku', 'type'],
+            self::Products => ['name'],
             self::StockLevels => ['product_sku', 'location_code', 'quantity'],
             self::OpeningBalances => ['account_code', 'debit', 'credit'],
             self::ProductImages => [], // ZIP-based import, not CSV
@@ -56,7 +56,7 @@ enum ImportType: string
                 'reference',
             ],
             self::Partners => ['email', 'phone', 'vat_number', 'address', 'city', 'country'],
-            self::Products => ['description', 'sale_price', 'purchase_price', 'barcode', 'category_name', 'tax_rate', 'unit', 'is_active'],
+            self::Products => ['sku', 'type', 'description', 'sale_price', 'sale_price_incl_tax', 'sale_price_excl_tax', 'purchase_price', 'margin', 'quantity', 'location_code', 'barcode', 'category_name', 'brand', 'tax_rate', 'unit', 'is_active'],
             self::StockLevels => ['notes'],
             self::OpeningBalances => ['description', 'reference'],
             self::ProductImages => [], // ZIP-based import, not CSV
@@ -94,10 +94,16 @@ enum ImportType: string
             ],
             self::Products => [
                 'name' => ['required', 'string', 'max:255'],
-                'sku' => ['required', 'string', 'max:100'],
-                'type' => ['required', 'in:part,service,consumable'],
+                'sku' => ['nullable', 'string', 'max:100'],
+                'type' => ['nullable', 'in:part,service,consumable'],
                 'sale_price' => ['nullable', 'numeric', 'min:0'],
+                'sale_price_incl_tax' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+                'sale_price_excl_tax' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
                 'purchase_price' => ['nullable', 'numeric', 'min:0'],
+                'margin' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,2})?$/'],
+                'quantity' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+                'location_code' => ['nullable', 'string', 'max:100'],
+                'brand' => ['nullable', 'string', 'max:255'],
                 'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'unit' => ['nullable', 'string', 'max:50'],
                 'is_active' => ['nullable', 'in:true,false,1,0,yes,no'],

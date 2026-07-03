@@ -105,6 +105,7 @@ class ImportTypesTest extends TestCase
 
         $jobId = $response->json('data.id');
         $job = ImportJob::find($jobId);
+        $this->assertInstanceOf(ImportJob::class, $job);
 
         $this->assertEquals(ImportStatus::Validated, $job->status);
         $this->assertEquals(2, $job->total_rows);
@@ -214,11 +215,30 @@ class ImportTypesTest extends TestCase
         ]);
     }
 
-    public function test_product_import_validates_sku_required(): void
+    public function test_product_import_accepts_extended_columns_and_defaults_type(): void
     {
+        $this->assertSame(['name'], ImportType::Products->getRequiredColumns());
+        $this->assertContains('sale_price_incl_tax', ImportType::Products->getOptionalColumns());
+        $this->assertContains('sale_price_excl_tax', ImportType::Products->getOptionalColumns());
+        $this->assertContains('margin', ImportType::Products->getOptionalColumns());
+        $this->assertContains('quantity', ImportType::Products->getOptionalColumns());
+        $this->assertContains('location_code', ImportType::Products->getOptionalColumns());
+        $this->assertContains('brand', ImportType::Products->getOptionalColumns());
+
+        $templateResponse = $this->actingAs($this->user, 'sanctum')
+            ->get('/api/v1/migration-wizard/template/products');
+
+        $templateResponse->assertOk();
+        $templateResponse->assertSee('sale_price_incl_tax', false);
+        $templateResponse->assertSee('sale_price_excl_tax', false);
+        $templateResponse->assertSee('margin', false);
+        $templateResponse->assertSee('quantity', false);
+        $templateResponse->assertSee('location_code', false);
+        $templateResponse->assertSee('brand', false);
+
         $file = UploadedFile::fake()->createWithContent(
             'products.csv',
-            "name,sku,type\nBrake Pad,,part"
+            "name,sku,margin\nBrake Pad,BP-DEFAULT,12.5"
         );
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -228,7 +248,47 @@ class ImportTypesTest extends TestCase
             ]);
 
         $response->assertCreated();
-        $this->assertEquals(1, $response->json('data.failed_rows'));
+        $this->assertEquals(0, $response->json('data.failed_rows'));
+
+        $jobId = $response->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk();
+
+        $product = Product::where('sku', 'BP-DEFAULT')->firstOrFail();
+        $this->assertSame(ProductType::Part, $product->type);
+    }
+
+    public function test_product_import_validates_margin_scale(): void
+    {
+        $valid = UploadedFile::fake()->createWithContent(
+            'products.csv',
+            "name,margin\nValid Margin,12.5"
+        );
+
+        $validResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $valid,
+                'type' => 'products',
+            ]);
+
+        $validResponse->assertCreated();
+        $this->assertEquals(0, $validResponse->json('data.failed_rows'));
+
+        $invalid = UploadedFile::fake()->createWithContent(
+            'products.csv',
+            "name,margin\nInvalid Margin,12.555"
+        );
+
+        $invalidResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $invalid,
+                'type' => 'products',
+            ]);
+
+        $invalidResponse->assertCreated();
+        $this->assertEquals(1, $invalidResponse->json('data.failed_rows'));
     }
 
     public function test_product_import_validates_product_type(): void
@@ -335,7 +395,8 @@ class ImportTypesTest extends TestCase
         $importService->validateJob($job);
 
         // Validation passes but execution will fail
-        $this->assertEquals(ImportStatus::Validated, $job->fresh()->status);
+        $job->refresh();
+        $this->assertEquals(ImportStatus::Validated, $job->status);
 
         $importService->executeImport($job);
 
@@ -443,7 +504,9 @@ class ImportTypesTest extends TestCase
 
         $productRules = ImportType::Products->getValidationRules();
         $this->assertArrayHasKey('sku', $productRules);
-        $this->assertContains('required', $productRules['sku']);
+        $this->assertContains('nullable', $productRules['sku']);
+        $this->assertContains('nullable', $productRules['type']);
+        $this->assertContains('regex:/^-?\d+(\.\d{1,2})?$/', $productRules['margin']);
 
         $stockRules = ImportType::StockLevels->getValidationRules();
         $this->assertArrayHasKey('quantity', $stockRules);
