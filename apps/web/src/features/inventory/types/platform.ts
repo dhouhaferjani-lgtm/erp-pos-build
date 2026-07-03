@@ -15,6 +15,8 @@ export interface SuggestedProduct {
   name: string
   barcode: string
   brand: string | null
+  /** Local ERP brand resolved server-side via the cross-ERP mapping ladder; null when the platform payload had no brand mapping. */
+  brand_id: string | null
   description: string | null
   platform_product_id: string
   classification: Record<string, unknown>

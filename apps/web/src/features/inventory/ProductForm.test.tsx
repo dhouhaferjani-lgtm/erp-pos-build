@@ -2,6 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ProductForm } from './ProductForm'
 import { bcsub, bcdiv, bcmul } from '../../lib/decimal'
+import type { LookupState, SuggestedProduct } from './types/platform'
+
+interface MockMutationOptions {
+  mutationFn?: (variables: unknown) => unknown | Promise<unknown>
+}
+
+interface MockCatalogLookupOptions {
+  onProductData: (data: SuggestedProduct) => void
+  onLookupStateChange: (state: LookupState) => void
+}
 
 // i18n → return the key (string 2nd arg = default value)
 vi.mock('react-i18next', () => ({
@@ -24,6 +34,21 @@ vi.mock('react-router-dom', () => ({
 
 // Shared mutateAsync handle so tests can configure per-test resolution.
 const mockMutateAsync = vi.fn()
+const mockApiPost = vi.fn()
+let mockUseMutationRunsMutationFn = false
+let mockCatalogLookupReturnsFound = false
+let mockCatalogLookupCallbacksFired = false
+const mockSuggestedProduct: SuggestedProduct = {
+  name: 'Catalog Product',
+  barcode: '12345678',
+  brand: 'Catalog Brand',
+  brand_id: 'brand-uuid-1',
+  description: 'Catalog description',
+  platform_product_id: 'platform-product-1',
+  classification: {},
+  ingredients: [],
+  images: [],
+}
 
 // decouple from network
 vi.mock('@tanstack/react-query', async (importOriginal) => {
@@ -31,10 +56,25 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   return {
     ...actual,
     useQuery: () => ({ data: undefined, isLoading: false }),
-    useMutation: () => ({ mutate: vi.fn(), mutateAsync: mockMutateAsync, isPending: false }),
+    useMutation: (options?: MockMutationOptions) => ({
+      mutate: vi.fn(),
+      mutateAsync: (variables: unknown) => {
+        if (mockUseMutationRunsMutationFn && options?.mutationFn !== undefined) {
+          return options.mutationFn(variables)
+        }
+        return mockMutateAsync(variables)
+      },
+      isPending: false,
+    }),
     useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   }
 })
+
+vi.mock('../../lib/api', () => ({
+  api: { get: vi.fn() },
+  apiPatch: vi.fn(),
+  apiPost: (...args: unknown[]) => mockApiPost(...args),
+}))
 
 vi.mock('../../stores/authStore', () => {
   const state = { user: { tenant_id: 'tenant-1' } }
@@ -63,6 +103,7 @@ vi.mock('../../hooks/useCurrency', () => ({
   getDecimals: () => 2,
 }))
 vi.mock('./api/platformQueries', () => ({
+  useEnrichmentRefresh: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useProductSubmission: () => ({ mutate: vi.fn() }),
 }))
 vi.mock('../catalog/hooks/useVariants', () => ({
@@ -74,9 +115,20 @@ vi.mock('../../components/catalog/CategorySelect', () => ({
   CategorySelect: () => <div data-testid="category-select" />,
 }))
 // BarcodeHero: keep the real component but mock the lookup hook it now uses
-vi.mock('@/features/inventory/hooks/useCatalogBarcodeLookup', () => ({
-  useCatalogBarcodeLookup: vi.fn(() => ({ isSearching: false })),
-}))
+vi.mock('@/features/inventory/hooks/useCatalogBarcodeLookup', async () => {
+  const React = await import('react')
+  return {
+    useCatalogBarcodeLookup: vi.fn((options: MockCatalogLookupOptions) => {
+      React.useEffect(() => {
+        if (!mockCatalogLookupReturnsFound || mockCatalogLookupCallbacksFired) return
+        mockCatalogLookupCallbacksFired = true
+        options.onLookupStateChange('found')
+        options.onProductData(mockSuggestedProduct)
+      }, [options])
+      return { isSearching: false }
+    }),
+  }
+})
 vi.mock('./components/CatalogBanner', () => ({
   CatalogBanner: () => null,
 }))
@@ -117,6 +169,10 @@ beforeEach(() => {
   mockParams = {}
   mockNavigate.mockReset()
   mockMutateAsync.mockReset()
+  mockApiPost.mockReset()
+  mockUseMutationRunsMutationFn = false
+  mockCatalogLookupReturnsFound = false
+  mockCatalogLookupCallbacksFired = false
 })
 
 describe('ProductForm (canonical layout)', () => {
@@ -177,6 +233,27 @@ describe('ProductForm (canonical layout)', () => {
     fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-9' } })
     fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/inventory/products/prod-9'))
+  })
+
+  it('posts the server-resolved brand_id when creating from a found catalog lookup', async () => {
+    mockUseMutationRunsMutationFn = true
+    mockCatalogLookupReturnsFound = true
+    mockApiPost.mockResolvedValueOnce({ id: 'prod-brand' })
+
+    render(<ProductForm />)
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('inventory:products.name', { exact: false })).toHaveValue('Catalog Product'),
+    )
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-BRAND' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() =>
+      expect(mockApiPost).toHaveBeenCalledWith(
+        '/products',
+        expect.objectContaining({ brand_id: 'brand-uuid-1' }),
+      ),
+    )
   })
 
   it('Save & Close navigates to the product list after create', async () => {

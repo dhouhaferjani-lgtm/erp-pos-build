@@ -374,7 +374,9 @@ export function ProductForm() {
 
   const createMutation = useMutation({
     mutationFn: (data: ProductFormData) => {
-      const basePayload = buildProductPayload(data, { isParapharmacy })
+      const suggestedBrandId =
+        lookupState === 'found' ? suggestedProductRef.current?.brand_id ?? null : null
+      const basePayload = buildProductPayload(data, { isParapharmacy, suggestedBrandId })
       const hasOpeningQty =
         data.opening_qty.trim() !== '' && data.opening_qty.trim() !== '0'
       if (hasOpeningQty) {
