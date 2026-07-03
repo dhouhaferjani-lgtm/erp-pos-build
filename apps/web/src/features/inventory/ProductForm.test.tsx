@@ -426,11 +426,14 @@ describe('ProductForm (canonical layout)', () => {
   })
 
   it('does not render the capture panel in idle or found lookup states', async () => {
-    const { rerender } = render(<ProductForm />)
+    // Fresh mounts per lookup state: swapping the hook mock's implementation
+    // on a live mount changes the hook count and trips React's rules-of-hooks.
+    const idleRender = render(<ProductForm />)
     expect(screen.queryByText('barcodeLookup.capturePhotoHelp')).not.toBeInTheDocument()
+    idleRender.unmount()
 
     mockFoundLookup(makeSuggestedProduct())
-    rerender(<ProductForm />)
+    render(<ProductForm />)
 
     await waitFor(() => {
       expect(screen.queryByText('barcodeLookup.capturePhotoHelp')).not.toBeInTheDocument()
@@ -588,13 +591,11 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     expect(inputs[1]).toHaveAttribute('id', 'sale_price')
   })
 
-  it('does not render Margin when both prices are empty (default state)', () => {
+  it('renders the ready-to-sell margin input EMPTY when both prices are empty (default state)', () => {
+    // post-demo design: the ready-to-sell strip always renders the margin
+    // input; an empty value (not absence) is the "no margin yet" state.
     render(<ProductForm />)
-    // With empty defaults, margin should not be shown
-    const marginLabel = screen.queryByLabelText(/inventory:products\.margin/i, { exact: false })
-    expect(marginLabel).not.toBeInTheDocument()
-    // Also check by text content — the label text itself
-    expect(screen.queryByText(/inventory:products\.margin/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue('')
   })
 
   it('shows Margin when both purchase_price and sale_price are entered', () => {
@@ -610,18 +611,15 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     expect(screen.getByLabelText(/inventory:products\.margin/i, { exact: false })).toBeInTheDocument()
   })
 
-  it('hides Margin when sale_price is cleared back to empty', () => {
+  it('empties the margin value when sale_price is cleared back to empty', () => {
     render(<ProductForm />)
     const purchaseInput = screen.getByLabelText(/inventory:products\.purchasePrice/i, { exact: false })
     const saleInput = screen.getByLabelText(/inventory:products\.salePrice/i, { exact: false })
 
     fireEvent.change(purchaseInput, { target: { value: '60' } })
     fireEvent.change(saleInput, { target: { value: '100' } })
-    // Margin visible
-    expect(screen.getByLabelText(/inventory:products\.margin/i, { exact: false })).toBeInTheDocument()
-    // Clear sale_price → margin should disappear
     fireEvent.change(saleInput, { target: { value: '' } })
-    expect(screen.queryByLabelText(/inventory:products\.margin/i, { exact: false })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue('')
   })
 
   it('WAC display (edit mode) — uses formatCurrency (no raw parseFloat in rendered output)', () => {

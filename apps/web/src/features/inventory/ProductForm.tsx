@@ -88,7 +88,6 @@ interface Product {
   shelf_location: string | null
   reorder_point: string | null
   reorder_quantity: string | null
-  enrichment_status: string | null
   platform_product_id: string | null
   created_at: string
   updated_at: string | null
