@@ -191,7 +191,9 @@ class IncomeController extends Controller
             ->with('incomeMetadata')
             ->firstOrFail();
 
-        if ($income->status === DocumentStatus::Posted) {
+        // Only Draft can be posted; any other status (Posted, Cancelled, …)
+        // must return 422, not fall through to the service's RuntimeException.
+        if ($income->status !== DocumentStatus::Draft) {
             return response()->json([
                 'error' => __('messages.document_already_posted'),
             ], 422);
