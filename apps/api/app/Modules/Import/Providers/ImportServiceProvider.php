@@ -12,6 +12,8 @@ use App\Modules\Import\Presentation\Controllers\MigrationWizardController;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\NumericFieldNormalizer;
+use App\Modules\Import\Services\PartiesBalancesPhase;
+use App\Modules\Import\Services\PartiesRowMapper;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
@@ -40,7 +42,9 @@ class ImportServiceProvider extends ServiceProvider
                 $app->make(LocationServiceInterface::class),
                 $app->make(AccountingServiceInterface::class),
                 $app->make(CompositeItemServiceInterface::class),
-                $app->make(NumericFieldNormalizer::class)
+                $app->make(NumericFieldNormalizer::class),
+                $app->make(PartiesRowMapper::class),
+                $app->make(PartiesBalancesPhase::class)
             );
         });
 
@@ -56,7 +60,7 @@ class ImportServiceProvider extends ServiceProvider
 
     private function registerRoutes(): void
     {
-        Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])
+        Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'can:imports.manage'])
             ->prefix('api/v1')
             ->group(function (): void {
                 // Import routes
