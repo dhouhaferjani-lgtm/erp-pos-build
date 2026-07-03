@@ -16,7 +16,7 @@ class ProductSubmissionData extends Data
         public ?string $barcode,
         public string $vertical,
         public string $name,
-        public string $brand,
+        public ?string $brand,
         public ?string $category,
         public ?string $description,
         public ?array $attributes,
