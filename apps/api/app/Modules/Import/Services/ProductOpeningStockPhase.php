@@ -68,12 +68,10 @@ final class ProductOpeningStockPhase
                         continue;
                     }
 
-                    if ($product->requires_batch_tracking) {
-                        $results[] = $this->warning($row->id, 'quantity_batch_tracked', 'batch-tracked products: use stock flows', 'skipped: quantity_batch_tracked');
-
-                        continue;
-                    }
-
+                    // Batch-tracked products are handled by the posting service
+                    // itself (it backs the opened quantity with a DEFAULT lot) —
+                    // parapharmacy verticals default every product to batch
+                    // tracking, so skipping them would no-op the whole vertical.
                     $locationId = $this->resolveLocationId($job, $companyId, $data);
                     if ($locationId === null) {
                         $results[] = $this->warning($row->id, 'location_unresolved', 'location code could not be resolved', 'skipped: location_unresolved');

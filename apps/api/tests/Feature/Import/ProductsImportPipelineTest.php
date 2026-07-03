@@ -7,6 +7,7 @@ namespace Tests\Feature\Import;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -197,5 +198,54 @@ final class ProductsImportPipelineTest extends TestCase
         $this->assertSame('opening_exists', $rows[4]->warnings[0]['code'] ?? null);
         $this->assertSame('price_conflict', $rows[6]->warnings[0]['code'] ?? null);
         $this->assertSame(1, StockMovement::where('product_id', $duplicate->id)->where('movement_type', MovementType::Opening)->count());
+    }
+
+    public function test_batch_tracked_product_quantity_creates_opening_movement_with_default_lot(): void
+    {
+        // Parapharmacy verticals default requires_batch_tracking=true for every
+        // product — opening stock must still import (the posting service backs
+        // it with a DEFAULT lot), otherwise quantity import is a no-op for the
+        // whole vertical.
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Lot Tracked Product',
+            'sku' => 'LOT-1',
+            'type' => ProductType::Part,
+            'tax_rate' => '19.00',
+            'requires_batch_tracking' => true,
+            'default_shelf_life_days' => 365,
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('products-lot.csv', implode("\n", [
+            'name,sku,type,quantity,location_code,purchase_price',
+            'Lot Tracked Product,LOT-1,part,6.0000,MAIN,2.500',
+        ]));
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => $file,
+                'type' => 'products',
+            ]);
+        $createResponse->assertCreated();
+        $jobId = $createResponse->json('data.id');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/imports/{$jobId}/execute")
+            ->assertOk()
+            ->assertJsonPath('data.warning_rows', 0);
+
+        $product = Product::where('sku', 'LOT-1')->firstOrFail();
+        $this->assertSame(1, StockMovement::where('product_id', $product->id)->where('movement_type', MovementType::Opening)->count());
+        $this->assertSame('6.0000', StockLevel::where('product_id', $product->id)->firstOrFail()->quantity);
+        $this->assertSame(
+            1,
+            Batch::where('product_id', $product->id)->count(),
+            'batch-tracked opening stock must be backed by a default lot'
+        );
+
+        $row = ImportJob::findOrFail($jobId)->rows()->firstOrFail();
+        $this->assertSame('ok', $row->data['_results']['opening_stock'] ?? null);
+        $this->assertNull($row->warnings);
     }
 }
