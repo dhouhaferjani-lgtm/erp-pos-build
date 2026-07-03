@@ -9,6 +9,7 @@ import {
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
+import type { EnrichmentRejectionReason } from '../types/enrichment'
 
 export const enrichmentKeys = {
   all: ['enrichment-results'] as const,
@@ -78,8 +79,15 @@ export function useRejectEnrichment() {
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
-      rejectEnrichmentResult(id, reason),
+    mutationFn: ({
+      id,
+      notes,
+      reason,
+    }: {
+      id: string
+      notes?: string
+      reason: EnrichmentRejectionReason
+    }) => rejectEnrichmentResult(id, reason, notes),
     onSuccess: async () => {
       await qc.invalidateQueries({
         predicate: enrichmentInvalidationPredicate(tenantId, companyId),

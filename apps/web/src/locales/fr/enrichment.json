@@ -26,6 +26,13 @@
       "quality": "Qualit\u00e9",
       "assignedBarcode": "Code-barres attribu\u00e9",
       "submitted": "Soumis"
+    },
+    "curatedUpdateBadge": "Mis \u00e0 jour par curation",
+    "relative": {
+      "justNow": "\u00e0 l'instant",
+      "minutesAgo": "il y a {{count}} min",
+      "hoursAgo": "il y a {{count}} h",
+      "daysAgo": "il y a {{count}} j"
     }
   },
   "review": {
@@ -48,6 +55,14 @@
     "reject": "Rejeter",
     "rejecting": "Rejet en cours…",
     "confirmReject": "Confirmer le rejet",
+    "curatedUpdateBadge": "Mis \u00e0 jour par curation",
+    "rejectReasonLabel": "Motif du rejet",
+    "rejectReasons": {
+      "wrongProduct": "Mauvais produit",
+      "badData": "Donn\u00e9es incorrectes"
+    },
+    "rejectNoteLabel": "Note facultative",
+    "rejectNotePlaceholder": "Ajoutez des d\u00e9tails pour l'\u00e9quipe d'enrichissement",
     "rejectReasonPlaceholder": "Raison du rejet (optionnel)",
     "rejectReason": "Raison (optionnel)",
     "rejectSuccess": "Enrichissement rejet\u00e9.",

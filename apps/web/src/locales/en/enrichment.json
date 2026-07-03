@@ -26,6 +26,13 @@
       "quality": "Quality",
       "assignedBarcode": "Assigned Barcode",
       "submitted": "Submitted"
+    },
+    "curatedUpdateBadge": "Updated by curation",
+    "relative": {
+      "justNow": "just now",
+      "minutesAgo": "{{count}}m ago",
+      "hoursAgo": "{{count}}h ago",
+      "daysAgo": "{{count}}d ago"
     }
   },
   "review": {
@@ -48,6 +55,14 @@
     "reject": "Reject",
     "rejecting": "Rejecting…",
     "confirmReject": "Confirm reject",
+    "curatedUpdateBadge": "Updated by curation",
+    "rejectReasonLabel": "Rejection reason",
+    "rejectReasons": {
+      "wrongProduct": "Wrong product",
+      "badData": "Bad data"
+    },
+    "rejectNoteLabel": "Optional note",
+    "rejectNotePlaceholder": "Add details for the enrichment team",
     "rejectReasonPlaceholder": "Reason for rejection (optional)",
     "rejectReason": "Reason (optional)",
     "rejectSuccess": "Enrichment rejected.",
