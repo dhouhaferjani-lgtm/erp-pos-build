@@ -113,10 +113,69 @@ final class PartnerService implements PartnerServiceInterface
         return $value === '' ? null : $value;
     }
 
+    /**
+     * Country names → ISO 3166-1 alpha-2 codes for CSV import resolution.
+     *
+     * The partners.country / country_code columns are CHAR(2). CSV imports carry
+     * human-readable names ("Tunisie", "United Kingdom") — inserting those raw
+     * fails the whole row with a 22001 truncation error. Covers the product's
+     * primary markets in French and English; keys are mb_strtoupper'd.
+     *
+     * @var array<string, string>
+     */
+    private const COUNTRY_NAME_TO_CODE = [
+        'TUNISIE' => 'TN',
+        'TUNISIA' => 'TN',
+        'FRANCE' => 'FR',
+        'MAROC' => 'MA',
+        'MOROCCO' => 'MA',
+        'ALGERIE' => 'DZ',
+        'ALGÉRIE' => 'DZ',
+        'ALGERIA' => 'DZ',
+        'LIBYE' => 'LY',
+        'LIBYA' => 'LY',
+        'EGYPTE' => 'EG',
+        'ÉGYPTE' => 'EG',
+        'EGYPT' => 'EG',
+        'ITALIE' => 'IT',
+        'ITALY' => 'IT',
+        'ESPAGNE' => 'ES',
+        'SPAIN' => 'ES',
+        'PORTUGAL' => 'PT',
+        'ALLEMAGNE' => 'DE',
+        'GERMANY' => 'DE',
+        'BELGIQUE' => 'BE',
+        'BELGIUM' => 'BE',
+        'SUISSE' => 'CH',
+        'SWITZERLAND' => 'CH',
+        'ROYAUME-UNI' => 'GB',
+        'UNITED KINGDOM' => 'GB',
+        'CANADA' => 'CA',
+        'ETATS-UNIS' => 'US',
+        'ÉTATS-UNIS' => 'US',
+        'UNITED STATES' => 'US',
+        'TURQUIE' => 'TR',
+        'TURKEY' => 'TR',
+    ];
+
+    /**
+     * Resolve a country value to an ISO 3166-1 alpha-2 code.
+     *
+     * Accepts 2-letter codes as-is (uppercased); resolves known French/English
+     * country names; otherwise returns null so the row still imports
+     * (address/city persist, country stays empty).
+     */
     private static function countryCode(mixed $value): ?string
     {
         $value = self::nullableString($value);
+        if ($value === null) {
+            return null;
+        }
 
-        return $value === null ? null : strtoupper($value);
+        if (preg_match('/^[A-Za-z]{2}$/', $value) === 1) {
+            return strtoupper($value);
+        }
+
+        return self::COUNTRY_NAME_TO_CODE[mb_strtoupper($value)] ?? null;
     }
 }

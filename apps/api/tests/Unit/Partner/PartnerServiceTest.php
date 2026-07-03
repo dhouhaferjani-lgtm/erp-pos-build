@@ -191,4 +191,88 @@ class PartnerServiceTest extends TestCase
 
         $this->assertNull($result);
     }
+
+    public function test_upsert_resolves_french_country_name_to_iso_code(): void
+    {
+        // Regression: partners.country / country_code are CHAR(2). CSV imports
+        // carry human country names ("Tunisie") — must resolve to the ISO code,
+        // not fail the INSERT with a 22001 truncation error.
+        $partnerId = $this->service->upsertWithTypeMerge(
+            $this->tenant->id,
+            $this->company->id,
+            [
+                'name' => 'Pharmacie du Centre',
+                'type' => 'customer',
+                'address' => 'Avenue Habib Bourguiba 45',
+                'city' => 'Tunis',
+                'country' => 'Tunisie',
+            ]
+        );
+
+        $partner = Partner::find($partnerId);
+        $this->assertNotNull($partner);
+        $this->assertEquals('Avenue Habib Bourguiba 45', $partner->street_address);
+        $this->assertEquals('Tunis', $partner->city);
+        $this->assertEquals('TN', $partner->country);
+        $this->assertEquals('TN', $partner->country_code);
+    }
+
+    public function test_upsert_resolves_english_country_name_to_iso_code(): void
+    {
+        $partnerId = $this->service->upsertWithTypeMerge(
+            $this->tenant->id,
+            $this->company->id,
+            [
+                'name' => 'UK Distributor Ltd',
+                'type' => 'supplier',
+                'country' => 'United Kingdom',
+            ]
+        );
+
+        $partner = Partner::find($partnerId);
+        $this->assertNotNull($partner);
+        $this->assertEquals('GB', $partner->country);
+        $this->assertEquals('GB', $partner->country_code);
+    }
+
+    public function test_upsert_keeps_two_letter_country_code_as_is(): void
+    {
+        $partnerId = $this->service->upsertWithTypeMerge(
+            $this->tenant->id,
+            $this->company->id,
+            [
+                'name' => 'Fournisseur Local',
+                'type' => 'supplier',
+                'country' => 'tn',
+            ]
+        );
+
+        $partner = Partner::find($partnerId);
+        $this->assertNotNull($partner);
+        $this->assertEquals('TN', $partner->country);
+        $this->assertEquals('TN', $partner->country_code);
+    }
+
+    public function test_upsert_with_unknown_country_name_imports_row_with_null_country(): void
+    {
+        // Unknown country must NOT fail the whole row — address/city still persist.
+        $partnerId = $this->service->upsertWithTypeMerge(
+            $this->tenant->id,
+            $this->company->id,
+            [
+                'name' => 'Partenaire Lointain',
+                'type' => 'customer',
+                'address' => 'Rue Principale 1',
+                'city' => 'Quelquepart',
+                'country' => 'Atlantide du Sud',
+            ]
+        );
+
+        $partner = Partner::find($partnerId);
+        $this->assertNotNull($partner);
+        $this->assertEquals('Rue Principale 1', $partner->street_address);
+        $this->assertEquals('Quelquepart', $partner->city);
+        $this->assertNull($partner->country);
+        $this->assertNull($partner->country_code);
+    }
 }
