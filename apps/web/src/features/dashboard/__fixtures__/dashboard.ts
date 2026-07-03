@@ -32,7 +32,7 @@ export interface DashboardStats {
 
 export interface RecentDocument {
   id: string
-  document_number: string
+  document_number: string | null
   type: string
   partner_name: string
   total: number | string | null

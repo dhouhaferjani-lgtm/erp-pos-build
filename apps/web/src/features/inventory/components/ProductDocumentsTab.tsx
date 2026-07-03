@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -36,7 +37,7 @@ interface Document {
   id: string
   type: string
   status: string
-  document_number: string
+  document_number: string | null
   document_date: string
   partner_id: string | null
   partner_name?: string
@@ -113,7 +114,7 @@ const statusToneOverrides: Record<string, StatusTone> = {
 }
 
 export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
-  const { t } = useTranslation(['inventory', 'common'])
+  const { t } = useTranslation(['inventory', 'common', 'sales'])
   const { decimals } = useCurrency()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -201,6 +202,8 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
   }
 
   const getStatusLabel = (status: string) => statusLabels[status] ?? status
+  const getDocumentNumberLabel = (documentNumber: string | null) =>
+    documentNumber ?? t('sales:documents.draftNumberPlaceholder')
 
   if (isLoading) {
     return (
@@ -286,11 +289,16 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
                           type="document"
                           id={doc.id}
                           documentType={documentType}
-                          label={doc.document_number}
+                          label={getDocumentNumberLabel(doc.document_number)}
                           className="font-medium"
                         />
                       ) : (
-                        <span className={`font-medium ${textColors.primary}`}>{doc.document_number}</span>
+                        <Link
+                          to={`/documents/${doc.id}`}
+                          className={`font-medium ${textColors.brand} hover:underline`}
+                        >
+                          {getDocumentNumberLabel(doc.document_number)}
+                        </Link>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">

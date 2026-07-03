@@ -600,7 +600,7 @@ export function InvoiceDetailPage() {
             partner_id: invoice.partner_id,
             partner_name: invoice.partner_name || '',
             amount: outstandingAmount,
-            reference: invoice.document_number,
+            reference: invoice.document_number ?? '',
             document_id: invoice.id,
             document_type: 'invoice',
           }}

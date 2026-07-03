@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EnrichmentReadyCard } from '../EnrichmentReadyCard'
 import { acceptEnrichmentResult } from '@/features/enrichment/api/enrichmentApi'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import type { EnrichmentResult } from '@/features/enrichment/types/enrichment'
 
 vi.mock('@/features/enrichment/api/enrichmentApi', () => ({
@@ -36,7 +37,7 @@ describe('EnrichmentReadyCard', () => {
       <EnrichmentReadyCard
         state={{ phase: 'ready', result: makeResult() }}
         canReview
-        productQueryKey={['product', 'product-1']}
+        productId="product-1"
       />,
       { wrapper: wrapper(queryClient) },
     )
@@ -52,7 +53,7 @@ describe('EnrichmentReadyCard', () => {
         'barcode',
       ])
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['product', 'product-1'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: tenantScopedKey(['product', 'product-1']) })
   })
 
   it('renders timeout copy without an apply button', () => {
@@ -62,7 +63,7 @@ describe('EnrichmentReadyCard', () => {
       <EnrichmentReadyCard
         state={{ phase: 'timeout' }}
         canReview
-        productQueryKey={['product', 'product-1']}
+        productId="product-1"
       />,
       { wrapper: wrapper(queryClient) },
     )
@@ -86,6 +87,9 @@ function makeResult(): EnrichmentResult {
     product_barcode: '12345',
     product_sku: 'BP-001',
     tracking_id: 'tracking-1',
+    version: 1,
+    origin: 'initial',
+    rejection_notes: null,
     status: 'pending_review',
     enriched_data: {
       name: 'Enriched Brake Pad',

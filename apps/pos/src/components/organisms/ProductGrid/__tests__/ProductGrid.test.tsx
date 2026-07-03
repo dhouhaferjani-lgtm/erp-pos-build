@@ -276,6 +276,11 @@ describe('ProductGrid', () => {
     renderGrid();
     expect(screen.getByTestId('product-grid-scroll')).toBeInTheDocument();
   });
+
+  it('uses a darker product canvas behind cards for card contrast', () => {
+    renderGrid();
+    expect(screen.getByTestId('product-grid-scroll').className).toContain('bg-[#e3e8ee]');
+  });
 });
 
 // ---------------------------------------------------------------------------

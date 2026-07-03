@@ -11,7 +11,11 @@ import {
 } from '../api/enrichmentQueries'
 import { QualityBadge } from './QualityBadge'
 import { FieldComparisonRow } from './FieldComparisonRow'
-import type { EnrichmentResult, ComparisonField } from '../types/enrichment'
+import type {
+  EnrichmentRejectionReason,
+  EnrichmentResult,
+  ComparisonField,
+} from '../types/enrichment'
 
 interface EnrichmentReviewPanelProps {
   resultId: string
@@ -102,27 +106,28 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
   const rejectMutation = useRejectEnrichment()
 
   const [showRejectInput, setShowRejectInput] = useState(false)
-  const [rejectReason, setRejectReason] = useState('')
+  const [rejectReason, setRejectReason] = useState<EnrichmentRejectionReason | ''>('')
+  const [rejectNotes, setRejectNotes] = useState('')
 
   const initialFields = useMemo(() => {
     if (!result) return []
     return buildComparisonFields(result)
   }, [result])
 
-  const [checkedFields, setCheckedFields] = useState<Record<string, boolean>>({})
+  const [checkedFields, setCheckedFields] = useState<Partial<Record<string, boolean>>>({})
 
   // Merge initial computed checks with user overrides
   const fields = useMemo(() => {
     return initialFields.map((f) => ({
       ...f,
-      checked: checkedFields[f.key] !== undefined ? checkedFields[f.key] : f.checked,
+      checked: checkedFields[f.key] ?? f.checked,
     }))
   }, [initialFields, checkedFields])
 
   const handleToggleField = useCallback((key: string) => {
     setCheckedFields((prev) => {
       const currentField = initialFields.find((f) => f.key === key)
-      const currentChecked = prev[key] !== undefined ? prev[key] : (currentField?.checked ?? false)
+      const currentChecked = prev[key] ?? currentField?.checked ?? false
       return { ...prev, [key]: !currentChecked }
     })
   }, [initialFields])
@@ -152,11 +157,16 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
       setShowRejectInput(true)
       return
     }
-    const mutationPayload = rejectReason
-      ? { id: resultId, reason: rejectReason }
-      : { id: resultId }
+    if (!rejectReason) {
+      return
+    }
+    const trimmedNotes = rejectNotes.trim()
     rejectMutation.mutate(
-      mutationPayload,
+      {
+        id: resultId,
+        ...(trimmedNotes ? { notes: trimmedNotes } : {}),
+        reason: rejectReason,
+      },
       {
         onSuccess: () => {
           toast.success(t('review.rejectSuccess'))
@@ -167,7 +177,7 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
         },
       },
     )
-  }, [showRejectInput, resultId, rejectReason, rejectMutation, onClose, t])
+  }, [showRejectInput, resultId, rejectReason, rejectNotes, rejectMutation, onClose, t])
 
   if (isLoading) {
     return (
@@ -200,9 +210,15 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
               </span>
             )}
             <QualityBadge quality={result.enrichment_quality} />
+            {result.origin === 'curated_update' && (
+              <span className={`${tokens.badge.base} ${tokens.badge.blue}`}>
+                {t('review.curatedUpdateBadge')}
+              </span>
+            )}
           </div>
         </div>
         <button
+          type="button"
           onClick={onClose}
           className={`${tokens.modal.closeButton} ml-2 flex-shrink-0`}
           aria-label={t('review.close')}
@@ -238,7 +254,9 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
             userValue={field.userValue}
             enrichedValue={field.enrichedValue}
             checked={field.checked}
-            onToggle={() => handleToggleField(field.key)}
+            onToggle={() => {
+              handleToggleField(field.key)
+            }}
             highlight={field.checked}
           />
         ))}
@@ -253,21 +271,55 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
       {canReview && (
         <div className="border-t px-5 py-4 space-y-3">
           {showRejectInput && (
-            <div>
-              <input
-                type="text"
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder={t('review.rejectReasonPlaceholder')}
-                className={tokens.input.base}
-                autoFocus
-              />
+            <div className="space-y-3">
+              <fieldset className="space-y-2">
+                <legend className={`text-sm font-medium ${textColors.secondary}`}>
+                  {t('review.rejectReasonLabel')}
+                </legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['wrong_product', t('review.rejectReasons.wrongProduct')],
+                    ['bad_data', t('review.rejectReasons.badData')],
+                  ] as const).map(([value, label]) => (
+                    <label
+                      key={value}
+                      className={`flex cursor-pointer items-center gap-2 rounded-md border ${borderColors.light} px-3 py-2 text-sm ${textColors.primary}`}
+                    >
+                      <input
+                        type="radio"
+                        name="reject-reason"
+                        value={value}
+                        checked={rejectReason === value}
+                        onChange={() => {
+                          setRejectReason(value)
+                        }}
+                        className={tokens.radio.base}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <label className="block">
+                <span className={`text-sm font-medium ${textColors.secondary}`}>
+                  {t('review.rejectNoteLabel')}
+                </span>
+                <textarea
+                  value={rejectNotes}
+                  onChange={(e) => {
+                    setRejectNotes(e.target.value)
+                  }}
+                  placeholder={t('review.rejectNotePlaceholder')}
+                  className={`${tokens.textarea.base} min-h-20`}
+                />
+              </label>
             </div>
           )}
           <div className="flex gap-3">
             <button
+              type="button"
               onClick={handleReject}
-              disabled={rejectMutation.isPending}
+              disabled={rejectMutation.isPending || (showRejectInput && !rejectReason)}
               className={`${tokens.button.base} ${tokens.button.danger} ${tokens.button.sizes.md} flex-1`}
             >
               {rejectMutation.isPending
@@ -277,6 +329,7 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
                   : t('review.reject')}
             </button>
             <button
+              type="button"
               onClick={handleAccept}
               disabled={acceptMutation.isPending}
               className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} flex-1`}

@@ -1,5 +1,9 @@
 import { api } from '@/lib/api'
-import type { EnrichmentResult, EnrichmentResultsPage } from '../types/enrichment'
+import type {
+  EnrichmentRejectionReason,
+  EnrichmentResult,
+  EnrichmentResultsPage,
+} from '../types/enrichment'
 
 export async function getEnrichmentResults(params?: {
   status?: string
@@ -20,8 +24,16 @@ export async function acceptEnrichmentResult(id: string, acceptedFields: string[
   await api.post(`/enrichment-results/${id}/accept`, { accepted_fields: acceptedFields })
 }
 
-export async function rejectEnrichmentResult(id: string, reason?: string): Promise<void> {
-  await api.post(`/enrichment-results/${id}/reject`, { reason })
+export async function rejectEnrichmentResult(
+  id: string,
+  reason: EnrichmentRejectionReason,
+  notes?: string,
+): Promise<void> {
+  const trimmedNotes = notes?.trim()
+  await api.post(`/enrichment-results/${id}/reject`, {
+    reason,
+    ...(trimmedNotes ? { notes: trimmedNotes } : {}),
+  })
 }
 
 export async function bulkAcceptEnrichmentResults(ids: string[]): Promise<void> {

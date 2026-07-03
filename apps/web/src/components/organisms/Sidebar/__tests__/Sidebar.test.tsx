@@ -123,6 +123,23 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       expect(inventoryButton).toBeInTheDocument()
       expect(bankingButton).toBeInTheDocument()
     })
+
+    it('shows treasury overview as the first accounting and reports child', async () => {
+      renderSidebar(mechanicFullConfig)
+
+      const overviewLink = await screen.findByRole('link', {
+        name: /finance:hub\.cards\.treasuryOverview\.title/i,
+      })
+      const chartOfAccountsLink = await screen.findByRole('link', {
+        name: /navigation\.chartOfAccounts/i,
+      })
+
+      expect(overviewLink).toHaveAttribute('href', '/finance/overview')
+      expect(
+        overviewLink.compareDocumentPosition(chartOfAccountsLink) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    })
   })
 
   describe('Pharmacy Vertical', () => {
@@ -241,8 +258,7 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       renderSidebar()
 
       // Sidebar should render (even if navigation is empty or loading)
-      const sidebar = screen.getByRole('complementary') || screen.getByRole('navigation')
-      expect(sidebar).toBeInTheDocument()
+      expect(screen.getByRole('complementary')).toBeInTheDocument()
     })
   })
 

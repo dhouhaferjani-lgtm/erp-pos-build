@@ -23,14 +23,14 @@ class BarcodeLookupResultData extends Data
         public ?string $errorReason,
     ) {}
 
-    public static function found(string $barcode, PlatformProductData $product): self
+    public static function found(string $barcode, PlatformProductData $product, ?string $localBrandId = null): self
     {
         return new self(
             status: 'found',
             barcode: $barcode,
             product: $product,
             trackingId: null,
-            suggestedProduct: self::buildSuggestedProduct($product),
+            suggestedProduct: self::buildSuggestedProduct($product, $localBrandId),
             errorReason: null,
         );
     }
@@ -62,12 +62,13 @@ class BarcodeLookupResultData extends Data
     /**
      * @return array<string, mixed>
      */
-    private static function buildSuggestedProduct(PlatformProductData $product): array
+    private static function buildSuggestedProduct(PlatformProductData $product, ?string $localBrandId): array
     {
         return [
             'name' => $product->name,
             'barcode' => $product->barcode,
             'brand' => $product->brand,
+            'brand_id' => $localBrandId,
             'description' => $product->description,
             'platform_product_id' => $product->id,
             'classification' => $product->classification,

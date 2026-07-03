@@ -38,7 +38,7 @@ class PaymentRepositorySeeder extends Seeder
         $firstCompany = Company::first();
 
         if (! $tenant || ! $firstCompany) {
-            $this->command?->error('No tenant or company found. Please run DatabaseSeeder first.');
+            $this->command->error('No tenant or company found. Please run DatabaseSeeder first.');
 
             return;
         }
@@ -58,7 +58,7 @@ class PaymentRepositorySeeder extends Seeder
         $bankAccount = Account::findByPurpose($company->id, SystemAccountPurpose::Bank);
 
         if ($cashAccount === null || $bankAccount === null) {
-            $this->command?->warn(
+            $this->command->warn(
                 "GL accounts not found for {$company->name}. Payment repositories will be created without GL links. "
                 .'Run ChartOfAccountsSeeder first, then re-run this seeder.'
             );
@@ -71,12 +71,13 @@ class PaymentRepositorySeeder extends Seeder
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
+                'account_id' => $glAccountId,
                 'gl_account_id' => $glAccountId,
                 ...$repo,
             ]);
         }
 
-        $this->command?->info('Created '.count($repositories).' payment repositories for '.$company->name);
+        $this->command->info('Created '.count($repositories).' payment repositories for '.$company->name);
     }
 
     /**
@@ -93,7 +94,17 @@ class PaymentRepositorySeeder extends Seeder
     }
 
     /**
-     * Get country-specific payment repositories (cash registers, safe, banks).
+     * @return array<int, array{
+     *     code: string,
+     *     name: string,
+     *     type: string,
+     *     bank_name: string|null,
+     *     account_number: string|null,
+     *     iban: string|null,
+     *     bic: string|null,
+     *     balance: string,
+     *     is_active: bool
+     * }>
      */
     private function getRepositoriesForCountry(string $countryCode): array
     {
@@ -107,7 +118,7 @@ class PaymentRepositorySeeder extends Seeder
                 'account_number' => null,
                 'iban' => null,
                 'bic' => null,
-                'balance' => 500.00,
+                'balance' => '500.000',
                 'is_active' => true,
             ],
             [
@@ -118,7 +129,7 @@ class PaymentRepositorySeeder extends Seeder
                 'account_number' => null,
                 'iban' => null,
                 'bic' => null,
-                'balance' => 200.00,
+                'balance' => '200.000',
                 'is_active' => true,
             ],
             [
@@ -129,7 +140,7 @@ class PaymentRepositorySeeder extends Seeder
                 'account_number' => null,
                 'iban' => null,
                 'bic' => null,
-                'balance' => 5000.00,
+                'balance' => '5000.000',
                 'is_active' => true,
             ],
         ];
@@ -145,7 +156,7 @@ class PaymentRepositorySeeder extends Seeder
                     'account_number' => '08 000 0012345678',
                     'iban' => 'TN59 0800 0001 2345 6789 0123',
                     'bic' => 'BTUETTT',
-                    'balance' => 25000.00,
+                    'balance' => '25000.000',
                     'is_active' => true,
                 ],
                 [
@@ -156,7 +167,7 @@ class PaymentRepositorySeeder extends Seeder
                     'account_number' => '10 000 0012345678',
                     'iban' => 'TN59 1000 0001 2345 6789 0123',
                     'bic' => 'STBKTTT',
-                    'balance' => 15000.00,
+                    'balance' => '15000.000',
                     'is_active' => true,
                 ],
                 [
@@ -167,7 +178,7 @@ class PaymentRepositorySeeder extends Seeder
                     'account_number' => '08 030 0012345678',
                     'iban' => 'TN59 0803 0001 2345 6789 0123',
                     'bic' => 'BIATTTTT',
-                    'balance' => 10000.00,
+                    'balance' => '10000.000',
                     'is_active' => true,
                 ],
                 [
@@ -178,7 +189,7 @@ class PaymentRepositorySeeder extends Seeder
                     'account_number' => 'business@example.tn',
                     'iban' => null,
                     'bic' => null,
-                    'balance' => 2000.00,
+                    'balance' => '2000.000',
                     'is_active' => true,
                 ],
             ],
@@ -191,7 +202,7 @@ class PaymentRepositorySeeder extends Seeder
                     'account_number' => '30004 00123 00001234567 25',
                     'iban' => 'FR76 3000 4001 2300 0012 3456 725',
                     'bic' => 'BNPAFRPP',
-                    'balance' => 25000.00,
+                    'balance' => '25000.000',
                     'is_active' => true,
                 ],
                 [
@@ -202,7 +213,7 @@ class PaymentRepositorySeeder extends Seeder
                     'account_number' => '11315 00020 12345678901 54',
                     'iban' => 'FR14 1131 5000 2012 3456 7890 154',
                     'bic' => 'AGRIFRPP',
-                    'balance' => 15000.00,
+                    'balance' => '15000.000',
                     'is_active' => true,
                 ],
                 [
@@ -213,7 +224,7 @@ class PaymentRepositorySeeder extends Seeder
                     'account_number' => '30003 00123 11223344556 78',
                     'iban' => 'FR31 3000 3001 2311 2233 4455 678',
                     'bic' => 'SOGEFRPP',
-                    'balance' => 10000.00,
+                    'balance' => '10000.000',
                     'is_active' => true,
                 ],
                 [
@@ -224,7 +235,7 @@ class PaymentRepositorySeeder extends Seeder
                     'account_number' => 'business@example.com',
                     'iban' => null,
                     'bic' => null,
-                    'balance' => 3500.00,
+                    'balance' => '3500.000',
                     'is_active' => true,
                 ],
             ],

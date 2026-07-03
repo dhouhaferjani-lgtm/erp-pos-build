@@ -204,6 +204,42 @@ describe('ProductDocumentsTab', () => {
     })
   })
 
+  it('renders a draft placeholder link when document_number is null', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        data: [
+          makeProductDocument({
+            id: 'draft-expense',
+            type: 'expense',
+            status: 'draft',
+            document_number: null,
+            document_date: '2024-01-12',
+            partner_id: null,
+            partner_name: undefined,
+            total: '0.00',
+            currency: 'EUR',
+            lines: [
+              makeProductDocumentLine({
+                id: 'line-draft',
+                product_id: 'prod-1',
+                quantity: '1',
+                line_total: '0.00',
+              }),
+            ],
+          }),
+        ],
+      },
+    })
+
+    renderWithProviders(<ProductDocumentsTab productId="prod-1" />)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('link', { name: 'Draft (not numbered)' })
+      ).toHaveAttribute('href', '/documents/draft-expense')
+    })
+  })
+
   it('renders partner name as type-aware link to partner detail page', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: { data: mockDocuments } })
 

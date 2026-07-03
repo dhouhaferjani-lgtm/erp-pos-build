@@ -66,7 +66,7 @@ export interface Expense {
   id: string
   type: DocumentType
   status: DocumentStatus
-  document_number: string
+  document_number: string | null
   document_date: string
   total: string
   currency: string

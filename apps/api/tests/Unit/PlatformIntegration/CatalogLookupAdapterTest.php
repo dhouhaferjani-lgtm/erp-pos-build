@@ -8,6 +8,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Application\Services\BarcodeLookupService;
 use App\Modules\PlatformIntegration\Domain\Services\BarcodeNormalizer;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
+use App\Modules\Product\Application\Services\BrandResolutionService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Exceptions\PlatformCatalogUnavailableException;
 use Illuminate\Support\Facades\Cache;
@@ -118,6 +119,7 @@ final class CatalogLookupAdapterTest extends TestCase
         return new BarcodeLookupService(
             new PlatformHttpClient($companyContext),
             $companyContext,
+            new BrandResolutionService,
             new BarcodeNormalizer,
         );
     }

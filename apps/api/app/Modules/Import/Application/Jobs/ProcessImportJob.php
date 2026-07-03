@@ -118,6 +118,10 @@ final class ProcessImportJob implements ShouldQueue
             'started_at' => now(),
         ]);
 
+        // Rows that failed validation are skipped at execution but still
+        // count as failed in the final tally (sync-path parity).
+        $validationSkippedCount = $job->rows()->where('is_valid', false)->count();
+
         $validRows = $importService->getValidRows($job);
         $processedCount = 0;
         $successCount = 0;
@@ -154,17 +158,19 @@ final class ProcessImportJob implements ShouldQueue
             }
         }
 
-        // Final status update
-        $finalStatus = $failCount > 0 ? ImportStatus::Failed : ImportStatus::Completed;
+        // Final status update — mirrors ImportService::executeImport:
+        // the job only fails when nothing imported; partial success completes.
+        $totalFailedCount = $validationSkippedCount + $failCount;
+        $finalStatus = $successCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
         $job->update([
             'status' => $finalStatus,
             'successful_rows' => $successCount,
-            'failed_rows' => $failCount,
+            'failed_rows' => $totalFailedCount,
             'completed_at' => now(),
         ]);
 
         // Broadcast completion
-        $this->broadcastCompleted($job, $company, $totalRows, $successCount, $failCount, null);
+        $this->broadcastCompleted($job, $company, $totalRows, $successCount, $totalFailedCount, null);
     }
 
     /**

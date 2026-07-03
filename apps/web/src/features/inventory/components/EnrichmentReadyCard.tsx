@@ -1,16 +1,17 @@
-import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { acceptEnrichmentResult } from '@/features/enrichment/api/enrichmentApi'
 import { colors, textColors, tokens } from '@/lib/designTokens'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { cn } from '@/lib/utils'
 import type { FastPathState } from '../hooks/useEnrichmentFastPath'
 
 interface EnrichmentReadyCardProps {
   state: FastPathState
   canReview: boolean
-  productQueryKey: QueryKey
+  productId: string
 }
 
 const ACCEPT_FIELDS = ['name', 'brand', 'description', 'barcode'] as const
@@ -18,7 +19,7 @@ const ACCEPT_FIELDS = ['name', 'brand', 'description', 'barcode'] as const
 export function EnrichmentReadyCard({
   state,
   canReview,
-  productQueryKey,
+  productId,
 }: EnrichmentReadyCardProps): React.JSX.Element | null {
   const { t } = useTranslation('inventory')
   const queryClient = useQueryClient()
@@ -32,7 +33,7 @@ export function EnrichmentReadyCard({
       return acceptEnrichmentResult(state.result.id, [...ACCEPT_FIELDS])
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: productQueryKey })
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['product', productId]) })
       toast.success(t('barcodeLookup.fastPathAccepted'))
     },
     onError: () => {

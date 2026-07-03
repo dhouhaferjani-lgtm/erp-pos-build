@@ -149,6 +149,7 @@
     "title": "Documents",
     "new": "New Document",
     "number": "Number",
+    "draftNumberPlaceholder": "Draft (not numbered)",
     "type": "Type",
     "selectType": "Select type",
     "typeRequired": "Type is required",
@@ -344,6 +345,7 @@
     "receiveGoodsMessage": "This will create stock movements to receive the goods from this purchase order. Continue?",
     "goodsReceived": "Goods Received",
     "received": "Received",
+    "receivedOfTotal": "{{received}} of {{total}}",
     "receive": {
       "remaining": "Remaining",
       "remainingFree": "Remaining free",

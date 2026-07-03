@@ -52,7 +52,7 @@ export interface Document {
   id: string
   type: string
   status: string
-  document_number: string
+  document_number: string | null
   document_date: string
   due_date: string | null
   valid_until: string | null

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -31,11 +31,33 @@ import type { Document } from '../../../types/document'
 
 type ConfirmAction = 'confirm' | null
 type ActiveTab = 'related' | 'attachments' | 'landedCosts' | 'payments'
+type ReceiptStatusValue = 'not_received' | 'partially_received' | 'fully_received'
 
-const receiptStatusColors = {
+interface ReceiptStatusLine {
+  line_id: string
+  product_name: string
+  quantity_ordered: string
+  quantity_received: string
+  quantity_remaining: string
+  is_complete: boolean
+}
+
+interface ReceiptStatusResponse {
+  status: ReceiptStatusValue
+  total_ordered: string
+  total_received: string
+  percentage: number
+  lines: ReceiptStatusLine[]
+}
+
+const receiptStatusColors: Record<ReceiptStatusValue, string> = {
   not_received: 'bg-gray-100 text-gray-800',
   partially_received: 'bg-yellow-100 text-yellow-800',
   fully_received: 'bg-green-100 text-green-800',
+}
+
+function fallbackReceiptStatus(documentStatus: string): ReceiptStatusValue {
+  return documentStatus === 'received' ? 'fully_received' : 'not_received'
 }
 
 function scopedNamespacePredicate(
@@ -84,6 +106,15 @@ export function PurchaseOrderDetailPage() {
     enabled: id.length > 0 && tenantId !== null && companyId !== null,
   })
 
+  const { data: receiptStatusData } = useQuery({
+    queryKey: tenantScopedKey(['purchase-order', 'receipt-status', id]),
+    queryFn: async () => {
+      const response = await api.get<{ data: ReceiptStatusResponse }>(`/purchase-orders/${id}/receipt-status`)
+      return response.data.data
+    },
+    enabled: id.length > 0 && tenantId !== null && companyId !== null,
+  })
+
   // PDF mutations
   const downloadPdfMutation = useDownloadPdf()
   const previewPdfMutation = usePreviewPdf()
@@ -117,6 +148,7 @@ export function PurchaseOrderDetailPage() {
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
         queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', id]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['purchase-order', 'receipt-status', id]) }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('stock-levels', tenantId, companyId),
         }),
@@ -189,6 +221,32 @@ export function PurchaseOrderDetailPage() {
     ])
   }
 
+  const receiptLineById = useMemo(
+    () => new Map((receiptStatusData?.lines ?? []).map((line) => [line.line_id, line])),
+    [receiptStatusData?.lines],
+  )
+  const purchaseOrderWithReceiptQuantities = useMemo(() => {
+    if (!purchaseOrder) {
+      return undefined
+    }
+
+    if (purchaseOrder.lines === undefined) {
+      return purchaseOrder
+    }
+
+    return {
+      ...purchaseOrder,
+      lines: purchaseOrder.lines.map((line) => {
+        const quantityReceived = receiptLineById.get(line.id)?.quantity_received
+
+        return quantityReceived === undefined ? line : {
+          ...line,
+          quantity_received: quantityReceived,
+        }
+      }),
+    }
+  }, [purchaseOrder, receiptLineById])
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -210,9 +268,8 @@ export function PurchaseOrderDetailPage() {
     )
   }
 
-  // Get receipt status from status field
-  const receiptStatus = purchaseOrder.status === 'received' ? 'fully_received' :
-                       purchaseOrder.status === 'confirmed' ? 'not_received' : 'not_received'
+  const receiptStatus = receiptStatusData?.status ?? fallbackReceiptStatus(purchaseOrder.status)
+  const canShowReceiptStatus = ['confirmed', 'received', 'partially_received'].includes(purchaseOrder.status)
 
   // Payment computation
   const outstandingAmount = parseFloat(purchaseOrder.outstanding_amount || purchaseOrder.balance_due || '0')
@@ -249,8 +306,8 @@ export function PurchaseOrderDetailPage() {
               }`}>
                 {t(`sales:documents.statuses.${purchaseOrder.status}`, purchaseOrder.status)}
               </span>
-              {purchaseOrder.status === 'confirmed' && (
-                <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${receiptStatusColors[receiptStatus as keyof typeof receiptStatusColors]}`}>
+              {canShowReceiptStatus && (
+                <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${receiptStatusColors[receiptStatus]}`}>
                   <Package className="h-4 w-4" />
                   {t(`purchaseOrders.receiptStatus.${receiptStatus}`)}
                 </span>
@@ -354,7 +411,7 @@ export function PurchaseOrderDetailPage() {
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {t('documents.quantity')}
                 </th>
-                {purchaseOrder.status === 'confirmed' && (
+                {canShowReceiptStatus && (
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {t('purchaseOrders.received')}
                   </th>
@@ -401,9 +458,12 @@ export function PurchaseOrderDetailPage() {
                   <td className="px-6 py-4 text-sm text-gray-900 text-right">
                     {formatQuantity(line.quantity)}
                   </td>
-                  {purchaseOrder.status === 'confirmed' && (
+                  {canShowReceiptStatus && (
                     <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                      {formatQuantity(line.quantity_received || '0')}
+                      {t('purchaseOrders.receivedOfTotal', {
+                        received: formatQuantity(receiptLineById.get(line.id)?.quantity_received ?? line.quantity_received ?? '0'),
+                        total: formatQuantity(receiptLineById.get(line.id)?.quantity_ordered ?? line.quantity),
+                      })}
                     </td>
                   )}
                   <td className="px-6 py-4 text-sm text-gray-900 text-right">
@@ -543,7 +603,7 @@ export function PurchaseOrderDetailPage() {
       <ReceiveGoodsDialog
         key={showReceiveDialog ? `receive-open-${purchaseOrder.id}` : `receive-closed-${purchaseOrder.id}`}
         isOpen={showReceiveDialog}
-        purchaseOrder={purchaseOrder}
+        purchaseOrder={purchaseOrderWithReceiptQuantities ?? purchaseOrder}
         isLoading={receiveGoodsMutation.isPending}
         onClose={() => { setShowReceiveDialog(false); }}
         onConfirm={handleReceiveGoods}
@@ -559,7 +619,7 @@ export function PurchaseOrderDetailPage() {
             partner_id: purchaseOrder.partner_id,
             partner_name: purchaseOrder.partner_name || '',
             amount: outstandingAmount,
-            reference: purchaseOrder.document_number,
+            reference: purchaseOrder.document_number ?? '',
             document_id: purchaseOrder.id,
             document_type: 'purchase_order',
           }}

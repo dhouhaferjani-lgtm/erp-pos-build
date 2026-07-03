@@ -1,0 +1,9 @@
+{
+  "reconciliation": {
+    "openingBalance": "الرصيد الافتتاحي",
+    "startModal": {
+      "openingBalanceHelp": "يُستخدم {{amount}} افتراضيًا إذا تُرك الحقل فارغًا.",
+      "liveDifference": "الفرق الحالي"
+    }
+  }
+}

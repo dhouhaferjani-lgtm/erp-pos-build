@@ -11,7 +11,7 @@ export interface PaymentRepository {
   type: 'cash_register' | 'safe' | 'bank_account' | 'virtual'
   is_active: boolean
   is_default: boolean
-  current_balance?: string
+  balance: string
 }
 
 interface PaymentRepositoriesResponse {

@@ -189,6 +189,106 @@ describe('ProductCard layout regressions', () => {
     expect(eye.className).toContain('border');
   });
 
+  it('uses the mock visual-card typography scale', () => {
+    const product = makeProduct({
+      id: 'p-visual-scale',
+      name: 'Effaclar Gel Moussant 200ml',
+      brand_name: 'La Roche-Posay',
+      sale_price: '38.500',
+      stock_quantity: 18,
+    });
+    const { container } = render(
+      <I18nextProvider i18n={i18n}>
+        <ProductCard product={product} onAddToCart={vi.fn()} displayMode="visual" />
+      </I18nextProvider>,
+    );
+
+    const brand = screen.getByText('La Roche-Posay');
+    const name = screen.getByRole('heading', { level: 3 });
+    const price = container.querySelector('[data-testid="price-row"]');
+    const stock = container.querySelector('[data-testid="stock-row"]');
+
+    expect(brand.className).toContain('text-[10px]');
+    expect(brand.className).toContain('leading-[1.2]');
+    expect(name.className).toContain('text-[13.5px]');
+    expect(name.className).toContain('leading-[1.3]');
+    expect(price?.className).toContain('text-[15px]');
+    expect(price?.className).toContain('font-semibold');
+    expect(stock?.className).toContain('text-[10.5px]');
+    expect(stock?.className).toContain('px-[7px]');
+    expect(stock?.className).toContain('py-[3px]');
+  });
+
+  it('positions the compact-mode eye in the header actions, not the price footer', () => {
+    const { container } = render(
+      <I18nextProvider i18n={i18n}>
+        <ProductCard
+          product={longNameProduct}
+          onAddToCart={vi.fn()}
+          onViewDetails={vi.fn()}
+          displayMode="grid"
+        />
+      </I18nextProvider>,
+    );
+
+    const eye = screen.getByTestId('view-details-button');
+    const headerActions = container.querySelector('[data-testid="compact-card-header-actions"]');
+    const priceStockBlock = container.querySelector('[data-testid="price-stock-block"]');
+
+    expect(headerActions).not.toBeNull();
+    expect(headerActions).toContainElement(eye);
+    expect(priceStockBlock).not.toContainElement(eye);
+    expect(eye.className).toContain('h-7');
+    expect(eye.className).toContain('w-7');
+  });
+
+  it('keeps the compact-mode in-cart badge in the header actions so it cannot overlap the name', () => {
+    const { container } = render(
+      <I18nextProvider i18n={i18n}>
+        <ProductCard
+          product={longNameProduct}
+          onAddToCart={vi.fn()}
+          onViewDetails={vi.fn()}
+          isInCart
+          displayMode="grid"
+        />
+      </I18nextProvider>,
+    );
+
+    const badge = screen.getByTestId('in-cart-badge');
+    const headerActions = container.querySelector('[data-testid="compact-card-header-actions"]');
+
+    expect(headerActions).not.toBeNull();
+    expect(headerActions).toContainElement(badge);
+    expect(badge.className).not.toContain('absolute');
+  });
+
+  it('uses the mock compact-card typography scale', () => {
+    const { container } = render(
+      <I18nextProvider i18n={i18n}>
+        <ProductCard
+          product={{ ...longNameProduct, brand_name: 'Avène' }}
+          onAddToCart={vi.fn()}
+          displayMode="grid"
+        />
+      </I18nextProvider>,
+    );
+
+    const brand = screen.getByText('Avène');
+    const name = screen.getByRole('heading', { level: 3 });
+    const price = container.querySelector('[data-testid="price-row"]');
+    const stock = container.querySelector('[data-testid="stock-row"]');
+
+    expect(brand.className).toContain('text-[10px]');
+    expect(name.className).toContain('text-[13.5px]');
+    expect(name.className).toContain('leading-[1.3]');
+    expect(price?.className).toContain('text-[15px]');
+    expect(price?.className).toContain('font-semibold');
+    expect(stock?.className).toContain('text-[10.5px]');
+    expect(stock?.className).toContain('px-[7px]');
+    expect(stock?.className).toContain('py-[3px]');
+  });
+
   it('renders the outer card as role="button" rather than a <button> so the inner customize button is not nested', () => {
     const productWithModifiers: POSProduct = {
       ...longNameProduct,

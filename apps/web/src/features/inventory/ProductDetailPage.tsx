@@ -198,7 +198,6 @@ export function ProductDetailPage() {
   }
 
   const product = data
-  const productQueryKey = tenantScopedKey(['product', product.id])
   const productMargin = product.sale_price !== null && product.cost_price !== null
     ? bcsub(product.sale_price, product.cost_price, 3)
     : null
@@ -413,7 +412,7 @@ export function ProductDetailPage() {
       <EnrichmentReadyCard
         state={fastPathState}
         canReview={hasPermission('enrichment.review')}
-        productQueryKey={productQueryKey}
+        productId={product.id}
       />
 
       {/* Tabs */}

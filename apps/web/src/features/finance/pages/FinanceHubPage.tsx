@@ -3,6 +3,7 @@ import { usePageTitle } from '../../../hooks/usePageTitle'
 import { usePermissions } from '../../../hooks/usePermissions'
 import {
   Landmark,
+  Wallet,
   CreditCard,
   Receipt,
   FileText,
@@ -27,6 +28,7 @@ interface HubCardDef {
   icon: LucideIcon
   href: string
   permissionModule?: string
+  permission?: 'reports.view'
 }
 
 interface HubSection {
@@ -38,6 +40,13 @@ const sections: HubSection[] = [
   {
     titleKey: 'hub.sections.bankingAndPayments',
     cards: [
+      {
+        titleKey: 'hub.cards.treasuryOverview.title',
+        descriptionKey: 'hub.cards.treasuryOverview.description',
+        icon: Wallet,
+        href: '/finance/overview',
+        permission: 'reports.view',
+      },
       {
         titleKey: 'hub.cards.payments.title',
         descriptionKey: 'hub.cards.payments.description',
@@ -153,12 +162,15 @@ const sections: HubSection[] = [
 export function FinanceHubPage() {
   const { t } = useTranslation(['finance'])
   usePageTitle('hub.title', 'finance')
-  const { canAccessModule } = usePermissions()
+  const { canAccessModule, hasPermission } = usePermissions()
 
   const filteredSections = sections
     .map((section) => ({
       ...section,
       cards: section.cards.filter((card) => {
+        if (card.permission && !hasPermission(card.permission)) {
+          return false
+        }
         if (card.permissionModule && !canAccessModule(card.permissionModule)) {
           return false
         }

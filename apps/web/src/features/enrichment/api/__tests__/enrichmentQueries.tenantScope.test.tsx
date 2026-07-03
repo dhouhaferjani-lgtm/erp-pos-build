@@ -10,18 +10,20 @@ import {
   useAcceptEnrichment,
   useEnrichmentResult,
   useEnrichmentResults,
+  useRejectEnrichment,
 } from '../enrichmentQueries'
 
 const mockGetEnrichmentResults = vi.hoisted(() => vi.fn())
 const mockGetEnrichmentResult = vi.hoisted(() => vi.fn())
 const mockAcceptEnrichmentResult = vi.hoisted(() => vi.fn())
+const mockRejectEnrichmentResult = vi.hoisted(() => vi.fn())
 
 vi.mock('../enrichmentApi', () => ({
   acceptEnrichmentResult: mockAcceptEnrichmentResult,
   bulkAcceptEnrichmentResults: vi.fn(),
   getEnrichmentResult: mockGetEnrichmentResult,
   getEnrichmentResults: mockGetEnrichmentResults,
-  rejectEnrichmentResult: vi.fn(),
+  rejectEnrichmentResult: mockRejectEnrichmentResult,
 }))
 
 function setTenant(tenantId: string, companyId: string) {
@@ -57,6 +59,7 @@ beforeEach(() => {
   mockGetEnrichmentResults.mockResolvedValue({ data: [] })
   mockGetEnrichmentResult.mockResolvedValue({ id: 'enrich-1' })
   mockAcceptEnrichmentResult.mockResolvedValue(undefined)
+  mockRejectEnrichmentResult.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -114,5 +117,24 @@ describe('enrichment query tenant scope', () => {
       expect(detailCalls).toBe(2)
     })
     expect(queryClient.getQueryData(['enrichment-results', 'list', undefined, 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-list' })
+  })
+
+  it('passes structured reject reason and notes through the mutation', async () => {
+    const queryClient = createClient()
+    const { result } = renderHook(() => useRejectEnrichment(), { wrapper: wrapper(queryClient) })
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        id: 'enrich-1',
+        notes: 'Specifications do not match the product.',
+        reason: 'wrong_product',
+      })
+    })
+
+    expect(mockRejectEnrichmentResult).toHaveBeenCalledWith(
+      'enrich-1',
+      'wrong_product',
+      'Specifications do not match the product.',
+    )
   })
 })

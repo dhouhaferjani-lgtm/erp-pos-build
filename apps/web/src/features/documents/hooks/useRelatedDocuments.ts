@@ -7,7 +7,7 @@ import { useCompanyStore } from '../../../stores/companyStore'
 export interface RelatedDocument {
   id: string
   type: string
-  document_number: string
+  document_number: string | null
   document_date: string
   status: string
   total: string

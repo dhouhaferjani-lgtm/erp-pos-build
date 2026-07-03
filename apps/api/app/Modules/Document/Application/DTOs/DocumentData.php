@@ -32,7 +32,7 @@ final class DocumentData extends Data
         public string $status,
         public bool $is_sealed,
         public bool $is_fiscal,
-        public string $document_number,
+        public ?string $document_number,
         public string $document_date,
         public ?string $due_date,
         public ?string $valid_until,

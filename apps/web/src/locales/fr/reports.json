@@ -52,6 +52,10 @@
       "from": "Du",
       "to": "Au",
       "granularity": "Grouper par",
+      "today": "Aujourd'hui",
+      "last7Days": "7 jours",
+      "last30Days": "30 jours",
+      "hour": "Heure",
       "day": "Jour",
       "week": "Semaine",
       "month": "Mois",
@@ -59,7 +63,9 @@
       "locations": "Sites"
     },
     "salesTrend": {
-      "title": "Évolution des ventes"
+      "title": "Évolution des ventes",
+      "today": "Aujourd'hui",
+      "sameWeekdayLastWeek": "Même jour sem. dernière"
     },
     "salesByLocation": {
       "title": "Ventes par Site",
@@ -69,6 +75,18 @@
       "title": "Meilleurs SKU",
       "revenue": "Revenu",
       "quantity": "Quantité"
+    },
+    "liveSales": {
+      "title": "Ventes en direct",
+      "live": "Live",
+      "updatedJustNow": "mis à jour à l'instant",
+      "updatedSecondsAgo": "mis à jour il y a {{seconds}}s",
+      "items": "{{count}} articles"
+    },
+    "branchLeaderboard": {
+      "title": "Classement des agences",
+      "active": "Caisse ouverte",
+      "inactive": "Aucune caisse ouverte"
     },
     "lowStock": {
       "title": "Alertes Stock Bas"
@@ -87,6 +105,7 @@
       "avgBasket": "Panier moyen",
       "itemsSold": "Articles vendus",
       "returns": "Retours",
+      "live": "Live",
       "vsPrevious": "vs période précédente",
       "error": "Impossible de charger le résumé"
     },

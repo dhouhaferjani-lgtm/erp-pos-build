@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2, Eye } from 'lucide-react'
+import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2, Download } from 'lucide-react'
 import { useImportJobs } from '../api/queries'
+import { importApi } from '../api/importApi'
+import { authenticatedDownload } from '@/lib/api'
+import { textColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import type { ImportJob, ImportStatus } from '../types'
 
@@ -177,13 +180,23 @@ export function ImportHistoryPage() {
                     {formatDate(job.created_at)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end">
-                    <Link
-                      to={`/settings/import/jobs/${job.id}`}
-                      className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
-                    >
-                      <Eye className="h-4 w-4" />
-                      {t('history.viewDetails')}
-                    </Link>
+                    {(job.failed_rows ?? 0) > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          authenticatedDownload(
+                            importApi.downloadFailedRowsUrl(job.id),
+                            `import-${job.id}-failed-rows.csv`
+                          )
+                        }
+                        className={cn('inline-flex items-center gap-1 text-sm', textColors.brand, textColors.hoverBrand)}
+                      >
+                        <Download className="h-4 w-4" />
+                        {t('wizard.complete.downloadFailedRows')}
+                      </button>
+                    ) : (
+                      <span className={cn('text-sm', textColors.disabled)}>-</span>
+                    )}
                   </td>
                 </tr>
               ))}

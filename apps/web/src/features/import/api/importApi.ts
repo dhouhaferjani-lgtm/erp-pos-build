@@ -4,6 +4,7 @@ import type {
   ImportJobListResponse,
   ImportErrorsResponse,
   ImportErrorSummaryResponse,
+  ImportResult,
   CreateImportResponse,
   MigrationWizardOrder,
   DependencyCheck,
@@ -19,8 +20,10 @@ const WIZARD_URL = '/migration-wizard'
 export const importApi = {
   // Import Jobs
   list: async (): Promise<ImportJobListResponse> => {
-    const response = await apiGet<ImportJobListResponse>(IMPORT_URL)
-    return response
+    // Paginated {data, meta} envelope — apiGet would unwrap to the array
+    // and drop meta, so use the raw client and return response.data intact.
+    const response = await api.get<ImportJobListResponse>(IMPORT_URL)
+    return response.data
   },
 
   getJob: async (id: string): Promise<ImportJob> => {
@@ -56,8 +59,9 @@ export const importApi = {
       ? `${IMPORT_URL}/${jobId}/errors?${params.toString()}`
       : `${IMPORT_URL}/${jobId}/errors`
 
-    const response = await apiGet<ImportErrorsResponse>(url)
-    return response
+    // Paginated {data, meta} envelope — keep it intact (see list()).
+    const response = await api.get<ImportErrorsResponse>(url)
+    return response.data
   },
 
   getErrorSummary: async (jobId: string): Promise<ImportErrorSummaryResponse> => {
@@ -72,12 +76,36 @@ export const importApi = {
     return apiGet<ImportPreview>(`${IMPORT_URL}/${jobId}/preview`)
   },
 
-  executeImport: async (jobId: string): Promise<ImportJob> => {
-    return apiPost<ImportJob>(`${IMPORT_URL}/${jobId}/execute`)
+  executeImport: async (jobId: string): Promise<ImportJob & { import_result?: ImportResult }> => {
+    // import_result sits BESIDE data in the execute response — plain apiPost
+    // unwrapping would drop it, so merge it back onto the job.
+    const response = await api.post<{ data: ImportJob; import_result?: ImportResult }>(
+      `${IMPORT_URL}/${jobId}/execute`
+    )
+    const job: ImportJob & { import_result?: ImportResult } = { ...response.data.data }
+    if (response.data.import_result) {
+      job.import_result = response.data.import_result
+    }
+    return job
   },
 
   deleteJob: async (jobId: string): Promise<void> => {
     await api.delete(`${IMPORT_URL}/${jobId}`)
+  },
+
+  parseHeaders: async (file: File): Promise<{ headers: string[]; row_count: number }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await api.post<{ data: { headers: string[]; row_count: number } }>(
+      `${WIZARD_URL}/parse-headers`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000,
+      }
+    )
+    return response.data.data
   },
 
   // Migration Wizard

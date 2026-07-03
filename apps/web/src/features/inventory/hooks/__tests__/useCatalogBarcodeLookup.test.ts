@@ -44,6 +44,7 @@ const suggestedProduct: SuggestedProduct = {
   name: 'Test Product',
   barcode: '12345678',
   brand: 'TestBrand',
+  brand_id: 'brand-uuid-1',
   description: 'A test product',
   platform_product_id: 'prod-1',
   classification: {},

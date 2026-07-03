@@ -122,6 +122,7 @@
     }
   },
   "documents": {
+    "draftNumberPlaceholder": "مسودة (بلا رقم)",
     "statuses": {
       "draft": "مسودة",
       "confirmed": "مؤكَّد",
@@ -132,6 +133,13 @@
     }
   },
   "purchaseOrders": {
+    "received": "مُستلَم",
+    "receivedOfTotal": "{{received}} من {{total}}",
+    "receiptStatus": {
+      "not_received": "غير مُستلَم",
+      "partially_received": "مُستلَم جزئيًا",
+      "fully_received": "مُستلَم بالكامل"
+    },
     "receive": {
       "remaining": "المتبقي",
       "remainingFree": "المتبقي المجاني",

@@ -146,6 +146,21 @@ balance: string;
 source_type: string | null;
 source_id: string | null;
 };
+export type LiveSaleReceiptData = {
+id: string;
+posted_at: string;
+location_id: string;
+location_name: string;
+total: string;
+currency: string;
+items_count: number;
+receipt_number: string;
+};
+export type LiveSalesData = {
+recent_receipts: Array<App.Modules.Accounting.Application.DTOs.Reports.LiveSaleReceiptData>;
+open_shifts_by_location: Record<string, number>;
+generated_at: string;
+};
 export type PaymentMethodBreakdownData = {
 payment_type: string;
 payment_method_name: string;
@@ -228,6 +243,24 @@ debit: string;
 credit: string;
 level: number;
 is_parent: boolean;
+};
+export type UpcomingPaymentLineData = {
+partner_name: string;
+document_number: string;
+type: string;
+due_date: string;
+balance_due: string;
+days_until_due: number;
+overdue: boolean;
+};
+export type UpcomingPaymentsData = {
+in: Array<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentLineData>;
+out: Array<App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentLineData>;
+total_in: string;
+total_out: string;
+net: string;
+days: number;
+as_of_date: string;
 };
 }
 declare namespace App.Modules.Accounting.Application.Enums {
@@ -601,7 +634,7 @@ fiscal_status: string;
 status: string;
 is_sealed: boolean;
 is_fiscal: boolean;
-document_number: string;
+document_number: string | null;
 document_date: string;
 due_date: string | null;
 valid_until: string | null;
@@ -1416,6 +1449,9 @@ enrichment_sources: Array<any> | null;
 assigned_barcode: string | null;
 assigned_barcode_type: string | null;
 locale: string | null;
+canonical_brand_id: string | null;
+canonical_brand_slug: string | null;
+external_brand_id: string | null;
 };
 export type EnrichmentResultData = {
 id: string;
@@ -1424,6 +1460,8 @@ product_name: string;
 product_barcode: string | null;
 product_sku: string | null;
 tracking_id: string | null;
+version: number;
+origin: App.Modules.Product.Domain.Enums.EnrichmentResultOrigin;
 status: string;
 enriched_data: App.Modules.Product.Application.DTOs.EnrichedProductData;
 enrichment_quality: string;
@@ -1432,6 +1470,7 @@ reviewed_at: string | null;
 reviewed_by: string | null;
 accepted_fields: Array<any> | null;
 rejection_reason: string | null;
+rejection_notes: string | null;
 created_at: string;
 };
 export type HealthClaimData = {
@@ -1574,6 +1613,7 @@ export type BrandQualityTier = 'oe' | 'oes' | 'premium_aftermarket' | 'aftermark
 export type BrandSource = 'user' | 'enriched';
 export type CrossReferenceType = 'oe' | 'oem' | 'trade' | 'iam' | 'ean' | 'internal';
 export type DosageForm = 'capsule' | 'tablet' | 'softgel' | 'liquid' | 'powder' | 'cream' | 'gel' | 'lotion' | 'spray' | 'patch' | 'other';
+export type EnrichmentResultOrigin = 'initial' | 'curated_update';
 export type EnrichmentReviewStatus = 'pending_review' | 'accepted' | 'rejected';
 export type EquivalenceType = 'generic' | 'therapeutic' | 'brand_alt';
 export type ParapharmacyCategory = 'supplement' | 'cosmetic' | 'medical_device' | 'herbal' | 'baby_care' | 'sports_nutrition' | 'other';
@@ -2191,6 +2231,9 @@ export type VarianceDirection = 'over' | 'under' | 'balanced';
 export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }
 declare namespace App.Shared.Enums {
+export type BrandMappingPushResult = 'mapped' | 'conflict' | 'not_found' | 'failed';
+export type EnrichmentFeedbackAction = 'confirmed' | 'rejected';
+export type EnrichmentFeedbackReason = 'wrong_product' | 'bad_data';
 export type EnrichmentStatus = 'pending' | 'enriching' | 'completed' | 'failed' | 'rejected' | 'not_enrichable';
 }
 

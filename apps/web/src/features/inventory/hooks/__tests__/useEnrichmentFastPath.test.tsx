@@ -144,6 +144,9 @@ function makeResult(): EnrichmentResult {
     product_barcode: '12345',
     product_sku: 'BP-001',
     tracking_id: 'tracking-1',
+    version: 1,
+    origin: 'initial',
+    rejection_notes: null,
     status: 'pending_review',
     enriched_data: {
       name: 'Enriched Brake Pad',

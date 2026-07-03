@@ -13,7 +13,13 @@ import { PurchaseOrderDetailPage } from '../PurchaseOrderDetailPage'
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
 const mockRouteId = vi.hoisted(() => ({ current: 'po-1' }))
-const mockTranslate = vi.hoisted(() => vi.fn((key: string) => key))
+const mockTranslate = vi.hoisted(() => vi.fn((key: string, options?: Record<string, string>) => {
+  if (key === 'purchaseOrders.receivedOfTotal') {
+    return `${options?.['received'] ?? '?'} of ${options?.['total'] ?? '?'}`
+  }
+
+  return key
+}))
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -168,7 +174,6 @@ function purchaseOrderFixture() {
         product_barcode: '619000000001',
         primary_image_url: '/stock.png',
         quantity: '5.00',
-        quantity_received: '0.00',
         requires_batch_tracking: false,
         unit_price: '100.00',
         line_total: '100.00',
@@ -181,6 +186,28 @@ function purchaseOrderFixture() {
 function mockPurchaseOrderResponses() {
   mockApiGet.mockImplementation(async (url: string) => {
     if (url === '/purchase-orders/po-1') return { data: { data: purchaseOrderFixture() } }
+    if (url === '/purchase-orders/po-1/receipt-status') {
+      return {
+        data: {
+          data: {
+            status: 'not_received',
+            total_ordered: '5.0000',
+            total_received: '0.0000',
+            percentage: 0,
+            lines: [
+              {
+                line_id: 'line-1',
+                product_name: 'Stock',
+                quantity_ordered: '5.0000',
+                quantity_received: '0.0000',
+                quantity_remaining: '5.0000',
+                is_complete: false,
+              },
+            ],
+          },
+        },
+      }
+    }
     return { data: { data: [] } }
   })
 }
@@ -315,6 +342,65 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
           'line-1': '2.5',
         },
       })
+    })
+  })
+
+  it('renders receipt status and line progress from the receipt-status endpoint', async () => {
+    mockApiGet.mockImplementation(async (url: string) => {
+      if (url === '/purchase-orders/po-1') return { data: { data: purchaseOrderFixture() } }
+      if (url === '/purchase-orders/po-1/receipt-status') {
+        return {
+          data: {
+            data: {
+              status: 'partially_received',
+              total_ordered: '10.0000',
+              total_received: '4.0000',
+              percentage: 40,
+              lines: [
+                {
+                  line_id: 'line-1',
+                  product_name: 'Stock',
+                  quantity_ordered: '10.0000',
+                  quantity_received: '4.0000',
+                  quantity_remaining: '6.0000',
+                  is_complete: false,
+                },
+              ],
+            },
+          },
+        }
+      }
+
+      return { data: { data: [] } }
+    })
+
+    render(<PurchaseOrderDetailPage />, { wrapper: wrapper(createClient()) })
+
+    expect(await screen.findByText('purchaseOrders.receiptStatus.partially_received')).toBeInTheDocument()
+    expect(screen.getByText('4 of 10')).toBeInTheDocument()
+    expect(mockApiGet).toHaveBeenCalledWith('/purchase-orders/po-1/receipt-status')
+  })
+
+  it('invalidates receipt status after receiving goods succeeds', async () => {
+    const queryClient = createClient()
+    render(<PurchaseOrderDetailPage />, { wrapper: wrapper(queryClient) })
+
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/purchase-orders/po-1/receipt-status')
+    })
+
+    let receiptStatusFetches = mockApiGet.mock.calls.filter(
+      ([url]) => url === '/purchase-orders/po-1/receipt-status',
+    ).length
+
+    await userEvent.click(await screen.findByRole('button', { name: 'receive-goods' }))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+
+    await waitFor(() => {
+      receiptStatusFetches = mockApiGet.mock.calls.filter(
+        ([url]) => url === '/purchase-orders/po-1/receipt-status',
+      ).length
+      expect(receiptStatusFetches).toBeGreaterThan(1)
     })
   })
 

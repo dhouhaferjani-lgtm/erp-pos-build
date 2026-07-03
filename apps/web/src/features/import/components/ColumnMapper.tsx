@@ -19,24 +19,27 @@ export function ColumnMapper({
   onMappingChange,
 }: ColumnMapperProps) {
   const { t } = useTranslation('import')
+  const targetNames = useMemo(() => {
+    return new Set(targetColumns.map((col) => col.name))
+  }, [targetColumns])
 
   // Apply suggestions on mount if mapping is empty
   useEffect(() => {
     if (Object.keys(mapping).length === 0 && Object.keys(suggestions).length > 0) {
       const initialMapping: Record<string, string> = {}
       for (const [target, source] of Object.entries(suggestions)) {
-        if (source) {
+        if (source && targetNames.has(target)) {
           initialMapping[source] = target
         }
       }
       onMappingChange(initialMapping)
     }
-  }, [suggestions, mapping, onMappingChange])
+  }, [suggestions, mapping, onMappingChange, targetNames])
 
   // Get which target columns are already mapped
   const mappedTargets = useMemo(() => {
-    return new Set(Object.values(mapping))
-  }, [mapping])
+    return new Set(Object.values(mapping).filter((target) => targetNames.has(target)))
+  }, [mapping, targetNames])
 
   // Check which required columns are missing
   const missingRequired = useMemo(() => {
@@ -44,6 +47,10 @@ export function ColumnMapper({
       .filter((col) => col.required && !mappedTargets.has(col.name))
       .map((col) => col.name)
   }, [targetColumns, mappedTargets])
+
+  const skippedColumns = useMemo(() => {
+    return sourceColumns.filter((sourceCol) => !targetNames.has(mapping[sourceCol] ?? ''))
+  }, [sourceColumns, mapping, targetNames])
 
   const handleMappingChange = (sourceColumn: string, targetColumn: string) => {
     const newMapping = { ...mapping }
@@ -63,7 +70,9 @@ export function ColumnMapper({
 
   // Check if a source column has a suggestion
   const hasSuggestion = (sourceCol: string): boolean => {
-    return Object.values(suggestions).includes(sourceCol)
+    return Object.entries(suggestions).some(([target, source]) => {
+      return source === sourceCol && targetNames.has(target)
+    })
   }
 
   return (
@@ -103,7 +112,7 @@ export function ColumnMapper({
           <tbody className="divide-y divide-gray-200 bg-white">
             {sourceColumns.map((sourceCol) => {
               const currentTarget = mapping[sourceCol]
-              const isMapped = Boolean(currentTarget)
+              const isMapped = Boolean(currentTarget && targetNames.has(currentTarget))
               const suggested = hasSuggestion(sourceCol)
 
               return (
@@ -123,7 +132,7 @@ export function ColumnMapper({
                   </td>
                   <td className="px-4 py-3">
                     <select
-                      value={currentTarget || ''}
+                      value={isMapped ? currentTarget : ''}
                       onChange={(e) => { handleMappingChange(sourceCol, e.target.value) }}
                       className={cn(
                         'block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500',
@@ -178,9 +187,9 @@ export function ColumnMapper({
                   </td>
                   <td className="px-4 py-3 text-center">
                     {isMapped ? (
-                      <Check className="h-5 w-5 text-green-600 mx-auto" />
+                      <Check data-testid={`mapped-status-${sourceCol}`} className="h-5 w-5 text-green-600 mx-auto" />
                     ) : (
-                      <HelpCircle className="h-5 w-5 text-gray-300 mx-auto" />
+                      <HelpCircle data-testid={`skipped-status-${sourceCol}`} className="h-5 w-5 text-gray-300 mx-auto" />
                     )}
                   </td>
                 </tr>
@@ -189,6 +198,15 @@ export function ColumnMapper({
           </tbody>
         </table>
       </div>
+
+      {skippedColumns.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 p-4 text-gray-700">
+          <HelpCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-gray-400" />
+          <p className="text-sm">
+            {t('mapping.skippedColumnsNotice', { columns: skippedColumns.join(', ') })}
+          </p>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="flex flex-wrap gap-4 text-sm text-gray-500">

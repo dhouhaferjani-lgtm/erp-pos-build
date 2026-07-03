@@ -19,6 +19,7 @@ import {
   Button,
   FormField,
   Input,
+  MoneyInput,
   Select,
   StatusBadge,
   statusTone,
@@ -45,15 +46,11 @@ import type {
   BankReconciliation,
   BankReconciliationItem,
 } from '@/types/treasury'
+import { bccomp, bcsub, formatCurrency as formatDecimalCurrency } from '@/lib/decimal'
 
 // Format currency amount
 function formatCurrency(amount: string | number, currency = 'USD'): string {
-  const num = typeof amount === 'string' ? parseFloat(amount) : amount
-  return new Intl.NumberFormat('fr-TN', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-  }).format(num)
+  return formatDecimalCurrency(amount, true, currency)
 }
 
 // Format date
@@ -75,7 +72,7 @@ function StartReconciliationModal({
 }: {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: { repository_id: string; statement_date: string; statement_balance: string; notes?: string }) => void
+  onSubmit: (data: { repository_id: string; statement_date: string; opening_balance?: string; statement_balance: string; notes?: string }) => void
   isLoading: boolean
 }) {
   const { t } = useTranslation()
@@ -83,16 +80,26 @@ function StartReconciliationModal({
 
   const [repositoryId, setRepositoryId] = useState('')
   const [statementDate, setStatementDate] = useState(new Date().toISOString().split('T')[0])
+  const [openingBalance, setOpeningBalance] = useState('')
   const [statementBalance, setStatementBalance] = useState('')
   const [notes, setNotes] = useState('')
+
+  const selectedRepository = repositories?.find((repo) => repo.id === repositoryId)
+  const selectedCurrency = selectedRepository?.currency ?? 'USD'
+  const defaultOpeningBalance = selectedRepository?.last_reconciled_balance ?? '0.000'
+  const effectiveOpeningBalance = openingBalance.trim() === '' ? defaultOpeningBalance : openingBalance
+  const liveDifference = bcsub(statementBalance || '0', effectiveOpeningBalance, 3)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!repositoryId || !statementDate || !statementBalance) return
-    const data: { repository_id: string; statement_date: string; statement_balance: string; notes?: string } = {
+    const data: { repository_id: string; statement_date: string; opening_balance?: string; statement_balance: string; notes?: string } = {
       repository_id: repositoryId,
       statement_date: statementDate,
       statement_balance: statementBalance,
+    }
+    if (openingBalance.trim() !== '') {
+      data.opening_balance = openingBalance
     }
     if (notes) {
       data.notes = notes
@@ -132,16 +139,41 @@ function StartReconciliationModal({
           </FormField>
 
           <FormField label={t('reconciliation.statementBalance')} htmlFor="reconciliation-statement-balance" required>
-            <Input
+            <MoneyInput
               id="reconciliation-statement-balance"
-              type="number"
-              step="0.01"
               value={statementBalance}
-              onChange={(e) => { setStatementBalance(e.target.value); }}
+              onChange={setStatementBalance}
+              currency={selectedCurrency}
+              min="-999999999999.999"
               placeholder="0.00"
               required
             />
           </FormField>
+
+          <FormField label={t('treasury:reconciliation.openingBalance')} htmlFor="reconciliation-opening-balance">
+            <MoneyInput
+              id="reconciliation-opening-balance"
+              value={openingBalance}
+              onChange={setOpeningBalance}
+              currency={selectedCurrency}
+              min="-999999999999.999"
+              placeholder={defaultOpeningBalance}
+            />
+            <p className={cn('mt-1 text-xs', textColors.tertiary)}>
+              {t('treasury:reconciliation.startModal.openingBalanceHelp', {
+                amount: formatCurrency(defaultOpeningBalance, selectedCurrency),
+              })}
+            </p>
+          </FormField>
+
+          <div className={cn('rounded-md border px-3 py-2 text-sm', borderColors.light, tokens.table.header)}>
+            <span className={textColors.tertiary}>
+              {t('treasury:reconciliation.startModal.liveDifference')}
+            </span>
+            <span className={cn('ms-2 font-semibold tabular-nums', bccomp(liveDifference, '0') === 0 ? textColors.success : textColors.warningDark)}>
+              {formatCurrency(liveDifference, selectedCurrency)}
+            </span>
+          </div>
 
           <FormField label={t('fields.notes')} htmlFor="reconciliation-notes">
             <Input
@@ -379,8 +411,7 @@ function ReconciliationDetail({
   }
 
   const isEditable = reconciliation.status === 'draft'
-  const difference = parseFloat(reconciliation.difference)
-  const hasDifference = Math.abs(difference) > 0.001
+  const hasDifference = bccomp(reconciliation.difference, '0') !== 0
 
   return (
     <div className="space-y-6">
@@ -563,6 +594,7 @@ export function BankReconciliationPage() {
   const handleStartReconciliation = (data: {
     repository_id: string
     statement_date: string
+    opening_balance?: string
     statement_balance: string
     notes?: string
   }) => {
@@ -621,7 +653,7 @@ export function BankReconciliationPage() {
       numeric: true,
       cellClassName: 'font-medium',
       render: (rec) => {
-        const hasDiff = Math.abs(parseFloat(rec.difference)) > 0.001
+        const hasDiff = bccomp(rec.difference, '0') !== 0
         return (
           <span className={hasDiff ? textColors.error : textColors.success}>
             {formatCurrency(rec.difference)}
@@ -658,7 +690,7 @@ export function BankReconciliationPage() {
 
   const backLink = (
     <Link
-      to="/settings"
+      to="/finance"
       className={cn('inline-flex items-center gap-1 text-sm', textColors.tertiary, textColors.hoverPrimary)}
     >
       <ArrowLeft className="h-4 w-4" />

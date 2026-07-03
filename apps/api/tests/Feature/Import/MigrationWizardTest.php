@@ -22,6 +22,9 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -283,6 +286,79 @@ class MigrationWizardTest extends TestCase
     public function test_unauthorized_user_cannot_access_wizard(): void
     {
         $response = $this->getJson('/api/v1/migration-wizard/order');
+
+        $response->assertUnauthorized();
+    }
+
+    // === Parse Headers API ===
+
+    public function test_api_parses_headers_from_comma_csv(): void
+    {
+        $file = UploadedFile::fake()->createWithContent(
+            'products.csv',
+            "name,sku,sale_price\nWidget,W-1,10.00\n"
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->post('/api/v1/migration-wizard/parse-headers', ['file' => $file], ['Accept' => 'application/json']);
+
+        $response->assertOk()
+            ->assertJson(['data' => ['headers' => ['name', 'sku', 'sale_price']]]);
+    }
+
+    public function test_api_parses_headers_from_semicolon_csv(): void
+    {
+        $file = UploadedFile::fake()->createWithContent(
+            'produits.csv',
+            "name;sku;sale_price\nProduit;P-1;10,00\n"
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->post('/api/v1/migration-wizard/parse-headers', ['file' => $file], ['Accept' => 'application/json']);
+
+        $response->assertOk()
+            ->assertJson(['data' => ['headers' => ['name', 'sku', 'sale_price']]]);
+    }
+
+    public function test_api_parses_headers_from_xlsx(): void
+    {
+        $spreadsheet = new Spreadsheet;
+        $spreadsheet->getActiveSheet()->fromArray([
+            ['Name', 'SKU', 'Sale_Price'],
+            ['Excel Product', 'X-1', 15.5],
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'wizard_test_').'.xlsx';
+        (new Xlsx($spreadsheet))->save($path);
+
+        try {
+            $file = new UploadedFile($path, 'products.xlsx', null, null, true);
+
+            $response = $this->actingAs($this->user, 'sanctum')
+                ->post('/api/v1/migration-wizard/parse-headers', ['file' => $file], ['Accept' => 'application/json']);
+
+            $response->assertOk()
+                ->assertJson(['data' => ['headers' => ['name', 'sku', 'sale_price']]]);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_api_parse_headers_rejects_unsupported_file_type(): void
+    {
+        $file = UploadedFile::fake()->createWithContent(
+            'notes.pdf',
+            '%PDF-1.4 not a spreadsheet'
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->post('/api/v1/migration-wizard/parse-headers', ['file' => $file], ['Accept' => 'application/json']);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_api_parse_headers_requires_auth(): void
+    {
+        $response = $this->postJson('/api/v1/migration-wizard/parse-headers');
 
         $response->assertUnauthorized();
     }

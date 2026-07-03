@@ -12,6 +12,7 @@ use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
 use App\Modules\Product\Presentation\Requests\AcceptEnrichmentRequest;
 use App\Modules\Product\Presentation\Requests\RejectEnrichmentRequest;
+use App\Shared\Enums\EnrichmentFeedbackReason;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -76,6 +77,8 @@ final class EnrichmentReviewController extends Controller
                 product_barcode: $result->product->barcode,
                 product_sku: $result->product->sku,
                 tracking_id: $result->tracking_id,
+                version: $result->version,
+                origin: $result->origin,
                 status: $result->status->value,
                 enriched_data: $result->enriched_data,
                 enrichment_quality: $result->enrichment_quality,
@@ -84,6 +87,7 @@ final class EnrichmentReviewController extends Controller
                 reviewed_by: $result->reviewed_by,
                 accepted_fields: $result->accepted_fields,
                 rejection_reason: $result->rejection_reason,
+                rejection_notes: $result->rejection_notes,
                 created_at: $result->created_at->toIso8601String(),
             );
         });
@@ -154,6 +158,8 @@ final class EnrichmentReviewController extends Controller
                 product_barcode: $result->product->barcode,
                 product_sku: $result->product->sku,
                 tracking_id: $result->tracking_id,
+                version: $result->version,
+                origin: $result->origin,
                 status: $result->status->value,
                 enriched_data: $result->enriched_data,
                 enrichment_quality: $result->enrichment_quality,
@@ -162,6 +168,7 @@ final class EnrichmentReviewController extends Controller
                 reviewed_by: $result->reviewed_by,
                 accepted_fields: $result->accepted_fields,
                 rejection_reason: $result->rejection_reason,
+                rejection_notes: $result->rejection_notes,
                 created_at: $result->created_at->toIso8601String(),
             ),
             'meta' => [
@@ -303,9 +310,10 @@ final class EnrichmentReviewController extends Controller
             ], 422);
         }
 
-        $reason = $request->validated('reason');
+        $reason = EnrichmentFeedbackReason::from($request->string('reason')->toString());
+        $notes = $request->validated('notes');
 
-        $this->enrichmentReviewService->reject($result, $user->id, $reason);
+        $this->enrichmentReviewService->reject($result, $user->id, $reason, is_string($notes) ? $notes : null);
 
         return response()->json([
             'data' => [

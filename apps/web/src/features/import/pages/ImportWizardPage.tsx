@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight, Upload, Loader2, CheckCircle, XCircle, Download } from 'lucide-react'
@@ -19,6 +19,7 @@ import {
   useImportErrors,
   useImportPreview,
 } from '../api/queries'
+import { toast } from 'sonner'
 import { importApi } from '../api/importApi'
 import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
@@ -41,46 +42,47 @@ const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; desc
     { name: 'type', required: true, description: 'customer or supplier' },
     { name: 'email', required: false },
     { name: 'phone', required: false },
-    { name: 'tax_id', required: false },
-    { name: 'address_line1', required: false },
-    { name: 'address_city', required: false },
-    { name: 'address_postal_code', required: false },
-    { name: 'address_country', required: false },
-    { name: 'notes', required: false },
+    { name: 'vat_number', required: false },
+    { name: 'address', required: false },
+    { name: 'city', required: false },
+    { name: 'country', required: false },
   ],
   products: [
-    { name: 'sku', required: true, description: 'Unique product code' },
     { name: 'name', required: true },
+    { name: 'sku', required: true, description: 'Unique product code' },
     { name: 'type', required: true, description: 'part, service, or consumable' },
+    { name: 'description', required: false },
     { name: 'sale_price', required: false, description: 'Selling price' },
     { name: 'purchase_price', required: false, description: 'Cost price' },
-    { name: 'category_name', required: false, description: 'Category name (must exist)' },
     { name: 'barcode', required: false },
+    { name: 'category_name', required: false, description: 'Category name (must exist)' },
     { name: 'tax_rate', required: false, description: 'Tax rate percentage' },
     { name: 'unit', required: false, description: 'Unit of measure' },
     { name: 'is_active', required: false, description: 'true/false, yes/no, 1/0' },
-    { name: 'description', required: false },
+  ],
+  stock_levels: [
+    { name: 'product_sku', required: true, description: 'Product SKU' },
+    { name: 'location_code', required: true, description: 'Location code' },
+    { name: 'quantity', required: true },
+    { name: 'notes', required: false },
   ],
   opening_balances: [
     { name: 'account_code', required: true, description: 'GL account code' },
-    { name: 'debit', required: false },
-    { name: 'credit', required: false },
-    { name: 'currency', required: false },
+    { name: 'debit', required: true },
+    { name: 'credit', required: true },
+    { name: 'description', required: false },
     { name: 'reference', required: false },
   ],
-  product_images: [
-    { name: 'sku', required: true, description: 'Product SKU' },
-    { name: 'image_url', required: true, description: 'Image URL' },
-  ],
+  product_images: [],
   composite_items: [
     { name: 'code', required: true, description: 'Unique item code' },
     { name: 'name', required: true },
     { name: 'base_price', required: true, description: 'Selling price' },
-    { name: 'manual_cost', required: false, description: 'Estimated cost per unit' },
     { name: 'vertical_type', required: false, description: 'fnb, manufacturing, sewing, bakery, generic' },
     { name: 'production_type', required: false, description: 'made_to_order, batch, stock' },
     { name: 'pricing_mode', required: false, description: 'standard or fixed_bundle' },
     { name: 'tax_rate', required: false },
+    { name: 'manual_cost', required: false, description: 'Estimated cost per unit' },
     { name: 'category_name', required: false },
     { name: 'is_active', required: false },
     { name: 'description', required: false },
@@ -126,8 +128,9 @@ export function ImportWizardPage() {
   const suggestMapping = useSuggestMapping()
 
   // Get real-time progress from WebSocket store
-  const { getImportProgress, updateProgress } = useImportProgressStore()
+  const { getImportProgress, updateProgress, completeImport } = useImportProgressStore()
   const realtimeProgress = jobId ? getImportProgress(jobId) : undefined
+  const completedProgressJobsRef = useRef<Set<string>>(new Set())
 
   // Track if we're actively importing (for polling fallback)
   const [isImporting, setIsImporting] = useState(false)
@@ -162,21 +165,68 @@ export function ImportWizardPage() {
 
   // Initialize real-time progress store when execution starts
   useEffect(() => {
-    if (jobId && apiJobData && executeImport.isSuccess) {
+    if (
+      jobId &&
+      apiJobData &&
+      executeImport.isSuccess &&
+      apiJobData.status !== 'completed' &&
+      apiJobData.status !== 'failed'
+    ) {
       // Seed the progress store with initial data when execution starts
       updateProgress({
         import_job_id: jobId,
-        status: 'importing',
+        status: apiJobData.status,
         total_rows: apiJobData.total_rows ?? 0,
-        processed_rows: 0,
-        successful_rows: 0,
-        failed_rows: 0,
-        progress_percentage: 0,
+        processed_rows: apiJobData.processed_rows ?? 0,
+        successful_rows: apiJobData.successful_rows ?? 0,
+        failed_rows: apiJobData.failed_rows ?? 0,
+        progress_percentage: apiJobData.progress_percentage ?? 0,
         import_type: importType,
         original_filename: selectedFile?.name ?? '',
       })
     }
   }, [jobId, apiJobData, executeImport.isSuccess, updateProgress, importType, selectedFile?.name])
+
+  // Mirror API polling into the global progress widget when WebSocket events are absent.
+  useEffect(() => {
+    if (!jobId || !apiJobData || !executeImport.isSuccess) {
+      return
+    }
+
+    if (apiJobData.status !== 'completed' && apiJobData.status !== 'failed') {
+      updateProgress({
+        import_job_id: jobId,
+        status: apiJobData.status,
+        total_rows: apiJobData.total_rows,
+        processed_rows: apiJobData.processed_rows,
+        successful_rows: apiJobData.successful_rows,
+        failed_rows: apiJobData.failed_rows,
+        progress_percentage: apiJobData.progress_percentage,
+        import_type: apiJobData.type,
+        original_filename: apiJobData.original_filename,
+      })
+      return
+    }
+
+    if (completedProgressJobsRef.current.has(jobId)) {
+      return
+    }
+    completedProgressJobsRef.current.add(jobId)
+
+    completeImport({
+      import_job_id: jobId,
+      status: apiJobData.status,
+      total_rows: apiJobData.total_rows,
+      successful_rows: apiJobData.successful_rows,
+      failed_rows: apiJobData.failed_rows,
+      import_type: apiJobData.type,
+      original_filename: apiJobData.original_filename,
+      completed_at: apiJobData.completed_at ?? new Date().toISOString(),
+      is_success: apiJobData.status === 'completed' && apiJobData.failed_rows === 0,
+      is_partial_success: apiJobData.status === 'completed' && apiJobData.successful_rows > 0 && apiJobData.failed_rows > 0,
+      ...(apiJobData.error_message ? { error_message: apiJobData.error_message } : {}),
+    })
+  }, [apiJobData, completeImport, executeImport.isSuccess, jobId, updateProgress])
 
   // Auto-navigate to complete step when import is completed (from API or WebSocket)
   useEffect(() => {
@@ -218,11 +268,11 @@ export function ImportWizardPage() {
   const handleFileSelect = useCallback(async (file: File) => {
     setSelectedFile(file)
 
-    // Parse CSV headers
-    const text = await file.text()
-    const lines = text.split('\n')
-    if (lines.length > 0) {
-      const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''))
+    // Parse headers server-side: handles XLSX/XLS and any CSV delimiter
+    // (semicolon is the default Excel CSV export in French/European locales),
+    // which the browser cannot split as plain comma-separated text.
+    try {
+      const { headers } = await importApi.parseHeaders(file)
       setSourceColumns(headers)
 
       // Get mapping suggestions
@@ -234,8 +284,12 @@ export function ImportWizardPage() {
           },
         }
       )
+    } catch {
+      toast.error(t('wizard.upload.parseError'))
+      setSelectedFile(null)
+      setSourceColumns([])
     }
-  }, [importType, suggestMapping])
+  }, [importType, suggestMapping, t])
 
   // Handle upload step completion
   const handleUploadComplete = useCallback(() => {

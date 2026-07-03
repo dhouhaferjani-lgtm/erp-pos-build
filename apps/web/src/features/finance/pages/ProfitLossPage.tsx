@@ -1,38 +1,59 @@
 import { useState } from 'react'
+import type { EChartsOption } from 'echarts'
 import { useTranslation } from 'react-i18next'
 import { useProfitLoss } from '../hooks/useProfitLoss'
 import { QueryError } from '@/components/QueryError'
+import { OwnerChart } from '@/features/owner-dashboard/components/OwnerChart'
 import { PageHeader } from '../../../components/molecules/PageHeader'
 import { Button, FormField, Input } from '../../../components/atoms'
-import { tokens, textColors, borderColors } from '../../../lib/designTokens'
+import { StatCard } from '../../../components/ui/StatCard'
+import { tokens, textColors, borderColors, chartColors } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
+import { bccomp } from '../../../lib/decimal'
+import { useCompany } from '../../../hooks/useCompany'
+import {
+  formatReportCurrency,
+  getCurrentMonthStartInputValue,
+  getTodayDateInputValue,
+} from './reportPageUtils'
 import type { ProfitLossLine } from '../types'
 
 export function ProfitLossPage() {
   const { t } = useTranslation(['finance'])
-  const today = new Date().toISOString().split('T')[0]
-  const firstDayOfMonth = new Date(
-    new Date().getFullYear(),
-    new Date().getMonth(),
-    1
-  )
-    .toISOString()
-    .split('T')[0]
+  const { currentCompany } = useCompany()
 
-  const [dateFrom, setDateFrom] = useState<string>(firstDayOfMonth)
-  const [dateTo, setDateTo] = useState<string>(today)
+  const [dateFrom, setDateFrom] = useState<string>(() => getCurrentMonthStartInputValue())
+  const [dateTo, setDateTo] = useState<string>(() => getTodayDateInputValue())
 
   const { data, isLoading, error, refetch } = useProfitLoss({
     date_from: dateFrom,
     date_to: dateTo,
   })
 
-  const formatCurrency = (amount: string | number) => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(num)
+  const formatMoney = (amount: string) => formatReportCurrency(amount, currentCompany)
+
+  const totalRevenue = data?.total_revenue ?? '0'
+  const totalExpenses = data?.total_expenses ?? '0'
+  const netIncome = data?.net_income ?? '0'
+
+  const revenueVsExpensesOption: EChartsOption = {
+    color: [chartColors.primary, chartColors.warning],
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    tooltip: { trigger: 'axis' as const },
+    xAxis: {
+      type: 'category' as const,
+      data: [
+        t('finance:reports.profitLossReport.totalRevenue'),
+        t('finance:reports.profitLossReport.totalExpenses'),
+      ],
+    },
+    yAxis: { type: 'value' as const },
+    series: [
+      {
+        type: 'bar' as const,
+        data: [totalRevenue, totalExpenses],
+      },
+    ],
   }
 
   const thLabel = cn(
@@ -85,14 +106,14 @@ export function ProfitLossPage() {
             <tr key={line.account_code}>
               <td className={tdLabel}>{line.account_code}</td>
               <td className={tdLabel}>{line.account_name}</td>
-              <td className={tdAmount}>{formatCurrency(line.amount)}</td>
+              <td className={tdAmount}>{formatMoney(line.amount)}</td>
             </tr>
           ))}
           <tr className={cn(tokens.table.header, 'font-bold')}>
             <td className={tdLabel} colSpan={2}>
               {totalLabel}
             </td>
-            <td className={tdAmount}>{formatCurrency(totalValue)}</td>
+            <td className={tdAmount}>{formatMoney(totalValue)}</td>
           </tr>
         </tbody>
       </table>
@@ -145,23 +166,46 @@ export function ProfitLossPage() {
       ) : error ? (
         <QueryError
           error={error}
-          onRetry={refetch}
+          onRetry={() => {
+            void refetch()
+          }}
           title={t('finance:reports.profitLossReport.loadError')}
         />
       ) : (
         <div className="space-y-8">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <StatCard
+              label={t('finance:reports.profitLossReport.totalRevenue')}
+              value={formatMoney(totalRevenue)}
+            />
+            <StatCard
+              label={t('finance:reports.profitLossReport.totalExpenses')}
+              value={formatMoney(totalExpenses)}
+            />
+            <StatCard
+              label={t('finance:reports.profitLossReport.netIncome')}
+              value={formatMoney(netIncome)}
+            />
+          </div>
+
+          <OwnerChart
+            title={t('finance:reports.profitLossReport.revenueVsExpenses')}
+            option={revenueVsExpensesOption}
+            isEmpty={!data}
+          />
+
           {renderSection(
             t('finance:reports.profitLossReport.revenue'),
             data?.revenue,
             t('finance:reports.profitLossReport.totalRevenue'),
-            data?.total_revenue ?? '0'
+            totalRevenue
           )}
 
           {renderSection(
             t('finance:reports.profitLossReport.expenses'),
             data?.expenses,
             t('finance:reports.profitLossReport.totalExpenses'),
-            data?.total_expenses ?? '0'
+            totalExpenses
           )}
 
           {/* Net Income */}
@@ -171,12 +215,12 @@ export function ProfitLossPage() {
               <span
                 className={cn(
                   'tabular-nums',
-                  parseFloat(data?.net_income ?? '0') >= 0
+                  bccomp(netIncome, '0') >= 0
                     ? textColors.success
                     : textColors.error
                 )}
               >
-                {formatCurrency(data?.net_income ?? '0')}
+                {formatMoney(netIncome)}
               </span>
             </div>
           </div>

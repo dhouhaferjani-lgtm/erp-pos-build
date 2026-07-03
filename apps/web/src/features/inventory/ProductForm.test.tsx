@@ -177,6 +177,7 @@ function makeSuggestedProduct(overrides: Partial<SuggestedProduct> = {}): Sugges
     name: 'Catalog Cream',
     barcode: '3017620422003',
     brand: 'La Roche-Posay',
+    brand_id: null,
     description: 'Hydrating care',
     platform_product_id: 'platform-product-001',
     classification: {},
@@ -184,6 +185,20 @@ function makeSuggestedProduct(overrides: Partial<SuggestedProduct> = {}): Sugges
     images: [],
     ...overrides,
   }
+}
+
+// Fixture for the brand-mapping tests: a found suggestion whose brand was
+// resolved server-side to a local ERP brand id.
+const mockSuggestedProduct: SuggestedProduct = {
+  name: 'Catalog Product',
+  barcode: '12345678',
+  brand: 'Catalog Brand',
+  brand_id: 'brand-uuid-1',
+  description: 'Catalog description',
+  platform_product_id: 'platform-product-1',
+  classification: {},
+  ingredients: [],
+  images: [],
 }
 
 function mockFoundLookup(suggestion: SuggestedProduct): void {
@@ -338,6 +353,64 @@ describe('ProductForm (canonical layout)', () => {
 
     await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
     expect(getProductsPostPayload()).not.toHaveProperty('platform_product_id')
+  })
+
+  it('posts the server-resolved brand_id when creating from a found catalog lookup', async () => {
+    mockFoundLookup(mockSuggestedProduct)
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-brand' })
+
+    render(<ProductForm />)
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('inventory:products.name', { exact: false })).toHaveValue('Catalog Product'),
+    )
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-BRAND' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() =>
+      expect(mockApiPost).toHaveBeenCalledWith(
+        '/products',
+        expect.objectContaining({ brand_id: 'brand-uuid-1' }),
+      ),
+    )
+  })
+
+  it('omits brand_id when the suggested product has no server-resolved brand (brand_id null)', async () => {
+    mockFoundLookup(makeSuggestedProduct({ brand_id: null }))
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-nobrand' })
+
+    render(<ProductForm />)
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('editor.hero.namePlaceholder')).toHaveValue('Catalog Cream'),
+    )
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-NOBRAND' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    expect(getProductsPostPayload()).not.toHaveProperty('brand_id')
+  })
+
+  it('omits brand_id when the form barcode no longer matches the suggested product (stale found state)', async () => {
+    mockFoundLookup(mockSuggestedProduct)
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-stale-brand' })
+
+    render(<ProductForm />)
+
+    // Genuine found flow: the suggested barcode ('12345678') is written into the form.
+    await waitFor(() =>
+      expect(screen.getByLabelText('inventory:products.name', { exact: false })).toHaveValue('Catalog Product'),
+    )
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-STALE' } })
+    // Stale case: the barcode field changes to a DIFFERENT barcode while
+    // lookupState stays 'found' (cache-fresh lookup fires no state transition,
+    // so suggestedProductRef still holds product A). Product A's brand_id must
+    // NOT be posted onto the product created with the new barcode.
+    fireEvent.change(screen.getByLabelText('editor.hero.barcodePlaceholder'), { target: { value: '99999999' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    expect(getProductsPostPayload()).not.toHaveProperty('brand_id')
   })
 
   it('does NOT render the capture panel in edit mode (submission path is create-only)', async () => {

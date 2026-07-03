@@ -527,7 +527,7 @@ export function SalesOrderDetailPage() {
             partner_id: order.partner_id,
             partner_name: order.partner_name || '',
             amount: outstandingAmount,
-            reference: order.document_number,
+            reference: order.document_number ?? '',
             document_id: order.id,
             document_type: 'sales_order',
           }}

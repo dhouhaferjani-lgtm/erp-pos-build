@@ -56,6 +56,11 @@ const expectedStringKeys = [
   'sales:purchaseOrders.paymentHistory',
   'inventory:counting.viewAll',
   'products:parapharmacy.requiresConsultation',
+  'finance:overview.title',
+  'finance:overview.cash.totalCash',
+  'finance:overview.upcoming.moneyIn',
+  'finance:overview.trend.revenueVsExpenses',
+  'finance:hub.cards.treasuryOverview.title',
 ] as const
 
 describe('raw i18n key coverage', () => {
@@ -85,5 +90,19 @@ describe('raw i18n key coverage', () => {
     expect(screen.getByText('AP Open Items')).toBeInTheDocument()
     expect(screen.queryByText('openingBalances.progress.title')).not.toBeInTheDocument()
     expect(screen.queryByText('openingBalances.types.aropen_items.title')).not.toBeInTheDocument()
+  })
+
+  it('keeps treasury overview finance labels in the correct language blocks', async () => {
+    await i18n.changeLanguage('en')
+    expect(i18n.t('finance:overview.title')).toBe('Treasury')
+    expect(i18n.t('finance:hub.cards.treasuryOverview.title')).toBe('Treasury')
+
+    await i18n.changeLanguage('fr')
+    expect(i18n.t('finance:overview.title')).toBe('Trésorerie')
+    expect(i18n.t('finance:hub.cards.treasuryOverview.title')).toBe('Trésorerie')
+
+    await i18n.changeLanguage('ar')
+    expect(i18n.t('finance:overview.title')).toBe('الخزينة')
+    expect(i18n.t('finance:hub.cards.treasuryOverview.title')).toBe('الخزينة')
   })
 })

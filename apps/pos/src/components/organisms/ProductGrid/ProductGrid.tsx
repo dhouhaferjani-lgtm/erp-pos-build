@@ -646,7 +646,7 @@ export function ProductGrid({
         <div
           ref={scrollContainerRef}
           data-testid="product-grid-scroll"
-          className="flex-1 overflow-y-auto"
+          className="flex-1 overflow-y-auto bg-[#e3e8ee]"
         >
           <div
             className="relative w-full"

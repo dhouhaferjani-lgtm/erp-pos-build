@@ -1,0 +1,52 @@
+{
+  "overview": {
+    "title": "الخزينة",
+    "subtitle": "وضعية النقدية والمقبوضات المتوقعة والمدفوعات القادمة",
+    "cash": {
+      "totalCash": "إجمالي النقدية",
+      "cashRegisters": "الصناديق",
+      "bankAccounts": "الحسابات البنكية",
+      "safes": "الخزائن",
+      "loading": "جاري تحميل وضعية النقدية...",
+      "loadError": "تعذر تحميل وضعية النقدية"
+    },
+    "upcoming": {
+      "moneyIn": "الأموال الداخلة",
+      "moneyOut": "الأموال الخارجة",
+      "totalIn": "المقبوضات المتوقعة",
+      "totalOut": "المدفوعات القادمة",
+      "emptyIn": "لا توجد مقبوضات متوقعة في هذه الفترة.",
+      "emptyOut": "لا توجد مدفوعات قادمة في هذه الفترة.",
+      "loading": "جاري تحميل المدفوعات القادمة...",
+      "loadError": "تعذر تحميل المدفوعات القادمة",
+      "overdue": "متأخر",
+      "daysUntilDue": "يستحق خلال {{count}} يوم",
+      "daysUntilDue_other": "يستحق خلال {{count}} أيام",
+      "buckets": {
+        "overdue": "متأخر",
+        "current": "حالي",
+        "days1To30": "1-30 يوم",
+        "days31To60": "31-60 يوم",
+        "days90Plus": "90+ يوم"
+      }
+    },
+    "trend": {
+      "revenueVsExpenses": "إيرادات ومصاريف الفترة الحالية",
+      "revenue": "الإيرادات",
+      "expenses": "المصاريف"
+    }
+  },
+  "hub": {
+    "cards": {
+      "treasuryOverview": {
+        "title": "الخزينة",
+        "description": "راجع وضعية النقدية وحركات الأموال القادمة"
+      }
+    }
+  },
+  "reports": {
+    "profitLossReport": {
+      "revenueVsExpenses": "الإيرادات مقابل المصروفات"
+    }
+  }
+}

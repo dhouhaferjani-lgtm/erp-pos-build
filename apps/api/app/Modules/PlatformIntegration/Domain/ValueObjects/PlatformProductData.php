@@ -30,6 +30,9 @@ final readonly class PlatformProductData
         public array $images,
         public int $confidenceScore,
         public ?string $enrichmentTier,
+        public ?string $canonicalBrandId = null,
+        public ?string $canonicalBrandSlug = null,
+        public ?string $externalBrandId = null,
     ) {}
 
     /**
@@ -48,6 +51,9 @@ final readonly class PlatformProductData
             images: $data['images'] ?? [],
             confidenceScore: (int) ($data['confidence_score'] ?? 0),
             enrichmentTier: $data['enrichment_tier'] ?? null,
+            canonicalBrandId: is_string($data['canonical_brand_id'] ?? null) ? $data['canonical_brand_id'] : null,
+            canonicalBrandSlug: is_string($data['canonical_brand_slug'] ?? null) ? $data['canonical_brand_slug'] : null,
+            externalBrandId: is_string($data['external_brand_id'] ?? null) ? $data['external_brand_id'] : null,
         );
     }
 }

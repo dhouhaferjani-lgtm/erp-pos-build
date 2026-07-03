@@ -15,7 +15,7 @@ import type { CreateExpenseDTO } from '../types'
  * Page for creating a new expense or editing an existing one.
  */
 export function ExpenseFormPage() {
-  const { t } = useTranslation(['expenses', 'common'])
+  const { t } = useTranslation(['expenses', 'common', 'sales'])
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const isEditMode = !!id
@@ -85,7 +85,9 @@ export function ExpenseFormPage() {
       </Button>
       <PageHeader
         title={isEditMode ? t('expenses:editExpense') : t('expenses:createExpense')}
-        {...(isEditMode && expense ? { subtitle: expense.document_number } : {})}
+        {...(isEditMode && expense
+          ? { subtitle: expense.document_number ?? t('sales:documents.draftNumberPlaceholder') }
+          : {})}
       />
 
       {/* Form */}

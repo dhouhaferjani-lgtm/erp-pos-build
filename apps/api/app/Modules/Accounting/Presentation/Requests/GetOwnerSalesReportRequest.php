@@ -30,7 +30,7 @@ final class GetOwnerSalesReportRequest extends FormRequest
             'location_ids' => ['sometimes', 'array'],
             'location_ids.*' => ['uuid'],
             'location_id' => ['sometimes', 'uuid'],
-            'granularity' => ['sometimes', Rule::in(['day', 'week', 'month'])],
+            'granularity' => ['sometimes', Rule::in(['hour', 'day', 'week', 'month'])],
             'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
             'sort_by' => ['sometimes', Rule::in(['revenue', 'quantity'])],
         ];

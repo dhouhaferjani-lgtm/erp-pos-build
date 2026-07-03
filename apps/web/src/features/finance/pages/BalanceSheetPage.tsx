@@ -6,25 +6,23 @@ import { PageHeader } from '../../../components/molecules/PageHeader'
 import { Button, FormField, Input } from '../../../components/atoms'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
+import { useCompany } from '../../../hooks/useCompany'
+import {
+  formatReportCurrency,
+  getTodayDateInputValue,
+} from './reportPageUtils'
 import type { BalanceSheetLine } from '../types'
 
 export function BalanceSheetPage() {
   const { t } = useTranslation(['finance'])
-  const [asOfDate, setAsOfDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  )
+  const { currentCompany } = useCompany()
+  const [asOfDate, setAsOfDate] = useState<string>(() => getTodayDateInputValue())
 
   const { data, isLoading, error, refetch } = useBalanceSheet({
     as_of_date: asOfDate,
   })
 
-  const formatCurrency = (amount: string | number) => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(num)
-  }
+  const formatMoney = (amount: string) => formatReportCurrency(amount, currentCompany)
 
   const thLabel = cn(
     'px-6 py-3 text-start text-xs font-medium uppercase tracking-wider',
@@ -76,14 +74,14 @@ export function BalanceSheetPage() {
             <tr key={line.account_code}>
               <td className={tdLabel}>{line.account_code}</td>
               <td className={tdLabel}>{line.account_name}</td>
-              <td className={tdAmount}>{formatCurrency(line.amount)}</td>
+              <td className={tdAmount}>{formatMoney(line.amount)}</td>
             </tr>
           ))}
           <tr className={cn(tokens.table.header, 'font-bold')}>
             <td className={tdLabel} colSpan={2}>
               {totalLabel}
             </td>
-            <td className={tdAmount}>{formatCurrency(totalValue)}</td>
+            <td className={tdAmount}>{formatMoney(totalValue)}</td>
           </tr>
         </tbody>
       </table>
@@ -126,7 +124,9 @@ export function BalanceSheetPage() {
       ) : error ? (
         <QueryError
           error={error}
-          onRetry={refetch}
+          onRetry={() => {
+            void refetch()
+          }}
           title={t('finance:reports.balanceSheetReport.loadError')}
         />
       ) : (

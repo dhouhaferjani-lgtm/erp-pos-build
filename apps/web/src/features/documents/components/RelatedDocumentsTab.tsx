@@ -53,6 +53,7 @@ function DocumentChainItem({ document, isCurrent = false, currency }: DocumentCh
   const { t } = useTranslation(['sales'])
   const Icon = documentTypeIcons[document.type] || FileText
   const documentType = documentRouteTypeFromSource(document.type)
+  const documentNumberLabel = document.document_number ?? t('sales:documents.draftNumberPlaceholder')
   const content = (
     <div className="flex items-start gap-3">
       <div
@@ -80,7 +81,7 @@ function DocumentChainItem({ document, isCurrent = false, currency }: DocumentCh
             </span>
           )}
         </div>
-        <p className="text-sm text-gray-600 mt-1">{document.document_number}</p>
+        <p className="text-sm text-gray-600 mt-1">{documentNumberLabel}</p>
         <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
           <span>{formatDate(document.document_date)}</span>
           <span className="font-medium text-gray-700">

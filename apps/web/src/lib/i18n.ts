@@ -127,6 +127,9 @@ import arAdmin from '../locales/ar/admin.json'
 import arPurchases from '../locales/ar/purchases.json'
 import arProducts from '../locales/ar/products.json'
 import arSales from '../locales/ar/sales.json'
+import arFinance from '../locales/ar/finance.json'
+import arImport from '../locales/ar/import.json'
+import arTreasury from '../locales/ar/treasury.json'
 import arSettings from '../locales/ar/settings.json'
 
 export const languages = [
@@ -136,6 +139,13 @@ export const languages = [
 ] as const
 
 export type LanguageCode = (typeof languages)[number]['code']
+
+const arFinanceOverview = arFinance.overview as typeof enFinance.overview
+const arFinanceHub = arFinance.hub as {
+  cards: {
+    treasuryOverview: typeof enFinance.hub.cards.treasuryOverview
+  }
+}
 
 const resources = {
   en: {
@@ -283,13 +293,56 @@ const resources = {
       },
     },
     inventory: { ...enInventory, ...arInventory, products: { ...enInventory.products, ...arInventory.products } },
-    treasury: enTreasury,
+    treasury: { ...enTreasury, ...arTreasury },
     validation: arValidation,
     pricing: enPricing,
-    finance: enFinance,
+    finance: {
+      ...enFinance,
+      ...arFinance,
+      overview: {
+        ...enFinance.overview,
+        ...arFinanceOverview,
+        cash: {
+          ...enFinance.overview.cash,
+          ...arFinanceOverview.cash,
+        },
+        upcoming: {
+          ...enFinance.overview.upcoming,
+          ...arFinanceOverview.upcoming,
+          buckets: {
+            ...enFinance.overview.upcoming.buckets,
+            ...arFinanceOverview.upcoming.buckets,
+          },
+        },
+        trend: {
+          ...enFinance.overview.trend,
+          ...arFinanceOverview.trend,
+        },
+      },
+      reports: {
+        ...enFinance.reports,
+        ...arFinance.reports,
+        profitLossReport: {
+          ...enFinance.reports.profitLossReport,
+          ...arFinance.reports.profitLossReport,
+        },
+      },
+      hub: {
+        ...enFinance.hub,
+        ...arFinance.hub,
+        cards: {
+          ...enFinance.hub.cards,
+          ...arFinanceHub.cards,
+          treasuryOverview: {
+            ...enFinance.hub.cards.treasuryOverview,
+            ...arFinanceHub.cards.treasuryOverview,
+          },
+        },
+      },
+    },
     expenses: enExpenses,
     income: arIncome,
-    import: enImport,
+    import: { ...enImport, ...arImport, mapping: { ...enImport.mapping, ...arImport.mapping } },
     settings: {
       ...enSettings,
       ...arSettings,

@@ -14,12 +14,14 @@ use App\Modules\Accounting\Application\Services\Reports\AgedReceivablesService;
 use App\Modules\Accounting\Application\Services\Reports\BalanceSheetService;
 use App\Modules\Accounting\Application\Services\Reports\CashMovementsReportService;
 use App\Modules\Accounting\Application\Services\Reports\CashRegisterReportService;
+use App\Modules\Accounting\Application\Services\Reports\LiveSalesReportService;
 use App\Modules\Accounting\Application\Services\Reports\OwnerReportScope;
 use App\Modules\Accounting\Application\Services\Reports\OwnerSalesSummaryService;
 use App\Modules\Accounting\Application\Services\Reports\ProfitLossService;
 use App\Modules\Accounting\Application\Services\Reports\SalesReportService;
 use App\Modules\Accounting\Application\Services\Reports\StockAlertReportService;
 use App\Modules\Accounting\Application\Services\Reports\TrialBalanceService;
+use App\Modules\Accounting\Application\Services\Reports\UpcomingPaymentsService;
 use App\Modules\Accounting\Presentation\Requests\GetAgedPayablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetAgedReceivablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetBalanceSheetRequest;
@@ -29,12 +31,14 @@ use App\Modules\Accounting\Presentation\Requests\GetOwnerSalesReportRequest;
 use App\Modules\Accounting\Presentation\Requests\GetOwnerStockAlertsRequest;
 use App\Modules\Accounting\Presentation\Requests\GetProfitLossRequest;
 use App\Modules\Accounting\Presentation\Requests\GetTrialBalanceRequest;
+use App\Modules\Accounting\Presentation\Requests\GetUpcomingPaymentsRequest;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use Carbon\Carbon;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * ReportsController
@@ -81,11 +85,13 @@ class ReportsController extends Controller
         private readonly CashMovementsReportService $cashMovementsReportService,
         private readonly AgedReceivablesService $agedReceivablesService,
         private readonly AgedPayablesService $agedPayablesService,
+        private readonly UpcomingPaymentsService $upcomingPaymentsService,
         private readonly OwnerReportScope $ownerReportScope,
         private readonly SalesReportService $salesReportService,
         private readonly StockAlertReportService $stockAlertReportService,
         private readonly CashRegisterReportService $cashRegisterReportService,
         private readonly OwnerSalesSummaryService $ownerSalesSummaryService,
+        private readonly LiveSalesReportService $liveSalesReportService,
     ) {}
 
     public function salesByLocation(GetOwnerSalesReportRequest $request): JsonResponse
@@ -193,6 +199,24 @@ class ReportsController extends Controller
                 companyIds: $companyIds,
                 locationIds: $locationIds,
             ),
+        ]);
+    }
+
+    public function liveSales(Request $request): JsonResponse
+    {
+        $user = $this->ownerUser($request->user());
+        $companyIds = $this->ownerReportScope->companyIds(null, $user);
+        $locationIds = $this->ownerReportScope->locationIds($companyIds, null, $user);
+
+        $report = $this->liveSalesReportService->report($companyIds, $locationIds);
+
+        return response()->json([
+            'data' => [
+                'recent_receipts' => $report->recent_receipts,
+                // Cast so an empty map serializes as {} (FE expects Record<string, number>).
+                'open_shifts_by_location' => (object) $report->open_shifts_by_location,
+                'generated_at' => $report->generated_at,
+            ],
         ]);
     }
 
@@ -769,6 +793,35 @@ class ReportsController extends Controller
                 'error' => [
                     'code' => 'REPORT_GENERATION_ERROR',
                     'message' => 'Failed to generate aged payables report: '.$e->getMessage(),
+                ],
+            ], 500);
+        }
+    }
+
+    public function upcomingPayments(GetUpcomingPaymentsRequest $request): JsonResponse
+    {
+        try {
+            $companyId = $this->companyContext->requireCompanyId();
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COMPANY_CONTEXT_REQUIRED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 401);
+        }
+
+        try {
+            $reportData = $this->upcomingPaymentsService->generate($companyId, $request->days());
+
+            return response()->json([
+                'data' => $reportData->toArray(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'REPORT_GENERATION_ERROR',
+                    'message' => 'Failed to generate upcoming payments report: '.$e->getMessage(),
                 ],
             ], 500);
         }

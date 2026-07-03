@@ -89,9 +89,34 @@ final class PartnerService implements PartnerServiceInterface
                 'email' => $data['email'] ?? null,
                 'phone' => $data['phone'] ?? null,
                 'vat_number' => $vatNumber,
+                'street_address' => self::nullableString($data['street_address'] ?? $data['address'] ?? null),
+                'street_address_2' => self::nullableString($data['street_address_2'] ?? null),
+                'city' => self::nullableString($data['city'] ?? null),
+                'state' => self::nullableString($data['state'] ?? null),
+                'postal_code' => self::nullableString($data['postal_code'] ?? null),
+                'country' => self::countryCode($data['country'] ?? null),
+                'country_code' => self::countryCode($data['country_code'] ?? $data['country'] ?? null),
             ]
         );
 
         return $partner->id;
+    }
+
+    private static function nullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
+    }
+
+    private static function countryCode(mixed $value): ?string
+    {
+        $value = self::nullableString($value);
+
+        return $value === null ? null : strtoupper($value);
     }
 }

@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { TrialBalancePage } from './TrialBalancePage'
+import { formatCurrency } from '../../../lib/format'
 import type { TrialBalanceData } from '../types'
 
 // i18n mock: echo the interpolation string when given, else the key.
@@ -21,6 +22,12 @@ const { mockUseTrialBalance } = vi.hoisted(() => ({
 
 vi.mock('../hooks/useTrialBalance', () => ({
   useTrialBalance: mockUseTrialBalance,
+}))
+
+vi.mock('../../../hooks/useCompany', () => ({
+  useCompany: () => ({
+    currentCompany: { currency: 'TND', locale: 'fr_TN' },
+  }),
 }))
 
 const fixture: TrialBalanceData = {
@@ -50,6 +57,10 @@ const fixture: TrialBalanceData = {
   as_of_date: '2026-06-14',
 }
 
+function normalizeSpaces(value: string): string {
+  return value.replace(/\s/g, ' ')
+}
+
 describe('TrialBalancePage (design-system)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -75,7 +86,7 @@ describe('TrialBalancePage (design-system)', () => {
     const debitCell = Array.from(cashRow.querySelectorAll('td')).find(
       (td) => {
         const text = td.textContent
-        return text.includes('5') && text.includes('EUR')
+        return text.includes('5') && text.includes('TND')
       }
     )
     if (debitCell === undefined) throw new Error('debit cell not found')
@@ -87,5 +98,30 @@ describe('TrialBalancePage (design-system)', () => {
     render(<TrialBalancePage />)
     const exportEl = screen.getByText('finance:reports.common.export')
     expect(exportEl.closest('button')).not.toBeNull()
+  })
+
+  it('formats money with the selected company currency without US formatting', () => {
+    render(<TrialBalancePage />)
+
+    const formattedDebit = formatCurrency('5000.00', {
+      currency: 'TND',
+      locale: 'fr-TN',
+    })
+    expect(normalizeSpaces(document.body.textContent)).toContain(
+      normalizeSpaces(formattedDebit)
+    )
+    expect(screen.queryByText('5,000.00')).not.toBeInTheDocument()
+  })
+
+  it('defaults the as-of date to today', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-15T12:00:00.000Z'))
+    try {
+      render(<TrialBalancePage />)
+
+      expect(screen.getByLabelText('finance:reports.common.asOfDate')).toHaveValue('2026-07-15')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

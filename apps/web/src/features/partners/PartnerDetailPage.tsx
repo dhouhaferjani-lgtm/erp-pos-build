@@ -49,7 +49,7 @@ type Partner = App.Modules.Partner.Application.DTOs.PartnerData
 
 interface Document {
   id: string
-  document_number: string
+  document_number: string | null
   type: 'quote' | 'sales_order' | 'invoice' | 'credit_note' | 'purchase_order'
   status: 'draft' | 'confirmed' | 'posted' | 'cancelled'
   fiscal_category: 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE'
@@ -120,7 +120,7 @@ function isPartnerDetailTab(value: string | null): value is PartnerDetailTab {
 
 export function PartnerDetailPage() {
   usePartnerBalanceRealtime()
-  const { t } = useTranslation(['common', 'deposits', 'treasury'])
+  const { t } = useTranslation(['common', 'deposits', 'treasury', 'sales'])
   const queryClient = useQueryClient()
   const { id = '' } = useParams<{ id: string }>()
   const location = useLocation()
@@ -236,6 +236,8 @@ export function PartnerDetailPage() {
       locale: companyLocale,
     })
   }
+  const getDocumentNumberLabel = (documentNumber: string | null) =>
+    documentNumber ?? t('sales:documents.draftNumberPlaceholder')
 
   if (isLoading) {
     return (
@@ -265,6 +267,14 @@ export function PartnerDetailPage() {
   if (!partner) {
     return null
   }
+
+  const postalCityLine = [partner.postal_code, partner.city].filter(Boolean).join(' ')
+  const addressLines = [
+    partner.street_address,
+    partner.street_address_2,
+    postalCityLine,
+    partner.country,
+  ].filter((line): line is string => typeof line === 'string' && line.trim().length > 0)
 
   return (
     <div className="space-y-6">
@@ -461,19 +471,15 @@ export function PartnerDetailPage() {
                     </div>
                   </div>
                 )}
-                {(partner.street_address != null || partner.city != null) && (
+                {addressLines.length > 0 && (
                   <div className="flex items-start gap-3">
                     <Building2 className="mt-0.5 h-5 w-5 text-gray-400" />
                     <div>
                       <dt className="text-sm font-medium text-gray-500">{t('fields.address')}</dt>
                       <dd className="text-gray-900">
-                        {partner.street_address && <div>{partner.street_address}</div>}
-                        {(partner.city != null || partner.postal_code != null) && (
-                          <div>
-                            {partner.postal_code} {partner.city}
-                          </div>
-                        )}
-                        {partner.country && <div>{partner.country}</div>}
+                        {addressLines.map((line) => (
+                          <div key={line}>{line}</div>
+                        ))}
                       </dd>
                     </div>
                   </div>
@@ -596,7 +602,7 @@ export function PartnerDetailPage() {
                               to={getDocumentPath()}
                               className="font-medium text-blue-600 hover:text-blue-900"
                             >
-                              {doc.document_number}
+                              {getDocumentNumberLabel(doc.document_number)}
                             </Link>
                           </td>
                           <td className="whitespace-nowrap px-6 py-4">

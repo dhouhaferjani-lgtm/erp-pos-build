@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, it, expect, vi } from 'vitest'
+import { formatCurrency } from '../../../lib/format'
 import type { AgedReceivablesData } from '../types'
 import { AgedReceivablesPage } from './AgedReceivablesPage'
 
@@ -16,6 +17,12 @@ const { mockUseAgedReceivables } = vi.hoisted(() => ({
 
 vi.mock('../hooks/useAgedReceivables', () => ({
   useAgedReceivables: mockUseAgedReceivables,
+}))
+
+vi.mock('../../../hooks/useCompany', () => ({
+  useCompany: () => ({
+    currentCompany: { currency: 'TND', locale: 'fr_TN' },
+  }),
 }))
 
 const fixture: AgedReceivablesData = {
@@ -38,6 +45,10 @@ const fixture: AgedReceivablesData = {
   total_over_90: '50.00',
   grand_total: '1850.00',
   as_of_date: '2026-06-14',
+}
+
+function normalizeSpaces(value: string): string {
+  return value.replace(/\s/g, ' ')
 }
 
 describe('AgedReceivablesPage', () => {
@@ -84,13 +95,56 @@ describe('AgedReceivablesPage', () => {
     })
 
     const { container } = renderPage()
+    const formattedCurrent = normalizeSpaces(formatCurrency('1000.00', {
+      currency: 'TND',
+      locale: 'fr-TN',
+    }))
 
     const moneyCell = Array.from(container.querySelectorAll('td')).find((td) =>
-      td.textContent.includes('1,000.00')
+      normalizeSpaces(td.textContent).includes(formattedCurrent)
     )
     expect(moneyCell).toBeDefined()
     expect(moneyCell).toHaveClass('tabular-nums')
     expect(moneyCell).toHaveClass('text-end')
+  })
+
+  it('formats money with the selected company currency without US formatting', () => {
+    mockUseAgedReceivables.mockReturnValue({
+      data: fixture,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    const formattedCurrent = formatCurrency('1000.00', {
+      currency: 'TND',
+      locale: 'fr-TN',
+    })
+    expect(normalizeSpaces(document.body.textContent)).toContain(
+      normalizeSpaces(formattedCurrent)
+    )
+    expect(screen.queryByText('1,000.00')).not.toBeInTheDocument()
+  })
+
+  it('defaults the as-of date to today', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-15T12:00:00.000Z'))
+    try {
+      mockUseAgedReceivables.mockReturnValue({
+        data: fixture,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      })
+
+      renderPage()
+
+      expect(screen.getByLabelText('finance:reports.common.asOfDate')).toHaveValue('2026-07-15')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('links customer names to customer detail pages', () => {

@@ -6,35 +6,33 @@ import { Button, FormField, Input } from '../../../components/atoms'
 import { EntityLink } from '../../../components/molecules/EntityLink'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
+import { useCompany } from '../../../hooks/useCompany'
+import {
+  formatReportCurrency,
+  getTodayDateInputValue,
+} from './reportPageUtils'
 import type { AgedPayablesLine } from '../types'
 
 export function AgedPayablesPage() {
   const { t } = useTranslation(['finance'])
-  const [asOfDate, setAsOfDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  )
+  const { currentCompany } = useCompany()
+  const [asOfDate, setAsOfDate] = useState<string>(() => getTodayDateInputValue())
 
   const { data: payablesData, isLoading } = useAgedPayables({
     as_of_date: asOfDate,
   })
 
-  const lines = payablesData?.lines || []
+  const lines = payablesData?.lines ?? []
 
-  const formatCurrency = (amount: string | number) => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(num)
-  }
+  const formatMoney = (amount: string) => formatReportCurrency(amount, currentCompany)
 
   const totals = {
-    current: parseFloat(payablesData?.total_current || '0'),
-    days_30: parseFloat(payablesData?.total_days_30 || '0'),
-    days_60: parseFloat(payablesData?.total_days_60 || '0'),
-    days_90: parseFloat(payablesData?.total_days_90 || '0'),
-    over_90: parseFloat(payablesData?.total_over_90 || '0'),
-    total: parseFloat(payablesData?.grand_total || '0'),
+    current: payablesData?.total_current ?? '0',
+    days_30: payablesData?.total_days_30 ?? '0',
+    days_60: payablesData?.total_days_60 ?? '0',
+    days_90: payablesData?.total_days_90 ?? '0',
+    over_90: payablesData?.total_over_90 ?? '0',
+    total: payablesData?.grand_total ?? '0',
   }
 
   const headCell = 'px-6 py-3 text-xs font-medium uppercase tracking-wider'
@@ -117,22 +115,22 @@ export function AgedPayablesPage() {
                     />
                   </td>
                   <td className={numCell}>
-                    {formatCurrency(line.current)}
+                    {formatMoney(line.current)}
                   </td>
                   <td className={numCell}>
-                    {formatCurrency(line.days_30)}
+                    {formatMoney(line.days_30)}
                   </td>
                   <td className={numCell}>
-                    {formatCurrency(line.days_60)}
+                    {formatMoney(line.days_60)}
                   </td>
                   <td className={numCell}>
-                    {formatCurrency(line.days_90)}
+                    {formatMoney(line.days_90)}
                   </td>
                   <td className={numCell}>
-                    {formatCurrency(line.over_90)}
+                    {formatMoney(line.over_90)}
                   </td>
                   <td className={cn(numCell, 'font-medium')}>
-                    {formatCurrency(line.total)}
+                    {formatMoney(line.total)}
                   </td>
                 </tr>
               ))}
@@ -140,22 +138,22 @@ export function AgedPayablesPage() {
               <tr className={cn(tokens.table.header, 'font-bold')}>
                 <td className={nameCell}>{t('finance:reports.common.total')}</td>
                 <td className={numCell}>
-                  {formatCurrency(totals.current)}
+                  {formatMoney(totals.current)}
                 </td>
                 <td className={numCell}>
-                  {formatCurrency(totals.days_30)}
+                  {formatMoney(totals.days_30)}
                 </td>
                 <td className={numCell}>
-                  {formatCurrency(totals.days_60)}
+                  {formatMoney(totals.days_60)}
                 </td>
                 <td className={numCell}>
-                  {formatCurrency(totals.days_90)}
+                  {formatMoney(totals.days_90)}
                 </td>
                 <td className={numCell}>
-                  {formatCurrency(totals.over_90)}
+                  {formatMoney(totals.over_90)}
                 </td>
                 <td className={numCell}>
-                  {formatCurrency(totals.total)}
+                  {formatMoney(totals.total)}
                 </td>
               </tr>
             </tbody>

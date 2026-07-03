@@ -39,11 +39,20 @@ describe('enrichmentApi', () => {
     })
   })
 
-  it('rejectEnrichmentResult posts reason', async () => {
+  it('rejectEnrichmentResult posts structured reason and notes', async () => {
     mockPost.mockResolvedValue({})
-    await rejectEnrichmentResult('abc', 'Wrong data')
+    await rejectEnrichmentResult('abc', 'bad_data', 'The enriched data does not match.')
     expect(mockPost).toHaveBeenCalledWith('/enrichment-results/abc/reject', {
-      reason: 'Wrong data',
+      reason: 'bad_data',
+      notes: 'The enriched data does not match.',
+    })
+  })
+
+  it('rejectEnrichmentResult omits blank notes', async () => {
+    mockPost.mockResolvedValue({})
+    await rejectEnrichmentResult('abc', 'wrong_product', '   ')
+    expect(mockPost).toHaveBeenCalledWith('/enrichment-results/abc/reject', {
+      reason: 'wrong_product',
     })
   })
 })

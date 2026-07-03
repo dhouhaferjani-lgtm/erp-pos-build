@@ -139,7 +139,6 @@ class ImportInfrastructureTest extends TestCase
             'failed_rows' => 0,
         ]);
 
-        $this->assertNotNull($job->id);
         $this->assertEquals($this->tenant->id, $job->tenant_id);
         $this->assertEquals($this->user->id, $job->user_id);
         $this->assertEquals(ImportType::Partners, $job->type);
@@ -168,7 +167,6 @@ class ImportInfrastructureTest extends TestCase
             'errors' => [],
         ]);
 
-        $this->assertNotNull($row->id);
         $this->assertEquals($job->id, $row->import_job_id);
         $this->assertEquals(1, $row->row_number);
         $this->assertEquals(['name' => 'Acme Corp', 'email' => 'acme@example.com'], $row->data);
@@ -252,7 +250,8 @@ class ImportInfrastructureTest extends TestCase
         $importService->addRow($job, 1, ['name' => 'Customer 1', 'type' => 'customer']);
         $importService->addRow($job, 2, ['name' => 'Customer 2', 'type' => 'supplier']);
 
-        $this->assertCount(2, $job->fresh()->rows);
+        $job->refresh();
+        $this->assertCount(2, $job->rows);
     }
 
     // === Validation Engine Tests ===
@@ -330,9 +329,15 @@ class ImportInfrastructureTest extends TestCase
         $job->refresh();
         $this->assertEquals(ImportStatus::Validated, $job->status);
 
-        $rows = $job->rows;
-        $this->assertTrue($rows->where('row_number', 1)->first()->is_valid);
-        $this->assertFalse($rows->where('row_number', 2)->first()->is_valid);
+        $validRow = ImportRow::where('import_job_id', $job->id)
+            ->where('row_number', 1)
+            ->firstOrFail();
+        $invalidRow = ImportRow::where('import_job_id', $job->id)
+            ->where('row_number', 2)
+            ->firstOrFail();
+
+        $this->assertTrue($validRow->is_valid);
+        $this->assertFalse($invalidRow->is_valid);
     }
 
     // === Error Reporting Tests ===
@@ -386,7 +391,47 @@ class ImportInfrastructureTest extends TestCase
         $failedRows = $importService->getFailedRows($job);
 
         $this->assertCount(1, $failedRows);
-        $this->assertEquals(2, $failedRows->first()->row_number);
+        $failedRow = $failedRows->first();
+        $this->assertInstanceOf(ImportRow::class, $failedRow);
+        $this->assertEquals(2, $failedRow->row_number);
+    }
+
+    public function test_partner_import_persists_address_fields(): void
+    {
+        /** @var ImportService $importService */
+        $importService = app(ImportService::class);
+
+        $job = $importService->createJob(
+            tenantId: $this->tenant->id,
+            userId: $this->user->id,
+            type: ImportType::Partners,
+            filename: 'customers.csv',
+            filePath: 'imports/customers.csv',
+            totalRows: 1
+        );
+
+        $row = ImportRow::create([
+            'import_job_id' => $job->id,
+            'row_number' => 1,
+            'data' => [
+                'name' => 'Demo Address Customer',
+                'type' => 'customer',
+                'email' => 'address.customer@example.com',
+                'address' => '12 Avenue Habib Bourguiba',
+                'city' => 'Tunis',
+                'country' => 'TN',
+            ],
+            'is_valid' => true,
+            'errors' => [],
+        ]);
+
+        $partnerId = $importService->importSingleRow($job, $row, $this->company->id);
+
+        $partner = Partner::findOrFail($partnerId);
+        $this->assertSame('12 Avenue Habib Bourguiba', $partner->street_address);
+        $this->assertSame('Tunis', $partner->city);
+        $this->assertSame('TN', $partner->country);
+        $this->assertSame('TN', $partner->country_code);
     }
 
     // === API Tests ===
