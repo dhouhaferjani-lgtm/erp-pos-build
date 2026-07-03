@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace App\Modules\Import\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
+use App\Modules\Product\Domain\Enums\ProductType;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
+use App\Shared\Contracts\TaxDefaultResolverInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -33,7 +36,10 @@ final class ImportService
         private readonly CompositeItemServiceInterface $compositeItemService,
         private readonly NumericFieldNormalizer $numericNormalizer,
         private readonly PartiesRowMapper $partiesRowMapper,
-        private readonly PartiesBalancesPhase $partiesBalancesPhase
+        private readonly PartiesBalancesPhase $partiesBalancesPhase,
+        private readonly ProductPriceResolver $productPriceResolver,
+        private readonly TaxDefaultResolverInterface $taxDefaultResolver,
+        private readonly ProductOpeningStockPhase $productOpeningStockPhase
     ) {}
 
     /**
@@ -392,7 +398,7 @@ final class ImportService
         return match ($job->type) {
             ImportType::Parties => $this->importParty($job, $row, $companyId),
             ImportType::Partners => $this->importPartner($job->tenant_id, $row->data, $companyId),
-            ImportType::Products => $this->importProduct($job->tenant_id, $row->data, $companyId),
+            ImportType::Products => $this->importProduct($job, $row, $companyId),
             ImportType::StockLevels => $this->importStockLevel($job->tenant_id, $row->data, $companyId),
             ImportType::OpeningBalances => $this->importOpeningBalance($job->tenant_id, $row->data, $companyId),
             ImportType::ProductImages => throw new RuntimeException('Product image import is not yet supported'),
@@ -433,6 +439,7 @@ final class ImportService
     {
         $results = match ($job->type) {
             ImportType::Parties => $this->partiesBalancesPhase->run($job->refresh(), $companyId),
+            ImportType::Products => $this->productOpeningStockPhase->run($job->refresh(), $companyId),
             default => [],
         };
 
@@ -470,14 +477,66 @@ final class ImportService
     /**
      * Import a product row via ProductServiceInterface.
      *
-     * @param  array<string, mixed>  $data
      * @param  string|null  $companyId  Company ID for async context (null uses CompanyContext)
      */
-    private function importProduct(string $tenantId, array $data, ?string $companyId = null): string
+    private function importProduct(ImportJob $job, ImportRow $row, ?string $companyId = null): string
     {
         $companyId ??= $this->companyContext->requireCompanyId();
+        $data = $row->data;
+        $data['type'] = $this->emptyString($data['type'] ?? null) ? ProductType::Part->value : $data['type'];
+        $company = $this->resolveCompany($job->tenant_id, $companyId);
+        $taxRate = $this->resolveProductTaxRate($company, $data);
+        $authority = $this->resolvePriceAuthority($job);
+        $price = $this->productPriceResolver->resolve($data, $authority, $taxRate);
 
-        return $this->productService->upsert($tenantId, $companyId, $data);
+        if ($price['sale_price'] !== null) {
+            $data['sale_price'] = $price['sale_price'];
+        }
+
+        if ($this->emptyString($data['tax_rate'] ?? null)) {
+            $data['tax_rate'] = $taxRate;
+            $data['_results'] = array_merge($data['_results'] ?? [], ['tax_source' => 'default']);
+        }
+
+        $row->update(['data' => $data]);
+
+        $productId = $this->productService->upsert($job->tenant_id, $companyId, $data);
+
+        foreach ($price['warnings'] as $warning) {
+            $this->addRowWarning($row, $warning['code'], $warning['detail']);
+        }
+
+        return $productId;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveProductTaxRate(Company $company, array $data): string
+    {
+        if (! $this->emptyString($data['tax_rate'] ?? null)) {
+            return (string) $data['tax_rate'];
+        }
+
+        return $this->taxDefaultResolver->getDefaultTaxForNewProduct($company);
+    }
+
+    /**
+     * @return 'ttc'|'ht'|'margin'
+     */
+    private function resolvePriceAuthority(ImportJob $job): string
+    {
+        $authority = $job->options['price_authority'] ?? null;
+
+        return in_array($authority, ['ttc', 'ht', 'margin'], true) ? $authority : 'ttc';
+    }
+
+    private function resolveCompany(string $tenantId, string $companyId): Company
+    {
+        /** @var Company $company */
+        $company = Company::where('tenant_id', $tenantId)->findOrFail($companyId);
+
+        return $company;
     }
 
     /**

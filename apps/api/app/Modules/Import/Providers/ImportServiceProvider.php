@@ -14,6 +14,8 @@ use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\NumericFieldNormalizer;
 use App\Modules\Import\Services\PartiesBalancesPhase;
 use App\Modules\Import\Services\PartiesRowMapper;
+use App\Modules\Import\Services\ProductOpeningStockPhase;
+use App\Modules\Import\Services\ProductPriceResolver;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
@@ -21,6 +23,7 @@ use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
+use App\Shared\Contracts\TaxDefaultResolverInterface;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -44,7 +47,10 @@ class ImportServiceProvider extends ServiceProvider
                 $app->make(CompositeItemServiceInterface::class),
                 $app->make(NumericFieldNormalizer::class),
                 $app->make(PartiesRowMapper::class),
-                $app->make(PartiesBalancesPhase::class)
+                $app->make(PartiesBalancesPhase::class),
+                $app->make(ProductPriceResolver::class),
+                $app->make(TaxDefaultResolverInterface::class),
+                $app->make(ProductOpeningStockPhase::class)
             );
         });
 
