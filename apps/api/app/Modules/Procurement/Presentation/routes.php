@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\Procurement\Presentation\Controllers\PurchaseQuoteRequestController;
 use App\Modules\Procurement\Presentation\Controllers\SupplierInvoiceController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +21,44 @@ use Illuminate\Support\Facades\Route;
 | Access is governed by per-route 'can:' permissions.
 |
 */
+
+Route::prefix('api/v1')->middleware([
+    'api',
+    'auth:sanctum',
+    SetPermissionsTeam::class,
+    EnforceTokenTenantClaim::class,
+])->group(function (): void {
+    Route::get('/purchase-quote-requests', [PurchaseQuoteRequestController::class, 'index'])
+        ->middleware('can:purchase-quote-requests.view')
+        ->name('purchase-quote-requests.index');
+    Route::get('/purchase-quote-requests/groups/{groupId}', [PurchaseQuoteRequestController::class, 'group'])
+        ->middleware('can:purchase-quote-requests.view')
+        ->whereUuid('groupId')
+        ->name('purchase-quote-requests.groups.show');
+    Route::post('/purchase-quote-requests', [PurchaseQuoteRequestController::class, 'store'])
+        ->middleware('can:purchase-quote-requests.create')
+        ->name('purchase-quote-requests.store');
+    Route::post('/purchase-quote-requests/groups/{groupId}/reopen', [PurchaseQuoteRequestController::class, 'reopen'])
+        ->middleware('can:purchase-quote-requests.convert')
+        ->whereUuid('groupId')
+        ->name('purchase-quote-requests.groups.reopen');
+    Route::get('/purchase-quote-requests/{id}', [PurchaseQuoteRequestController::class, 'show'])
+        ->middleware('can:purchase-quote-requests.view')
+        ->whereUuid('id')
+        ->name('purchase-quote-requests.show');
+    Route::put('/purchase-quote-requests/{id}', [PurchaseQuoteRequestController::class, 'update'])
+        ->middleware('can:purchase-quote-requests.update')
+        ->whereUuid('id')
+        ->name('purchase-quote-requests.update');
+    Route::post('/purchase-quote-requests/{id}/send', [PurchaseQuoteRequestController::class, 'send'])
+        ->middleware('can:purchase-quote-requests.update')
+        ->whereUuid('id')
+        ->name('purchase-quote-requests.send');
+    Route::post('/purchase-quote-requests/{id}/convert-to-po', [PurchaseQuoteRequestController::class, 'convertToPo'])
+        ->middleware('can:purchase-quote-requests.convert')
+        ->whereUuid('id')
+        ->name('purchase-quote-requests.convert-to-po');
+});
 
 Route::prefix('api/v1')->middleware([
     'api',

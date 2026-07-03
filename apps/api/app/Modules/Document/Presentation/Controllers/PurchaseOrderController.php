@@ -106,8 +106,8 @@ class PurchaseOrderController extends Controller
             $lineTotal = DocumentLine::computeLineTotal(
                 $quantity,
                 $unitPrice,
-                isset($line['discount_percent']) ? (string) $line['discount_percent'] : null,
-                isset($line['discount_amount']) ? (string) $line['discount_amount'] : null,
+                $this->numericStringOrNull($line['discount_percent'] ?? null),
+                $this->numericStringOrNull($line['discount_amount'] ?? null),
                 $this->scale(),
             );
             $line['unit_price'] = $unitPrice;
@@ -123,6 +123,72 @@ class PurchaseOrderController extends Controller
         }
 
         return $line;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array<int, array{description: string, quantity: numeric-string, unit_price: numeric-string, product_id?: string, service_id?: string, tax_rate?: string|null, tax_configuration_id?: string|null, discount_percent?: string|null, discount_amount?: string|null, notes?: string|null, ...}>
+     */
+    private function documentLinePayloads(array $lines): array
+    {
+        return array_map(function (array $line): array {
+            $payload = [
+                'description' => (string) ($line['description'] ?? ''),
+                'quantity' => $this->numericString((string) ($line['quantity'] ?? '0')),
+                'unit_price' => $this->numericString((string) ($line['unit_price'] ?? '0')),
+            ];
+
+            foreach (['product_id', 'service_id'] as $key) {
+                if (isset($line[$key]) && is_scalar($line[$key])) {
+                    $payload[$key] = (string) $line[$key];
+                }
+            }
+
+            foreach ([
+                'tax_rate',
+                'tax_configuration_id',
+                'discount_percent',
+                'discount_amount',
+                'notes',
+                'free_quantity',
+                'price_entry_mode',
+                'line_total',
+            ] as $key) {
+                if (array_key_exists($key, $line)) {
+                    $payload[$key] = $line[$key] === null ? null : (is_scalar($line[$key]) ? (string) $line[$key] : null);
+                }
+            }
+
+            if (array_key_exists('is_bonus_line', $line)) {
+                $payload['is_bonus_line'] = (bool) $line['is_bonus_line'];
+            }
+
+            return $payload;
+        }, $lines);
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function numericString(string $value): string
+    {
+        if (! is_numeric($value)) {
+            throw new \InvalidArgumentException('Expected numeric string.');
+        }
+
+        return $value;
+    }
+
+    /**
+     * @return numeric-string|null
+     */
+    private function numericStringOrNull(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return $this->numericString((string) $value);
     }
 
     /**
@@ -241,7 +307,7 @@ class PurchaseOrderController extends Controller
             $products = Product::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $productIds)->get()->keyBy('id');
             /** @var Collection<array-key, Service> $services */
             $services = Service::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $serviceIds)->get()->keyBy('id');
-            $lines = $this->lineTaxResolver->resolve($lines, $company, $products);
+            $lines = $this->lineTaxResolver->resolve($this->documentLinePayloads($lines), $company, $products);
             $lines = array_map(fn (array $line): array => $this->normalizePurchaseLine($line), $lines);
 
             // Calculate totals from lines
@@ -252,7 +318,7 @@ class PurchaseOrderController extends Controller
                 /** @var numeric-string $taxRate */
                 $taxRate = (string) ($line['tax_rate'] ?? '0');
 
-                $lineSubtotal = (string) $line['line_total'];
+                $lineSubtotal = $this->numericString((string) $line['line_total']);
                 $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
                 $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
@@ -400,7 +466,7 @@ class PurchaseOrderController extends Controller
                 $updateProducts = Product::query()->where('tenant_id', $documentModel->tenant_id)->where('company_id', $documentModel->company_id)->whereIn('id', $updateProductIds)->get()->keyBy('id');
                 /** @var Collection<array-key, Service> $updateServices */
                 $updateServices = Service::query()->where('tenant_id', $documentModel->tenant_id)->where('company_id', $documentModel->company_id)->whereIn('id', $updateServiceIds)->get()->keyBy('id');
-                $lines = $this->lineTaxResolver->resolve($lines, $company, $updateProducts);
+                $lines = $this->lineTaxResolver->resolve($this->documentLinePayloads($lines), $company, $updateProducts);
                 $lines = array_map(fn (array $line): array => $this->normalizePurchaseLine($line), $lines);
 
                 // Calculate totals from new lines
@@ -411,7 +477,7 @@ class PurchaseOrderController extends Controller
                     /** @var numeric-string $taxRate */
                     $taxRate = (string) ($lineData['tax_rate'] ?? '0');
 
-                    $lineSubtotal = (string) $lineData['line_total'];
+                    $lineSubtotal = $this->numericString((string) $lineData['line_total']);
                     $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
                     $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());

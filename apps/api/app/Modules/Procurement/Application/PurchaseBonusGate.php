@@ -16,12 +16,8 @@ final class PurchaseBonusGate
 
     public function enabledFor(Company $company): bool
     {
-        if ($company->tenant === null) {
+        if (! $company->relationLoaded('tenant')) {
             $company->load('tenant');
-        }
-
-        if ($company->tenant === null) {
-            return false;
         }
 
         $config = $this->companyConfigService->getConfigForTenant($company->tenant);

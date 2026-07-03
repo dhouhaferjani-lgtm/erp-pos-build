@@ -119,6 +119,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'purchase-orders.confirm',
             'purchase-orders.receive',
 
+            // Purchase Quote Requests / RFQ
+            'purchase-quote-requests.view',
+            'purchase-quote-requests.create',
+            'purchase-quote-requests.update',
+            'purchase-quote-requests.convert',
+            'purchase-quote-requests.delete',
+
             'invoices.view',
             'invoices.create',
             'invoices.update',
@@ -418,6 +425,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'quotes.view', 'quotes.create', 'quotes.update', 'quotes.convert',
             'orders.view', 'orders.create', 'orders.update', 'orders.confirm',
             'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.update', 'purchase-orders.confirm', 'purchase-orders.receive',
+            'purchase-quote-requests.view', 'purchase-quote-requests.create', 'purchase-quote-requests.update', 'purchase-quote-requests.convert', 'purchase-quote-requests.delete',
             'invoices.view', 'invoices.create', 'invoices.update', 'invoices.post', 'invoices.print',
             'credit-notes.view', 'credit-notes.create', 'credit-notes.post',
             'inventory.view', 'inventory.adjust', 'inventory.transfer', 'inventory.receive',
@@ -541,6 +549,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'quotes.view',
             'orders.view',
             'purchase-orders.view',
+            'purchase-quote-requests.view',
             'invoices.view',
             'credit-notes.view',
             'expenses.view',
@@ -607,6 +616,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'quotes.view', 'quotes.create', 'quotes.update',
             'orders.view', 'orders.create', 'orders.update',
             'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.update',
+            'purchase-quote-requests.view',
             'invoices.view', 'invoices.create', 'invoices.print',
             'expenses.view', 'expenses.create', 'expenses.update',
             'expense-categories.view',
