@@ -1,0 +1,49 @@
+{
+  "title": "الإيرادات",
+  "description": "سجّل الأموال المستلمة في صناديقك وحساباتك البنكية",
+  "recordIncome": "تسجيل إيراد",
+  "createIncome": "تسجيل إيراد",
+  "editIncome": "تعديل الإيراد",
+  "noIncome": "لا توجد إيرادات مسجّلة",
+  "noIncomeDescription": "ابدأ بتسجيل أول إيراد لك",
+  "searchPlaceholder": "ابحث عن إيراد بالمصدر أو المرجع…",
+  "confirmPost": "هل تريد ترحيل هذا الإيراد؟ لا يمكن التراجع عن هذا الإجراء.",
+  "post": "ترحيل",
+  "status": {
+    "draft": "مسودة",
+    "posted": "مُرحّل"
+  },
+  "form": {
+    "sourceInfo": "معلومات المصدر",
+    "sourceName": "مستلم من",
+    "sourceNamePlaceholder": "اسم العميل أو المستأجر أو المصدر",
+    "referenceNumber": "رقم المرجع",
+    "referenceNumberPlaceholder": "رقم الإيصال أو المرجع",
+    "incomeAccount": "فئة الإيراد",
+    "selectIncomeAccount": "اختر حساب إيراد",
+    "noIncomeAccounts": "لا توجد حسابات إيرادات متاحة",
+    "noIncomeAccountsDescription": "قم بإعداد حسابات الإيرادات (الفئة 7) في دليل الحسابات",
+    "amount": "المبلغ",
+    "date": "التاريخ",
+    "paymentDetails": "تفاصيل الاستلام",
+    "paymentDate": "تاريخ الاستلام",
+    "paymentMethod": "طريقة الدفع",
+    "paymentRepository": "مستلم في",
+    "isReceived": "وضع علامة كمستلم",
+    "notes": "ملاحظات",
+    "notesPlaceholder": "أضف أي ملاحظات إضافية",
+    "noPaymentMethods": "لا توجد طرق دفع متاحة",
+    "noPaymentMethodsDescription": "قم بإعداد طرق الدفع في إعدادات الخزينة",
+    "noRepositories": "لا توجد صناديق متاحة",
+    "noRepositoriesDescription": "قم بإعداد الصناديق في إعدادات الخزينة"
+  },
+  "messages": {
+    "created": "تم تسجيل الإيراد بنجاح",
+    "updated": "تم تحديث الإيراد بنجاح",
+    "posted": "تم ترحيل الإيراد بنجاح",
+    "deleted": "تم حذف الإيراد بنجاح"
+  },
+  "errors": {
+    "notFound": "الإيراد غير موجود"
+  }
+}

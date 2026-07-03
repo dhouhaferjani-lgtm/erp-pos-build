@@ -26,6 +26,7 @@ return [
     'updated' => ':resource updated successfully.',
     'deleted' => ':resource deleted successfully.',
     'restored' => ':resource restored successfully.',
+    'income_posted' => 'Income posted successfully.',
 
     // Documents
     'document' => [

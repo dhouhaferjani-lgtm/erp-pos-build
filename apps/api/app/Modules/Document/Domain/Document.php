@@ -16,6 +16,7 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\PaymentStatus;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Expense\Domain\ExpenseMetadata;
+use App\Modules\Income\Domain\IncomeMetadata;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
 use App\Modules\Taxation\Domain\Entities\WithholdingCertificate;
@@ -290,6 +291,14 @@ class Document extends Model
     public function expenseMetadata(): HasOne
     {
         return $this->hasOne(ExpenseMetadata::class);
+    }
+
+    /**
+     * @return HasOne<IncomeMetadata, $this>
+     */
+    public function incomeMetadata(): HasOne
+    {
+        return $this->hasOne(IncomeMetadata::class);
     }
 
     /**

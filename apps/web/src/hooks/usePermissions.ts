@@ -36,6 +36,11 @@ export const PERMISSIONS = {
   'expenses.update': ['admin', 'manager', 'operator', 'accountant'],
   'expenses.delete': ['admin', 'accountant'],
   'expenses.post': ['admin', 'manager', 'accountant'],
+  'income.view': ['admin', 'manager', 'cashier', 'viewer', 'operator', 'accountant'],
+  'income.create': ['admin', 'manager', 'cashier', 'operator', 'accountant'],
+  'income.update': ['admin', 'manager', 'operator', 'accountant'],
+  'income.delete': ['admin', 'accountant'],
+  'income.post': ['admin', 'manager', 'accountant'],
 
   // Expense Categories
   'expense-categories.view': ['admin', 'manager', 'cashier', 'viewer', 'operator', 'accountant'],
