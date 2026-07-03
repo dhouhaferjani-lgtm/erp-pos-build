@@ -19,6 +19,8 @@ use App\Shared\DTOs\CatalogProductDTO;
 use App\Shared\Enums\EnrichmentStatus;
 use App\Shared\Exceptions\PlatformCatalogUnavailableException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -115,6 +117,55 @@ final class ApplyCatalogEnrichmentJobTest extends TestCase
         // the verified backlink survives and no enrichment state is touched.
         $this->assertSame('platform-product-001', $product->platform_product_id);
         $this->assertSame(0, EnrichmentResult::query()->where('product_id', $product->id)->count());
+    }
+
+    public function test_job_applies_catalog_hit_on_real_queue_path_without_company_context(): void
+    {
+        // A queue worker binds no CompanyContext. Every other test in this file
+        // masks that reality twice: setUp() binds a context, and the lookup
+        // interface is replaced with a fake — so PlatformHttpClient's
+        // requireCompanyId() call is never exercised. This test dispatches the
+        // job through the real queue pipeline against the real
+        // BarcodeLookupService with only the HTTP layer faked.
+        config(['services.platform.url' => 'https://platform.test']);
+        config(['services.platform.api_key' => 'test-api-key']);
+        Cache::flush();
+
+        Http::fake([
+            'platform.test/api/v1/products/lookup' => Http::response([
+                'status' => 'found',
+                'product' => [
+                    'id' => 'platform-product-001',
+                    'barcode' => '3017620422003',
+                    'name' => 'Catalog Cream',
+                    'brand' => 'La Roche-Posay',
+                    'description' => 'Hydrating care',
+                    'classification' => ['category' => 'cosmetic'],
+                    'ingredients' => [],
+                    'images' => [],
+                    'confidence_score' => 96,
+                    'enrichment_tier' => 'catalog',
+                ],
+            ], 200),
+        ]);
+
+        $product = $this->makeProduct('platform-product-001');
+
+        app(CompanyContext::class)->clear();
+
+        ApplyCatalogEnrichmentJob::dispatch(
+            productId: $product->id,
+            expectedPlatformProductId: 'platform-product-001',
+            barcode: '3017620422003',
+            vertical: 'parapharmacy',
+        );
+
+        $product->refresh();
+        $this->assertSame(EnrichmentStatus::Completed, $product->enrichment_status);
+        $this->assertSame('platform-product-001', $product->platform_product_id);
+        $this->assertSame(1, EnrichmentResult::query()->where('product_id', $product->id)->count());
+        // The job must not leak its bound context into subsequent jobs on the worker.
+        $this->assertNull(app(CompanyContext::class)->getCompanyId());
     }
 
     private function makeProduct(string $platformProductId): Product
