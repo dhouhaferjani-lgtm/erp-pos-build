@@ -79,6 +79,7 @@ class ImportServiceProvider extends ServiceProvider
                 Route::get('/imports/{id}/error-summary', [ImportController::class, 'errorSummary']);
                 Route::post('/imports/{id}/execute', [ImportController::class, 'execute']);
                 Route::get('/imports/{id}/failed-rows.csv', [ImportController::class, 'downloadFailedRows']);
+                Route::get('/imports/{id}/result-workbook', [ImportController::class, 'downloadResultWorkbook']);
 
                 // Migration wizard routes
                 Route::get('/migration-wizard/order', [MigrationWizardController::class, 'order']);

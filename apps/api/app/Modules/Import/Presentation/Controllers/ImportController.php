@@ -14,6 +14,7 @@ use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\FailedRowsExportService;
 use App\Modules\Import\Services\ImportService;
+use App\Modules\Import\Services\ResultWorkbookService;
 use App\Modules\Import\Services\SpreadsheetParserService;
 use App\Modules\Import\Services\ValidationEngine;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Enum;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ImportController extends Controller
@@ -41,6 +43,7 @@ class ImportController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly SpreadsheetParserService $spreadsheetParser,
         private readonly FailedRowsExportService $failedRowsExportService,
+        private readonly ResultWorkbookService $resultWorkbookService,
     ) {}
 
     /**
@@ -527,6 +530,32 @@ class ImportController extends Controller
             'Content-Type' => 'text/csv',
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ]);
+    }
+
+    /**
+     * Download the XLSX result workbook for an import job.
+     */
+    public function downloadResultWorkbook(Request $request, string $id): BinaryFileResponse|JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+
+        $job = ImportJob::where('tenant_id', $tenantId)
+            ->where('id', $id)
+            ->first();
+
+        if (! $job) {
+            return response()->json(['error' => 'Import job not found'], 404);
+        }
+
+        $path = $this->resultWorkbookService->generate($job);
+
+        return response()->download(
+            $path,
+            "import-{$job->id}-result.xlsx",
+            ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+        )->deleteFileAfterSend();
     }
 
     /**
