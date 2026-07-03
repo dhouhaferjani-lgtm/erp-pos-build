@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
@@ -105,7 +105,13 @@ export function QuoteRequestComparisonPage() {
           {group.siblings.map((sibling) => (
             <div key={sibling.id} className={`border-b ${borderColors.light} pb-3`}>
               <div className={`font-semibold ${textColors.primary}`}>{sibling.partner.name}</div>
-              <div className={`mt-1 text-xs ${textColors.tertiary}`}>{sibling.number}</div>
+              <Link
+                className={`mt-1 block text-xs underline-offset-2 hover:underline ${textColors.tertiary}`}
+                data-testid={`open-sibling-${sibling.id}`}
+                to={`/purchases/quote-requests/${sibling.id}`}
+              >
+                {sibling.number}
+              </Link>
               <div className={`mt-2 text-sm ${textColors.secondary}`}>
                 {formatCurrency(sibling.total, true, sibling.currency)}
               </div>

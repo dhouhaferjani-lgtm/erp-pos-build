@@ -168,6 +168,14 @@ describe('correlateGroupLines', () => {
 })
 
 describe('QuoteRequestComparisonPage', () => {
+  it('links each sibling number to its detail page', () => {
+    renderWithProviders(<QuoteRequestComparisonPage />)
+
+    const link = screen.getByTestId('open-sibling-rfq-1')
+    expect(link).toHaveAttribute('href', '/purchases/quote-requests/rfq-1')
+    expect(screen.getByTestId('open-sibling-rfq-2')).toHaveAttribute('href', '/purchases/quote-requests/rfq-2')
+  })
+
   it('shows supplier columns and confirms before awarding a responded column', async () => {
     renderWithProviders(<QuoteRequestComparisonPage />)
 
