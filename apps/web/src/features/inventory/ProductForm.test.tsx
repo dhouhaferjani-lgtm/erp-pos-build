@@ -256,6 +256,30 @@ describe('ProductForm (canonical layout)', () => {
     )
   })
 
+  it('omits brand_id when the form barcode no longer matches the suggested product (stale found state)', async () => {
+    mockUseMutationRunsMutationFn = true
+    mockCatalogLookupReturnsFound = true
+    mockApiPost.mockResolvedValueOnce({ id: 'prod-stale' })
+
+    render(<ProductForm />)
+
+    // Genuine found flow: the suggested barcode ('12345678') is written into the form.
+    await waitFor(() =>
+      expect(screen.getByLabelText('inventory:products.name', { exact: false })).toHaveValue('Catalog Product'),
+    )
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-STALE' } })
+    // Stale case: the barcode field changes to a DIFFERENT barcode while
+    // lookupState stays 'found' (cache-fresh lookup fires no state transition,
+    // so suggestedProductRef still holds product A). Product A's brand_id must
+    // NOT be posted onto the product created with the new barcode.
+    fireEvent.change(screen.getByLabelText('editor.hero.barcodePlaceholder'), { target: { value: '99999999' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    const [, body] = mockApiPost.mock.calls[0] as [string, Record<string, unknown>]
+    expect(body).not.toHaveProperty('brand_id')
+  })
+
   it('Save & Close navigates to the product list after create', async () => {
     mockMutateAsync.mockResolvedValueOnce({ id: 'prod-10' })
     render(<ProductForm />)

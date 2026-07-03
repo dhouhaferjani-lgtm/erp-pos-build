@@ -374,8 +374,17 @@ export function ProductForm() {
 
   const createMutation = useMutation({
     mutationFn: (data: ProductFormData) => {
+      // Guard against a stale suggestion: a cache-fresh lookup for a different
+      // barcode fires no state transition, so the ref can still hold the
+      // previous product. Only trust brand_id when the suggested product's
+      // barcode matches the barcode actually being submitted. (No-op in the
+      // healthy flow — handleProductData writes the suggested barcode into
+      // the form on a genuine found.)
+      const suggested = suggestedProductRef.current
       const suggestedBrandId =
-        lookupState === 'found' ? suggestedProductRef.current?.brand_id ?? null : null
+        lookupState === 'found' && suggested !== null && suggested.barcode === data.barcode
+          ? suggested.brand_id ?? null
+          : null
       const basePayload = buildProductPayload(data, { isParapharmacy, suggestedBrandId })
       const hasOpeningQty =
         data.opening_qty.trim() !== '' && data.opening_qty.trim() !== '0'
