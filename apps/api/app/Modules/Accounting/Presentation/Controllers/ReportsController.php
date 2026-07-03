@@ -14,6 +14,7 @@ use App\Modules\Accounting\Application\Services\Reports\AgedReceivablesService;
 use App\Modules\Accounting\Application\Services\Reports\BalanceSheetService;
 use App\Modules\Accounting\Application\Services\Reports\CashMovementsReportService;
 use App\Modules\Accounting\Application\Services\Reports\CashRegisterReportService;
+use App\Modules\Accounting\Application\Services\Reports\LiveSalesReportService;
 use App\Modules\Accounting\Application\Services\Reports\OwnerReportScope;
 use App\Modules\Accounting\Application\Services\Reports\OwnerSalesSummaryService;
 use App\Modules\Accounting\Application\Services\Reports\ProfitLossService;
@@ -37,6 +38,7 @@ use Carbon\Carbon;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * ReportsController
@@ -89,6 +91,7 @@ class ReportsController extends Controller
         private readonly StockAlertReportService $stockAlertReportService,
         private readonly CashRegisterReportService $cashRegisterReportService,
         private readonly OwnerSalesSummaryService $ownerSalesSummaryService,
+        private readonly LiveSalesReportService $liveSalesReportService,
     ) {}
 
     public function salesByLocation(GetOwnerSalesReportRequest $request): JsonResponse
@@ -196,6 +199,24 @@ class ReportsController extends Controller
                 companyIds: $companyIds,
                 locationIds: $locationIds,
             ),
+        ]);
+    }
+
+    public function liveSales(Request $request): JsonResponse
+    {
+        $user = $this->ownerUser($request->user());
+        $companyIds = $this->ownerReportScope->companyIds(null, $user);
+        $locationIds = $this->ownerReportScope->locationIds($companyIds, null, $user);
+
+        $report = $this->liveSalesReportService->report($companyIds, $locationIds);
+
+        return response()->json([
+            'data' => [
+                'recent_receipts' => $report->recent_receipts,
+                // Cast so an empty map serializes as {} (FE expects Record<string, number>).
+                'open_shifts_by_location' => (object) $report->open_shifts_by_location,
+                'generated_at' => $report->generated_at,
+            ],
         ]);
     }
 

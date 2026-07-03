@@ -146,6 +146,21 @@ balance: string;
 source_type: string | null;
 source_id: string | null;
 };
+export type LiveSaleReceiptData = {
+id: string;
+posted_at: string;
+location_id: string;
+location_name: string;
+total: string;
+currency: string;
+items_count: number;
+receipt_number: string;
+};
+export type LiveSalesData = {
+recent_receipts: Array<App.Modules.Accounting.Application.DTOs.Reports.LiveSaleReceiptData>;
+open_shifts_by_location: Record<string, number>;
+generated_at: string;
+};
 export type PaymentMethodBreakdownData = {
 payment_type: string;
 payment_method_name: string;

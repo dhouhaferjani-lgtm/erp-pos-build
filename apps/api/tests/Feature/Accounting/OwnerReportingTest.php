@@ -399,6 +399,124 @@ final class OwnerReportingTest extends TestCase
         $response->assertJsonPath('data.0.variance_severity', 'critical');
     }
 
+    public function test_sales_by_location_supports_hour_granularity(): void
+    {
+        Sanctum::actingAs($this->owner);
+
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 10:15:00', '50.000');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 10:45:00', '30.000');
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 13:05:00', '20.000');
+
+        $response = $this->getJson(
+            '/api/v1/reports/sales/by-location?from=2026-07-03&to=2026-07-03&granularity=hour',
+            $this->companyHeaders(),
+        );
+
+        $response->assertOk();
+
+        $rows = collect($response->json('data'));
+        $this->assertCount(2, $rows);
+
+        $tenOclock = $rows->firstWhere('period', '2026-07-03 10:00');
+        $this->assertNotNull($tenOclock);
+        $this->assertSame('80', $tenOclock['gross_sales']);
+        $this->assertSame(2, $tenOclock['receipt_count']);
+
+        $onePm = $rows->firstWhere('period', '2026-07-03 13:00');
+        $this->assertNotNull($onePm);
+        $this->assertSame('20', $onePm['gross_sales']);
+
+        // Every hour period must be parseable by the FE rollup regex: (?:T|\s|^)(\d{2}):
+        foreach ($rows as $row) {
+            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:00$/', $row['period']);
+        }
+    }
+
+    public function test_live_sales_feed_requires_owner_permission(): void
+    {
+        Sanctum::actingAs($this->userWithoutPermission);
+
+        $response = $this->getJson('/api/v1/reports/sales/live', $this->companyHeaders());
+
+        $response->assertForbidden();
+    }
+
+    public function test_live_sales_feed_returns_recent_receipts_and_open_shift_counts(): void
+    {
+        Sanctum::actingAs($this->owner);
+
+        // 11 sale receipts -> only the newest 10 must be returned, newest first.
+        foreach (range(1, 11) as $minute) {
+            $this->seedReceipt(
+                $minute % 2 === 0 ? $this->locationA : $this->locationB,
+                $minute % 2 === 0 ? $this->terminalA : $this->terminalB,
+                sprintf('2026-07-03 10:%02d:00', $minute),
+                '10.000',
+            );
+        }
+
+        // Excluded rows: voided, training, and return receipts.
+        $voided = $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 11:30:00', '999.000');
+        Receipt::query()->whereKey($voided->id)->update(['is_voided' => true]);
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 11:40:00', '888.000', trainingFlag: true);
+        $return = $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 11:50:00', '777.000');
+        Receipt::query()->whereKey($return->id)->update(['receipt_type' => ReceiptType::Return->value]);
+
+        // A receipt with a line to verify items_count.
+        $product = Product::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'name' => 'Vitamin C']);
+        $withLine = $this->seedReceiptWithLine($product, $this->locationA, $this->terminalA, '2026-07-03 12:00:00', '86.400', '3.000');
+
+        // Open shifts: two on location A, one closed on location B.
+        $this->seedShift($this->terminalA, 101, ShiftStatus::Open);
+        $this->seedShift($this->terminalA, 102, ShiftStatus::Open);
+        $this->seedShift($this->terminalB, 103, ShiftStatus::Closed);
+
+        $response = $this->getJson('/api/v1/reports/sales/live', $this->companyHeaders());
+
+        $response->assertOk()->assertJsonStructure([
+            'data' => [
+                'recent_receipts' => [
+                    '*' => ['id', 'posted_at', 'location_id', 'location_name', 'total', 'currency', 'items_count', 'receipt_number'],
+                ],
+                'open_shifts_by_location',
+                'generated_at',
+            ],
+        ]);
+
+        $receipts = collect($response->json('data.recent_receipts'));
+        $this->assertCount(10, $receipts);
+
+        // Newest first: the receipt with a line (12:00) leads the feed.
+        $first = $receipts->first();
+        $this->assertSame($withLine->id, $first['id']);
+        $this->assertSame('2026-07-03T12:00:00Z', $first['posted_at']);
+        $this->assertSame($this->locationA->id, $first['location_id']);
+        $this->assertSame('Downtown', $first['location_name']);
+        $this->assertSame(1, $first['items_count']);
+        $this->assertIsString($first['total']);
+        $this->assertSame(86.4, (float) $first['total']);
+        $this->assertSame($withLine->currency, $first['currency']);
+        $this->assertNotSame('', $first['receipt_number']);
+
+        // Voided / training / return receipts never appear.
+        $this->assertNull($receipts->firstWhere('id', $voided->id));
+        $this->assertNull($receipts->firstWhere('id', $return->id));
+        $this->assertNull($receipts->first(fn (array $row): bool => in_array($row['total'], ['999', '999.000', '888', '888.000', '777', '777.000'], true)));
+
+        // Strictly descending posted_at.
+        $postedAts = $receipts->pluck('posted_at')->all();
+        $sorted = $postedAts;
+        rsort($sorted);
+        $this->assertSame($sorted, $postedAts);
+
+        // Open shift counts grouped by location; closed shifts excluded.
+        $openShifts = $response->json('data.open_shifts_by_location');
+        $this->assertSame(2, $openShifts[$this->locationA->id] ?? null);
+        $this->assertArrayNotHasKey($this->locationB->id, $openShifts);
+
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', (string) $response->json('data.generated_at'));
+    }
+
     /**
      * @return array<string, string>
      */
@@ -458,6 +576,23 @@ final class OwnerReportingTest extends TestCase
             'payment_method_id' => $method->id,
             'payment_type' => $paymentType,
             'amount' => $amount,
+        ]);
+    }
+
+    private function seedShift(Terminal $terminal, int $shiftNumber, ShiftStatus $status): Shift
+    {
+        return Shift::create([
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $this->owner->id,
+            'shift_number' => $shiftNumber,
+            'opening_cash' => '100.00',
+            'expected_cash' => $status === ShiftStatus::Closed ? '100.00' : null,
+            'actual_cash' => $status === ShiftStatus::Closed ? '100.00' : null,
+            'variance' => $status === ShiftStatus::Closed ? '0.00' : null,
+            'status' => $status,
+            'opened_at' => '2026-07-03 08:00:00',
+            'closed_at' => $status === ShiftStatus::Closed ? '2026-07-03 17:00:00' : null,
+            'closed_by' => $status === ShiftStatus::Closed ? $this->owner->id : null,
         ]);
     }
 

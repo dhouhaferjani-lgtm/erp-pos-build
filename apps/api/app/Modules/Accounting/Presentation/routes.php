@@ -215,4 +215,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/reports/sales/summary', [ReportsController::class, 'salesSummary'])
         ->middleware('can:dashboard.owner')
         ->name('reports.sales.summary');
+
+    Route::get('/reports/sales/live', [ReportsController::class, 'liveSales'])
+        ->middleware('can:dashboard.owner')
+        ->name('reports.sales.live');
 });

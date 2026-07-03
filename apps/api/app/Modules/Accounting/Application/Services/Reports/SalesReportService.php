@@ -198,6 +198,8 @@ final class SalesReportService
     {
         if (DB::connection()->getDriverName() === 'sqlite') {
             return match ($granularity) {
+                // Space separator + HH:00 so the FE hour rollup regex ((?:T|\s|^)(\d{2}):) can extract the hour.
+                'hour' => "strftime('%Y-%m-%d %H:00', {$column})",
                 'week' => "strftime('%Y-W%W', {$column})",
                 'month' => "strftime('%Y-%m', {$column})",
                 default => "date({$column})",
@@ -205,6 +207,8 @@ final class SalesReportService
         }
 
         return match ($granularity) {
+            // Space separator + HH24:00 — must stay byte-identical to the sqlite branch output.
+            'hour' => "to_char(date_trunc('hour', {$column}), 'YYYY-MM-DD HH24:00')",
             'week' => "to_char(date_trunc('week', {$column}), 'YYYY-\"W\"IW')",
             'month' => "to_char(date_trunc('month', {$column}), 'YYYY-MM')",
             default => "to_char(date_trunc('day', {$column}), 'YYYY-MM-DD')",
