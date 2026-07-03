@@ -2306,6 +2306,103 @@ final class GeneralLedgerService
     }
 
     /**
+     * Create journal entry from a posted income (the mirror of createFromExpense).
+     *
+     * Income is money received into a cash/bank repository against a class-7
+     * revenue account.
+     * Debit: Cash/Bank Account — the receiving payment repository's GL account
+     *        (repository->gl_account_id, NOT account_id). Falls back to the
+     *        Cash/Bank system account by repository type when the repository
+     *        has no linked GL account, and to Cash when no repository is set.
+     * Credit: Income Account — the selected class-7 account
+     *        (metadata->income_account_id) or ProductRevenue by default.
+     */
+    public function createFromIncome(Document $income, User $user): JournalEntry
+    {
+        $entry = DB::transaction(function () use ($income): JournalEntry {
+            $companyId = $income->company_id;
+            $metadata = $income->incomeMetadata;
+
+            // Determine income account (from selection or default to ProductRevenue).
+            if ($metadata?->income_account_id !== null) {
+                // Pin the Account by both tenant_id + company_id of the source
+                // income to refuse any cross-tenant account_id smuggled into
+                // metadata.income_account_id.
+                $incomeAccount = Account::query()
+                    ->where('tenant_id', $income->tenant_id)
+                    ->where('company_id', $income->company_id)
+                    ->whereKey($metadata->income_account_id)
+                    ->firstOrFail();
+            } else {
+                $incomeAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+            }
+
+            // Determine the receiving cash/bank account. Prefer the repository's
+            // linked GL account (gl_account_id — the account_id column is a
+            // DIFFERENT, legacy link and must NOT be used here). Fall back to the
+            // Cash/Bank system account by repository type, then to Cash.
+            $repository = $metadata?->paymentRepository;
+            if ($repository?->gl_account_id !== null) {
+                $paymentAccount = Account::query()
+                    ->where('tenant_id', $income->tenant_id)
+                    ->where('company_id', $income->company_id)
+                    ->whereKey($repository->gl_account_id)
+                    ->firstOrFail();
+            } else {
+                $repositoryType = $repository !== null ? $repository->type : RepositoryType::CashRegister;
+                $paymentAccount = match ($repositoryType) {
+                    RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
+                    default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
+                };
+            }
+
+            $entryNumber = $this->generateEntryNumber($companyId);
+            $sourceName = $metadata->source_name ?? 'Income';
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $income->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $metadata->payment_date ?? $income->document_date,
+                'description' => "Income: {$income->document_number} - {$sourceName}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'income',
+                'source_id' => $income->id,
+            ]);
+
+            $lineOrder = 0;
+
+            // Debit: Cash/Bank Account (money received)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentAccount->id,
+                'partner_id' => null,
+                'debit' => $income->total ?? '0',
+                'credit' => '0',
+                'description' => 'Income received',
+                'line_order' => $lineOrder++,
+            ]);
+
+            // Credit: Income Account (class-7 revenue)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $incomeAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $income->total ?? '0',
+                'description' => $sourceName,
+                'line_order' => $lineOrder,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $income->company_id, (string) $income->currency);
+
+        return $entry;
+    }
+
+    /**
      * @param  array{inventory_total: numeric-string, cogs_total: numeric-string}  $application
      */
     public function createLinkedCostCapitalizationEntry(

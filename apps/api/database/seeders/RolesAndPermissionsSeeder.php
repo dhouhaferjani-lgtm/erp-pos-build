@@ -167,6 +167,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'expense-categories.update',
             'expense-categories.delete',
 
+            // Income
+            'income.view',
+            'income.create',
+            'income.update',
+            'income.delete',
+            'income.post',
+
             // Treasury/Payments
             'payments.view',
             'payments.create',
@@ -419,6 +426,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'deliveries.view', 'deliveries.create', 'deliveries.edit', 'deliveries.delete', 'deliveries.confirm',
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.post',
             'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
+            'income.view', 'income.create', 'income.update', 'income.post',
             'payments.view', 'payments.create', 'payments.allocate',
             'instruments.view', 'instruments.create', 'instruments.transfer',
             'repositories.view',
@@ -499,6 +507,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'invoices.view', 'invoices.create', 'invoices.print',
             'expenses.view', 'expenses.create',
             'expense-categories.view',
+            'income.view', 'income.create',
             'inventory.view',
             'uom.view',
             'deliveries.view',
@@ -536,6 +545,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'credit-notes.view',
             'expenses.view',
             'expense-categories.view',
+            'income.view',
             'inventory.view',
             'uom.view',
             'deliveries.view',
@@ -600,6 +610,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'invoices.view', 'invoices.create', 'invoices.print',
             'expenses.view', 'expenses.create', 'expenses.update',
             'expense-categories.view',
+            'income.view', 'income.create', 'income.update',
             'inventory.view',
             'uom.view',
             'deliveries.view', 'deliveries.create', 'deliveries.edit',
@@ -627,6 +638,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'credit-notes.view', 'credit-notes.post',
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete', 'expenses.post',
             'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
+            'income.view', 'income.create', 'income.update', 'income.delete', 'income.post',
             'payments.view', 'payments.create', 'payments.allocate',
             'instruments.view', 'instruments.transfer', 'instruments.clear',
             'repositories.view', 'repositories.manage',

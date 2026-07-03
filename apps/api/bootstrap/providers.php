@@ -16,6 +16,7 @@ use App\Modules\Expense\Providers\ExpenseServiceProvider;
 use App\Modules\Fiscal\Providers\FiscalServiceProvider;
 use App\Modules\Identity\Infrastructure\Providers\IdentityServiceProvider;
 use App\Modules\Import\Providers\ImportServiceProvider;
+use App\Modules\Income\Providers\IncomeServiceProvider;
 use App\Modules\Inventory\Providers\InventoryServiceProvider;
 use App\Modules\Loyalty\Providers\LoyaltyServiceProvider;
 use App\Modules\Marketplace\Providers\MarketplaceServiceProvider;
@@ -75,6 +76,7 @@ return [
     ServiceModuleServiceProvider::class,
     BillingServiceProvider::class,
     ExpenseServiceProvider::class,
+    IncomeServiceProvider::class,
     FiscalServiceProvider::class,
     TaxationServiceProvider::class,
     POSServiceProvider::class,
