@@ -17,6 +17,8 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { useCompany } from '../../hooks/useCompany'
+import { useCountryProfile } from './hooks/useCountryProfile'
+import { getCountryPlaceholders } from '../../lib/countryPlaceholders'
 import { countries } from '../../lib/countries'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
@@ -205,7 +207,8 @@ export function CompanyPage() {
     }
   }
   const companyCountryCode = formData.country_code ?? formData.address?.country ?? settings?.country_code ?? 'TN'
-  const usesTunisiaDefaults = companyCountryCode === 'TN'
+  const { profile: countryProfile } = useCountryProfile(companyCountryCode)
+  const placeholders = getCountryPlaceholders(companyCountryCode, countryProfile?.phonePrefix)
   // Scope banner needs a company name to be meaningful; degrade to no banner
   // (never a malformed sentence) when company context is absent.
   const companyDisplayName = currentCompany?.name ?? settings?.name ?? ''
@@ -332,15 +335,13 @@ export function CompanyPage() {
                   onChange={(e) => { handleInputChange('legal_name', e.target.value || null) }}
                 />
               </FormField>
-              <FormField label={t('settings:company.fields.taxId')} htmlFor="tax_id">
+              <FormField label={countryProfile?.taxIdLabel ?? t('settings:company.fields.taxId')} htmlFor="tax_id">
                 <Input
                   type="text"
                   id="tax_id"
                   value={formData.tax_id ?? ''}
                   onChange={(e) => { handleInputChange('tax_id', e.target.value || null) }}
-                  placeholder={usesTunisiaDefaults
-                    ? t('settings:company.placeholders.tunisiaTaxId')
-                    : t('settings:company.placeholders.taxId')}
+                  placeholder={placeholders.taxId}
                 />
               </FormField>
               <FormField label={t('settings:company.fields.registrationNumber')} htmlFor="registration_number">
@@ -349,9 +350,7 @@ export function CompanyPage() {
                   id="registration_number"
                   value={formData.registration_number ?? ''}
                   onChange={(e) => { handleInputChange('registration_number', e.target.value || null) }}
-                  placeholder={usesTunisiaDefaults
-                    ? t('settings:company.placeholders.tunisiaRegistrationNumber')
-                    : t('settings:company.placeholders.registrationNumber')}
+                  placeholder={placeholders.registrationNumber}
                 />
               </FormField>
             </div>
@@ -370,9 +369,7 @@ export function CompanyPage() {
                   id="street"
                   value={formData.address?.street ?? ''}
                   onChange={(e) => { handleAddressChange('street', e.target.value) }}
-                  placeholder={usesTunisiaDefaults
-                    ? t('settings:company.placeholders.tunisiaStreet')
-                    : t('settings:company.placeholders.street')}
+                  placeholder={placeholders.street}
                 />
               </FormField>
               <div className="grid grid-cols-2 gap-4">
@@ -382,9 +379,7 @@ export function CompanyPage() {
                     id="city"
                     value={formData.address?.city ?? ''}
                     onChange={(e) => { handleAddressChange('city', e.target.value) }}
-                    placeholder={usesTunisiaDefaults
-                      ? t('settings:company.placeholders.tunisiaCity')
-                      : t('settings:company.placeholders.city')}
+                    placeholder={placeholders.city}
                   />
                 </FormField>
                 <FormField label={t('settings:company.fields.postalCode')} htmlFor="postal_code">
@@ -393,7 +388,7 @@ export function CompanyPage() {
                     id="postal_code"
                     value={formData.address?.postal_code ?? ''}
                     onChange={(e) => { handleAddressChange('postal_code', e.target.value) }}
-                    placeholder={usesTunisiaDefaults ? '1000' : '75001'}
+                    placeholder={placeholders.postalCode}
                   />
                 </FormField>
               </div>
@@ -418,7 +413,7 @@ export function CompanyPage() {
                     id="phone"
                     value={formData.phone ?? ''}
                     onChange={(e) => { handleInputChange('phone', e.target.value || null) }}
-                    placeholder={usesTunisiaDefaults ? '+216 71 123 456' : '+33 1 23 45 67 89'}
+                    placeholder={placeholders.phone}
                   />
                 </FormField>
                 <FormField label={t('settings:company.fields.email')} htmlFor="email">
@@ -554,7 +549,7 @@ export function CompanyPage() {
               <FormField label={t('settings:company.fields.timezone')} htmlFor="timezone">
                 <Select
                   id="timezone"
-                  value={formData.timezone ?? 'Africa/Tunis'}
+                  value={formData.timezone ?? countryProfile?.timezone ?? 'Africa/Tunis'}
                   onChange={(e) => { handleInputChange('timezone', e.target.value) }}
                 >
                   <option value="Europe/Paris">{t('settings:company.timezones.EuropeParis')}</option>

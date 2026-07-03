@@ -126,14 +126,6 @@
       "replaceLogo": "Remplacer"
     },
     "placeholders": {
-      "taxId": "FR12345678901",
-      "tunisiaTaxId": "1234567/A/M/000",
-      "registrationNumber": "123 456 789 RCS Paris",
-      "tunisiaRegistrationNumber": "B123456789",
-      "street": "123 Rue des Affaires",
-      "tunisiaStreet": "12 Avenue Habib Bourguiba",
-      "city": "Ville",
-      "tunisiaCity": "Tunis",
       "primaryColor": "#2563EB"
     },
     "currencies": {
