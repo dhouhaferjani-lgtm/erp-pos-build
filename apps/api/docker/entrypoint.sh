@@ -126,6 +126,30 @@ else
         echo "  Migrations: [failed - check logs]"
     fi
 
+    # -----------------------------------------------------------------------
+    # Roll pending TENANT-scoped migrations across every existing per-tenant
+    # database. The central `migrate --force` above only touches the central
+    # DB; tenant migrations otherwise run ONLY at signup, so tenants provisioned
+    # before a migration was added never receive it (e.g.
+    # document_lines.free_quantity / is_bonus_line), causing runtime 500s.
+    # `tenants:migrate-rolling` is idempotent (already-migrated tenants are a
+    # no-op) and isolates per-tenant failures. Uses the DIRECT db host because
+    # migration advisory locks + per-tenant DDL must bypass PgBouncer.
+    # -----------------------------------------------------------------------
+    echo ""
+    echo "Rolling tenant migrations across existing tenant databases (direct -> $DIRECT_DB_HOST)..."
+    if DB_HOST="$DIRECT_DB_HOST" php artisan tenants:migrate-rolling --force; then
+        echo "  Tenant migrations: [completed]"
+    else
+        echo "  Tenant migrations: [completed with per-tenant errors - check logs]"
+    fi
+
+    # Flush the shared Spatie permission cache (key spatie.permission.cache,
+    # default/redis store, 24h TTL) so role/permission grants applied out of
+    # band to existing tenants take effect immediately after deploy instead of
+    # serving a stale cached snapshot. Never blocks boot.
+    php artisan permission:cache-reset 2>/dev/null || true
+
     # Run seeders only if AUTO_SEED is set to true (prevents re-seeding on every restart)
     if [ "$AUTO_SEED" = "true" ]; then
         echo ""
