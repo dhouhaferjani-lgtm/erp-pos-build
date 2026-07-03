@@ -297,6 +297,7 @@
     "title": "Gestion des emplacements",
     "subtitle": "Gérez vos emplacements commerciaux, entrepôts et magasins",
     "addLocation": "Ajouter un emplacement",
+    "manageLocations": "Gérer les emplacements",
     "editLocation": "Modifier l'emplacement",
     "deleteLocation": "Supprimer l'emplacement",
     "setDefault": "Définir par défaut",

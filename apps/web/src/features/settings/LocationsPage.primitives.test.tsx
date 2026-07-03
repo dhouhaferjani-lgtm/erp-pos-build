@@ -122,4 +122,10 @@ describe('LocationsPage shared primitives', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'locations.addLocation' }))
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
+
+  it('shows the per-branch scope hint under the page title', async () => {
+    render(<LocationsPage />, { wrapper: wrapper() })
+    await screen.findByRole('button', { name: 'locations.addLocation' })
+    expect(screen.getByText('settings:locations.scopeHint')).toBeInTheDocument()
+  })
 })

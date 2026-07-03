@@ -53,6 +53,7 @@
   },
   "company": {
     "title": "Company Settings",
+    "scopeBanner": "These are company-wide settings for {{company}}. Branch details (address, tax ID) are edited in <locationsLink>Locations & Branches</locationsLink>.",
     "tabs": {
       "general": "General",
       "receipt": "Receipt"
@@ -173,6 +174,9 @@
       "uploadLogo": "Click to upload company logo",
       "logoFormats": "PNG, JPG, SVG up to 2MB"
     }
+  },
+  "locations": {
+    "scopeHint": "Per-branch data. Blank tax fields inherit the company values."
   },
   "receipt": {
     "title": "Receipt Settings",

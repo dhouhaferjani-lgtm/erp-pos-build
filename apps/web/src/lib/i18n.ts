@@ -288,6 +288,8 @@ const resources = {
       ...enSettings,
       ...arSettings,
       sections: { ...enSettings.sections, ...arSettings.sections },
+      company: { ...enSettings.company, ...arSettings.company },
+      locations: { ...enSettings.locations, ...arSettings.locations },
     },
     uom: enUom,
     products: { ...enProducts, ...arProducts },

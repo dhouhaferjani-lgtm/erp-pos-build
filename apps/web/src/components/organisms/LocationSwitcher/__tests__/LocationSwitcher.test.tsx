@@ -1,0 +1,89 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { describe, expect, it, vi } from 'vitest'
+
+import type { Location } from '@/stores/locationStore'
+
+import { LocationSwitcher } from '../LocationSwitcher'
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+  }),
+}))
+
+vi.mock('@/components/organisms/AddLocationModal', () => ({
+  AddLocationModal: () => null,
+}))
+
+const mockSwitchLocation = vi.hoisted(() => vi.fn())
+
+function locationFixture(overrides: Partial<Location>): Location {
+  return {
+    id: 'location-1',
+    companyId: 'company-1',
+    name: 'Main Shop',
+    code: 'MAIN',
+    type: 'shop',
+    phone: null,
+    email: null,
+    addressStreet: null,
+    addressCity: null,
+    addressPostalCode: null,
+    addressCountry: null,
+    isDefault: true,
+    isActive: true,
+    posEnabled: true,
+    createdAt: '2026-05-11T09:00:00Z',
+    updatedAt: '2026-05-11T09:00:00Z',
+    ...overrides,
+  }
+}
+
+const locations = [
+  locationFixture({ id: 'location-1', name: 'Main Shop' }),
+  locationFixture({ id: 'location-2', name: 'Branch Sfax', isDefault: false }),
+]
+
+vi.mock('@/hooks/useLocation', () => ({
+  useLocation: () => ({
+    currentLocation: locations[0],
+    currentLocationId: 'location-1',
+    locations,
+    isLoading: false,
+    hasMultipleLocations: true,
+    switchLocation: mockSwitchLocation,
+  }),
+}))
+
+function renderSwitcher() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<LocationSwitcher />} />
+          <Route path="/settings/locations" element={<div>locations page probe</div>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+describe('LocationSwitcher manage-locations entry', () => {
+  it('shows a Manage locations item in the dropdown that navigates to /settings/locations', async () => {
+    const user = userEvent.setup()
+    renderSwitcher()
+
+    await user.click(screen.getByRole('button', { name: 'common:locations.selectLocation' }))
+
+    const manageItem = screen.getByRole('button', { name: /locations\.manageLocations/i })
+    await user.click(manageItem)
+
+    expect(screen.getByText('locations page probe')).toBeInTheDocument()
+  })
+})

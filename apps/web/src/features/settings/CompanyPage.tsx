@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
@@ -16,6 +16,7 @@ import { api, getErrorMessage } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { useCompany } from '../../hooks/useCompany'
 import { countries } from '../../lib/countries'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
@@ -62,6 +63,7 @@ export function CompanyPage() {
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const { currentCompany } = useCompany()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [activeTab, setActiveTab] = useState<CompanyTab>('general')
   const [notification, setNotification] = useState<{
@@ -254,6 +256,17 @@ export function CompanyPage() {
           </Link>
         }
       />
+
+      {/* Company-scope banner: these settings apply company-wide; branch data lives in Locations & Branches */}
+      <div className={cn(tokens.alert.base, tokens.alert.info)}>
+        <Trans
+          i18nKey="settings:company.scopeBanner"
+          values={{ company: currentCompany?.name ?? settings?.name ?? '' }}
+          components={{
+            locationsLink: <Link to="/settings/locations" className="font-medium underline" />,
+          }}
+        />
+      </div>
 
       {/* Tabs */}
       <div className={cn('border-b', borderColors.light)}>

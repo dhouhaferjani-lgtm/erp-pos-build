@@ -79,7 +79,7 @@ function scopedNamespacePredicate(
 }
 
 export function LocationsPage() {
-  const { t } = useTranslation('common')
+  const { t } = useTranslation(['common', 'settings'])
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -231,6 +231,7 @@ export function LocationsPage() {
         <div>
           <h1 className={cn('text-2xl font-bold', textColors.primary)}>{t('locations.title')}</h1>
           <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('locations.subtitle')}</p>
+          <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('settings:locations.scopeHint')}</p>
         </div>
         <Button className="gap-2" onClick={openCreateModal}>
           <Plus className="h-4 w-4" />

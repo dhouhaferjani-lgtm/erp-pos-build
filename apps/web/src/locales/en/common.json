@@ -310,6 +310,7 @@
     "title": "Location Management",
     "subtitle": "Manage your business locations, warehouses, and stores",
     "addLocation": "Add Location",
+    "manageLocations": "Manage locations",
     "editLocation": "Edit Location",
     "deleteLocation": "Delete Location",
     "setDefault": "Set as Default",

@@ -53,6 +53,7 @@
   },
   "company": {
     "title": "Paramètres de l'entreprise",
+    "scopeBanner": "Ces paramètres s'appliquent à toute l'entreprise {{company}}. Les détails des succursales (adresse, identifiant fiscal) se modifient dans <locationsLink>Sites & succursales</locationsLink>.",
     "tabs": {
       "general": "Général",
       "receipt": "Ticket"
@@ -173,6 +174,9 @@
       "uploadLogo": "Cliquez pour télécharger le logo",
       "logoFormats": "PNG, JPG, SVG jusqu'à 2 Mo"
     }
+  },
+  "locations": {
+    "scopeHint": "Données propres à chaque succursale. Les champs fiscaux vides héritent des valeurs de l'entreprise."
   },
   "receipt": {
     "title": "Paramètres du ticket",
