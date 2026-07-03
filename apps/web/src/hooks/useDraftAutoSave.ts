@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { apiPost } from '../lib/api'
+import { api } from '../lib/api'
 
 /**
  * Configuration for draft auto-save behavior
@@ -148,20 +148,29 @@ export function useDraftAutoSave(
     setIsSaving(true)
 
     try {
-      const response = await apiPost<{ draft_id: string; saved_at: string }>('/documents/auto-save', {
-        draft_id: existingDraftId || draftId,
-        ...data,
-      })
+      // NOTE: /documents/auto-save returns an UNWRAPPED body
+      // ({ draft_id, saved_at, line_count }) — it does NOT use the standard
+      // { data: ... } envelope. So we must use `api.post` and read
+      // `response.data` directly; `apiPost` (which unwraps `response.data.data`)
+      // yields `undefined` here and crashes on `.draft_id` (every auto-save,
+      // even server-side successful ones).
+      const { data: body } = await api.post<{ draft_id: string; saved_at: string }>(
+        '/documents/auto-save',
+        {
+          draft_id: existingDraftId || draftId,
+          ...data,
+        },
+      )
 
       if (!isUnmountedRef.current) {
-        setDraftId(response.draft_id)
-        setLastSavedAt(new Date(response.saved_at))
+        setDraftId(body.draft_id)
+        setLastSavedAt(new Date(body.saved_at))
         setIsSaving(false)
         setAutosavePending(false)
         setAutosaveFailed(false)
         setLastError(null)
 
-        onSuccess?.(response.draft_id)
+        onSuccess?.(body.draft_id)
       }
     } catch (error) {
       if (!isUnmountedRef.current) {

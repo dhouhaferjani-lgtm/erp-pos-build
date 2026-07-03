@@ -3,8 +3,10 @@ import { renderHook, act } from '@testing-library/react'
 import { useDraftAutoSave } from '../useDraftAutoSave'
 import * as api from '../../lib/api'
 
-vi.mock('../../lib/api', () => ({ apiPost: vi.fn() }))
-const apiPost = vi.mocked(api.apiPost)
+// The hook calls `api.post` directly (the /documents/auto-save endpoint returns
+// an UNWRAPPED body, so it cannot use apiPost's data.data unwrap).
+vi.mock('../../lib/api', () => ({ api: { post: vi.fn() } }))
+const apiPost = vi.mocked(api.api.post)
 
 const draft = { type: 'invoice' as const, lines: [{ product_id: 'p1', quantity: 1, unit_price: 1 }] }
 
@@ -32,7 +34,8 @@ describe('useDraftAutoSave failure/pending state', () => {
     expect(result.current.lastError?.message).toBe('network error')
 
     // Second attempt: success — must clear both failure fields
-    apiPost.mockResolvedValueOnce({ draft_id: 'd1', saved_at: new Date(0).toISOString() })
+    // api.post returns an axios-shaped response; the hook reads `response.data`.
+    apiPost.mockResolvedValueOnce({ data: { draft_id: 'd1', saved_at: new Date(0).toISOString() } })
     await act(async () => { await result.current.saveNow() })
     await act(() => Promise.resolve())
     expect(result.current.autosaveFailed).toBe(false)
