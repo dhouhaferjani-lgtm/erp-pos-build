@@ -1,10 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { X, Loader2 } from 'lucide-react'
 import { createLocation, type CreateLocationInput, transformLocationResponse } from '../../../features/location/api'
 import { useInvalidateLocations } from '../../../features/location/LocationProvider'
+import { isBranchTaxIdRequiredCountry } from '../../../features/location/branchTaxCountries'
+import { useCountries } from '../../../features/settings/hooks/useCountries'
+import { useCompany } from '../../../hooks/useCompany'
 import { getErrorMessage } from '../../../lib/api'
+import { cn } from '../../../lib/utils'
+import { tokens, textColors } from '../../../lib/designTokens'
 import { useLocationStore } from '../../../stores/locationStore'
 import type { LocationType } from '../../../stores/locationStore'
 
@@ -18,8 +25,12 @@ interface AddLocationModalProps {
  */
 export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
   const { t } = useTranslation(['common'])
+  const navigate = useNavigate()
   const invalidateLocations = useInvalidateLocations()
   const setCurrentLocation = useLocationStore((state) => state.setCurrentLocation)
+  const { currentCompany } = useCompany()
+  const { data: countries } = useCountries()
+  const companyCountryCode = currentCompany?.countryCode ?? ''
 
   const LOCATION_TYPES: { value: LocationType; label: string; description: string }[] = [
     { value: 'shop', label: t('common:locations.types.shop'), description: t('common:locations.typeDescriptions.shop') },
@@ -38,10 +49,25 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
     addressCity: '',
     addressPostalCode: '',
     addressCountry: '',
+    taxId: '',
+    vatNumber: '',
     posEnabled: false,
   })
 
   const [error, setError] = useState<string | null>(null)
+
+  // Default the country to the company country once, when the modal opens.
+  // Never overrides a country the user already picked.
+  useEffect(() => {
+    if (isOpen && companyCountryCode !== '') {
+      setFormData((prev) =>
+        prev.addressCountry === '' ? { ...prev, addressCountry: companyCountryCode } : prev,
+      )
+    }
+  }, [isOpen, companyCountryCode])
+
+  const requiresTaxId =
+    formData.type === 'shop' && isBranchTaxIdRequiredCountry(formData.addressCountry)
 
   const mutation = useMutation({
     mutationFn: async (input: CreateLocationInput) => {
@@ -55,6 +81,15 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
       setCurrentLocation(transformed.id)
       // Close the modal
       onClose()
+      // Quick-add captures the essentials; point at the full editor for the rest
+      toast.success(t('common:locations.modal.createdCompleteDetails'), {
+        action: {
+          label: t('common:locations.manageLocations'),
+          onClick: () => {
+            void navigate('/settings/locations')
+          },
+        },
+      })
       // Reset form
       setFormData({
         name: '',
@@ -66,6 +101,8 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
         addressCity: '',
         addressPostalCode: '',
         addressCountry: '',
+        taxId: '',
+        vatNumber: '',
         posEnabled: false,
       })
       setError(null)
@@ -84,6 +121,11 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
       return
     }
 
+    if (requiresTaxId && !formData.taxId.trim()) {
+      setError(t('common:locations.modal.taxIdRequired'))
+      return
+    }
+
     mutation.mutate({
       name: formData.name,
       type: formData.type,
@@ -94,6 +136,8 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
       addressCity: formData.addressCity || undefined,
       addressPostalCode: formData.addressPostalCode || undefined,
       addressCountry: formData.addressCountry || undefined,
+      taxId: formData.taxId || undefined,
+      vatNumber: formData.vatNumber || undefined,
       posEnabled: formData.posEnabled,
     })
   }
@@ -268,10 +312,78 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
                 value={formData.addressPostalCode}
                 onChange={handleChange}
                 placeholder={t('common:locations.modal.postalCodePlaceholder')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={tokens.input.base}
               />
             </div>
           </div>
+
+          {/* Country */}
+          <div>
+            <label htmlFor="addressCountry" className={tokens.label.base}>
+              {t('common:locations.form.country')}
+            </label>
+            {countries && countries.length > 0 ? (
+              <select
+                id="addressCountry"
+                name="addressCountry"
+                value={formData.addressCountry}
+                onChange={handleChange}
+                className={tokens.select.base}
+              >
+                <option value="" />
+                {countries.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {country.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                id="addressCountry"
+                name="addressCountry"
+                value={formData.addressCountry}
+                onChange={handleChange}
+                maxLength={2}
+                className={tokens.input.base}
+              />
+            )}
+          </div>
+
+          {/* Branch tax identity — required for shops in branch-tax countries */}
+          {requiresTaxId && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="taxId" className={tokens.label.base}>
+                  {t('common:locations.form.taxId')} <span className={tokens.label.required}>*</span>
+                </label>
+                <input
+                  type="text"
+                  id="taxId"
+                  name="taxId"
+                  value={formData.taxId}
+                  onChange={handleChange}
+                  className={tokens.input.base}
+                />
+                <p className={cn('mt-1 text-xs', textColors.tertiary)}>
+                  {t('common:locations.form.taxIdRequiredHint')}
+                </p>
+              </div>
+              <div>
+                <label htmlFor="vatNumber" className={tokens.label.base}>
+                  {t('common:locations.form.vatNumber')}
+                </label>
+                <input
+                  type="text"
+                  id="vatNumber"
+                  name="vatNumber"
+                  value={formData.vatNumber}
+                  onChange={handleChange}
+                  className={tokens.input.base}
+                />
+              </div>
+            </div>
+          )}
 
           {/* POS Enabled */}
           <div className="flex items-center gap-2">

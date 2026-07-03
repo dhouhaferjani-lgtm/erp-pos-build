@@ -322,6 +322,8 @@
     "modal": {
       "addTitle": "Ajouter un emplacement",
       "locationNameRequired": "Le nom de l'emplacement est requis",
+      "taxIdRequired": "L'identifiant fiscal est requis pour cet emplacement",
+      "createdCompleteDetails": "Emplacement créé. Complétez ses informations (adresse, identifiant fiscal) dans Sites & succursales.",
       "createButton": "Créer l'emplacement",
       "namePlaceholder": "Entrepôt principal",
       "codePlaceholder": "ENT-001",

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truck, Store } from 'lucide-react'
 import { fetchLocations, createLocation, updateLocation, deleteLocation, setDefaultLocation } from '../location/api'
 import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput } from '../location/api'
+import { isBranchTaxIdRequiredCountry } from '../location/branchTaxCountries'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { cn } from '../../lib/utils'
@@ -29,8 +30,6 @@ const typeBadgeTones: Record<LocationType, string> = {
   office: tokens.badge.purple,
   mobile: tokens.badge.yellow,
 }
-
-const BRANCH_TAX_REQUIRED_COUNTRIES = new Set(['FR', 'TN', 'MA'])
 
 interface LocationFormData {
   name: string
@@ -212,9 +211,8 @@ export function LocationsPage() {
   }
 
   const isMutating = createMutation.isPending || updateMutation.isPending
-  const isTaxIdRequiredHint = formData.type === 'shop' && BRANCH_TAX_REQUIRED_COUNTRIES.has(
-    formData.addressCountry.trim().toUpperCase(),
-  )
+  const isTaxIdRequiredHint =
+    formData.type === 'shop' && isBranchTaxIdRequiredCountry(formData.addressCountry)
 
   if (isLoading) {
     return (

@@ -335,6 +335,8 @@
     "modal": {
       "addTitle": "Add New Location",
       "locationNameRequired": "Location name is required",
+      "taxIdRequired": "Tax ID is required for this location",
+      "createdCompleteDetails": "Location created. Complete its details (address, tax ID) in Locations & Branches.",
       "createButton": "Create Location",
       "namePlaceholder": "Main Warehouse",
       "codePlaceholder": "WH-001",
