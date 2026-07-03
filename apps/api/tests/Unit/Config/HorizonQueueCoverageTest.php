@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Config;
 
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -79,5 +80,38 @@ class HorizonQueueCoverageTest extends TestCase
             .'(jobs would sit in Redis forever): '.implode(', ', array_keys($uncovered))
             .'. Add them to config/horizon.php defaults.*.queue.'
         );
+    }
+
+    /**
+     * Guard: every APP_ENV we deploy with MUST match an entry in
+     * horizon.environments.
+     *
+     * 2026-07-03 staging media audit root cause: Horizon's
+     * ProvisioningPlan::deploy() silently starts ZERO supervisors when the
+     * current environment matches no horizon.environments key — staging ran
+     * a "healthy" Horizon master that consumed nothing, so every queued job
+     * (images renditions, fiscal-projections, imports, enrichment) sat in
+     * Redis forever on erp.otospex.dev.
+     */
+    public function test_every_deploy_environment_has_a_horizon_provisioning_entry(): void
+    {
+        $deployEnvironments = ['production', 'staging', 'local'];
+
+        $plans = config('horizon.environments');
+        $this->assertIsArray($plans);
+
+        foreach ($deployEnvironments as $environment) {
+            // Mirror ProvisioningPlan::deploy(): first key matching Str::is wins.
+            $matched = collect($plans)->first(
+                fn ($_, string $name): bool => Str::is($name, $environment)
+            );
+
+            $this->assertNotEmpty(
+                $matched,
+                "APP_ENV={$environment} matches no horizon.environments entry — Horizon would "
+                .'start zero supervisors and every queued job would sit in Redis forever. '
+                .'Add a supervisor plan for it in config/horizon.php.'
+            );
+        }
     }
 }
