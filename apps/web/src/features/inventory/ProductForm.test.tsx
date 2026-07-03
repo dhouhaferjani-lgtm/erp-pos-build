@@ -1,7 +1,10 @@
+import { useEffect } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ProductForm } from './ProductForm'
 import { bcsub, bcdiv, bcmul } from '../../lib/decimal'
+import { useCatalogBarcodeLookup } from '@/features/inventory/hooks/useCatalogBarcodeLookup'
+import type { SuggestedProduct } from './types/platform'
 
 // i18n → return the key (string 2nd arg = default value)
 vi.mock('react-i18next', () => ({
@@ -23,15 +26,42 @@ vi.mock('react-router-dom', () => ({
 }))
 
 // Shared mutateAsync handle so tests can configure per-test resolution.
-const mockMutateAsync = vi.fn()
+const { mockMutateAsync, mockApiPost, mockApiPatch } = vi.hoisted(() => {
+  const mutateAsync = vi.fn()
+
+  return {
+    mockMutateAsync: mutateAsync,
+    mockApiPost: vi.fn((_: string, payload: unknown) => mutateAsync(payload)),
+    mockApiPatch: vi.fn((_: string, payload: unknown) => mutateAsync(payload)),
+  }
+})
+
+vi.mock('../../lib/api', () => ({
+  api: {},
+  apiPost: mockApiPost,
+  apiPatch: mockApiPatch,
+}))
 
 // decouple from network
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
+  type MutationOptions = {
+    mutationFn?: (variables: unknown) => unknown
+  }
   return {
     ...actual,
     useQuery: () => ({ data: undefined, isLoading: false }),
-    useMutation: () => ({ mutate: vi.fn(), mutateAsync: mockMutateAsync, isPending: false }),
+    useMutation: (options?: MutationOptions) => ({
+      mutate: vi.fn(),
+      mutateAsync: (variables: unknown) => {
+        if (options?.mutationFn != null) {
+          return Promise.resolve(options.mutationFn(variables))
+        }
+
+        return mockMutateAsync(variables)
+      },
+      isPending: false,
+    }),
     useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   }
 })
@@ -64,6 +94,7 @@ vi.mock('../../hooks/useCurrency', () => ({
 }))
 vi.mock('./api/platformQueries', () => ({
   useProductSubmission: () => ({ mutate: vi.fn() }),
+  useEnrichmentRefresh: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 vi.mock('../catalog/hooks/useVariants', () => ({
   useVariantsForProduct: () => ({ data: [] }),
@@ -117,7 +148,47 @@ beforeEach(() => {
   mockParams = {}
   mockNavigate.mockReset()
   mockMutateAsync.mockReset()
+  mockApiPost.mockClear()
+  mockApiPatch.mockClear()
+  vi.mocked(useCatalogBarcodeLookup).mockImplementation(() => ({ isSearching: false }))
 })
+
+function makeSuggestedProduct(overrides: Partial<SuggestedProduct> = {}): SuggestedProduct {
+  return {
+    name: 'Catalog Cream',
+    barcode: '3017620422003',
+    brand: 'La Roche-Posay',
+    description: 'Hydrating care',
+    platform_product_id: 'platform-product-001',
+    classification: {},
+    ingredients: [],
+    images: [],
+    ...overrides,
+  }
+}
+
+function mockFoundLookup(suggestion: SuggestedProduct): void {
+  vi.mocked(useCatalogBarcodeLookup).mockImplementation(({ onProductData, onLookupStateChange }) => {
+    useEffect(() => {
+      onLookupStateChange('found')
+      onProductData(suggestion)
+    }, [onLookupStateChange, onProductData])
+
+    return { isSearching: false }
+  })
+}
+
+function getProductsPostPayload(): Record<string, unknown> {
+  const call = mockApiPost.mock.calls.find(([url]) => url === '/products')
+  expect(call).toBeDefined()
+
+  const payload = call?.[1]
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Expected /products payload to be an object')
+  }
+
+  return payload as Record<string, unknown>
+}
 
 describe('ProductForm (canonical layout)', () => {
   it('renders a single page-level heading', () => {
@@ -191,6 +262,53 @@ describe('ProductForm (canonical layout)', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/inventory/products'))
     // And NOT to the detail route.
     expect(mockNavigate).not.toHaveBeenCalledWith('/inventory/products/prod-10')
+  })
+
+  it('sends platform_product_id when creating from a current FOUND suggestion', async () => {
+    mockFoundLookup(makeSuggestedProduct())
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-found' })
+
+    render(<ProductForm />)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('editor.hero.namePlaceholder')).toHaveValue('Catalog Cream')
+    })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-FOUND' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    expect(getProductsPostPayload()).toMatchObject({
+      platform_product_id: 'platform-product-001',
+    })
+  })
+
+  it('omits platform_product_id when creating manually without lookup', async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-manual' })
+
+    render(<ProductForm />)
+
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Manual Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-MANUAL' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    expect(getProductsPostPayload()).not.toHaveProperty('platform_product_id')
+  })
+
+  it('omits platform_product_id when a stale FOUND suggestion barcode no longer matches the form barcode', async () => {
+    mockFoundLookup(makeSuggestedProduct())
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-stale' })
+
+    render(<ProductForm />)
+
+    const barcodeInput = screen.getByLabelText('editor.hero.barcodePlaceholder')
+    await waitFor(() => expect(barcodeInput).toHaveValue('3017620422003'))
+    fireEvent.change(barcodeInput, { target: { value: '9999999999999' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-STALE' } })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
+    expect(getProductsPostPayload()).not.toHaveProperty('platform_product_id')
   })
 })
 

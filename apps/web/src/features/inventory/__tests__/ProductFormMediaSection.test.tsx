@@ -117,6 +117,7 @@ vi.mock('../../products/components', () => ({
 // ── Platform submission ───────────────────────────────────────────────────────
 vi.mock('../api/platformQueries', () => ({
   useProductSubmission: () => ({ mutate: vi.fn() }),
+  useEnrichmentRefresh: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 // ── productImages facade — must NOT be called in create mode on render ────────

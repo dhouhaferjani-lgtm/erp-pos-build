@@ -102,6 +102,7 @@ vi.mock('../../products/components', () => ({
 // ── Platform submission ───────────────────────────────────────────────────────
 vi.mock('../api/platformQueries', () => ({
   useProductSubmission: () => ({ mutate: vi.fn() }),
+  useEnrichmentRefresh: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 // ── productImages facade ──────────────────────────────────────────────────────
