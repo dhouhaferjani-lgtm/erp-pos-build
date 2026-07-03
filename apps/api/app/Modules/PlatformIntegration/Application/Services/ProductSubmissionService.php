@@ -9,7 +9,10 @@ use App\Modules\PlatformIntegration\Application\DTOs\SubmissionResultData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
 use App\Shared\Contracts\PlatformSubmissionInterface;
 use App\Shared\DTOs\SubmissionStatusDTO;
+use App\Shared\Enums\EnrichmentFeedbackAction;
+use App\Shared\Enums\EnrichmentFeedbackReason;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 final class ProductSubmissionService implements PlatformSubmissionInterface
@@ -141,6 +144,43 @@ final class ProductSubmissionService implements PlatformSubmissionInterface
     public function checkStatusRaw(string $trackingId): ?array
     {
         return $this->platformClient->getRaw('/api/v1/products/lookup-status/'.$trackingId);
+    }
+
+    public function sendFeedback(
+        string $trackingId,
+        EnrichmentFeedbackAction $action,
+        ?EnrichmentFeedbackReason $reason,
+        ?string $notes,
+    ): bool {
+        $exceptionContext = [];
+
+        try {
+            $response = $this->platformClient->postRaw(
+                "/api/v1/products/lookup-status/{$trackingId}/feedback",
+                [
+                    'action' => $action->value,
+                    'reason' => $reason?->value,
+                    'notes' => $notes,
+                ],
+            );
+
+            if ($response !== null) {
+                return true;
+            }
+        } catch (\Throwable $e) {
+            $exceptionContext = [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ];
+        }
+
+        Log::warning('Failed to send enrichment feedback to platform', array_merge([
+            'tracking_id' => $trackingId,
+            'action' => $action->value,
+            'reason' => $reason?->value,
+        ], $exceptionContext));
+
+        return false;
     }
 
     /**

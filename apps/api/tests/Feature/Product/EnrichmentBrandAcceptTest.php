@@ -23,6 +23,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Enums\EnrichmentStatus;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -42,6 +43,8 @@ final class EnrichmentBrandAcceptTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        Queue::fake();
 
         $this->tenant = Tenant::create([
             'name' => 'Test Tenant',

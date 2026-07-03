@@ -6,6 +6,7 @@ namespace App\Modules\Product\Domain;
 
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
+use App\Modules\Product\Domain\Enums\EnrichmentResultOrigin;
 use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -18,6 +19,8 @@ use Illuminate\Support\Carbon;
  * @property string $company_id
  * @property string $product_id
  * @property string $tracking_id
+ * @property int $version
+ * @property EnrichmentResultOrigin $origin
  * @property EnrichmentReviewStatus $status
  * @property EnrichedProductData $enriched_data
  * @property string $enrichment_quality
@@ -26,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $reviewed_by
  * @property array<string, bool>|null $accepted_fields
  * @property string|null $rejection_reason
+ * @property string|null $rejection_notes
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Product $product
@@ -42,6 +46,8 @@ final class EnrichmentResult extends Model
         'company_id',
         'product_id',
         'tracking_id',
+        'version',
+        'origin',
         'status',
         'enriched_data',
         'enrichment_quality',
@@ -50,6 +56,7 @@ final class EnrichmentResult extends Model
         'reviewed_by',
         'accepted_fields',
         'rejection_reason',
+        'rejection_notes',
     ];
 
     /**
@@ -58,6 +65,8 @@ final class EnrichmentResult extends Model
     protected function casts(): array
     {
         return [
+            'version' => 'integer',
+            'origin' => EnrichmentResultOrigin::class,
             'status' => EnrichmentReviewStatus::class,
             'enriched_data' => EnrichedProductData::class,
             'accepted_fields' => 'array',

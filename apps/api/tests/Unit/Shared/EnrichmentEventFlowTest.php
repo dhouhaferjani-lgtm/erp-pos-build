@@ -7,9 +7,15 @@ namespace Tests\Unit\Shared;
 use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\Enums\UserStatus;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Product\Application\DTOs\EnrichedProductData;
 use App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener;
 use App\Modules\Product\Application\Services\EnrichmentReviewService;
 use App\Modules\Product\Domain\EnrichmentResult;
+use App\Modules\Product\Domain\Enums\EnrichmentResultOrigin;
+use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -21,7 +27,10 @@ use App\Shared\Enums\EnrichmentStatus;
 use App\Shared\Events\EnrichmentResultReadyEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\TestCase;
 
 class EnrichmentEventFlowTest extends TestCase
@@ -71,7 +80,6 @@ class EnrichmentEventFlowTest extends TestCase
             'enrichment_status' => EnrichmentStatus::Enriching,
             'platform_submission_id' => $trackingId,
         ]);
-
         // Mock the PlatformSubmissionInterface to return enrichment data
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
         $mockSubmission->method('checkStatus')->willReturn(new SubmissionStatusDTO(
@@ -87,7 +95,7 @@ class EnrichmentEventFlowTest extends TestCase
         ));
 
         $reviewService = new EnrichmentReviewService($mockSubmission);
-        $listener = new ProcessEnrichmentEventListener($reviewService);
+        $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $webhookEvent = new EnrichmentWebhookReceived(
             $trackingId,
@@ -98,6 +106,8 @@ class EnrichmentEventFlowTest extends TestCase
         );
 
         $listener->handle($webhookEvent);
+
+        $this->assertFalse(app(CompanyContext::class)->hasCompany());
 
         // Product status should be updated
         $product->refresh();
@@ -157,7 +167,7 @@ class EnrichmentEventFlowTest extends TestCase
         ));
 
         $reviewService = new EnrichmentReviewService($mockSubmission);
-        $listener = new ProcessEnrichmentEventListener($reviewService);
+        $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $listener->handle(new EnrichmentWebhookReceived(
             $trackingId,
@@ -216,7 +226,7 @@ class EnrichmentEventFlowTest extends TestCase
         $mockSubmission->expects($this->never())->method('checkStatus');
 
         $reviewService = new EnrichmentReviewService($mockSubmission);
-        $listener = new ProcessEnrichmentEventListener($reviewService);
+        $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $listener->handle(new EnrichmentWebhookReceived(
             $trackingId,
@@ -259,7 +269,7 @@ class EnrichmentEventFlowTest extends TestCase
         $mockSubmission->expects($this->never())->method('checkStatus');
 
         $reviewService = new EnrichmentReviewService($mockSubmission);
-        $listener = new ProcessEnrichmentEventListener($reviewService);
+        $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $webhookEvent = new EnrichmentWebhookReceived(
             $trackingId,
@@ -301,7 +311,7 @@ class EnrichmentEventFlowTest extends TestCase
         $mockSubmission->expects($this->never())->method('checkStatus');
 
         $reviewService = new EnrichmentReviewService($mockSubmission);
-        $listener = new ProcessEnrichmentEventListener($reviewService);
+        $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $webhookEvent = new EnrichmentWebhookReceived(
             $trackingId,
@@ -314,5 +324,276 @@ class EnrichmentEventFlowTest extends TestCase
         $listener->handle($webhookEvent);
 
         Event::assertNotDispatched(EnrichmentResultReadyEvent::class);
+    }
+
+    public function test_listener_falls_back_to_existing_result_after_accept_and_creates_curated_update(): void
+    {
+        Event::fake([EnrichmentResultReadyEvent::class]);
+
+        $trackingId = (string) Str::uuid();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Accepted Product',
+            'enrichment_status' => null,
+            'platform_submission_id' => null,
+        ]);
+
+        EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => $trackingId,
+            'status' => EnrichmentReviewStatus::Accepted,
+            'enriched_data' => $this->enrichedData('Accepted Name'),
+            'enrichment_quality' => 'full',
+            'assigned_barcode' => '3017620422003',
+            'reviewed_at' => now(),
+        ]);
+
+        $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
+        $mockSubmission->method('checkStatus')->willReturn(new SubmissionStatusDTO(
+            trackingId: $trackingId,
+            status: 'approved',
+            enrichmentQuality: 'full',
+            enrichedData: [
+                'name' => 'Curated Name',
+                'brand' => 'Enriched Brand',
+                'description' => 'Enriched Description',
+                'confidence_score' => 90,
+            ],
+            assignedBarcode: '3017620422003',
+            vertical: 'automotive',
+        ));
+
+        $listener = new ProcessEnrichmentEventListener(
+            new EnrichmentReviewService($mockSubmission),
+            app(CompanyContext::class),
+        );
+
+        $listener->handle(new EnrichmentWebhookReceived(
+            $trackingId,
+            'approved',
+            'full',
+            true,
+            'automotive',
+            'fr_FR',
+        ));
+
+        $product->refresh();
+        $this->assertNull($product->enrichment_status);
+        $this->assertNull($product->platform_submission_id);
+
+        $curated = EnrichmentResult::where('tracking_id', $trackingId)
+            ->where('version', 2)
+            ->sole();
+
+        $this->assertSame(EnrichmentReviewStatus::PendingReview, $curated->status);
+        $this->assertSame(EnrichmentResultOrigin::CuratedUpdate, $curated->origin);
+        $this->assertSame('Curated Name', $curated->enriched_data->name);
+
+        Event::assertDispatched(EnrichmentResultReadyEvent::class, function (EnrichmentResultReadyEvent $event) use ($curated): bool {
+            return $event->enrichmentResultId === $curated->id
+                && $event->companyId === $this->company->id;
+        });
+    }
+
+    public function test_listener_does_not_dispatch_ready_event_when_pending_result_is_updated_in_place(): void
+    {
+        Event::fake([EnrichmentResultReadyEvent::class]);
+
+        $trackingId = (string) Str::uuid();
+        Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Pending Product',
+            'enrichment_status' => EnrichmentStatus::Enriching,
+            'platform_submission_id' => $trackingId,
+        ]);
+
+        EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => Product::where('platform_submission_id', $trackingId)->sole()->id,
+            'tracking_id' => $trackingId,
+            'status' => EnrichmentReviewStatus::PendingReview,
+            'enriched_data' => $this->enrichedData('Old Pending Name'),
+            'enrichment_quality' => 'partial',
+        ]);
+
+        $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
+        $mockSubmission->method('checkStatus')->willReturn(new SubmissionStatusDTO(
+            trackingId: $trackingId,
+            status: 'enriched',
+            enrichmentQuality: 'full',
+            enrichedData: [
+                'name' => 'Updated Pending Name',
+                'confidence_score' => 90,
+            ],
+            assignedBarcode: null,
+            vertical: 'automotive',
+        ));
+
+        $listener = new ProcessEnrichmentEventListener(
+            new EnrichmentReviewService($mockSubmission),
+            app(CompanyContext::class),
+        );
+
+        $listener->handle(new EnrichmentWebhookReceived(
+            $trackingId,
+            'enriched',
+            'full',
+            true,
+            'automotive',
+        ));
+
+        Event::assertNotDispatched(EnrichmentResultReadyEvent::class);
+    }
+
+    public function test_listener_clears_company_context_when_fetch_and_store_throws(): void
+    {
+        Event::fake([EnrichmentResultReadyEvent::class]);
+
+        $trackingId = (string) Str::uuid();
+        Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Throwing Product',
+            'enrichment_status' => EnrichmentStatus::Enriching,
+            'platform_submission_id' => $trackingId,
+        ]);
+
+        $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
+        $mockSubmission->method('checkStatus')->willThrowException(new RuntimeException('Platform lookup failed'));
+
+        $listener = new ProcessEnrichmentEventListener(
+            new EnrichmentReviewService($mockSubmission),
+            app(CompanyContext::class),
+        );
+
+        try {
+            $listener->handle(new EnrichmentWebhookReceived(
+                $trackingId,
+                'enriched',
+                'full',
+                true,
+                'automotive',
+            ));
+            $this->fail('Expected fetch-and-store failure to bubble.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Platform lookup failed', $exception->getMessage());
+        }
+
+        $this->assertFalse(app(CompanyContext::class)->hasCompany());
+        Event::assertNotDispatched(EnrichmentResultReadyEvent::class);
+    }
+
+    public function test_real_http_webhook_flow_creates_curated_update_after_tenant_accepts_initial_result(): void
+    {
+        Queue::fake();
+        Event::fake([EnrichmentResultReadyEvent::class]);
+
+        config(['services.platform.url' => 'https://platform.test']);
+        config(['services.platform.api_key' => 'test-key']);
+
+        $trackingId = (string) Str::uuid();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Webhook Product',
+            'enrichment_status' => EnrichmentStatus::Enriching,
+            'platform_submission_id' => $trackingId,
+        ]);
+        $reviewer = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Webhook Reviewer',
+            'email' => 'webhook-reviewer@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        Http::fake([
+            'platform.test/*' => Http::sequence()
+                ->push([
+                    'tracking_id' => $trackingId,
+                    'status' => 'enriched',
+                    'enrichment_quality' => 'full',
+                    'assigned_barcode' => '3017620422003',
+                    'enriched_data' => [
+                        'name' => 'Initial Enriched Name',
+                        'brand' => 'Initial Brand',
+                        'confidence_score' => 88,
+                    ],
+                ])
+                ->push([
+                    'tracking_id' => $trackingId,
+                    'status' => 'approved',
+                    'enrichment_quality' => 'full',
+                    'assigned_barcode' => '3017620422003',
+                    'enriched_data' => [
+                        'name' => 'Curated Enriched Name',
+                        'brand' => 'Initial Brand',
+                        'confidence_score' => 92,
+                    ],
+                ]),
+        ]);
+
+        $listener = app(ProcessEnrichmentEventListener::class);
+
+        $listener->handle(new EnrichmentWebhookReceived(
+            $trackingId,
+            'enriched',
+            'full',
+            true,
+            'automotive',
+            'fr_FR',
+        ));
+
+        $initial = EnrichmentResult::where('tracking_id', $trackingId)->sole();
+
+        app(EnrichmentReviewService::class)->accept($initial, ['name'], $reviewer->id);
+
+        $listener->handle(new EnrichmentWebhookReceived(
+            $trackingId,
+            'approved',
+            'full',
+            true,
+            'automotive',
+            'fr_FR',
+        ));
+
+        $initial->refresh();
+        $this->assertSame(EnrichmentReviewStatus::Accepted, $initial->status);
+        $this->assertSame('Initial Enriched Name', $initial->enriched_data->name);
+
+        $curated = EnrichmentResult::where('tracking_id', $trackingId)
+            ->where('version', 2)
+            ->sole();
+
+        $this->assertSame(EnrichmentReviewStatus::PendingReview, $curated->status);
+        $this->assertSame(EnrichmentResultOrigin::CuratedUpdate, $curated->origin);
+        $this->assertSame('Curated Enriched Name', $curated->enriched_data->name);
+
+        $product->refresh();
+        $this->assertNull($product->enrichment_status);
+        $this->assertNull($product->platform_submission_id);
+    }
+
+    private function enrichedData(string $name): EnrichedProductData
+    {
+        return new EnrichedProductData(
+            name: $name,
+            brand: 'Enriched Brand',
+            description: 'Enriched Description',
+            classification: [],
+            ingredients: [],
+            images: [],
+            confidence_score: 85,
+            enrichment_tier: 'high',
+            field_confidence: null,
+            enrichment_sources: null,
+            assigned_barcode: '3017620422003',
+            assigned_barcode_type: 'EAN-13',
+        );
     }
 }

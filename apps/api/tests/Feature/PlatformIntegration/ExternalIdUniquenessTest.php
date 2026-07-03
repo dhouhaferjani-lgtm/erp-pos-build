@@ -15,6 +15,7 @@ use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Billing\Presentation\Controllers\StripeWebhookController;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener;
 use App\Modules\Product\Application\Services\EnrichmentReviewService;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
@@ -286,7 +287,7 @@ final class ExternalIdUniquenessTest extends TestCase
 
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
         $reviewService = new EnrichmentReviewService($mockSubmission);
-        $listener = new ProcessEnrichmentEventListener($reviewService);
+        $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $event = new EnrichmentWebhookReceived(
             $sharedSubmissionId,
@@ -311,7 +312,7 @@ final class ExternalIdUniquenessTest extends TestCase
 
         $mockSubmission = $this->createMock(PlatformSubmissionInterface::class);
         $reviewService = new EnrichmentReviewService($mockSubmission);
-        $listener = new ProcessEnrichmentEventListener($reviewService);
+        $listener = new ProcessEnrichmentEventListener($reviewService, app(CompanyContext::class));
 
         $event = new EnrichmentWebhookReceived(
             (string) Str::uuid(),  // unknown tracking id
@@ -321,11 +322,11 @@ final class ExternalIdUniquenessTest extends TestCase
             'automotive',
         );
 
+        $this->expectNotToPerformAssertions();
+
         // Must not throw. If implementation regresses to throwing
         // ModelNotFoundException for zero results, this fails.
         $listener->handle($event);
-
-        $this->assertTrue(true, 'Listener swallowed zero-result case gracefully.');
     }
 
     public function test_stripe_webhook_resolver_filters_by_provider(): void
