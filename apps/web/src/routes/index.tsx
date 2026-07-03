@@ -56,6 +56,10 @@ const ReturnNoteDetailPage = lazy(() => import('../features/documents/return-not
 const GoodsReceiptListPage = lazy(() => import('../features/purchases/GoodsReceiptListPage').then((m) => ({ default: m.GoodsReceiptListPage })))
 const SupplierInvoiceListPage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceListPage').then((m) => ({ default: m.SupplierInvoiceListPage })))
 const SupplierInvoiceDetailPage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceDetailPage').then((m) => ({ default: m.SupplierInvoiceDetailPage })))
+const QuoteRequestListPage = lazy(() => import('../features/purchases/quote-requests/QuoteRequestListPage').then((m) => ({ default: m.QuoteRequestListPage })))
+const QuoteRequestCreatePage = lazy(() => import('../features/purchases/quote-requests/QuoteRequestCreatePage').then((m) => ({ default: m.QuoteRequestCreatePage })))
+const QuoteRequestDetailPage = lazy(() => import('../features/purchases/quote-requests/QuoteRequestDetailPage').then((m) => ({ default: m.QuoteRequestDetailPage })))
+const QuoteRequestComparisonPage = lazy(() => import('../features/purchases/quote-requests/QuoteRequestComparisonPage').then((m) => ({ default: m.QuoteRequestComparisonPage })))
 
 // Treasury module
 const PaymentListPage = lazy(() => import('../features/treasury/PaymentListPage').then((m) => ({ default: m.PaymentListPage })))
@@ -774,6 +778,48 @@ export function AppRoutes() {
               <RequirePermission permission="purchases.edit">
                 <SuspenseWrapper>
                   <CustomerForm partnerType="supplier" />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          {/* Purchase Quote Requests */}
+          <Route
+            path="quote-requests"
+            element={
+              <RequirePermission moduleKey="purchases">
+                <SuspenseWrapper>
+                  <QuoteRequestListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="quote-requests/new"
+            element={
+              <RequirePermission moduleKey="purchases">
+                <SuspenseWrapper>
+                  <QuoteRequestCreatePage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="quote-requests/groups/:groupId"
+            element={
+              <RequirePermission moduleKey="purchases">
+                <SuspenseWrapper>
+                  <QuoteRequestComparisonPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="quote-requests/:id"
+            element={
+              <RequirePermission moduleKey="purchases">
+                <SuspenseWrapper>
+                  <QuoteRequestDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

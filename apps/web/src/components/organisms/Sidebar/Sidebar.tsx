@@ -7,6 +7,7 @@ import {
   ShoppingCart,
   Users,
   FileText,
+  FileQuestion,
   ClipboardList,
   Receipt,
   Truck,
@@ -170,6 +171,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       permission: 'purchases',
       children: [
         { key: 'suppliers', href: '/purchases/suppliers', icon: Users },
+        { key: 'quoteRequests', href: '/purchases/quote-requests', icon: FileQuestion },
         { key: 'purchaseOrders', href: '/purchases/orders', icon: ClipboardList },
         { key: 'goodsReceipts', href: '/purchases/receipts', icon: Package },
         { key: 'supplierInvoices', href: '/purchases/supplier-invoices', icon: Receipt },

@@ -8,7 +8,6 @@ use App\Enums\Vertical;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
-use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -102,24 +101,31 @@ final class PurchaseQuoteRequestHttpTest extends TestCase
 
         $groupResponse->assertOk()
             ->assertJsonPath('data.group_id', $groupId)
+            ->assertJsonPath('data.has_live_purchase_order', false)
             ->assertJsonCount(2, 'data.siblings')
             ->assertJsonStructure([
                 'data' => [
                     'group_id',
+                    'has_live_purchase_order',
                     'siblings' => [
                         [
                             'id',
                             'number',
                             'partner' => ['id', 'name'],
                             'status',
+                            'currency',
                             'validity_date',
+                            'supplier_reference',
                             'lead_time_days',
                             'responded_at',
+                            'sent_at',
+                            'closed_reason',
                             'total',
                             'lines' => [
                                 [
                                     'product_id',
                                     'variant_id',
+                                    'description',
                                     'quantity',
                                     'unit_price',
                                 ],
@@ -158,6 +164,35 @@ final class PurchaseQuoteRequestHttpTest extends TestCase
         $this->assertSame('EUR', $rfq->currency);
         $this->assertSame('1.230', $rfq->subtotal);
         $this->assertSame('1.230', $rfq->lines->first()?->line_total);
+    }
+
+    public function test_index_returns_group_metadata_and_honors_filters(): void
+    {
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/purchase-quote-requests', $this->payload());
+
+        $response->assertCreated();
+        $firstId = (string) $response->json('data.siblings.0.id');
+        $groupId = (string) $response->json('data.group_id');
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->putJson("/api/v1/purchase-quote-requests/{$firstId}", $this->responsePayload())
+            ->assertOk();
+
+        $list = $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/purchase-quote-requests?status=confirmed&search=Supplier%20A');
+
+        $list->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.group_id', $groupId)
+            ->assertJsonPath('data.0.currency', 'TND')
+            ->assertJsonPath('data.0.supplier_reference', 'SUP-REF-1')
+            ->assertJsonPath('data.0.lead_time_days', 3);
+
+        $this->assertIsString($list->json('data.0.responded_at'));
     }
 
     public function test_viewer_cannot_create_rfq_group(): void
@@ -260,7 +295,21 @@ final class PurchaseQuoteRequestHttpTest extends TestCase
             ->assertJsonPath('data.type', 'purchase_order');
 
         $poId = $convert->json('data.id');
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson("/api/v1/purchase-quote-requests/groups/{$groupId}")
+            ->assertOk()
+            ->assertJsonPath('data.has_live_purchase_order', true)
+            ->assertJsonPath('data.siblings.1.closed_reason', 'lost');
+
         Document::query()->whereKey($poId)->update(['status' => DocumentStatus::Cancelled]);
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson("/api/v1/purchase-quote-requests/groups/{$groupId}")
+            ->assertOk()
+            ->assertJsonPath('data.has_live_purchase_order', false);
 
         $this->actingAs($this->admin, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)

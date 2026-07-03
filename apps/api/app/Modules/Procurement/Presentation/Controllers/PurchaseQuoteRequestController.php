@@ -8,8 +8,10 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Procurement\Application\CreateRfqData;
 use App\Modules\Procurement\Application\PurchaseQuoteRequestAwardService;
 use App\Modules\Procurement\Application\PurchaseQuoteRequestService;
@@ -38,9 +40,27 @@ final class PurchaseQuoteRequestController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $documents = $this->rfqBaseQuery()
-            ->with('partner')
-            ->orderByDesc('created_at')
+        $query = $this->rfqBaseQuery()->with('partner');
+
+        $status = $request->query('status');
+        if (is_string($status) && $status !== '') {
+            $statusEnum = DocumentStatus::tryFrom($status);
+            if ($statusEnum !== null) {
+                $query->where('status', $statusEnum);
+            }
+        }
+
+        $search = $request->query('search');
+        if (is_string($search) && trim($search) !== '') {
+            $term = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], trim($search)).'%';
+            $query->where(function (Builder $builder) use ($term): void {
+                $builder
+                    ->where('document_number', 'like', $term)
+                    ->orWhereIn('partner_id', Partner::query()->select('id')->where('name', 'like', $term));
+            });
+        }
+
+        $documents = $query->orderByDesc('created_at')
             ->limit(100)
             ->get()
             ->map(fn (Document $document): array => $this->formatListItem($document))
@@ -76,9 +96,18 @@ final class PurchaseQuoteRequestController extends Controller
             return $this->notFoundResponse('Purchase quote request group');
         }
 
+        $hasLivePurchaseOrder = Document::query()
+            ->where('type', DocumentType::PurchaseOrder)
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->whereIn('source_document_id', $siblings->pluck('id')->all())
+            ->where('status', '!=', DocumentStatus::Cancelled)
+            ->exists();
+
         return response()->json([
             'data' => [
                 'group_id' => $groupId,
+                'has_live_purchase_order' => $hasLivePurchaseOrder,
                 'siblings' => $siblings->map(fn (Document $document): array => $this->formatComparisonSibling($document))->values()->all(),
             ],
         ]);
@@ -192,6 +221,8 @@ final class PurchaseQuoteRequestController extends Controller
      */
     private function formatListItem(Document $document): array
     {
+        $payload = RfqPayload::fromArray($document->payload ?? []);
+
         return [
             'id' => $document->id,
             'number' => $document->document_number,
@@ -201,6 +232,14 @@ final class PurchaseQuoteRequestController extends Controller
             ],
             'status' => $document->status->value,
             'total' => $document->total,
+            'currency' => $document->currency,
+            'group_id' => $payload->groupId,
+            'validity_date' => $payload->validityDate,
+            'supplier_reference' => $payload->supplierReference,
+            'lead_time_days' => $payload->leadTimeDays,
+            'responded_at' => $payload->responseRecordedAt,
+            'sent_at' => $payload->sentAt,
+            'closed_reason' => $payload->closedReason,
         ];
     }
 
@@ -221,9 +260,13 @@ final class PurchaseQuoteRequestController extends Controller
                 'name' => $document->partner->name,
             ],
             'status' => $document->status->value,
+            'currency' => $document->currency,
             'validity_date' => $payload->validityDate,
+            'supplier_reference' => $payload->supplierReference,
             'lead_time_days' => $payload->leadTimeDays,
             'responded_at' => $payload->responseRecordedAt,
+            'sent_at' => $payload->sentAt,
+            'closed_reason' => $payload->closedReason,
             'total' => $document->total,
             'lines' => $document->lines->map(fn (DocumentLine $line): array => $this->formatLine($line))->values()->all(),
         ];
@@ -238,13 +281,14 @@ final class PurchaseQuoteRequestController extends Controller
     }
 
     /**
-     * @return array{product_id: string|null, variant_id: string|null, quantity: string, unit_price: string}
+     * @return array{product_id: string|null, variant_id: string|null, description: string|null, quantity: string, unit_price: string}
      */
     private function formatLine(DocumentLine $line): array
     {
         return [
             'product_id' => $line->product_id,
             'variant_id' => $line->variant_id,
+            'description' => $line->description,
             'quantity' => $line->quantity,
             'unit_price' => $line->unit_price,
         ];
