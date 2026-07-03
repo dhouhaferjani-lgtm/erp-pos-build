@@ -84,6 +84,10 @@ class ImportController extends Controller
                 ? ['required', 'file', 'mimes:zip', 'max:102400'] // 100MB for ZIP
                 : ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:10240'],
             'type' => ['required', 'string', new Enum(ImportType::class)],
+            'options' => ['sometimes', 'array'],
+            'options.location_code' => ['sometimes', 'string', 'max:100'],
+            'options.enrichment_enabled' => ['sometimes', 'boolean'],
+            'options.price_authority' => ['sometimes', 'in:ttc,ht,margin'],
         ]);
 
         /** @var User $user */
@@ -99,6 +103,7 @@ class ImportController extends Controller
         $columnMapping = $request->has('column_mapping')
             ? json_decode($request->input('column_mapping'), true)
             : null;
+        $options = $this->optionsFromRequest($request);
 
         // Special handling for ProductImages (ZIP file)
         if ($type === ImportType::ProductImages) {
@@ -138,7 +143,8 @@ class ImportController extends Controller
             filename: $file->getClientOriginalName(),
             filePath: $path,
             totalRows: 0,
-            columnMapping: $columnMapping
+            columnMapping: $columnMapping,
+            options: $options
         );
 
         try {
@@ -310,6 +316,7 @@ class ImportController extends Controller
                 'row_number' => $row->row_number,
                 'data' => $row->data,
                 'errors' => $row->errors ?? [],
+                'warnings' => $row->warnings,
                 'import_error' => $row->import_error,
                 'error_type' => $row->import_error !== null ? 'execution' : 'validation',
             ]),
@@ -322,6 +329,45 @@ class ImportController extends Controller
                 'validation_errors' => $validationErrorCount,
                 'execution_errors' => $executionErrorCount,
             ],
+        ]);
+    }
+
+    public function updateOptions(Request $request, string $id): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+
+        $job = ImportJob::where('tenant_id', $tenantId)
+            ->where('id', $id)
+            ->first();
+
+        if (! $job) {
+            return response()->json(['error' => 'Import job not found'], 404);
+        }
+
+        if (! in_array($job->status, [ImportStatus::Pending, ImportStatus::Validating, ImportStatus::Validated], true)) {
+            return response()->json(['error' => ['code' => 'IMPORT_ALREADY_STARTED']], 409);
+        }
+
+        $request->validate([
+            'options' => ['required', 'array'],
+            'options.location_code' => ['sometimes', 'string', 'max:100'],
+            'options.enrichment_enabled' => ['sometimes', 'boolean'],
+            'options.price_authority' => ['sometimes', 'in:ttc,ht,margin'],
+        ]);
+
+        $requestOptions = $this->optionsFromRequest($request) ?? [];
+
+        $job->update([
+            'options' => array_merge($job->options ?? [], $requestOptions),
+        ]);
+
+        /** @var ImportJob $freshJob */
+        $freshJob = $job->fresh();
+
+        return response()->json([
+            'data' => $this->formatJob($freshJob),
         ]);
     }
 
@@ -520,12 +566,54 @@ class ImportController extends Controller
             'processed_rows' => $job->processed_rows,
             'successful_rows' => $job->successful_rows,
             'failed_rows' => $job->failed_rows,
+            'warning_rows' => $this->countWarningRows($job),
+            'options' => $job->options,
             'progress_percentage' => $job->getProgressPercentage(),
             'error_message' => $job->error_message,
             'started_at' => $job->started_at?->toIso8601String(),
             'completed_at' => $job->completed_at?->toIso8601String(),
             'created_at' => $job->created_at?->toIso8601String(),
         ];
+    }
+
+    private function countWarningRows(ImportJob $job): int
+    {
+        if ($job->getConnection()->getDriverName() === 'sqlite') {
+            return $job->rows()
+                ->whereNotNull('warnings')
+                ->where('warnings', '!=', '[]')
+                ->count();
+        }
+
+        return $job->rows()->whereRaw('jsonb_array_length(warnings) > 0')->count();
+    }
+
+    /**
+     * @return array<string, string|bool>|null
+     */
+    private function optionsFromRequest(Request $request): ?array
+    {
+        if (! $request->has('options')) {
+            return null;
+        }
+
+        $options = [];
+
+        $locationCode = $request->input('options.location_code');
+        if (is_string($locationCode)) {
+            $options['location_code'] = $locationCode;
+        }
+
+        if ($request->has('options.enrichment_enabled')) {
+            $options['enrichment_enabled'] = $request->boolean('options.enrichment_enabled');
+        }
+
+        $priceAuthority = $request->input('options.price_authority');
+        if (is_string($priceAuthority)) {
+            $options['price_authority'] = $priceAuthority;
+        }
+
+        return $options;
     }
 
     /**

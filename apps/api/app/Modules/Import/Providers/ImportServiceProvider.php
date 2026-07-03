@@ -63,6 +63,7 @@ class ImportServiceProvider extends ServiceProvider
                 Route::get('/imports', [ImportController::class, 'index']);
                 Route::post('/imports', [ImportController::class, 'store']);
                 Route::get('/imports/{id}', [ImportController::class, 'show']);
+                Route::patch('/imports/{id}/options', [ImportController::class, 'updateOptions']);
                 Route::get('/imports/{id}/preview', [ImportController::class, 'preview']);
                 Route::get('/imports/{id}/errors', [ImportController::class, 'errors']);
                 Route::get('/imports/{id}/error-summary', [ImportController::class, 'errorSummary']);

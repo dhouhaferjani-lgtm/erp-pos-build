@@ -38,6 +38,7 @@ final class ImportService
      * Create a new import job
      *
      * @param  array<string, string>|null  $columnMapping
+     * @param  array<string, string|bool>|null  $options
      */
     public function createJob(
         string $tenantId,
@@ -46,7 +47,8 @@ final class ImportService
         string $filename,
         string $filePath,
         int $totalRows,
-        ?array $columnMapping = null
+        ?array $columnMapping = null,
+        ?array $options = null
     ): ImportJob {
         return ImportJob::create([
             'tenant_id' => $tenantId,
@@ -57,6 +59,7 @@ final class ImportService
             'file_path' => $filePath,
             'total_rows' => $totalRows,
             'column_mapping' => $columnMapping,
+            'options' => $options,
         ]);
     }
 
@@ -73,6 +76,17 @@ final class ImportService
             'data' => $this->numericNormalizer->normalize($data, $job->type->getValidationRules()),
             'is_valid' => false,
         ]);
+    }
+
+    /**
+     * Append a non-blocking warning to a row. Warnings never affect validity,
+     * import success, failed-row counts, or the failed-rows export.
+     */
+    public function addRowWarning(ImportRow $row, string $code, string $detail): void
+    {
+        $warnings = $row->warnings ?? [];
+        $warnings[] = ['code' => $code, 'detail' => $detail];
+        $row->update(['warnings' => $warnings]);
     }
 
     /**
