@@ -31,7 +31,9 @@ final class ImportService
         private readonly LocationServiceInterface $locationService,
         private readonly AccountingServiceInterface $accountingService,
         private readonly CompositeItemServiceInterface $compositeItemService,
-        private readonly NumericFieldNormalizer $numericNormalizer
+        private readonly NumericFieldNormalizer $numericNormalizer,
+        private readonly PartiesRowMapper $partiesRowMapper,
+        private readonly PartiesBalancesPhase $partiesBalancesPhase
     ) {}
 
     /**
@@ -171,6 +173,49 @@ final class ImportService
             'successful_rows' => $validCount,
             'failed_rows' => $invalidCount,
         ]);
+
+        if ($job->type === ImportType::Parties) {
+            $this->applyPartiesExtraValidation($job);
+        }
+    }
+
+    private function applyPartiesExtraValidation(ImportJob $job): void
+    {
+        $openingBalancesLocked = $this->partiesBalancesPhase->openingBalancesLocked(
+            $this->companyContext->requireCompanyId()
+        );
+
+        $job->rows()
+            ->where('is_valid', true)
+            ->orderBy('row_number')
+            ->chunk(500, function ($rows) use ($openingBalancesLocked): void {
+                foreach ($rows as $row) {
+                    $extraErrors = $this->partiesRowMapper->extraValidationErrors($row->data);
+                    if ($openingBalancesLocked && $this->hasAnyBalanceColumn($row->data)) {
+                        $extraErrors[] = 'Opening balances are locked for this company.';
+                    }
+
+                    if ($extraErrors === []) {
+                        continue;
+                    }
+
+                    $errors = $row->errors ?? [];
+                    $errors['opening_balance'] = array_values(array_merge(
+                        $errors['opening_balance'] ?? [],
+                        $extraErrors
+                    ));
+
+                    $row->update([
+                        'is_valid' => false,
+                        'errors' => $errors,
+                    ]);
+                }
+            });
+
+        $job->update([
+            'successful_rows' => $job->rows()->where('is_valid', true)->count(),
+            'failed_rows' => $job->rows()->where('is_valid', false)->count(),
+        ]);
     }
 
     /**
@@ -299,6 +344,8 @@ final class ImportService
             $job->update(['processed_rows' => $processedCount]);
         }
 
+        $this->finalizeImport($job, $this->companyContext->requireCompanyId());
+
         // Total failed = validation errors + execution errors
         $totalFailedCount = $validationSkippedCount + $executionFailCount;
 
@@ -343,6 +390,7 @@ final class ImportService
     private function importRow(ImportJob $job, ImportRow $row, ?string $companyId = null): string
     {
         return match ($job->type) {
+            ImportType::Parties => $this->importParty($job, $row, $companyId),
             ImportType::Partners => $this->importPartner($job->tenant_id, $row->data, $companyId),
             ImportType::Products => $this->importProduct($job->tenant_id, $row->data, $companyId),
             ImportType::StockLevels => $this->importStockLevel($job->tenant_id, $row->data, $companyId),
@@ -350,6 +398,58 @@ final class ImportService
             ImportType::ProductImages => throw new RuntimeException('Product image import is not yet supported'),
             ImportType::CompositeItems => $this->importCompositeItem($job->tenant_id, $row->data, $companyId),
         };
+    }
+
+    /**
+     * @param  string|null  $companyId  Company ID for async context (null uses CompanyContext)
+     */
+    private function importParty(ImportJob $job, ImportRow $row, ?string $companyId = null): string
+    {
+        $data = $row->data;
+        if ($this->hasAnyBalanceColumn($data) && $this->emptyString($data['code'] ?? null)) {
+            $data['code'] = 'IMP-'.substr($job->id, 0, 8).'-'.$row->row_number;
+            $row->update(['data' => $data]);
+        }
+
+        return $this->importPartner($job->tenant_id, $this->partiesRowMapper->toPartnerData($data), $companyId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function hasAnyBalanceColumn(array $data): bool
+    {
+        return ! $this->emptyString($data['opening_balance'] ?? null)
+            || ! $this->emptyString($data['opening_balance_customer'] ?? null)
+            || ! $this->emptyString($data['opening_balance_supplier'] ?? null);
+    }
+
+    private function emptyString(mixed $value): bool
+    {
+        return $value === null || trim((string) $value) === '';
+    }
+
+    public function finalizeImport(ImportJob $job, string $companyId): void
+    {
+        $results = match ($job->type) {
+            ImportType::Parties => $this->partiesBalancesPhase->run($job->refresh(), $companyId),
+            default => [],
+        };
+
+        foreach ($results as $result) {
+            $row = ImportRow::find($result['row_id']);
+            if ($row === null) {
+                continue;
+            }
+
+            if ($result['code'] !== '') {
+                $this->addRowWarning($row, $result['code'], $result['detail']);
+            }
+
+            $data = $row->refresh()->data;
+            $data['_results'] = array_merge($data['_results'] ?? [], $result['results']);
+            $row->update(['data' => $data]);
+        }
     }
 
     /**

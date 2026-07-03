@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Import;
 
+use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
+use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Document;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Application\Jobs\ProcessImportJob;
@@ -123,6 +126,9 @@ class ProcessImportJobStatusTest extends TestCase
             ->handle($this->app->make(ImportService::class));
     }
 
+    /**
+     * @return array{data: array<string, mixed>, is_valid: bool}
+     */
     private function validProductRow(string $sku): array
     {
         return [
@@ -183,5 +189,27 @@ class ProcessImportJobStatusTest extends TestCase
         $this->assertSame(ImportStatus::Failed, $job->status);
         $this->assertSame(0, $job->successful_rows);
         $this->assertSame(2, $job->failed_rows);
+    }
+
+    public function test_parties_job_posts_ar_opening_batch_after_async_row_loop(): void
+    {
+        $importService = $this->app->make(ImportService::class);
+        $job = $importService->createJob(
+            tenantId: $this->tenant->id,
+            userId: $this->user->id,
+            type: ImportType::Parties,
+            filename: 'parties.csv',
+            filePath: 'imports/parties.csv',
+            totalRows: 1,
+        );
+        $importService->addRowsBatch($job, [
+            1 => ['name' => 'Async Customer', 'type' => 'customer', 'code' => 'ASYNC-CUST', 'opening_balance' => '120'],
+        ]);
+        $importService->validateJob($job->refresh());
+
+        $this->runJob($job->refresh());
+
+        $this->assertSame(1, OpeningBalanceBatch::where('type', OpeningBatchType::ArOpenItems)->count());
+        $this->assertSame(1, Document::where('company_id', $this->company->id)->where('is_historical', true)->count());
     }
 }

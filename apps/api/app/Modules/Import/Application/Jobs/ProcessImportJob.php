@@ -158,6 +158,8 @@ final class ProcessImportJob implements ShouldQueue
             }
         }
 
+        $importService->finalizeImport($job, $this->companyId);
+
         // Final status update — mirrors ImportService::executeImport:
         // the job only fails when nothing imported; partial success completes.
         $totalFailedCount = $validationSkippedCount + $failCount;
