@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Shared\Contracts;
 
+use App\Shared\DTOs\TrackingIdHolderDTO;
 use App\Shared\Exceptions\EnrichmentAlreadyPendingException;
 use App\Shared\Exceptions\EnrichmentCorrelationConflictException;
 use App\Shared\Exceptions\ProductNotFoundForEnrichmentException;
@@ -28,6 +29,12 @@ interface EnrichmentSubmissionCorrelatorInterface
      * @throws EnrichmentAlreadyPendingException product already has a live submission
      */
     public function assertSubmittable(string $productId, string $companyId): void;
+
+    /**
+     * Return the company-scoped product currently holding a platform tracking
+     * id, if any. Keeps consumers from reading Product directly.
+     */
+    public function findTrackingIdHolder(string $trackingId, string $companyId): ?TrackingIdHolderDTO;
 
     /**
      * Persist the platform tracking id against a company-scoped product so

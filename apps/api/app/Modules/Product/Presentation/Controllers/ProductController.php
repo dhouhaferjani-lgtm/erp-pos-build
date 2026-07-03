@@ -23,6 +23,7 @@ use App\Modules\Inventory\Domain\Exceptions\OpeningLockedException;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\OpeningStateData;
 use App\Modules\Product\Application\DTOs\ProductData;
+use App\Modules\Product\Application\Jobs\ApplyCatalogEnrichmentJob;
 use App\Modules\Product\Application\Services\ProductTombstoneService;
 use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -513,6 +514,19 @@ class ProductController extends Controller
 
             return $product;
         });
+
+        $platformVertical = $company->tenant->vertical->platformVertical();
+        $platformProductId = $validated['platform_product_id'] ?? null;
+        $backlinkBarcode = $validated['barcode'] ?? null;
+
+        if (is_string($platformProductId) && is_string($backlinkBarcode) && $platformVertical !== null) {
+            ApplyCatalogEnrichmentJob::dispatch(
+                $product->id,
+                $platformProductId,
+                $backlinkBarcode,
+                $platformVertical,
+            )->onQueue('enrichment');
+        }
 
         // Load metadata for response if Parapharmacy vertical
         if ($company->tenant->vertical === Vertical::Parapharmacy) {

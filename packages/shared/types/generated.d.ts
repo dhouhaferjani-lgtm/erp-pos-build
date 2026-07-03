@@ -230,6 +230,10 @@ level: number;
 is_parent: boolean;
 };
 }
+declare namespace App.Modules.Accounting.Application.Enums {
+export type CashMovementDirection = 'in' | 'out';
+export type CashMovementSourceType = 'customer_payment' | 'payment' | 'pos_receipt' | 'supplier_payment';
+}
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
 export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
@@ -661,20 +665,26 @@ additional_data: Array<any> | null;
 };
 }
 declare namespace App.Modules.Document.Domain.Enums {
+export type AdditionalCostType = 'transport' | 'shipping' | 'insurance' | 'customs' | 'handling' | 'other';
+export type CostApplicationPath = 'landed_cost' | 'wac_adjustment' | 'profit_only';
 export type CreditNoteReason = 'return' | 'price_adjustment' | 'billing_error' | 'damaged_goods' | 'service_issue' | 'other';
 export type DeliveryStatus = 'not_delivered' | 'partially_delivered' | 'fully_delivered';
 export type DocumentStatus = 'draft' | 'confirmed' | 'posted' | 'paid' | 'received' | 'cancelled';
-export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense' | 'supplier_invoice' | 'supplier_credit_note';
+export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense' | 'supplier_invoice' | 'supplier_credit_note' | 'income';
 export type FacturXProfile = 'minimum' | 'basicwl' | 'basic' | 'en16931' | 'extended';
 export type FiscalCategory = 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE' | 'DELIVERY_NOTE' | 'RETURN_NOTE';
 export type FiscalStatus = 'DRAFT' | 'SEALED' | 'VOIDED';
 export type FulfillmentStatus = 'not_fulfilled' | 'partially_fulfilled' | 'fulfilled' | 'not_applicable';
+export type LandedCostSplitMethod = 'by_value' | 'by_quantity';
 export type PaymentStatus = 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' | 'overpaid';
 export type PriceEntryMode = 'unit' | 'total';
 export type RefundMethod = 'original_payment' | 'store_credit' | 'exchange' | 'none';
 export type ReturnCondition = 'unopened' | 'used' | 'damaged' | 'unusable';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_regret' | 'damaged_in_transit' | 'warranty' | 'exchange' | 'other';
 export type SupplierInvoiceMatchStatus = 'unmatched' | 'matched' | 'price_variance' | 'quantity_variance' | 'exception';
+}
+declare namespace App.Modules.Expense.Domain.Enums {
+export type ExpenseKind = 'generic' | 'linked_cost';
 }
 declare namespace App.Modules.Fiscal.Domain.Enums {
 export type DeviceLossIncidentStatus = 'reported' | 'recovering' | 'resolved' | 'unrecoverable';
@@ -1413,7 +1423,7 @@ product_id: string;
 product_name: string;
 product_barcode: string | null;
 product_sku: string | null;
-tracking_id: string;
+tracking_id: string | null;
 status: string;
 enriched_data: App.Modules.Product.Application.DTOs.EnrichedProductData;
 enrichment_quality: string;
@@ -1524,15 +1534,21 @@ oem_numbers: Array<any> | null;
 cross_references: Array<any> | null;
 target_margin_override: string | null;
 minimum_margin_override: string | null;
+platform_product_id: string | null;
 created_at: string;
 updated_at: string | null;
 has_variants: boolean;
 primary_image_url: string | null;
 media: Array<App.Modules.Catalog.Application.DTOs.MediaAttachmentData>;
 brand: App.Modules.Product.Application.DTOs.BrandData | null;
+brand_source: string | null;
+category: App.Modules.Product.Application.DTOs.CategoryData | null;
 parapharmacy_metadata: App.Modules.Product.Application.DTOs.ParapharmacyProductMetadataData | null;
 automotive_metadata: App.Modules.Product.Application.DTOs.AutomotiveProductMetadataData | null;
 opening: App.Modules.Product.Application.DTOs.OpeningStateData | null;
+enrichment_status: string | null;
+latest_enrichment_result: Array<any> | null;
+stock_quantity: string | null;
 };
 export type ProductHealthClaimData = {
 health_claim: App.Modules.Product.Application.DTOs.HealthClaimData;

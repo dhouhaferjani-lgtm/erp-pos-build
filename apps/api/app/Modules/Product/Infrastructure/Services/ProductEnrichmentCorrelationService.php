@@ -6,6 +6,7 @@ namespace App\Modules\Product\Infrastructure\Services;
 
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\EnrichmentSubmissionCorrelatorInterface;
+use App\Shared\DTOs\TrackingIdHolderDTO;
 use App\Shared\Enums\EnrichmentStatus;
 use App\Shared\Exceptions\EnrichmentAlreadyPendingException;
 use App\Shared\Exceptions\EnrichmentCorrelationConflictException;
@@ -41,6 +42,23 @@ final class ProductEnrichmentCorrelationService implements EnrichmentSubmissionC
         if ($this->isLive($product->enrichment_status)) {
             throw new EnrichmentAlreadyPendingException($productId);
         }
+    }
+
+    public function findTrackingIdHolder(string $trackingId, string $companyId): ?TrackingIdHolderDTO
+    {
+        $product = Product::query()
+            ->where('platform_submission_id', $trackingId)
+            ->where('company_id', $companyId)
+            ->first();
+
+        if ($product === null) {
+            return null;
+        }
+
+        return new TrackingIdHolderDTO(
+            productId: $product->id,
+            productName: $product->name,
+        );
     }
 
     public function correlateSubmission(string $productId, string $companyId, string $trackingId): void

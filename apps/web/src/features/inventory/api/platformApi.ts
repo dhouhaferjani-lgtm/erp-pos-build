@@ -9,9 +9,11 @@ export interface SubmitForEnrichmentPayload {
   product_id: string
   barcode: string | null
   name: string
-  brand: string
+  brand: string | null
   category?: string
   description?: string
+  photo_ids?: string[]
+  attributes?: Record<string, string>
 }
 
 export async function submitForEnrichment(data: SubmitForEnrichmentPayload): Promise<SubmissionResult> {

@@ -4,6 +4,7 @@ import type { EnrichmentResult, EnrichmentResultsPage } from '../types/enrichmen
 export async function getEnrichmentResults(params?: {
   status?: string
   quality?: string
+  product_id?: string
   page?: number
 }): Promise<EnrichmentResultsPage> {
   const response = await api.get<EnrichmentResultsPage>('/enrichment-results', { params })

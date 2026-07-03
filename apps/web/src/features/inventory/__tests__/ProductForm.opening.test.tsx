@@ -31,6 +31,7 @@ const routeParams = vi.hoisted<{ id: string }>(() => ({ id: '' }))
 const { mockHasPermission } = vi.hoisted(() => ({
   mockHasPermission: vi.fn<(p: string) => boolean>(),
 }))
+const mockUseEnrichmentFastPath = vi.hoisted(() => vi.fn())
 
 /**
  * Per-test product fixture stored in a module-level variable that the
@@ -68,6 +69,10 @@ vi.mock('react-router-dom', async (importOriginal) => {
 // Controllable hasPermission.
 vi.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission: mockHasPermission }),
+}))
+
+vi.mock('../hooks/useEnrichmentFastPath', () => ({
+  useEnrichmentFastPath: mockUseEnrichmentFastPath,
 }))
 
 /**
@@ -183,6 +188,8 @@ function makeProduct(
     shelf_location: null,
     reorder_point: null,
     reorder_quantity: null,
+    enrichment_status: null as string | null,
+    platform_product_id: null as string | null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: null,
     opening: overrides.opening !== undefined ? overrides.opening : null,
@@ -198,6 +205,7 @@ describe('ProductForm opening-stock section gate', () => {
     seedAuth()
     routeParams.id = '' // create mode by default
     currentProductData = null
+    mockUseEnrichmentFastPath.mockReturnValue({ phase: 'idle' })
   })
 
   afterEach(() => {
@@ -392,5 +400,60 @@ describe('ProductForm opening-stock section gate', () => {
     expect(screen.getByText('Avène ✦')).toBeInTheDocument()
     expect(screen.getByText('Soin solaire')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'catalog:editor.hero.replacePhoto' })).toBeInTheDocument()
+  })
+
+  it('mounts the fast-path ready card in edit mode for pending enrichment products with view permission', async () => {
+    routeParams.id = PRODUCT_ID
+    currentProductData = {
+      ...makeProduct(),
+      enrichment_status: 'pending',
+    }
+    mockHasPermission.mockImplementation((p: string) =>
+      p === 'inventory.adjust' || p === 'enrichment.view' || p === 'enrichment.review',
+    )
+    mockUseEnrichmentFastPath.mockReturnValue({
+      phase: 'ready',
+      result: {
+        id: 'result-1',
+        product_id: PRODUCT_ID,
+        product_name: 'Opening Test Product',
+        product_barcode: '1234567890123',
+        product_sku: 'SKU-OPENING-001',
+        tracking_id: 'tracking-1',
+        status: 'pending_review',
+        enriched_data: {
+          name: 'Enriched Product',
+          brand: null,
+          description: null,
+          classification: {},
+          ingredients: [],
+          images: [],
+          confidence_score: 91,
+          enrichment_tier: 'high',
+          field_confidence: null,
+          enrichment_sources: null,
+          assigned_barcode: null,
+          assigned_barcode_type: null,
+        },
+        enrichment_quality: 'high',
+        assigned_barcode: null,
+        reviewed_at: null,
+        reviewed_by: null,
+        accepted_fields: null,
+        rejection_reason: null,
+        created_at: '2026-07-03T00:00:00Z',
+      },
+    })
+
+    renderWithProviders(<ProductForm />, {
+      route: `/inventory/products/${PRODUCT_ID}`,
+      companyConfig: defaultCompanyConfig,
+    })
+
+    expect(await screen.findByText('barcodeLookup.fastPathReadyTitle')).toBeInTheDocument()
+    expect(mockUseEnrichmentFastPath).toHaveBeenCalledWith({
+      productId: PRODUCT_ID,
+      enabled: true,
+    })
   })
 })

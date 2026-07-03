@@ -85,8 +85,9 @@ final class EnrichmentReviewService
         $attempt = function () use ($product, $enrichedData, $acceptedFields, $enrichmentResult, $reviewedBy): void {
             DB::transaction(function () use ($product, $enrichedData, $acceptedFields, $enrichmentResult, $reviewedBy): void {
                 // Start with mandatory tracking clear; merge scalar-field updates on top.
-                // Note: platform_product_id is set during barcode lookup when a match is found.
-                // The enrichment flow uses tracking_id (submission ID), not the canonical product ID.
+                // platform_product_id is written at product create (CreateProductRequest)
+                // when the product originated from a FOUND catalog lookup - it is NOT set
+                // by this review flow, which correlates via tracking_id (submission id).
                 $productUpdates = [
                     'enrichment_status' => null,
                     'platform_submission_id' => null,
@@ -95,8 +96,12 @@ final class EnrichmentReviewService
                 foreach ($acceptedFields as $field) {
                     match ($field) {
                         'name' => $productUpdates['name'] = $enrichedData->name,
-                        'description' => $productUpdates['description'] = $enrichedData->description,
-                        'barcode' => $productUpdates['barcode'] = $enrichedData->assigned_barcode,
+                        'description' => $enrichedData->description !== null
+                            ? $productUpdates['description'] = $enrichedData->description
+                            : null,
+                        'barcode' => $enrichedData->assigned_barcode !== null
+                            ? $productUpdates['barcode'] = $enrichedData->assigned_barcode
+                            : null,
                         default => null,
                     };
                 }
@@ -172,6 +177,7 @@ final class EnrichmentReviewService
         string $companyId,
         ?EnrichmentReviewStatus $status,
         ?string $quality,
+        ?string $productId = null,
     ): LengthAwarePaginator {
         $query = EnrichmentResult::query()
             ->where('tenant_id', $tenantId)
@@ -185,6 +191,10 @@ final class EnrichmentReviewService
 
         if ($quality !== null) {
             $query->where('enrichment_quality', $quality);
+        }
+
+        if ($productId !== null) {
+            $query->where('product_id', $productId);
         }
 
         return $query->paginate(25);
