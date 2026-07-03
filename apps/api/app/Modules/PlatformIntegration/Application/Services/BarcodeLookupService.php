@@ -6,6 +6,7 @@ namespace App\Modules\PlatformIntegration\Application\Services;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Application\DTOs\BarcodeLookupResultData;
+use App\Modules\PlatformIntegration\Domain\Services\BarcodeNormalizer;
 use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformProductData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
 use App\Shared\Contracts\CatalogLookupInterface;
@@ -22,11 +23,12 @@ final class BarcodeLookupService implements CatalogLookupInterface
     public function __construct(
         private readonly PlatformHttpClient $platformClient,
         private readonly CompanyContext $companyContext,
+        private readonly BarcodeNormalizer $barcodeNormalizer,
     ) {}
 
     public function lookup(string $barcode, ?string $vertical = null): BarcodeLookupResultData
     {
-        $normalizedBarcode = $this->normalizeBarcode($barcode);
+        $normalizedBarcode = $this->barcodeNormalizer->normalize($barcode);
 
         if ($normalizedBarcode === null) {
             return BarcodeLookupResultData::error($barcode, 'invalid_barcode');
@@ -116,52 +118,5 @@ final class BarcodeLookupService implements CatalogLookupInterface
             confidenceScore: $product->confidenceScore,
             enrichmentTier: $product->enrichmentTier,
         );
-    }
-
-    /**
-     * Normalize barcode: trim, strip non-alphanumeric, UPC-12 to EAN-13, validate EAN-13 check digit.
-     */
-    private function normalizeBarcode(string $barcode): ?string
-    {
-        $barcode = trim($barcode);
-
-        // Strip non-alphanumeric characters
-        $barcode = (string) preg_replace('/[^a-zA-Z0-9]/', '', $barcode);
-
-        if ($barcode === '') {
-            return null;
-        }
-
-        // UPC-12 to EAN-13 conversion (12 digits -> prepend 0)
-        if (preg_match('/^\d{12}$/', $barcode) === 1) {
-            $barcode = '0'.$barcode;
-        }
-
-        // EAN-13 check digit validation
-        if (preg_match('/^\d{13}$/', $barcode) === 1) {
-            if (! $this->isValidEan13($barcode)) {
-                return null;
-            }
-        }
-
-        return $barcode;
-    }
-
-    /**
-     * Validate EAN-13 check digit.
-     * Algorithm: sum digits with alternating weights 1 and 3, check digit = (10 - sum%10) % 10
-     */
-    private function isValidEan13(string $ean): bool
-    {
-        $sum = 0;
-        for ($i = 0; $i < 12; $i++) {
-            $digit = (int) $ean[$i];
-            $weight = ($i % 2 === 0) ? 1 : 3;
-            $sum += $digit * $weight;
-        }
-
-        $expectedCheckDigit = (10 - ($sum % 10)) % 10;
-
-        return $expectedCheckDigit === (int) $ean[12];
     }
 }
