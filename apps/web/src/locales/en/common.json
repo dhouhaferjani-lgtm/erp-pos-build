@@ -216,6 +216,7 @@
     "suppliers": "Suppliers",
     "purchaseOrders": "Purchase Orders",
     "goodsReceipts": "Goods Receipts",
+    "quoteRequests": "Quote Requests",
     "supplierInvoices": "Supplier Invoices",
     "returnNotes": "Return Notes",
     "inventoryAndCatalog": "Inventory & Catalog",

@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
@@ -108,6 +109,77 @@ final class PurchaseBonusQuantityEntryTest extends TestCase
             'line_total' => '100.000',
             'price_entry_mode' => 'unit',
             'is_bonus_line' => false,
+        ]);
+    }
+
+    #[Test]
+    public function purchase_order_create_preserves_explicit_null_line_fields(): void
+    {
+        $this->bootTenant(vertical: Vertical::Parapharmacy, countryCode: 'TN');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/purchase-orders', $this->purchaseOrderPayload([
+                [
+                    'description' => 'Nullable purchase line',
+                    'quantity' => '3',
+                    'free_quantity' => null,
+                    'unit_price' => '9.000',
+                    'discount_percent' => null,
+                    'discount_amount' => null,
+                    'notes' => null,
+                ],
+            ]));
+
+        $response->assertCreated();
+        $documentId = $response->json('data.id');
+
+        $line = DocumentLine::query()
+            ->where('document_id', $documentId)
+            ->firstOrFail();
+
+        $this->assertNull($line->discount_percent);
+        $this->assertNull($line->discount_amount);
+        $this->assertNull($line->notes);
+    }
+
+    #[Test]
+    public function purchase_order_update_preserves_bonus_line_flag(): void
+    {
+        $this->bootTenant(vertical: Vertical::Parapharmacy, countryCode: 'TN');
+
+        $create = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/purchase-orders', $this->purchaseOrderPayload([
+                [
+                    'description' => 'Initial purchase line',
+                    'quantity' => '4',
+                    'unit_price' => '7.000',
+                    'price_entry_mode' => 'unit',
+                ],
+            ]));
+
+        $create->assertCreated();
+        $documentId = $create->json('data.id');
+
+        $update = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/purchase-orders/{$documentId}", [
+                'lines' => [
+                    [
+                        'description' => 'Updated bonus line',
+                        'quantity' => '4',
+                        'free_quantity' => '1',
+                        'unit_price' => '7.000',
+                        'price_entry_mode' => 'unit',
+                        'is_bonus_line' => true,
+                    ],
+                ],
+            ]);
+
+        $update->assertOk();
+
+        $this->assertDatabaseHas('document_lines', [
+            'document_id' => $documentId,
+            'description' => 'Updated bonus line',
+            'is_bonus_line' => true,
         ]);
     }
 

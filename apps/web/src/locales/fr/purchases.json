@@ -91,5 +91,76 @@
       "attachmentUploaded": "Pièce jointe envoyée",
       "attachmentDeleted": "Pièce jointe supprimée"
     }
+  },
+  "quoteRequests": {
+    "title": "Demandes de prix",
+    "description": "Comparer les réponses fournisseurs avant de créer un bon de commande",
+    "empty": "Aucune demande de prix trouvée",
+    "list": {
+      "groupChip_one": "{{count}} fournisseur — {{responseCount}} réponses",
+      "groupChip_other": "{{count}} fournisseurs — {{responseCount}} réponses"
+    },
+    "create": {
+      "title": "Nouvelle demande de prix",
+      "description": "Saisissez les lignes une seule fois puis envoyez-les à plusieurs fournisseurs.",
+      "suppliers": "Fournisseurs",
+      "lines": "Lignes demandées"
+    },
+    "detail": {
+      "response": "Réponse fournisseur",
+      "lines": "Lignes"
+    },
+    "comparison": {
+      "title": "Comparaison des offres",
+      "description": "Comparer les prix, délais et validités par fournisseur.",
+      "unmatched": "Non proposé",
+      "awaitingResponse": "En attente de réponse"
+    },
+    "columns": {
+      "number": "N° DP",
+      "suppliers": "Fournisseurs",
+      "status": "Statut",
+      "total": "Total",
+      "actions": "Actions"
+    },
+    "fields": {
+      "supplier": "Fournisseur",
+      "product": "Produit",
+      "description": "Désignation",
+      "quantity": "Quantité",
+      "unitPrice": "PU proposé",
+      "validityDate": "Validité",
+      "notes": "Notes",
+      "leadTimeDays": "Délai (jours)",
+      "total": "Total",
+      "respondedAt": "Réponse enregistrée",
+      "supplierReference": "Réf. fournisseur"
+    },
+    "status": {
+      "draft": "Brouillon",
+      "sent": "Envoyée",
+      "confirmed": "Réponse enregistrée",
+      "cancelled": "Clôturée",
+      "lost": "Clôturée (non retenue)"
+    },
+    "actions": {
+      "new": "Nouvelle demande",
+      "open": "Ouvrir",
+      "addSupplier": "Ajouter un fournisseur",
+      "removeSupplier": "Retirer le fournisseur",
+      "addLine": "Ajouter une ligne",
+      "removeLine": "Retirer la ligne",
+      "create": "Créer la demande",
+      "send": "Envoyer",
+      "recordResponse": "Enregistrer réponse",
+      "saveResponse": "Enregistrer la réponse",
+      "convert": "Convertir en BC",
+      "award": "Retenir l'offre",
+      "reopen": "Rouvrir le groupe"
+    },
+    "confirm": {
+      "awardTitle": "Retenir cette offre",
+      "awardMessage": "Cette action crée un bon de commande et clôture les autres réponses du groupe."
+    }
   }
 }

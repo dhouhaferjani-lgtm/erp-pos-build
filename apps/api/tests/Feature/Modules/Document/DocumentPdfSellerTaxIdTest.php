@@ -68,6 +68,25 @@ final class DocumentPdfSellerTaxIdTest extends TestCase
         $this->assertStringContainsString('COMPANY-ONLY-TAX', $html);
     }
 
+    public function test_purchase_rfq_pdf_title_is_localized(): void
+    {
+        $document = $this->makeInvoice(
+            countryCode: 'FR',
+            companyTaxId: 'COMPANY-RFQ-TAX',
+            branchTaxId: null,
+        );
+        $document->type = DocumentType::PurchaseQuoteRequest;
+        $document->status = DocumentStatus::Draft;
+        $document->fiscal_category = FiscalCategory::NonFiscal;
+        $document->fiscal_status = FiscalStatus::Draft;
+        $document->document_number = 'DP-2026-0001';
+        $document->save();
+
+        $data = $this->app->make(DocumentPdfService::class)->viewDataFor($document);
+
+        $this->assertSame('Demande de Prix', $data['documentTitle']);
+    }
+
     private function makeInvoice(string $countryCode, string $companyTaxId, ?string $branchTaxId): Document
     {
         $suffix = random_int(10000, 99999);

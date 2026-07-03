@@ -218,11 +218,15 @@ final class DocumentPdfService
      */
     private function getDocumentTitle(DocumentType $type, string $locale): string
     {
+        $language = str_contains($locale, '_') ? strstr($locale, '_', true) : $locale;
+        $language = $language === false ? $locale : $language;
+
         $titles = [
             'en' => [
                 DocumentType::Quote->value => 'Quotation',
                 DocumentType::SalesOrder->value => 'Sales Order',
                 DocumentType::PurchaseOrder->value => 'Purchase Order',
+                DocumentType::PurchaseQuoteRequest->value => 'Purchase Quote Request',
                 DocumentType::Invoice->value => 'Invoice',
                 DocumentType::CreditNote->value => 'Credit Note',
                 DocumentType::DeliveryNote->value => 'Delivery Note',
@@ -232,6 +236,7 @@ final class DocumentPdfService
                 DocumentType::Quote->value => 'Devis',
                 DocumentType::SalesOrder->value => 'Bon de Commande',
                 DocumentType::PurchaseOrder->value => 'Bon de Commande Fournisseur',
+                DocumentType::PurchaseQuoteRequest->value => 'Demande de Prix',
                 DocumentType::Invoice->value => 'Facture',
                 DocumentType::CreditNote->value => 'Avoir',
                 DocumentType::DeliveryNote->value => 'Bon de Livraison',
@@ -239,7 +244,7 @@ final class DocumentPdfService
             ],
         ];
 
-        return $titles[$locale][$type->value] ?? $titles['en'][$type->value] ?? $type->label();
+        return $titles[$language][$type->value] ?? $titles['en'][$type->value] ?? $type->label();
     }
 
     /**

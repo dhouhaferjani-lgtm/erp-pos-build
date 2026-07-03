@@ -157,6 +157,7 @@
     "suppliers": "Fournisseurs",
     "purchaseOrders": "Commandes fournisseurs",
     "goodsReceipts": "Bons de reception",
+    "quoteRequests": "Demandes de prix",
     "supplierInvoices": "Factures fournisseurs",
     "returnNotes": "Bons de retour",
     "inventoryAndCatalog": "Inventaire & Catalogue",

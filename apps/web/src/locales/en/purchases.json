@@ -91,5 +91,76 @@
       "attachmentUploaded": "Attachment uploaded",
       "attachmentDeleted": "Attachment deleted"
     }
+  },
+  "quoteRequests": {
+    "title": "Quote Requests",
+    "description": "Compare supplier responses before creating a purchase order",
+    "empty": "No quote requests found",
+    "list": {
+      "groupChip_one": "{{count}} supplier — {{responseCount}} responses",
+      "groupChip_other": "{{count}} suppliers — {{responseCount}} responses"
+    },
+    "create": {
+      "title": "New Quote Request",
+      "description": "Enter the requested lines once, then send them to multiple suppliers.",
+      "suppliers": "Suppliers",
+      "lines": "Requested Lines"
+    },
+    "detail": {
+      "response": "Supplier Response",
+      "lines": "Lines"
+    },
+    "comparison": {
+      "title": "Offer Comparison",
+      "description": "Compare prices, lead times, and validity by supplier.",
+      "unmatched": "Not quoted",
+      "awaitingResponse": "Awaiting response"
+    },
+    "columns": {
+      "number": "RFQ #",
+      "suppliers": "Suppliers",
+      "status": "Status",
+      "total": "Total",
+      "actions": "Actions"
+    },
+    "fields": {
+      "supplier": "Supplier",
+      "product": "Product",
+      "description": "Description",
+      "quantity": "Quantity",
+      "unitPrice": "Quoted Unit Price",
+      "validityDate": "Validity",
+      "notes": "Notes",
+      "leadTimeDays": "Lead Time (days)",
+      "total": "Total",
+      "respondedAt": "Response Recorded",
+      "supplierReference": "Supplier Reference"
+    },
+    "status": {
+      "draft": "Draft",
+      "sent": "Sent",
+      "confirmed": "Response Recorded",
+      "cancelled": "Closed",
+      "lost": "Closed (not selected)"
+    },
+    "actions": {
+      "new": "New Request",
+      "open": "Open",
+      "addSupplier": "Add Supplier",
+      "removeSupplier": "Remove Supplier",
+      "addLine": "Add Line",
+      "removeLine": "Remove Line",
+      "create": "Create Request",
+      "send": "Send",
+      "recordResponse": "Record Response",
+      "saveResponse": "Save Response",
+      "convert": "Convert to PO",
+      "award": "Award Offer",
+      "reopen": "Reopen Group"
+    },
+    "confirm": {
+      "awardTitle": "Award this offer",
+      "awardMessage": "This creates a purchase order and closes the other responses in the group."
+    }
   }
 }
