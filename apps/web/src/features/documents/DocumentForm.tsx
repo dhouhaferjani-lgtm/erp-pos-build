@@ -106,6 +106,55 @@ export function computeLinesDirty(lastSavedLines: string | null, lines: unknown[
   return lastSavedLines === null ? lines.length > 0 : JSON.stringify(lines) !== lastSavedLines
 }
 
+interface LinePayload {
+  product_id: string
+  quantity: string | number
+  unit_price: string | number
+  line_total: string | number
+  price_entry_mode: 'unit' | 'total'
+  discount_percent: string | null
+  discount_amount: string | null
+  free_quantity?: string | number
+}
+
+/**
+ * True when a free_quantity value is empty or represents zero (e.g. '', '0',
+ * '0.0000'). String-based check on purpose — never parseFloat on quantities.
+ */
+function isZeroFreeQuantity(value: DocumentLine['free_quantity']): boolean {
+  if (value === null || value === undefined) return true
+  const trimmed = String(value).trim()
+  return trimmed === '' || /^0+(\.0+)?$/.test(trimmed)
+}
+
+/**
+ * Pure helper: maps a DocumentLine to the API line payload shared by BOTH
+ * the autosave draft payload and the submit payload (single source of truth
+ * so the two sites cannot drift). Exported for unit testing.
+ *
+ * `free_quantity` is OMITTED when empty/zero: the backend
+ * (Create/UpdateDocumentRequest) prohibits `lines.*.free_quantity` whenever
+ * the purchase-bonus module gate is disabled for the company, so sending the
+ * default '0' fails every document creation with a 422
+ * ("Le champ lines.0.free_quantity est interdit."). A real non-zero bonus
+ * quantity (purchase flow with the module enabled) is sent exactly as entered.
+ */
+export function buildLinePayload(line: DocumentLine): LinePayload {
+  const payload: LinePayload = {
+    product_id: line.product_id,
+    quantity: line.quantity,
+    unit_price: line.unit_price,
+    line_total: line.line_total,
+    price_entry_mode: line.price_entry_mode ?? 'unit',
+    discount_percent: line.discount_percent ?? null,
+    discount_amount: line.discount_amount ?? null,
+  }
+  if (!isZeroFreeQuantity(line.free_quantity)) {
+    payload.free_quantity = line.free_quantity as string | number
+  }
+  return payload
+}
+
 function scopedNamespacePredicate(
   namespace: string,
   tenantId: string | null,
@@ -198,14 +247,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       due_date: watchedDueDate || null,
       lines: lines.map(line => ({
         id: line.id,
-        product_id: line.product_id,
-        quantity: line.quantity,
-        free_quantity: line.free_quantity ?? '0',
-        unit_price: line.unit_price,
-        line_total: line.line_total,
-        price_entry_mode: line.price_entry_mode ?? 'unit',
-        discount_percent: line.discount_percent ?? null,
-        discount_amount: line.discount_amount ?? null,
+        ...buildLinePayload(line),
         tax_rate: line.tax_rate || 0,
       })),
     }
@@ -397,15 +439,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       ...data,
       type: data.type || effectiveType || '',
       lines: lines.map((line) => ({
-        product_id: line.product_id,
+        ...buildLinePayload(line),
         description: line.description,
-        quantity: line.quantity,
-        free_quantity: line.free_quantity ?? '0',
-        unit_price: line.unit_price,
-        line_total: line.line_total,
-        price_entry_mode: line.price_entry_mode ?? 'unit',
-        discount_percent: line.discount_percent ?? null,
-        discount_amount: line.discount_amount ?? null,
         tax_rate: line.tax_rate,
       })),
       // Include external document fields for purchase orders
