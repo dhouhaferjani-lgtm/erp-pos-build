@@ -18,6 +18,9 @@
     "deleted": "Travail d'import supprimé",
     "deleteError": "Échec de la suppression du travail d'import"
   },
+  "results": {
+    "downloadWorkbook": "Télécharger le rapport d'import"
+  },
   "dashboard": {
     "title": "Importation de données",
     "description": "Importez vos données depuis des fichiers CSV ou Excel",
@@ -99,6 +102,7 @@
     "steps": {
       "upload": "Télécharger",
       "mapping": "Mapper",
+      "options": "Options",
       "validation": "Vérifier",
       "execute": "Importer",
       "complete": "Terminé"
@@ -156,6 +160,15 @@
     "confirmPartialImport": "Import avec erreurs",
     "partialImportDescription": "{{valid}} lignes sont valides et seront importées. {{failed}} lignes ont des erreurs et seront ignorées. Vous pouvez télécharger les lignes échouées après l'import.",
     "proceedWithValid": "Importer les lignes valides"
+  },
+  "options": {
+    "priceAuthorityTitle": "Quel prix fait foi ?",
+    "priceAuthority": {
+      "ttc": "Prix TTC",
+      "ht": "Prix HT",
+      "margin": "Marge sur coût"
+    },
+    "priceAuthorityHint": "En cas de conflit entre colonnes de prix, celle-ci l'emporte ; les autres génèrent des avertissements."
   },
   "mapping": {
     "sourceColumn": "Colonne source",

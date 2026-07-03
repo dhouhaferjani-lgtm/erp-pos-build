@@ -27,10 +27,17 @@ export interface ImportJob {
   successful_rows: number
   failed_rows: number
   progress_percentage: number
+  options?: ImportJobOptions | null
   error_message: string | null
   started_at: string | null
   completed_at: string | null
   created_at: string
+}
+
+export interface ImportJobOptions {
+  location_code?: string
+  enrichment_enabled?: boolean
+  price_authority?: 'ttc' | 'ht' | 'margin'
 }
 
 // Backend returns errors as { fieldName: ['error1', 'error2'] }

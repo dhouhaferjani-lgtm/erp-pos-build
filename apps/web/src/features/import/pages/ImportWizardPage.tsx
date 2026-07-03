@@ -23,17 +23,20 @@ import { toast } from 'sonner'
 import { importApi } from '../api/importApi'
 import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
-import type { ImportType } from '../types'
+import type { ImportJobOptions, ImportType } from '../types'
 
-type WizardStep = 'upload' | 'mapping' | 'validation' | 'execute' | 'complete'
+type WizardStep = 'upload' | 'mapping' | 'options' | 'validation' | 'execute' | 'complete'
 
 const STEPS: { key: WizardStep; label: string }[] = [
   { key: 'upload', label: 'wizard.steps.upload' },
   { key: 'mapping', label: 'wizard.steps.mapping' },
+  { key: 'options', label: 'wizard.steps.options' },
   { key: 'validation', label: 'wizard.steps.validation' },
   { key: 'execute', label: 'wizard.steps.execute' },
   { key: 'complete', label: 'wizard.steps.complete' },
 ]
+
+const PRODUCT_PRICE_COLUMNS = new Set(['sale_price_incl_tax', 'sale_price_excl_tax', 'margin'])
 
 // Target columns per import type
 const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; description?: string }[]> = {
@@ -66,12 +69,18 @@ const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; desc
   ],
   products: [
     { name: 'name', required: true },
-    { name: 'sku', required: true, description: 'Unique product code' },
-    { name: 'type', required: true, description: 'part, service, or consumable' },
+    { name: 'sku', required: false, description: 'Unique product code' },
+    { name: 'type', required: false, description: 'part, service, or consumable' },
     { name: 'description', required: false },
     { name: 'sale_price', required: false, description: 'Selling price' },
+    { name: 'sale_price_incl_tax', required: false, description: 'Selling price including tax' },
+    { name: 'sale_price_excl_tax', required: false, description: 'Selling price excluding tax' },
+    { name: 'margin', required: false, description: 'Margin on cost' },
     { name: 'purchase_price', required: false, description: 'Cost price' },
+    { name: 'quantity', required: false },
+    { name: 'location_code', required: false },
     { name: 'barcode', required: false },
+    { name: 'brand', required: false },
     { name: 'category_name', required: false, description: 'Category name (must exist)' },
     { name: 'tax_rate', required: false, description: 'Tax rate percentage' },
     { name: 'unit', required: false, description: 'Unit of measure' },
@@ -123,6 +132,7 @@ export function ImportWizardPage() {
   // Mapping state
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({})
   const [suggestions, setSuggestions] = useState<Record<string, string | null>>({})
+  const [priceAuthority, setPriceAuthority] = useState<NonNullable<ImportJobOptions['price_authority']>>('ttc')
 
   // Job state
   const [jobId, setJobId] = useState<string | null>(null)
@@ -179,6 +189,33 @@ export function ImportWizardPage() {
 
     return apiJobData
   }, [apiJobData, realtimeProgress])
+
+  const shouldShowOptionsStep = useMemo(() => {
+    if (importType !== 'products') {
+      return false
+    }
+
+    const mappedPriceColumns = new Set(
+      Object.values(columnMapping).filter((target) => PRODUCT_PRICE_COLUMNS.has(target))
+    )
+
+    return mappedPriceColumns.size >= 2
+  }, [columnMapping, importType])
+
+  const visibleSteps = useMemo(() => {
+    return STEPS.filter((step) => step.key !== 'options' || shouldShowOptionsStep)
+  }, [shouldShowOptionsStep])
+
+  const markStepCompleted = useCallback((step: WizardStep) => {
+    const completedIndex = visibleSteps.findIndex((visibleStep) => visibleStep.key === step)
+    if (completedIndex < 0) {
+      return
+    }
+
+    setCompletedSteps((prev) => (
+      prev.includes(completedIndex) ? prev : [...prev, completedIndex]
+    ))
+  }, [visibleSteps])
 
   // Initialize real-time progress store when execution starts
   useEffect(() => {
@@ -250,10 +287,10 @@ export function ImportWizardPage() {
     const status = realtimeProgress?.status ?? apiJobData?.status
     if ((status === 'completed' || status === 'failed') && currentStep === 'execute') {
       setIsImporting(false)
-      setCompletedSteps((prev) => [...prev, 3])
+      markStepCompleted('execute')
       setCurrentStep('complete')
     }
-  }, [realtimeProgress?.status, apiJobData?.status, currentStep])
+  }, [realtimeProgress?.status, apiJobData?.status, currentStep, markStepCompleted])
 
   // Fetch validation errors when on validation step
   const { data: errorsData } = useImportErrors(jobId ?? '')
@@ -270,16 +307,16 @@ export function ImportWizardPage() {
 
   // Get step index
   const stepIndex = useMemo(() => {
-    return STEPS.findIndex((s) => s.key === currentStep)
-  }, [currentStep])
+    return visibleSteps.findIndex((s) => s.key === currentStep)
+  }, [currentStep, visibleSteps])
 
   // Translated steps
   const translatedSteps = useMemo(() => {
-    return STEPS.map((s) => ({
+    return visibleSteps.map((s) => ({
       key: s.key,
       label: t(s.label),
     }))
-  }, [t])
+  }, [t, visibleSteps])
 
   // Handle file selection
   const handleFileSelect = useCallback(async (file: File) => {
@@ -312,9 +349,9 @@ export function ImportWizardPage() {
   const handleUploadComplete = useCallback(() => {
     if (!selectedFile || sourceColumns.length === 0) return
 
-    setCompletedSteps((prev) => [...prev, 0])
+    markStepCompleted('upload')
     setCurrentStep('mapping')
-  }, [selectedFile, sourceColumns])
+  }, [markStepCompleted, selectedFile, sourceColumns])
 
   // Handle mapping step completion
   const handleMappingComplete = useCallback(async () => {
@@ -332,12 +369,20 @@ export function ImportWizardPage() {
           setJobId(data.data.id)
           // Backend returns validation status in the job, not rows directly
           // Fetch validation rows separately if needed
-          setCompletedSteps((prev) => [...prev, 1])
-          setCurrentStep('validation')
+          markStepCompleted('mapping')
+          setCurrentStep(shouldShowOptionsStep ? 'options' : 'validation')
         },
       }
     )
-  }, [selectedFile, importType, columnMapping, createImport])
+  }, [selectedFile, importType, columnMapping, createImport, markStepCompleted, shouldShowOptionsStep])
+
+  const handleOptionsComplete = useCallback(async () => {
+    if (!jobId) return
+
+    await importApi.updateOptions(jobId, { price_authority: priceAuthority })
+    markStepCompleted('options')
+    setCurrentStep('validation')
+  }, [jobId, markStepCompleted, priceAuthority])
 
   // Handle validation step completion
   const handleValidationComplete = useCallback(() => {
@@ -348,16 +393,16 @@ export function ImportWizardPage() {
       return
     }
 
-    setCompletedSteps((prev) => [...prev, 2])
+    markStepCompleted('validation')
     setCurrentStep('execute')
-  }, [jobData?.failed_rows])
+  }, [jobData?.failed_rows, markStepCompleted])
 
   // Handle confirmation to proceed with partial import
   const handleConfirmPartialImport = useCallback(() => {
     setShowPartialImportDialog(false)
-    setCompletedSteps((prev) => [...prev, 2])
+    markStepCompleted('validation')
     setCurrentStep('execute')
-  }, [])
+  }, [markStepCompleted])
 
   // Handle execute step
   const handleExecute = useCallback(() => {
@@ -385,7 +430,7 @@ export function ImportWizardPage() {
         if (response.status === 'completed' || response.status === 'failed') {
           // Import finished synchronously - go directly to complete step
           setIsImporting(false)
-          setCompletedSteps((prev) => [...prev, 3])
+          markStepCompleted('execute')
           setCurrentStep('complete')
         } else {
           // Import is async (pending/importing) - start polling for updates
@@ -402,11 +447,11 @@ export function ImportWizardPage() {
             import_type: response.type,
             original_filename: response.original_filename,
           })
-          setCompletedSteps((prev) => [...prev, 3])
+          markStepCompleted('execute')
         }
       },
     })
-  }, [jobId, executeImport, updateProgress])
+  }, [jobId, executeImport, markStepCompleted, updateProgress])
 
 
   // Check if mapping is valid
@@ -527,6 +572,58 @@ export function ImportWizardPage() {
           </div>
         )
 
+      case 'options':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {t('options.priceAuthorityTitle')}
+              </h2>
+              <p className="mt-1 text-sm text-gray-600">
+                {t('options.priceAuthorityHint')}
+              </p>
+            </div>
+
+            <fieldset className="space-y-3">
+              {(['ttc', 'ht', 'margin'] as const).map((authority) => (
+                <label
+                  key={authority}
+                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 text-sm text-gray-800 hover:bg-gray-50"
+                >
+                  <input
+                    type="radio"
+                    name="price_authority"
+                    value={authority}
+                    checked={priceAuthority === authority}
+                    onChange={() => { setPriceAuthority(authority) }}
+                    className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>{t(`options.priceAuthority.${authority}`)}</span>
+                </label>
+              ))}
+            </fieldset>
+
+            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+              <button
+                type="button"
+                onClick={() => { setCurrentStep('mapping'); }}
+                className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                {t('common:actions.back')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleOptionsComplete() }}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                {t('common:actions.next')}
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )
+
       case 'validation':
         return (
           <div className="space-y-6">
@@ -579,7 +676,7 @@ export function ImportWizardPage() {
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <button
                 type="button"
-                onClick={() => { setCurrentStep('mapping'); }}
+                onClick={() => { setCurrentStep(shouldShowOptionsStep ? 'options' : 'mapping'); }}
                 className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -768,20 +865,32 @@ export function ImportWizardPage() {
                   </div>
                 </dl>
 
-                {/* Download failed rows CSV */}
-                {importResults?.failed_rows_csv_url && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
+                {jobData?.id && (
+                  <div className="mt-4 flex flex-wrap gap-4 border-t border-gray-200 pt-4">
                     <button
                       type="button"
                       onClick={() => authenticatedDownload(
-                        importResults.failed_rows_csv_url!,
-                        `import_failed_rows.csv`
+                        importApi.downloadResultWorkbookUrl(jobData.id),
+                        `import-${jobData.id}-result.xlsx`
                       )}
                       className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
                     >
                       <Download className="h-4 w-4" />
-                      {t('wizard.complete.downloadFailedRows')}
+                      {t('results.downloadWorkbook')}
                     </button>
+                    {importResults?.failed_rows_csv_url && (
+                      <button
+                        type="button"
+                        onClick={() => authenticatedDownload(
+                          importResults.failed_rows_csv_url!,
+                          `import_failed_rows.csv`
+                        )}
+                        className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
+                      >
+                        <Download className="h-4 w-4" />
+                        {t('wizard.complete.downloadFailedRows')}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

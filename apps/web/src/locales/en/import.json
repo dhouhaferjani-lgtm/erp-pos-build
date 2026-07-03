@@ -18,6 +18,9 @@
     "deleted": "Import job deleted",
     "deleteError": "Failed to delete import job"
   },
+  "results": {
+    "downloadWorkbook": "Download result workbook"
+  },
   "dashboard": {
     "title": "Data Import",
     "description": "Import your data from CSV or Excel files",
@@ -99,6 +102,7 @@
     "steps": {
       "upload": "Upload",
       "mapping": "Map Columns",
+      "options": "Options",
       "validation": "Review",
       "execute": "Import",
       "complete": "Done"
@@ -156,6 +160,15 @@
     "confirmPartialImport": "Import with Errors",
     "partialImportDescription": "{{valid}} rows are valid and will be imported. {{failed}} rows have errors and will be skipped. You can download the failed rows after import.",
     "proceedWithValid": "Import Valid Rows"
+  },
+  "options": {
+    "priceAuthorityTitle": "Which price is authoritative?",
+    "priceAuthority": {
+      "ttc": "Price incl. tax (TTC)",
+      "ht": "Price excl. tax (HT)",
+      "margin": "Margin on cost"
+    },
+    "priceAuthorityHint": "When several price columns disagree, this one wins; others produce warnings."
   },
   "mapping": {
     "sourceColumn": "Source Column",
