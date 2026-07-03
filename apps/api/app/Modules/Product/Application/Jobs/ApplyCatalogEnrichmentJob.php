@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Jobs;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\Services\CatalogEnrichmentService;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CatalogLookupInterface;
@@ -40,7 +41,7 @@ final class ApplyCatalogEnrichmentJob implements ShouldQueue
         public readonly string $vertical,
     ) {}
 
-    public function handle(CatalogLookupInterface $lookup, CatalogEnrichmentService $enricher): void
+    public function handle(CompanyContext $companyContext, CatalogLookupInterface $lookup, CatalogEnrichmentService $enricher): void
     {
         $product = Product::query()->find($this->productId);
 
@@ -48,31 +49,41 @@ final class ApplyCatalogEnrichmentJob implements ShouldQueue
             return;
         }
 
-        $catalog = $lookup->lookupCatalogProduct($this->barcode, $this->vertical);
+        // Queue workers bind no CompanyContext, but the lookup's outbound
+        // platform call requires one (PlatformHttpClient::tenantHeaders()).
+        // Bind it from the product being enriched and clear it so nothing
+        // leaks into the next job on this worker.
+        $companyContext->setCompanyId($product->company_id);
 
-        if ($catalog === null) {
-            $product->update(['platform_product_id' => null]);
+        try {
+            $catalog = $lookup->lookupCatalogProduct($this->barcode, $this->vertical);
 
-            Log::info('Cleared platform backlink: catalog lookup returned a genuine miss', [
-                'product_id' => $this->productId,
-                'expected_platform_product_id' => $this->expectedPlatformProductId,
-            ]);
+            if ($catalog === null) {
+                $product->update(['platform_product_id' => null]);
 
-            return;
+                Log::info('Cleared platform backlink: catalog lookup returned a genuine miss', [
+                    'product_id' => $this->productId,
+                    'expected_platform_product_id' => $this->expectedPlatformProductId,
+                ]);
+
+                return;
+            }
+
+            if ($catalog->platformProductId !== $this->expectedPlatformProductId) {
+                $product->update(['platform_product_id' => null]);
+
+                Log::warning('Skipping catalog enrichment apply due to platform product mismatch', [
+                    'product_id' => $this->productId,
+                    'expected_platform_product_id' => $this->expectedPlatformProductId,
+                    'actual_platform_product_id' => $catalog->platformProductId,
+                ]);
+
+                return;
+            }
+
+            $enricher->applyCatalogHit($product, $catalog);
+        } finally {
+            $companyContext->clear();
         }
-
-        if ($catalog->platformProductId !== $this->expectedPlatformProductId) {
-            $product->update(['platform_product_id' => null]);
-
-            Log::warning('Skipping catalog enrichment apply due to platform product mismatch', [
-                'product_id' => $this->productId,
-                'expected_platform_product_id' => $this->expectedPlatformProductId,
-                'actual_platform_product_id' => $catalog->platformProductId,
-            ]);
-
-            return;
-        }
-
-        $enricher->applyCatalogHit($product, $catalog);
     }
 }
