@@ -2,13 +2,14 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   ArrowLeft,
-  Upload,
-  History,
-  Users,
-  Package,
-  Calculator,
   ArrowRight,
+  Calculator,
+  History,
   Image,
+  Landmark,
+  Package,
+  Upload,
+  Users,
   UtensilsCrossed,
 } from 'lucide-react'
 import type { ImportType } from '../types'
@@ -20,7 +21,27 @@ interface ImportTypeConfig {
   colorClass: string
 }
 
-const IMPORT_TYPES: ImportTypeConfig[] = [
+interface AdvancedLinkConfig {
+  key: string
+  to: string
+  icon: React.ReactNode
+  colorClass: string
+}
+
+const PRIMARY_IMPORT_TYPES: ImportTypeConfig[] = [
+  {
+    type: 'parties',
+    icon: <Users className="h-6 w-6" />,
+    colorClass: 'bg-sky-100 text-sky-700',
+  },
+  {
+    type: 'products',
+    icon: <Package className="h-6 w-6" />,
+    colorClass: 'bg-emerald-100 text-emerald-700',
+  },
+]
+
+const ADVANCED_IMPORT_TYPES: ImportTypeConfig[] = [
   {
     type: 'partners',
     icon: <Users className="h-6 w-6" />,
@@ -48,14 +69,68 @@ const IMPORT_TYPES: ImportTypeConfig[] = [
   },
 ]
 
-const INVENTORY_IMPORT_TYPES: ImportType[] = ['products', 'product_images']
+const ADVANCED_LINKS: AdvancedLinkConfig[] = [
+  {
+    key: 'accountingOpeningBalances',
+    to: '/settings/opening-balances',
+    icon: <Landmark className="h-6 w-6" />,
+    colorClass: 'bg-slate-100 text-slate-600',
+  },
+]
 
 export function ImportDashboardPage() {
   const { t } = useTranslation('import')
-  const { hasModule } = useCompanyConfig()
+  const { config } = useCompanyConfig()
+  const showAdvancedImports = config?.vertical !== 'parapharmacy'
 
-  const visibleImportTypes = IMPORT_TYPES.filter(
-    (config) => !INVENTORY_IMPORT_TYPES.includes(config.type) || hasModule('Inventory')
+  const renderImportCard = (card: ImportTypeConfig) => (
+    <Link
+      key={card.type}
+      to={`/settings/import/${card.type}`}
+      className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-start gap-4">
+          <div className={`rounded-lg p-3 ${card.colorClass}`}>
+            {card.icon}
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900 group-hover:text-blue-600">
+              {t(`types.${card.type}.title`)}
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {t(`types.${card.type}.description`)}
+            </p>
+          </div>
+        </div>
+        <ArrowRight className="h-5 w-5 text-gray-400 transition-transform group-hover:translate-x-1 group-hover:text-blue-500" />
+      </div>
+    </Link>
+  )
+
+  const renderAdvancedLink = (link: AdvancedLinkConfig) => (
+    <Link
+      key={link.key}
+      to={link.to}
+      className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-start gap-4">
+          <div className={`rounded-lg p-3 ${link.colorClass}`}>
+            {link.icon}
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900 group-hover:text-blue-600">
+              {t(`dashboard.${link.key}.title`)}
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {t(`dashboard.${link.key}.description`)}
+            </p>
+          </div>
+        </div>
+        <ArrowRight className="h-5 w-5 text-gray-400 transition-transform group-hover:translate-x-1 group-hover:text-blue-500" />
+      </div>
+    </Link>
   )
 
   return (
@@ -91,35 +166,32 @@ export function ImportDashboardPage() {
       {/* Import Types Grid */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-gray-900">
-          {t('dashboard.importTypes')}
+          {t('dashboard.primaryTitle')}
         </h2>
+        <p className="text-sm text-gray-600">{t('dashboard.orderHint')}</p>
         <div className="grid gap-4 md:grid-cols-2">
-          {visibleImportTypes.map((config) => (
-            <Link
-              key={config.type}
-              to={`/settings/import/${config.type}`}
-              className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-4">
-                  <div className={`rounded-lg p-3 ${config.colorClass}`}>
-                    {config.icon}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900 group-hover:text-blue-600">
-                      {t(`types.${config.type}.title`)}
-                    </h3>
-                    <p className="mt-1 text-sm text-gray-500">
-                      {t(`types.${config.type}.description`)}
-                    </p>
-                  </div>
-                </div>
-                <ArrowRight className="h-5 w-5 text-gray-400 transition-transform group-hover:translate-x-1 group-hover:text-blue-500" />
-              </div>
-            </Link>
-          ))}
+          {PRIMARY_IMPORT_TYPES.map(renderImportCard)}
         </div>
       </div>
+
+      {showAdvancedImports && (
+        <details className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <summary className="cursor-pointer list-none">
+            <div className="inline-flex flex-col gap-1">
+              <span className="text-lg font-semibold text-gray-900">
+                {t('dashboard.advancedTitle')}
+              </span>
+              <span className="text-sm text-gray-600">
+                {t('dashboard.advancedHint')}
+              </span>
+            </div>
+          </summary>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {ADVANCED_IMPORT_TYPES.map(renderImportCard)}
+            {ADVANCED_LINKS.map(renderAdvancedLink)}
+          </div>
+        </details>
+      )}
 
       {/* How It Works */}
       <div className="rounded-lg border border-gray-200 bg-white p-6">

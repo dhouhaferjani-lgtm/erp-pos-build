@@ -37,6 +37,23 @@ const STEPS: { key: WizardStep; label: string }[] = [
 
 // Target columns per import type
 const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; description?: string }[]> = {
+  parties: [
+    { name: 'name', required: true },
+    { name: 'type', required: true },
+    { name: 'code', required: false },
+    { name: 'email', required: false },
+    { name: 'phone', required: false },
+    { name: 'tax_id', required: false },
+    { name: 'address_line1', required: false },
+    { name: 'address_city', required: false },
+    { name: 'address_postal_code', required: false },
+    { name: 'address_country', required: false },
+    { name: 'opening_balance', required: false },
+    { name: 'opening_balance_customer', required: false },
+    { name: 'opening_balance_supplier', required: false },
+    { name: 'balance_date', required: false },
+    { name: 'reference', required: false },
+  ],
   partners: [
     { name: 'name', required: true, description: 'Partner name' },
     { name: 'type', required: true, description: 'customer or supplier' },
