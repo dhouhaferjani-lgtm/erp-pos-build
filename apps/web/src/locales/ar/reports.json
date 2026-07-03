@@ -9,6 +9,10 @@
       "from": "من",
       "to": "إلى",
       "granularity": "تجميع حسب",
+      "today": "اليوم",
+      "last7Days": "7 أيام",
+      "last30Days": "30 يومًا",
+      "hour": "ساعة",
       "day": "يوم",
       "week": "أسبوع",
       "month": "شهر",
@@ -16,7 +20,9 @@
       "locations": "المواقع"
     },
     "salesTrend": {
-      "title": "المبيعات عبر الزمن"
+      "title": "المبيعات عبر الزمن",
+      "today": "اليوم",
+      "sameWeekdayLastWeek": "نفس اليوم من الأسبوع الماضي"
     },
     "kpi": {
       "totalSales": "إجمالي المبيعات",
@@ -24,6 +30,7 @@
       "avgBasket": "متوسط السلة",
       "itemsSold": "العناصر المباعة",
       "returns": "المرتجعات",
+      "live": "مباشر",
       "vsPrevious": "مقارنةً بالفترة السابقة",
       "error": "تعذّر تحميل الملخص"
     },
@@ -35,6 +42,18 @@
       "title": "أفضل رموز المنتجات",
       "revenue": "الإيراد",
       "quantity": "الكمية"
+    },
+    "liveSales": {
+      "title": "المبيعات المباشرة",
+      "live": "مباشر",
+      "updatedJustNow": "تم التحديث الآن",
+      "updatedSecondsAgo": "تم التحديث منذ {{seconds}}ث",
+      "items": "{{count}} عناصر"
+    },
+    "branchLeaderboard": {
+      "title": "ترتيب الفروع",
+      "active": "وردية مفتوحة",
+      "inactive": "لا توجد وردية مفتوحة"
     },
     "lowStock": {
       "title": "تنبيهات انخفاض المخزون"

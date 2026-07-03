@@ -52,6 +52,10 @@
       "from": "From",
       "to": "To",
       "granularity": "Group by",
+      "today": "Today",
+      "last7Days": "7 days",
+      "last30Days": "30 days",
+      "hour": "Hour",
       "day": "Day",
       "week": "Week",
       "month": "Month",
@@ -59,7 +63,9 @@
       "locations": "Locations"
     },
     "salesTrend": {
-      "title": "Sales over time"
+      "title": "Sales over time",
+      "today": "Today",
+      "sameWeekdayLastWeek": "Same day last week"
     },
     "salesByLocation": {
       "title": "Sales by Location",
@@ -69,6 +75,18 @@
       "title": "Top SKUs",
       "revenue": "Revenue",
       "quantity": "Quantity"
+    },
+    "liveSales": {
+      "title": "Live sales",
+      "live": "Live",
+      "updatedJustNow": "updated just now",
+      "updatedSecondsAgo": "updated {{seconds}}s ago",
+      "items": "{{count}} items"
+    },
+    "branchLeaderboard": {
+      "title": "Branch leaderboard",
+      "active": "Open shift active",
+      "inactive": "No open shift"
     },
     "lowStock": {
       "title": "Low Stock Alerts"
@@ -87,6 +105,7 @@
       "avgBasket": "Average basket",
       "itemsSold": "Items sold",
       "returns": "Returns",
+      "live": "Live",
       "vsPrevious": "vs previous period",
       "error": "Could not load summary"
     },

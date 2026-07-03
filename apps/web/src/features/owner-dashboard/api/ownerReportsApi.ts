@@ -8,7 +8,7 @@ export interface OwnerDateRangeParams {
 }
 
 export interface SalesByLocationParams extends OwnerDateRangeParams {
-  granularity?: 'day' | 'week' | 'month'
+  granularity?: 'hour' | 'day' | 'week' | 'month'
 }
 
 export interface TopSkusParams extends OwnerDateRangeParams {
@@ -31,6 +31,23 @@ export type PaymentMethodBreakdownReport = App.Modules.Accounting.Application.DT
 export type StockAlertReport = App.Modules.Accounting.Application.DTOs.Reports.StockAlertData
 export type CashReconciliationReport = App.Modules.Accounting.Application.DTOs.Reports.CashReconciliationData
 export type SalesSummaryReport = App.Modules.Accounting.Application.DTOs.Reports.SalesSummaryData
+
+export interface LiveSaleReceipt {
+  id: string
+  posted_at: string
+  location_id: string
+  location_name: string
+  total: string
+  currency: string
+  items_count: number
+  receipt_number: string
+}
+
+export interface LiveSalesReport {
+  recent_receipts: LiveSaleReceipt[]
+  open_shifts_by_location: Record<string, number>
+  generated_at: string
+}
 
 export async function fetchSalesByLocation(params: SalesByLocationParams): Promise<SalesByLocationReport[]> {
   return apiGet<SalesByLocationReport[]>(`/reports/sales/by-location?${buildParams(params)}`)
@@ -60,6 +77,10 @@ export async function fetchCashRegisterReconciliation(params: CashReconciliation
 
 export async function fetchSalesSummary(params: OwnerDateRangeParams): Promise<SalesSummaryReport> {
   return apiGet<SalesSummaryReport>(`/reports/sales/summary?${buildParams(params)}`)
+}
+
+export async function fetchLiveSales(): Promise<LiveSalesReport> {
+  return apiGet<LiveSalesReport>('/reports/sales/live')
 }
 
 function buildParams(params: object): string {

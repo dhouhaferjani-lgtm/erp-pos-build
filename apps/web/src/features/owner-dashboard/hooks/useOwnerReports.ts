@@ -5,6 +5,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 import {
   fetchCashRegisterReconciliation,
   fetchLowStockAlerts,
+  fetchLiveSales,
   fetchPaymentMethodBreakdown,
   fetchRevenueByCategory,
   fetchSalesByLocation,
@@ -26,6 +27,11 @@ export const ownerReportKeys = {
   stockAlerts: (params: StockAlertsParams) => [...ownerReportKeys.all, 'stock-alerts', params] as const,
   cashReconciliation: (params: CashReconciliationParams) => [...ownerReportKeys.all, 'cash-reconciliation', params] as const,
   salesSummary: (params: OwnerDateRangeParams) => [...ownerReportKeys.all, 'sales-summary', params] as const,
+  liveSales: () => [...ownerReportKeys.all, 'live-sales'] as const,
+}
+
+export function buildOwnerReportRefreshOptions(params: OwnerDateRangeParams): { refetchInterval?: number } {
+  return dateRangeIncludesToday(params.from, params.to) ? { refetchInterval: 60000 } : {}
 }
 
 function useOwnerReportsEnabled(): boolean {
@@ -42,6 +48,7 @@ export function useSalesByLocation(params: SalesByLocationParams, canFetch = tru
     queryKey: tenantScopedKey(ownerReportKeys.salesByLocation(params)),
     queryFn: () => fetchSalesByLocation(params),
     enabled,
+    ...buildOwnerReportRefreshOptions(params),
   })
 }
 
@@ -52,6 +59,7 @@ export function useTopSkus(params: TopSkusParams, canFetch = true) {
     queryKey: tenantScopedKey(ownerReportKeys.topSkus(params)),
     queryFn: () => fetchTopSkus(params),
     enabled,
+    ...buildOwnerReportRefreshOptions(params),
   })
 }
 
@@ -62,6 +70,7 @@ export function useRevenueByCategory(params: OwnerDateRangeParams, canFetch = tr
     queryKey: tenantScopedKey(ownerReportKeys.revenueByCategory(params)),
     queryFn: () => fetchRevenueByCategory(params),
     enabled,
+    ...buildOwnerReportRefreshOptions(params),
   })
 }
 
@@ -102,5 +111,31 @@ export function useSalesSummary(params: OwnerDateRangeParams, canFetch = true) {
     queryKey: tenantScopedKey(ownerReportKeys.salesSummary(params)),
     queryFn: () => fetchSalesSummary(params),
     enabled,
+    ...buildOwnerReportRefreshOptions(params),
   })
+}
+
+export function useLiveSales(canFetch = true) {
+  const enabled = useOwnerReportsEnabled() && canFetch
+
+  return useQuery({
+    queryKey: tenantScopedKey(ownerReportKeys.liveSales()),
+    queryFn: () => fetchLiveSales(),
+    enabled,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false,
+  })
+}
+
+function dateRangeIncludesToday(from: string, to: string): boolean {
+  const today = formatDateInput(new Date())
+  return from <= today && today <= to
+}
+
+function formatDateInput(date: Date): string {
+  const year = String(date.getFullYear())
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
