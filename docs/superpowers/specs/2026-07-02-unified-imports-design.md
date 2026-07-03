@@ -311,3 +311,13 @@ Round 2 verdict was NOT-READY on 8 consistency findings introduced by the v2 rev
 | R2-6 `both` wording implies balances required | Reworded: side columns required only when a `both` row imports any balance (§1) |
 | R2-7 options step placement | Wizard order fixed (Upload → Mapping → Options → Validate → Execute); `PATCH /imports/{id}/options` before execution, 409 after (§ Job options) |
 | R2-8 uuid5 underspecified | Exact namespace (`Uuid::NAMESPACE_URL`) + name-string contract (§2 Phase B) |
+
+### Plan-phase addendum (v4, 2026-07-03 — reconciliations discovered during implementation planning)
+
+Five spec statements were corrected against code reality during plan review (`docs/superpowers/audits/2026-07-03-unified-imports-plan-review.md`); the plan is authoritative on these:
+
+1. **Boundary (contracts table):** AR/AP opening (`ArApOpeningService`), batch staging (`OpeningBalanceBatchService`), and product opening stock (`OpeningBalancePostingService`) are consumed as **module-public application services** — explicitly permitted by CLAUDE.md rule 6 — instead of new Shared contracts. The only new contract is `TaxDefaultResolverInterface` (TaxResolutionService is in Taxation's Domain layer).
+2. **Generated sku:** "generated ULID-based" → **deterministic name-derived sku** (`strtoupper(substr(Str::slug(name), 0, 100))`), participating as the LAST upsert match key (file-sku → barcode → name-sku) so name-only rows stay idempotent on re-import.
+3. **`balance_date` default:** "company opening date" does not exist as a setting; the default is the company's **current fiscal-year start** derived from `Company::$fiscal_year_start_month` (minus one year when that date is in the future).
+4. **`opening_locked`:** the product-level opening-stock path (`OpeningBalancePostingService`, same as the product editor) has **no opening-period lock today**; the warning is reserved for a future lock mechanism. Unexpected posting failures surface as warning `opening_failed`. (The parties-side locked-OB check stands — batch locking exists there.)
+5. **Arabic locale:** `ar/import.json` is a pre-existing stub and the i18n merge falls back to English for this namespace — new keys land in en+fr only (deliberate exception; full ar pass is a follow-up).

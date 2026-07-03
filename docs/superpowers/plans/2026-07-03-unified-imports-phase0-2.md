@@ -5,7 +5,7 @@
 
 **Goal:** Ship the unified two-file import — parties with signed opening balances, sell-ready products with price resolution and opening stock — per spec `docs/superpowers/specs/2026-07-02-unified-imports-design.md` (FINAL v3, Codex verdict READY), phases 0–2 only. Phase 3 (enrichment) is a separate follow-up plan.
 
-**Architecture:** New import type `parties` and extended `products` type inside the existing Import module engine. Two engine-level additions (row warnings channel, job options ingestion) land first, then the parties pipeline (partner code upsert → signed-balance → AR/AP open-item batches via repaired `ArApOpeningService`), then the products pipeline (price resolver → product upsert contract → opening stock via `OpeningBalancePostingService` → result workbook). Cross-module access only via `Shared/Contracts` (one new contract: `TaxDefaultResolverInterface`).
+**Architecture:** New import type `parties` and extended `products` type inside the existing Import module engine. Two engine-level additions (row warnings channel, job options ingestion) land first, then the parties pipeline (partner code upsert → signed-balance → AR/AP open-item batches via repaired `ArApOpeningService`), then the products pipeline (price resolver → product upsert contract → opening stock via `OpeningBalancePostingService` → result workbook). Cross-module boundary: Import consumes `ArApOpeningService`, `OpeningBalanceBatchService`, and `OpeningBalancePostingService` as **module-public application services** (explicitly allowed by CLAUDE.md rule 6: "Shared/Contracts interfaces, Events, or a module's public Service class" — the spec's contracts table is amended accordingly); the one NEW Shared contract is `TaxDefaultResolverInterface` (TaxResolutionService sits in Taxation's Domain layer, not a public application service).
 
 **Tech Stack:** Laravel 12 / PHP 8.2 strict, PHPUnit (`RefreshDatabase` + `RolesAndPermissionsSeeder`), bcmath via `CurrencyScale`, React 19 + TanStack Query 5 + Vitest, PhpSpreadsheet.
 
@@ -15,7 +15,7 @@
 - Money: `CurrencyScale::bcformatStrict($v, 3)` at storage scale 3 after `NumericFieldNormalizer`; intermediates at scale+1; quantity scale 4 (`QuantityScale`). Never a float on money/qty. Signed money regex `/^-?\d+(\.\d{1,3})?$/`; percent regex `/^-?\d+(\.\d{1,2})?$/`.
 - `products.sale_price` is stored **TTC** (tax-inclusive). `purchase_price`/cost is HT. Margin = markup on cost: `HT = cost × (1 + m/100)`; `TTC = HT × (1 + tax/100)`.
 - Constructor injection with `private readonly` ONLY — never `app()`.
-- No `mixed` in PHP; no hardcoded FE strings — all UI text via `t()` with keys in `apps/web/src/locales/{en,fr}/import.json` (ar is a pre-existing stub; do not expand it).
+- No `mixed` in PHP; no hardcoded FE strings — all UI text via `t()` with keys in `apps/web/src/locales/{en,fr}/import.json`. **Deliberate spec exception (recorded):** `ar/import.json` is a pre-existing 1-key stub and Arabic falls back to English for this namespace via the `{...enImport, ...arImport}` merge in `i18n.ts` — do not expand it in this plan; full ar translation is a standalone follow-up.
 - Cross-module calls only via `App\Shared\Contracts\*` interfaces, events, or a module's public service.
 - FE: `apiGet`/`apiPost` already unwrap `response.data.data` — never double-unwrap. Money/qty inputs emit strings.
 - Every new `onQueue('x')` needs a `config/horizon.php` entry — this plan only uses the existing `imports` queue.
@@ -78,10 +78,14 @@ final class ArApOpeningPostLifecycleTest extends TestCase
 {
     use RefreshDatabase;
 
+    // SETUP: Tests\TestCase has NO fixture helpers. Copy the exact setUp() from
+    // tests/Feature/Accounting/OpeningBalanceBatchTest.php:51-107 into this class
+    // (private $tenant/$company/$user properties, tenant DB bootstrapping, seeder call)
+    // BEFORE writing the test body. Use $this->company / $this->user->id below.
+
     public function test_post_batch_completes_and_marks_rows_posted(): void
     {
-        $this->seed(\Database\Seeders\RolesAndPermissionsSeeder::class);
-        $company = $this->createCompanyWithUser(); // use the existing test helper pattern in tests/Feature/Accounting/OpeningBalanceBatchTest.php — copy its setup verbatim if no shared helper exists
+        $company = $this->company;
         $partner = Partner::factory()->create([
             'tenant_id' => $company->tenant_id,
             'company_id' => $company->id,
@@ -92,7 +96,7 @@ final class ArApOpeningPostLifecycleTest extends TestCase
         $batchService = app(OpeningBalanceBatchService::class);
         $service = app(ArApOpeningService::class);
 
-        $batch = $batchService->createBatch($company, OpeningBatchType::ArOpenItems, now(), 'TEST-AR', $this->testUserId, 'phpunit');
+        $batch = $batchService->createBatch($company, OpeningBatchType::ArOpenItems, now(), 'TEST-AR', $this->user->id, 'phpunit');
         $batchService->addImportRows($batch, [[
             'partner_code' => 'CUST-001',
             'external_invoice_number' => 'LEG-1',
@@ -106,7 +110,7 @@ final class ArApOpeningPostLifecycleTest extends TestCase
         ]]);
         $service->validateBatch($batch->refresh());
 
-        $result = $service->postBatch($batch->refresh(), $this->testUserId);
+        $result = $service->postBatch($batch->refresh(), $this->user->id);
 
         $this->assertSame(1, $result['documents_created']);
         $this->assertSame(OpeningBatchStatus::Validated, $batch->refresh()->status);
@@ -116,7 +120,7 @@ final class ArApOpeningPostLifecycleTest extends TestCase
 }
 ```
 
-Note for the implementer: `app()` in tests is fine (tests are not production code). Adapt the company/user setup lines to the exact helper used by `tests/Feature/Accounting/OpeningBalanceBatchTest.php` (read it first); keep the assertion block as-is.
+Note for the implementer: `app()` in tests is fine (tests are not production code). Keep the assertion block as-is.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -296,7 +300,7 @@ final class ImportRowWarningsTest extends TestCase
     }
 ```
 
-`ImportController::formatJob()`: add `'warning_rows' => $job->rows()->whereNotNull('warnings')->count(),`. In `errors()`, include `'warnings' => $row->warnings,` per row. Confirm `FailedRowsExportService::generateFailedRowsCsv` query (`is_valid=false OR import_error IS NOT NULL`) is untouched — warnings-only rows must not appear; assert that in the test with one warnings-only row + `generateFailedRowsCsv()` returning null.
+`ImportController::formatJob()`: add `'warning_rows' => $job->rows()->whereRaw("jsonb_array_length(warnings) > 0")->count(),` (convention: warnings are cleared by setting `null`, never `[]` — jsonb_array_length guards against empty arrays regardless). In `errors()`, include `'warnings' => $row->warnings,` per row. Confirm `FailedRowsExportService::generateFailedRowsCsv` query (`is_valid=false OR import_error IS NOT NULL`) is untouched — warnings-only rows must not appear; assert that in the test with one warnings-only row + `generateFailedRowsCsv()` returning null.
 
 - [ ] **Step 5: Run → PASS; guards; TASKLOG.**
 
@@ -330,14 +334,14 @@ Store validation addition:
             'options.price_authority' => ['sometimes', 'in:ttc,ht,margin'],
 ```
 
-Controller `updateOptions(Request $request, string $id)`: resolve job (tenant-scoped, same as `show`), reject with `response()->json(['error' => ['code' => 'IMPORT_ALREADY_STARTED']], 409)` when `! in_array($job->status, [ImportStatus::Pending, ImportStatus::Validating, ImportStatus::Validated], true)`; validate the same `options.*` rules; `$job->update(['options' => array_merge($job->options ?? [], $validated['options'])])`. Route in provider: `Route::patch('/imports/{id}/options', [ImportController::class, 'updateOptions']);` inside the existing middleware group.
+Controller `updateOptions(Request $request, string $id)`: resolve job (tenant-scoped, same as `show`), reject with `response()->json(['error' => ['code' => 'IMPORT_ALREADY_STARTED']], 409)` when `! in_array($job->status, [ImportStatus::Pending, ImportStatus::Validating, ImportStatus::Validated], true)`; validate with `'options' => ['required', 'array']` (+ the same `options.*` rules — required on PATCH, unlike store, so `$validated['options']` can never be undefined); `$job->update(['options' => array_merge($job->options ?? [], $validated['options'])])`. Route in provider: `Route::patch('/imports/{id}/options', [ImportController::class, 'updateOptions']);` inside the existing middleware group.
 
 - [ ] **Step 4: Run → PASS; guards; TASKLOG.**
 
 ### Task 5: `ImportType::Parties` enum case + validation + template
 
 **Files:**
-- Modify: `app/Modules/Import/Domain/Enums/ImportType.php`, `app/Modules/Import/Services/MigrationWizardService.php` (only if it switches on type — read it; template generation is enum-driven), `app/Modules/Import/Services/ImportService.php` (`importRow` match arm — temporary `throw` until Task 8 wires it)
+- Modify: `app/Modules/Import/Domain/Enums/ImportType.php`; `app/Modules/Import/Services/MigrationWizardService.php` — it has SIX type-keyed structures that ALL need a `parties` entry: recommended order (~L23-31: parties FIRST, before products), dependencies (~L44-82: parties has none), header aliases (~L153-173: add FR aliases `solde`→`opening_balance`, `solde_client`→`opening_balance_customer`, `solde_fournisseur`→`opening_balance_supplier`, `nom`→`name`, `téléphone`→`phone`), example rows (~L198-323: one customer row with positive balance + one supplier row with negative balance), migration status (~L347-376), metadata (~L384-417) — `UnhandledMatchError` at runtime if any `match` arm is missed; grep `ImportType::` across `app/` for exhaustive matches after editing; `app/Modules/Import/Services/ImportService.php` (`importRow` match arm — temporary `throw` until Task 8 wires it)
 - Test: `tests/Feature/Import/PartiesImportTypeTest.php` (create)
 
 **Interfaces:**
@@ -401,7 +405,7 @@ Every other `match ($this)` in the enum AND every `match ($job->type)` in the co
 
 **Files:**
 - Create: `app/Modules/Import/Services/PartiesRowMapper.php`
-- Modify: `app/Modules/Import/Services/ImportService.php` (`validateJob` type hook; replace the Task 5 thin mapping with the mapper)
+- Modify: `app/Modules/Import/Services/ImportService.php` (`validateJob` type hook; replace the Task 5 thin mapping with the mapper), `app/Modules/Import/Providers/ImportServiceProvider.php` (**REQUIRED: `ImportService` is constructed MANUALLY in the provider (`new ImportService(...)` ~L34) — every constructor change must update that argument list or the container fails before any test runs**)
 - Test: `tests/Unit/Import/PartiesRowMapperTest.php` (create)
 
 **Interfaces:**
@@ -450,28 +454,28 @@ Implement `applyPartiesExtraValidation` accordingly (chunked, batch update, then
 
 **Files:**
 - Create: `app/Modules/Import/Services/PartiesBalancesPhase.php`, `database/migrations/tenant/2026_07_03_200001_add_unique_import_reference_to_opening_balance_batches.php`
-- Modify: `app/Modules/Import/Services/ImportService.php` (`finalizeImport` + call in `executeImport`), `app/Modules/Import/Application/Jobs/ProcessImportJob.php` (call `finalizeImport` after row loop)
+- Modify: `app/Modules/Import/Services/ImportService.php` (`finalizeImport` + call in `executeImport`), `app/Modules/Import/Application/Jobs/ProcessImportJob.php` (call `finalizeImport` after row loop), `app/Modules/Import/Providers/ImportServiceProvider.php` (constructor args — see Task 7 warning)
 - Test: `tests/Feature/Import/PartiesImportBalancesTest.php` (create)
 
 **Interfaces:**
 - Consumes: `PartiesRowMapper` (Task 7), `ArApOpeningService::{validateBatch, postBatch}` (Tasks 1-2), `OpeningBalanceBatchService::{createBatch, addImportRows, updateFileReference, hasUnlockedBatch, deleteBatch/clearImportRows}`, `ImportService::addRowWarning` (Task 3).
 - Produces: `PartiesBalancesPhase::run(ImportJob $job, string $companyId): void` — called by `ImportService::finalizeImport`. Also `ImportService::finalizeImport(ImportJob $job, string $companyId): void` — dispatches per type (`Parties` → balances phase; `Products` → Task 14's phase; others → no-op). Sub-results ride `row->data['_results']` (`['partner' => 'ok', 'ar_balance' => 'ok'|'error: …'|'skipped', 'ap_balance' => …]`).
 
-Migration (unique partial index):
+**`import_file_reference` is a `jsonb` column cast to array** (`OpeningBalanceBatch` casts, `updateFileReference(OpeningBalanceBatch $batch, array $fileReference)`). The stored shape for import-created batches is EXACTLY `['import_job_id' => $job->id, 'source' => 'unified-import']`. Lookup: `OpeningBalanceBatch::where('type', $sideType)->where('import_file_reference->import_job_id', $job->id)->first()`. Migration (unique expression index over the jsonb path):
 
 ```php
-Schema::table('opening_balance_batches', function (Blueprint $table): void {});
-DB::statement("CREATE UNIQUE INDEX IF NOT EXISTS obb_import_ref_type_unique ON opening_balance_batches (import_file_reference, type) WHERE import_file_reference IS NOT NULL");
+DB::statement("CREATE UNIQUE INDEX IF NOT EXISTS obb_import_ref_type_unique ON opening_balance_batches (((import_file_reference->>'import_job_id')), type) WHERE import_file_reference IS NOT NULL");
 ```
 
 (down: `DROP INDEX IF EXISTS obb_import_ref_type_unique`). Use the anonymous-class migration shape; `use Illuminate\Support\Facades\DB;`.
 
 Behavior of `run()` (implement exactly):
-1. Collect imported rows (`is_imported=true`) whose data yields balance payloads via `PartiesRowMapper::toBalancePayloads($row->data, $defaultDate, $partnerCode)` where `$defaultDate = $job->created_at->toDateString()` and `$partnerCode` = the partner's `code` if the row had one, else the imported partner's DB code — **resolve via `Partner::find($row->imported_entity_id)->code`; when null, set the partner's code to a generated `IMP-{short-job}-{row_number}` first** (`ArApOpeningService.validateRow` resolves partners by `partner_code`, so every balance-bearing partner MUST have a code — update it through `PartnerServiceInterface::upsertWithTypeMerge` with the code included, not raw model writes... simpler and boundary-clean: generate the code into the row data BEFORE the partner phase. Implement it in `ImportService::importRow` for Parties: when balance columns non-empty and `code` empty, set `code = 'IMP-'.substr($job->id,0,8).'-'.$row->row_number` in the mapped partner data AND persist it back into `row->data['code']` so the balances phase sees it).
+1. Collect imported rows (`is_imported=true`) whose data yields balance payloads via `PartiesRowMapper::toBalancePayloads($row->data, $defaultDate, $partnerCode)` where `$partnerCode = $row->data['code']` (guaranteed non-empty for balance rows — see code generation below) and `$defaultDate` = the company's current fiscal-year start: `CarbonImmutable::create(now()->year, $company->fiscal_year_start_month, 1)`, minus one year if that lands after today (`Company::$fiscal_year_start_month` exists; à-nouveaux are dated at fiscal-year start).
+   **Partner code generation happens BEFORE the partner phase, never via model writes from Import:** in `ImportService::importRow` for Parties, when any balance column is non-empty and `code` is empty, set `code = 'IMP-'.substr($job->id,0,8).'-'.$row->row_number` in the mapped partner data AND persist it back into `row->data['code']` (single `$row->update(['data' => …])`) so the balances phase and `ArApOpeningService.validateRow` (which resolves partners by `partner_code`) both see it. Do NOT touch the `Partner` model directly from the Import module.
 2. If no balance rows → return.
 3. If opening balances are locked for the company (`OpeningBalanceBatchService` lock state — use the same check the Advanced wizard uses; grep `isLocked`/`lockBatch` usage in `OpeningBalanceBatchController` and reuse) → warning `balance_not_posted` ("opening balances are locked") on every balance row → return. NOTE: the spec wants locked detected at *validation* time too — add the same check in `applyPartiesExtraValidation` (Task 7 hook) flipping rows with balance columns to invalid with error `Opening balances are locked for this company.` The finalize-time check here is the race guard.
-4. Per side (AR from `ar` payloads, AP from `ap`): skip side if empty. Retry lookup: `OpeningBalanceBatch::where('import_file_reference', $job->id)->where('type', $sideType)->first()` — if found and status Validated/locked → rows get `data._results[side]='ok'` (already posted; idempotent no-op); if found in Draft → `clearImportRows` + re-add; if a **different** unlocked batch of that type exists (`hasUnlockedBatch` true but not ours) → every side row gets warning `balance_not_posted` ("an unlocked {AR|AP} opening batch already exists — post or delete it, then re-run") and `_results[side]='error: batch_conflict'`; skip side.
-5. Else `createBatch($company, $sideType, $job->created_at, 'IMPORT-'.substr($job->id,0,8).'-'.$side, $job->user_id, 'unified-import')` + `updateFileReference($batch, $job->id)` + `addImportRows($batch, $payloadsWithCurrency)` (inject `'currency' => $company->currency` per row) + `validateBatch` + `postBatch`.
+4. Per side (AR from `ar` payloads, AP from `ap`): skip side if empty. Retry lookup: `OpeningBalanceBatch::where('type', $sideType)->where('import_file_reference->import_job_id', $job->id)->first()` — if found and status Validated/locked → rows get `data._results[side]='ok'` (already posted; idempotent no-op); if found in Draft → `clearImportRows` + re-add; if a **different** unlocked batch of that type exists (`hasUnlockedBatch` true but not ours) → every side row gets warning `balance_not_posted` ("an unlocked {AR|AP} opening batch already exists — post or delete it, then re-run") and `_results[side]='error: batch_conflict'`; skip side.
+5. Else `createBatch($company, $sideType, $fiscalYearStart, 'IMPORT-'.substr($job->id,0,8).'-'.$side, $job->user_id, 'unified-import')` + `updateFileReference($batch, ['import_job_id' => $job->id, 'source' => 'unified-import'])` + `addImportRows($batch, $payloadsWithCurrency)` (inject `'currency' => $company->currency` per row) + `validateBatch` + `postBatch`.
 6. Row-level failures from validateBatch (invalid rows) map back by row order → warning `balance_not_posted` with the row's validation error; valid rows post. If `postBatch` throws → catch, warning `balance_not_posted` (exception message) on all side rows, `_results[side]='error: post_failed'`.
 7. Write `_results` into each row's `data` jsonb (merge, single update per row).
 
@@ -498,9 +502,9 @@ Behavior of `run()` (implement exactly):
 **Interfaces:**
 - Produces: every `/imports*` and `/migration-wizard*` route additionally runs `can:imports.manage` (permission already seeded at `RolesAndPermissionsSeeder` L389; admin role has all permissions; do NOT grant manager).
 
-- [ ] **Step 1: Failing test** — user WITHOUT `imports.manage` → `GET /imports` 403 and `POST /imports` 403; user WITH it (admin) → 200. Copy the role-assignment pattern from an existing permission test (grep `can:` usages' tests, e.g. Contact module tests).
+- [ ] **Step 1: Failing test** — user WITHOUT `imports.manage` → `GET /api/v1/imports` 403 and `POST /api/v1/imports` 403 and `GET /api/v1/migration-wizard/order` 403; user WITH it (admin) → 200. Routes live under `prefix('api/v1')` — never assert bare `/imports`. Copy the role-assignment pattern from an existing permission test (grep `can:` usages' tests, e.g. Contact module tests).
 - [ ] **Step 2: Run → FAIL (currently 200 for both). Step 3: Implement** — append `'can:imports.manage'` to the middleware array in the provider's route group.
-- [ ] **Step 4: Run → PASS. Re-run `./vendor/bin/phpunit tests/Feature/Import/` BY DIRECTORY** (all import feature tests must now authenticate with a permitted user — fix any test setup that lacks the permission by using the admin role; this is expected fallout, fix tests not the gate).
+- [ ] **Step 4: Run → PASS. Re-run the import feature tests as an EXPLICIT FILE LIST** (never a bare directory): `./vendor/bin/phpunit tests/Feature/Import/ImportTypesTest.php tests/Feature/Import/MigrationWizardTest.php tests/Feature/Import/ImportInfrastructureTest.php tests/Feature/Import/ProcessImportJobStatusTest.php tests/Feature/Import/ColumnMappingTest.php tests/Feature/Import/ImportPreviewTest.php tests/Feature/Import/ImportRowWarningsTest.php tests/Feature/Import/ImportJobOptionsTest.php tests/Feature/Import/PartiesImportTypeTest.php tests/Feature/Import/PartiesImportBalancesTest.php` (all import feature tests must now authenticate with a permitted user — fix any test setup lacking the permission by using the admin role; this is expected fallout, fix tests not the gate).
 - [ ] **Step 5: Guards; TASKLOG.**
 
 ### Task 10: FE — parties card, types, Advanced section, parapharmacy hiding, i18n
@@ -599,13 +603,13 @@ Rules (exact, bcmath at scale 4 intermediates, final `CurrencyScale::bcformatStr
 **Interfaces:**
 - Produces: `upsert($tenantId, $companyId, $data)` semantics:
   1. `$fileSku = trim((string)($data['sku'] ?? '')) ?: null`.
-  2. Match: by `sku=$fileSku` when provided; ELSE by `barcode` when `$data['barcode']` non-empty (company-scoped `Product::where(...)->where('barcode', $barcode)->first()`); else no match.
-  3. No match → create with `sku = $fileSku ?? ($barcode ?: strtoupper((string) \Illuminate\Support\Str::ulid()))` (deterministic `sku = barcode` for barcode rows).
+  2. Match precedence (ALL deterministic — re-import must be idempotent, spec requirement): by `sku=$fileSku` when provided; ELSE by `barcode` when non-empty (company-scoped); ELSE by the **name-derived sku** `$nameSku = strtoupper(substr(\Illuminate\Support\Str::slug((string) $data['name'], '-'), 0, 100))`.
+  3. No match → create with `sku = $fileSku ?? ($barcode ?: $nameSku)`. NO random/ULID generation anywhere — a name-only row re-imported matches its own derived sku and updates instead of duplicating.
   4. `type` default: `$data['type'] ?? 'part'` (keep `ProductType::from`).
-  5. `brand`: when `$data['brand']` non-empty → `Brand::firstOrCreate` tenant-scoped by slug exactly like `EnrichmentReviewService::accept()` does (read that method, reuse its brand-resolution code path — extract a small private helper if the logic is inline there; do NOT duplicate slug logic divergently) → set `brand_id`.
+  5. `brand`: when `$data['brand']` non-empty → resolve via **`BrandResolutionService`** (the service `EnrichmentReviewService::accept()` delegates to at ~L163-177 — inject it, do NOT hand-roll `Brand::firstOrCreate`; the raw firstOrCreate in `CatalogEnrichmentService` is the pattern to avoid duplicating) → set `brand_id`.
   6. Everything else unchanged (tax fallback, category, is_active parsing).
 
-- [ ] **Step 1: Failing tests** — (a) existing product barcode X sku Y; import row barcode X, blank sku, new name → SAME product updated, sku stays Y (the round-2 review's duplicate case); (b) blank sku + barcode → created with sku == barcode; (c) blank sku + no barcode → created with 26-char ULID sku; (d) missing type → `part`; (e) brand "Nivea" twice → one Brand row, product.brand_id set. Real DB assertions.
+- [ ] **Step 1: Failing tests** — (a) existing product barcode X sku Y; import row barcode X, blank sku, new name → SAME product updated, sku stays Y (the round-2 review's duplicate case); (b) blank sku + barcode → created with sku == barcode; (c) blank sku + no barcode, name "Crème Solaire 50" → created with sku `CREME-SOLAIRE-50`, and **upserting the same data again updates the same product (count stays 1 — idempotency)**; (d) missing type → `part`; (e) brand "Nivea" twice → one Brand row, product.brand_id set. Real DB assertions.
 - [ ] **Step 2: Run → FAIL. Step 3: Implement. Step 4: Run → PASS.** Regression by path: `./vendor/bin/phpunit tests/Feature/Product/CreateProductWithOpeningTest.php tests/Feature/Import/ImportTypesTest.php`.
 - [ ] **Step 5: Guards; TASKLOG.**
 
@@ -613,7 +617,7 @@ Rules (exact, bcmath at scale 4 intermediates, final `CurrencyScale::bcformatStr
 
 **Files:**
 - Create: `app/Modules/Import/Services/ProductOpeningStockPhase.php`
-- Modify: `app/Modules/Import/Services/ImportService.php` (`importProduct` price resolution; `finalizeImport` products arm)
+- Modify: `app/Modules/Import/Services/ImportService.php` (`importProduct` price resolution; `finalizeImport` products arm), `app/Modules/Import/Providers/ImportServiceProvider.php` (constructor args — see Task 7 warning)
 - Test: `tests/Feature/Import/ProductsImportPipelineTest.php` (create)
 
 **Interfaces:**
@@ -623,10 +627,10 @@ Rules (exact, bcmath at scale 4 intermediates, final `CurrencyScale::bcformatStr
   - `purchase_price` empty/zero → warning `qty_without_cost`, skip;
   - product `requires_batch_tracking` → warning `quantity_batch_tracked` "batch-tracked products: use stock flows", skip;
   - location: `row['location_code'] ?: $job->options['location_code'] ?? null` → `LocationServiceInterface::findIdByCode`; unresolvable → warning `location_unresolved`, skip;
-  - else `OpeningBalancePostingService::post(new OpeningBalancePosting(tenantId, companyId, $job->user_id, now(), true, 'import', $row->id, 'IMPORT-'.substr($job->id,0,8), null, [OpeningBalanceLine::make($productId, null, $locationId, $qty4, $cost3, 3)]))`;
-  - `OpeningAlreadyExistsException` → warning `opening_exists`, skip; any other domain exception → warning `opening_locked` with the exception message, skip. `_results.opening_stock = 'ok'|'skipped: <code>'`.
+  - else resolve the company currency scale exactly like `ProductController` does at ~L489-510 (inject `CurrencyScaleResolverInterface`, `$scale = $scaleResolver->getScale($company->currency)`) and `OpeningBalancePostingService::post(new OpeningBalancePosting(tenantId, companyId, $job->user_id, now(), true, 'import', $row->id, 'IMPORT-'.substr($job->id,0,8), null, [OpeningBalanceLine::make($productId, null, $locationId, $qty4, $costAtScale, $scale)]))` — do NOT hardcode scale 3 here; the DTO validates against company scale;
+  - `OpeningAlreadyExistsException` → warning `opening_exists`, skip; any other `\Throwable` from `post()` → warning `opening_failed` with the exception message, skip. **There is NO opening-period lock on the product-level path today** (`OpeningBalancePostingService` has no lock check; `ProductController` posts without one) — the spec's `opening_locked` warning is reserved for a future lock mechanism and is NOT implemented in this plan (spec deviation recorded in Appendix B addendum). `_results.opening_stock = 'ok'|'skipped: <code>'`.
 
-- [ ] **Step 1: Failing feature test** — one import with 6 rows exercising: happy path (product + StockMovement Opening + StockLevel qty + WAC seeded from purchase_price + `_results.opening_stock='ok'`); qty-no-cost warning; service-type warning; duplicate opening (pre-post one) → `opening_exists`; ht-authority price (`options.price_authority='ht'`, assert stored `sale_price` TTC exact string); margin+conflict warning row. Assert `warning_rows` on formatJob output too (reuse HTTP execute endpoint for one of these to cover the sync API path end-to-end).
+- [ ] **Step 1: Failing feature test** — one import with 6 rows exercising: happy path (product + StockMovement Opening + StockLevel qty + WAC seeded from purchase_price + `_results.opening_stock='ok'`); qty-no-cost warning; service-type warning; duplicate opening (pre-post one) → `opening_exists`; ht-authority price (`options.price_authority='ht'`, assert stored `sale_price` TTC exact string); margin+conflict warning row. (No locked-period test — no lock exists on this path, see step 3.) Assert `warning_rows` on formatJob output too (reuse HTTP execute endpoint for one of these to cover the sync API path end-to-end).
 - [ ] **Step 2: Run → FAIL. Step 3: Implement. Step 4: Run → PASS** + re-run Task 8 file (finalizeImport now branches two types). **Guards; TASKLOG.**
 
 ### Task 15: Result workbook (service + endpoint + FE buttons)
@@ -637,7 +641,7 @@ Rules (exact, bcmath at scale 4 intermediates, final `CurrencyScale::bcformatStr
 - Test: `tests/Feature/Import/ResultWorkbookTest.php` (create)
 
 **Interfaces:**
-- Produces: `ResultWorkbookService::generate(ImportJob $job): string` (returns absolute temp file path of an `.xlsx` built with `PhpOffice\PhpSpreadsheet`); sheets: `Imported` (phase 2 stands in for spec sheets 1+2 until enrichment exists: all `is_imported` rows), `Rejected` (rows `is_valid=false OR import_error NOT NULL` + reason columns), each sheet = original data columns + `warnings` column (join `code: detail` with `; `). Controller streams it (`response()->download($path, "import-{$job->id}-result.xlsx")->deleteFileAfterSend()`), 404 when job not found (tenant-scoped), route inside the gated group.
+- Produces: `ResultWorkbookService::generate(ImportJob $job): string` (returns absolute temp file path of an `.xlsx` built with `PhpOffice\PhpSpreadsheet`); sheets: `Imported` and `Rejected` (rows `is_valid=false OR import_error NOT NULL` + reason columns), each sheet = original data columns + `warnings` column (join `code: detail` with `; `). **Phase-scoped deviation (deliberate):** the spec's three-sheet split (enriched / pending-enrichment / rejected) collapses to two sheets in phase 2 because enrichment states don't exist until phase 3 — phase 3 owns splitting `Imported` into sheets 1+2. Reviewers should NOT expect three sheets here. Controller streams it (`response()->download($path, "import-{$job->id}-result.xlsx")->deleteFileAfterSend()`), 404 when job not found (tenant-scoped), route inside the gated group.
 
 - [ ] Steps: failing test (generate for a job with 1 imported+warned row and 1 rejected row → open the file back with PhpSpreadsheet in the test, assert sheet names, cell values incl. warning text; HTTP test asserts 200 + content-type + `can:imports.manage` 403 for unpermitted) → FAIL → implement → PASS → FE buttons (Done step + History row action, i18n keys `results.downloadWorkbook` en "Download result workbook" / fr "Télécharger le rapport d'import") → `pnpm vitest run src/features/import` + typecheck → guards → TASKLOG.
 
@@ -666,3 +670,18 @@ Rules (exact, bcmath at scale 4 intermediates, final `CurrencyScale::bcformatStr
 - Spec §Prereq 0 → Tasks 1-2. §Contracts table → Tasks 6 (Partner), 12 (Tax contract), 13 (Product), 8/14 (opening services consumed as-is via their public classes — Document/Accounting/Inventory service classes are module-public services per rule 6). §1 Parties → Tasks 5-8 (+9 permission, 10 FE). §2 Products → Tasks 11-14 (+15 workbook, 16 FE options). §Job options & warnings → Tasks 3-4. §3 Dashboard/permissions/parapharmacy → Tasks 9-10. §Data/schema → migrations in 3, 8 (products placeholder column `is_enrichment_placeholder` is Phase 3 — NOT in this plan by design). §Error handling table → warning codes in 7, 8, 12, 14 (note: `quantity_ignored_service`/`quantity_batch_tracked`/`location_unresolved` are finer-grained than the spec's single list — spec names are kept where they exist). §Testing → per-task tests + Task 16 sweep. §Build order → task order. Landing → orchestrator merges `feat/unified-imports` → local `post-demo`, pushes `origin/post-demo`.
 - Deliberately OUT (Phase 3 plan): enrichment prefill, placeholders + `is_enrichment_placeholder`, `barcode OR name` validation relaxation (name stays required — Task 11), deterministic submit idempotency key, workbook sheet 1/2 split by enrichment state, REALIGNMENT-LOG entry.
 - PATCH options + wizard order → Task 4 + 16. Signed regex only on parties balance columns (products prices stay unsigned min:0).
+
+## Plan-review round 1 dispositions (2026-07-03, `docs/superpowers/audits/2026-07-03-unified-imports-plan-review.md`, verdict NOT-READY → repaired)
+
+- B1 jsonb `import_file_reference` → Task 8 rewritten: exact array shape, `->where('import_file_reference->import_job_id', …)` lookup, expression unique index.
+- B2 manual provider wiring → ImportServiceProvider added to Tasks 7/8/14 file lists with explicit warning.
+- B3 Task 1 fixture → copy `OpeningBalanceBatchTest` setUp verbatim; `$this->user->id`.
+- B4 non-deterministic ULID sku → name-derived deterministic sku (`STR::slug` uppercased, 100 cap) participates as LAST match key; idempotent re-import test added.
+- M1 boundary → architecture note: module-public application services per CLAUDE.md rule 6; spec contracts table amended (see spec Appendix B addendum v4 note).
+- M2 direct Partner writes → deleted; pre-partner-phase code generation is the only path.
+- M3 balance_date default → company fiscal-year start from `fiscal_year_start_month` (minus a year if in the future); spec amended.
+- M4 phantom opening lock → no lock exists on the product-level path; `opening_failed` for unexpected throwables; `opening_locked` reserved for a future lock; spec deviation recorded.
+- M5 hardcoded scale → company scale via `CurrencyScaleResolverInterface`, ProductController pattern.
+- M6 MigrationWizardService touchpoints → six structures enumerated with FR aliases in Task 5.
+- M7 `/api/v1` prefixes → Task 9 fixed. M8 directory run → explicit file list. M9 PATCH options required. M10 ar fallback = recorded deliberate exception.
+- N1 BrandResolutionService named. N2 `jsonb_array_length` + null-clear convention. N3 two-sheet phase deviation stated in Task 15.
