@@ -85,6 +85,9 @@ final class ResultWorkbookTest extends TestCase
             'is_valid' => true,
             'is_imported' => true,
             'imported_entity_id' => 'product-1',
+            // Execution writes internal bookkeeping (arrays) into data — the
+            // workbook must skip underscore-prefixed keys, not crash on them.
+            'data' => array_merge($importedRow->data, ['_results' => ['opening_stock' => 'ok']]),
         ]);
         $service->addRowWarning($importedRow, 'price_conflict', 'provided 12.000 vs derived 11.900');
 

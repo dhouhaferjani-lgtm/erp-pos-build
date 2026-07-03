@@ -95,6 +95,11 @@ final class ResultWorkbookService
 
         foreach ($rows as $row) {
             foreach (array_keys($row->data) as $header) {
+                // Underscore-prefixed keys are internal execution bookkeeping
+                // (e.g. _results) — arrays, not user columns.
+                if (str_starts_with($header, '_')) {
+                    continue;
+                }
                 if (! in_array($header, $headers, true)) {
                     $headers[] = $header;
                 }
