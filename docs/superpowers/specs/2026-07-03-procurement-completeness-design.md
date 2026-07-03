@@ -1,7 +1,8 @@
 # Procurement Completeness — RFQ, Goods-Receipt Price Edit, Supplier-Invoice Creation UI — Design Spec
 
 - **Date:** 2026-07-03
-- **Status:** DESIGN · **Revision 2** (post Codex RETHINK, 2026-07-03) — no code, no migrations, no commits. Owner review pending; implementation post-demo.
+- **Status:** DESIGN · **Revision 3** (owner scope review, 2026-07-03) — approved for implementation on the `post-demo` integration branch; promote to demo/dev only when stable (owner call). Rev 3 deltas: multi-supplier RFQ groups pulled INTO v1, multi-PO supplier invoices pulled INTO v1 (final wave), new Procurement Presets section, receipt-first/invoice-first explicitly deferred to Phase 2 as owner decisions. See `## Revision 3 — owner scope decisions`.
+- **Previous:** Revision 2 (post Codex RETHINK, 2026-07-03).
 - **Author:** Claude (spec-writing session; every "current behavior" claim verified against `dev` at cited file:line).
 - **Scope:** Three owner-identified gaps in the purchase module, surfaced by a prospective parapharmacy customer who runs a competitor ERP daily. Purchasing side only.
 - **Revision 2 headline:** Gap 2 moves from PO-line grain to **first-class `goods_receipts` header + `goods_receipt_lines`** (the landed-cost spec's Phase-3 dependency, pulled forward). Each receipt line carries its own received qty/price/accrual snapshot; PO-line counters become derived aggregates. The invoice-vs-received residual now posts to a **Purchase Price Variance account** (WAC=GL preserved), not silently into the Inventory plug. See the `## Revision 2 — Codex RETHINK disposition` table below for finding-by-finding rationale and the code evidence behind every accept/reject.
@@ -26,12 +27,32 @@ All paths relative to `apps/api/` or `apps/web/` unless noted. The ERP is nested
 | H5 | Matcher basis switch reclassifies existing draft invoices at post time (Block enforcement → throw) | **ACCEPTED** | Supplier-invoice lines now **snapshot the match basis at creation** (`price_match_basis`, `matched_receipt_line_id`); posting re-runs the matcher against the snapshot, not live state (§2.5). A `procurement:rematch-drafts` command + release note handle `match_enforcement=block` tenants. Verified: `SupplierInvoicePostingService.php:85-93` (`assertPostable` + `match` re-run inside posting txn), `SupplierInvoiceMatcher.php:220-228,375-381`. |
 | H6 | Gap 1 "no DB migration" is false — `purchase_quote_request` (22 chars) overflows `documents.type string(20)` | **ACCEPTED** | Stored enum value changed to **`purchase_rfq`** (12 chars) — fits both `documents.type(20)` and `document_sequences.type(20)`; no column change, additive enum only (§1.3, §1.8). Verified: `2025_11_30_080000_create_documents_table.php:18` (`string('type', 20)`), `2025_11_30_080002_create_document_sequences_table.php:16`. |
 | M7 | First-class RFQ document must enumerate its opt-outs (fiscal, payment, status, totals) | **ACCEPTED** | New **§1.12 RFQ invariants** section: `FiscalCategory::NonFiscal` (already the `default` arm — verified `FiscalCategory.php:44` `default => self::NonFiscal`), no payment/balance/stock/GL listeners, allowed operational statuses, `Converted`/`Closed` representation, mandatory-supplier decision. |
-| M8 | From-receipts entry point contradicts the one-PO create contract | **ACCEPTED** | v1 from-receipts selection is **hard-scoped to a single PO**: the picker groups receipt rows by PO and blocks cross-PO selection client-side with an explanation (§3.2). Multi-PO invoicing stays Phase 2 (needs relaxing `CreateSupplierInvoiceRequest` + a multi-source matcher — smaller now that receipt lines exist). Verified: `CreateSupplierInvoiceRequest.php:55-59,113-123,143-162` (single required PO source; every line must belong to it). |
+| M8 | From-receipts entry point contradicts the one-PO create contract | **ACCEPTED** (superseded in part by Rev 3/S4) | Rev 2 hard-scoped from-receipts selection to a single PO with a client-side block. **Rev 3 pulls multi-PO invoicing into v1 as the final wave** (§3.2, §3.11): `CreateSupplierInvoiceRequest` relaxed to `source_document_ids[]`, same-supplier/currency/company guard replaces the single-PO block. Until that wave lands, the intermediate waves keep the Rev 2 client-side block so the UI never composes a payload the backend rejects. Verified: `CreateSupplierInvoiceRequest.php:55-59,113-123,143-162` (single required PO source; every line must belong to it). |
 | M9 | Supplier reference is not stored in `payload` — backend already writes `external_document_number` | **ACCEPTED** | Spec corrected: v1 reuses **`external_document_number`** (no new column) and adds a **non-blocking duplicate warning** on `(company_id, partner_id, external_document_number)` (§3.3). Verified: `CreateSupplierInvoiceRequest.php:63`, `CreateSupplierInvoiceService.php:123` (`'external_document_number' => $validated['supplier_reference'] ?? null`). |
 | M10 | Receipt price edit needs audit, not only a permission | **ACCEPTED** | `goods_receipt_lines` carries `price_override_by / price_override_at / price_override_old_basis / price_override_reason`; the receipt service gains an actor param (§2.3, §2.7). Verified: `GoodsReceiptService.php:167-176` (no actor today), `WeightedAverageCostService.php:258-278`. |
 | L11 | Code-grounding corrections | **ACCEPTED** | Applied: `SupplierInvoiceMatcher` lives in `Procurement/Application/` (not a Document domain path); there is **no Laravel `ReceiveGoodsRequest`** (the name is a FE interface in `ReceiveGoodsDialog.tsx:14-17`) — §2.8 now says "add a Laravel FormRequest"; the sales-`Quote` claim is re-grounded on controllers/routes/converters, not `affectsReceivable()` (which returns true only for `Invoice`/`CreditNote` — verified `DocumentType.php:64-66`). |
 | CG | Supplier credit notes → received-price WAC/GL true-up not connected | **REJECTED for v1 (explicit non-goal)** | With C2's Purchase Price Variance destination, the price residual is already recognised at invoice posting, so `SupplierCreditNoteReason::PriceAdjustment` (verified present, `SupplierCreditNoteReason.php:24`) driving a retro WAC adjustment is a *separate* downstream-AP concern, not a completeness blocker. Deferred with justification (§Cross-Cutting). |
-| CG | Multi-supplier RFQ comparison below competitor bar | **DEFERRED (sharpened Open Question)** | Kept single-supplier v1; risk elevated to OQ1 with the competitor-parity caveat spelled out. Not forced structural — the customer's phrase "demande de prix" is a single-supplier price ask; fan-out/award is a distinct feature (§1.10, OQ1). |
+| CG | Multi-supplier RFQ comparison below competitor bar | ~~DEFERRED~~ **SUPERSEDED by Rev 3/S7 — owner pulled multi-supplier into v1** | Rev 2 kept single-supplier v1 pending OQ1. Owner resolved OQ1: multi-supplier fan-out + comparison + whole-RFQ award ship in v1 as sibling-document groups (§1.2). Codex's competitor-parity concern is thereby addressed structurally. |
+
+---
+
+## Revision 3 — owner scope decisions (2026-07-03)
+
+Owner reviewed Rev 2 against the required product scenarios. Dispositions:
+
+| # | Scenario / question | Owner decision | Structural change in Rev 3 |
+|---|---|---|---|
+| S1 | Full chain RFQ → PO → receipt → invoice | required, v1 | already covered (Gaps 1–3). |
+| S2 | One PO ↔ multiple receipts (multi-price partials) | required, v1 | already covered (receipt ledger, §2). |
+| S3 | One invoice ↔ multiple receipts | required, v1 | covered within one PO (FIFO, §2.5); across POs → S4. |
+| S4 | One invoice ↔ multiple POs | **pulled into v1 as the FINAL wave** | `CreateSupplierInvoiceRequest` relaxed to `source_document_ids[]` (same supplier/currency/company); matcher is already PO-count-agnostic at receipt-line grain; UI drops the cross-PO block for same-supplier selections. §3.2/§3.11 updated; M8's client-side block becomes a same-supplier guard. |
+| S5 | Start directly with receiving goods (no PO) | **explicitly Phase 2** (owner call — offered v1/schema-ready/Phase 2, chose Phase 2) | recorded in §2.11 + Presets; `goods_receipts.purchase_order_id` stays NOT NULL in v1 (trivial nullable migration when Phase 2 lands, slotting into the Léger preset). |
+| S6 | Invoice-first purchasing (start from an invoice, derive the rest) | **left aside** (owner) | stays §3.6 forward-looking principle; no v1/Phase-2 commitment. |
+| S7 | Multi-supplier RFQ ("demande de prix" fan-out + comparison) | **required in v1 from the get-go** (owner: "very practical, also needed later for automotive") — resolves OQ1 | Gap 1 expands: RFQ **groups** = N sibling `purchase_rfq` documents (one per supplier) sharing `payload->rfq.group_id`; comparison view; whole-RFQ award converts the winner to a PO and closes siblings. Per-line split award = Phase 2. §1.2/§1.3/§1.4/§1.5/§1.9/§1.10 updated. |
+| S8 | Behavior configurable via seeding presets | required | new **§ Procurement Presets** section: `ProcurementPreset` enum `{Complet, Standard, Léger}` = named bundles over existing `procurement_policies` fields; seeder applies per tenant/vertical; company-settings switch. |
+| S9 | Rev 2 open questions OQ2/OQ3/OQ5 + edit-price permission | accepted as recommended | match basis = receipt-line accrual; PPV posting (OQ3 still to be countersigned by expert-comptable — account numbers only, not the mechanism); duplicate supplier-ref = non-blocking warning; `goods-receipt.edit-price` separate permission. |
+
+Rev 3 also updates §0's composition caveat: `free_quantity` / `free_quantity_received` / `free_quantity_invoiced` / `price_entry_mode` HAVE landed on dev (`2026_07_02_100000_add_purchase_bonus_fields_to_document_lines.php`, `DocumentLine.php`), so the bonus composition in §2.6 builds on merged columns, not a sibling spec assumption.
 
 ---
 
@@ -43,7 +64,7 @@ Everything in procurement is a row in one `documents` table discriminated by `ty
 - Documents link via `documents.source_document_id` (nullable uuid, no FK — `database/migrations/tenant/2025_11_30_080000_create_documents_table.php:33`). Conversions run through a registry keyed `"{sourceType}:{targetType}"` (`Document/Domain/Services/Conversion/DocumentConverterRegistry.php:91,118,135,202`), copy helper `Conversion/Concerns/CopiesDocumentData.php`, event `Document/Domain/Events/DocumentConverted.php`; registered converters at `Document/Providers/DocumentServiceProvider.php:38-43` (Quote→SalesOrder, SalesOrder→Invoice, SalesOrder→DeliveryNote, DeliveryNote→Invoice, Invoice→CreditNote, PurchaseOrder→GoodsReceipt).
 - **A goods receipt is not a document today:** `PurchaseOrderToGoodsReceiptConverter` has `sourceType() === targetType() === PurchaseOrder` (`.../Converters/PurchaseOrderToGoodsReceiptConverter.php:48,55-57`; docblock :18-19 "does NOT create a new document … updates the source PurchaseOrder"). Receiving mutates PO-line counters + writes `StockMovement`s + posts a GR-IR journal entry. **Revision 2 keeps the converter but has it (and the receive endpoint) ALSO write a `goods_receipts` header + lines** (§2.3) — the receipt becomes queryable state without becoming a fiscal document.
 - Line model = shared `document_lines` (`2025_11_30_080001_create_document_lines_table.php:19-25`): `quantity decimal(15,4)` (:19), `unit_price` (:20; widened to `decimal(15,3)` by `2026_03_11_200000_widen_monetary_columns_to_scale_3.php:60`), `line_total` (:24 → scale 3 :62), plus later `quantity_received` (`2025_12_13_081142:21`), `quantity_invoiced` (`2026_06_26_100000:36`), `source_line_id` self-FK (`2025_12_11_194522`), `landed_unit_cost decimal(19,6)` (`2026_05_30_000000:60`), `accrual_unit_cost decimal(15,6)` cast `decimal:6` (`DocumentLine.php:140`). **In Rev 2 these PO-line columns remain but are demoted to derived summary aggregates of the receipt-line ledger (§2.3.1); the accounting grain moves to `goods_receipt_lines`.**
-- **`price_entry_mode` / `free_quantity` / `is_bonus_line` do NOT exist in the merged tree** — they live only in the two sibling design specs above and unmerged worktrees. This spec assumes they land (or composes cleanly if they do not — §2.6).
+- ~~`price_entry_mode` / `free_quantity` / `is_bonus_line` do NOT exist in the merged tree~~ **Rev 3 update: `free_quantity` / `free_quantity_received` / `free_quantity_invoiced` / `price_entry_mode` are now ON dev** (`2026_07_02_100000_add_purchase_bonus_fields_to_document_lines.php`; `DocumentLine.php` casts). §2.6's bonus composition builds on merged columns.
 
 Cross-cutting gating fact (relevant to all three gaps): procurement is **not** module-gated on the backend — `config/verticals.php` names no `Procurement`/`Purchases` module, and `Procurement/Presentation/routes.php` documents this deliberately ("Access is governed by per-route `can:` permissions"), piggybacking `documents.*`. The **frontend** gates the whole `/purchases` tree with `RequirePermission moduleKey="purchases"` + `purchases.{create,edit}` (`apps/web/src/routes/index.tsx:741-847`). This FE/BE asymmetry is pre-existing; each gap below reuses it rather than churning it, and §Cross-Cutting flags the cleanup.
 
@@ -57,9 +78,11 @@ There is no RFQ concept. `DocumentType` has no purchase-quote-request case (`Doc
 
 ## 1.2 Design decision
 
-**Add a first-class `PurchaseQuoteRequest` document type (RFQ) that sits upstream of `PurchaseOrder`, single-supplier in v1, convertible to a PO through the existing registry.**
+**Add a first-class `PurchaseQuoteRequest` document type (RFQ) that sits upstream of `PurchaseOrder`, convertible to a PO through the existing registry — multi-supplier in v1 via RFQ *groups* (Rev 3 / S7).**
 
-Lifecycle: `Draft → Sent → Responded → (Converted | Closed)`. v1 flow = create RFQ → print/PDF or email it → record the supplier's response (per-line prices + a document-level validity date and optional lead time) → convert to a PO (copies lines + the responded prices — the **RFQ→PO price carry-over** the competitor table calls for). No supplier portal.
+Lifecycle (per document): `Draft → Sent → Responded → (Converted | Closed)`. v1 flow = create RFQ for one **or several** suppliers (lines entered once, fanned out into N sibling documents — one per supplier, same lines, different `partner_id`, shared `payload->rfq.group_id`) → print/PDF or email each → record each supplier's response (per-line prices + a document-level validity date and optional lead time) → **compare** responses in a group view → convert the winning RFQ to a PO (copies lines + the responded prices — the **RFQ→PO price carry-over** the competitor table calls for); the sibling RFQs auto-close (`Cancelled` + `payload.rfq.closed_reason='lost'`). No supplier portal.
+
+**Award grain (v1): whole-RFQ to one supplier.** Per-line split awards (line 1 → supplier A, line 2 → supplier B ⇒ multiple POs) are Phase 2. A single-supplier RFQ is just a group of one — no special-casing.
 
 The RFQ is **non-fiscal, non-receivable, non-stock** — its invariants are enumerated in §1.12. Numbering prefix via `getPrefix()`.
 
@@ -69,9 +92,11 @@ The RFQ is **non-fiscal, non-receivable, non-stock** — its invariants are enum
 - **Reuse sales `Quote`** — rejected: it is sales/receivable-side (converter `Quote→SalesOrder`); partner/tax/print semantics are wrong for a supplier ask.
 - **Separate `rfq` table** — rejected: breaks the unified-document model and forfeits the conversion registry, PDF pipeline, numbering, attachments, and list/detail scaffolding that come free with a `DocumentType`.
 
-### Multi-supplier comparison = Phase 2
+### Multi-supplier model = sibling documents in a group (Rev 3 — v1)
 
-v1 = **one RFQ → one supplier** (`partner_id`). Fan-out (send the same request to N suppliers) + a quote-comparison/award screen is Phase 2 (it needs an RFQ-group entity + a comparison view). This keeps v1 within the existing single-document scaffolding. **Competitor-parity caveat (OQ1):** if the customer's "demande de prix" means multi-supplier comparison, single-supplier v1 is below bar — confirm before building.
+**One RFQ document per supplier; the group is metadata, not an entity.** Each sibling keeps every piece of single-document machinery for free (numbering, print blade, email, response recording, status mapping, converter). The group is `payload->rfq.group_id` (uuid stamped at fan-out creation) + a Postgres expression index on `(payload->'rfq'->>'group_id')` for the group view. No `rfq_groups` table in v1 — the group has no state of its own (its "status" derives from members; award = the member conversion event).
+
+Alternative rejected: one RFQ document + a `supplier_responses` side table — breaks the one-partner-per-document semantics that printing, numbering, `partner_id`-based tax/currency defaults, and the conversion registry all assume, and rebuilds response/status machinery the sibling model inherits. (This was Rev 2's Phase-2 sketch "RFQ-group entity"; the sibling model supersedes it — owner pulled multi-supplier into v1, S7.)
 
 ## 1.3 Schema deltas (additive)
 
@@ -79,12 +104,17 @@ No new table. RFQ-specific fields live on the existing `documents.payload` jsonb
 
 ```
 payload->'rfq' = {
+  group_id:             uuid,          // shared by all siblings of one fan-out (single-supplier RFQ = group of 1) — Rev 3
   validity_date:        date|null,     // supplier quote valid until
   supplier_reference:   string|null,   // supplier's own quote number
   lead_time_days:       int|null,      // stated delivery lead time
-  response_recorded_at: timestamptz|null
+  response_recorded_at: timestamptz|null,
+  sent_at:              timestamptz|null,
+  closed_reason:        string|null    // 'lost' when a sibling wins the award — Rev 3
 }
 ```
+
+- **Index (Rev 3):** `CREATE INDEX documents_rfq_group_idx ON documents (tenant_id, ((payload->'rfq'->>'group_id'))) WHERE type = 'purchase_rfq';` — the one migration Gap 1 now carries.
 
 - Per-line responded price reuses `document_lines.unit_price` (already scale 3). Requested quantity reuses `quantity`.
 - New enum (rule 9): add **`PurchaseQuoteRequest = 'purchase_rfq'`** to `DocumentType` (**stored value `purchase_rfq` = 12 chars, fits `documents.type` `string(20)` and `document_sequences.type` `string(20)` — see §1.8; the previous draft's `'purchase_quote_request'` was 22 chars and overflowed**) + its `getPrefix()`/`label()`/`affectsReceivable()`/`canTransitionToPaid()`/`FiscalCategory` arms. Reuse `DocumentStatus` — see §1.12 for the Sent/Responded/Converted/Closed mapping.
@@ -101,8 +131,15 @@ POST   /api/v1/purchase-quote-requests            can:purchase-quote-requests.cr
 PUT    /api/v1/purchase-quote-requests/{id}       can:purchase-quote-requests.update  (edit lines / record response)
 POST   /api/v1/purchase-quote-requests/{id}/send  can:purchase-quote-requests.update  (mark Sent; optional email)
 POST   /api/v1/purchase-quote-requests/{id}/convert-to-po
-                                                  can:purchase-quote-requests.convert (→ PurchaseOrder via registry)
+                                                  can:purchase-quote-requests.convert (→ PurchaseOrder via registry;
+                                                  also auto-closes group siblings — Rev 3)
+GET    /api/v1/purchase-quote-requests/groups/{groupId}
+                                                  can:purchase-quote-requests.view    (comparison view: all siblings +
+                                                  per-line responded prices, validity, lead time — Rev 3)
 ```
+
+- **Fan-out create (Rev 3):** `POST /purchase-quote-requests` accepts `partner_ids: uuid[]` (min 1). The service generates one `group_id`, then creates one document per supplier in a single transaction (each with its own number from the `purchase_rfq` sequence). Response returns the group.
+- **Award side-effect (Rev 3):** `convert-to-po` (winner must be `Responded`) converts via the registry as before, then closes every *other* non-converted sibling in the group (`Cancelled` + `closed_reason='lost'`) in the same transaction. Converting a second sibling of an already-awarded group → 422 (`RFQ_GROUP_ALREADY_AWARDED`) unless the first PO was cancelled — re-award is then allowed (the guard checks for a live converted PO, not a boolean flag).
 
 - `convert-to-po` registers a `PurchaseQuoteRequestToPurchaseOrderConverter` (`sourceType()=PurchaseQuoteRequest`, `targetType()=PurchaseOrder`) in `DocumentConverterRegistry`, copies partner/currency/lines + responded prices via `CopiesDocumentData` **into the PO's `unit_price` (contractual price carry-over)**, sets the new PO's `source_document_id` to the RFQ, dispatches `DocumentConverted`. The PO opens as `Draft` (buyer still confirms). Precondition: RFQ must be `Responded` (see §1.12).
 - FormRequest `CreatePurchaseQuoteRequestRequest` with the standard precision regex ceilings: `lines.*.quantity` `regex:/^-?\d+(\.\d{1,4})?$/`, `lines.*.unit_price` `regex:/^-?\d+(\.\d{1,3})?$/` (mirror `CreateSupplierInvoiceRequest.php:71,77`).
@@ -126,8 +163,10 @@ Purchases ▸ Demandes de prix
 ```
 
 - Reuse `DocumentListPage documentType="purchase_rfq"` and `DocumentForm` where possible.
+- **Creation (Rev 3):** the new-RFQ form has a multi-select supplier picker; submitting with N suppliers fans out N documents and routes to the group comparison view (N=1 routes straight to the single RFQ detail, exactly the single-supplier flow).
 - "Enregistrer réponse" flips the price cells editable and records `response_recorded_at` (→ status `Responded`, §1.12).
-- "Convertir en BC" (bon de commande) calls `convert-to-po`, then routes to the new PO's detail page.
+- **Comparison view (Rev 3):** `/purchases/quote-requests/groups/{groupId}` — one column per supplier, one row per line; responded unit prices side by side with best-price-per-line highlighting; validity date + lead time + total per supplier; award button per responded column. List page groups siblings (chip "3 fournisseurs — 2 réponses").
+- "Convertir en BC" (bon de commande) calls `convert-to-po` (from the RFQ detail or the comparison view), then routes to the new PO's detail page; siblings show as `Clôturée (non retenue)`.
 - All strings via `t()` (rule 11); money via `<MoneyInput>` / `<QuantityInput>` emitting strings; design tokens (rule 18).
 - Print: new blade `resources/views/documents/templates/purchase_rfq.blade.php` reusing `components/line_items.blade.php`; email via the existing Send-Email action.
 
@@ -144,18 +183,19 @@ New permission set `purchase-quote-requests.{view,create,update,convert,delete}`
 1. Add `PurchaseQuoteRequest = 'purchase_rfq'` enum case + helper arms; update any exhaustive `match` on `DocumentType` (search + fix). **`FiscalCategory::fromDocumentType` needs no change — the `default => NonFiscal` arm (`FiscalCategory.php:44`) already covers it (§1.12).**
 2. Register the converter in `DocumentServiceProvider`.
 3. Add the blade template + i18n keys + seeder permissions.
+3b. **(Rev 3)** Migration for the `documents_rfq_group_idx` expression index (§1.3) — additive, no column change.
 4. **No column migration** — `purchase_rfq` (12 chars) fits `documents.type` `string(20)` (`2025_11_30_080000:18`) and `document_sequences.type` `string(20)` (`2025_11_30_080002:16`). This corrects Revision 1's incorrect "no DB migration needed because value fits" reasoning: the *value* was 22 chars and would have overflowed; the fix is the shorter stored value, not a wider column.
 
 ## 1.9 TDD test list
 
 - **Unit:** `DocumentType::PurchaseQuoteRequest` helpers (stored value `purchase_rfq` ≤ 20 chars — explicit length assertion; prefix `DP`, non-receivable, non-payable, `FiscalCategory::NonFiscal`). `PurchaseQuoteRequestToPurchaseOrderConverter`: copies lines + responded prices into PO `unit_price`, sets `source_document_id`, target `Draft`, dispatches `DocumentConverted`; rejects wrong source type; rejects non-`Responded` source.
-- **Feature (RefreshDatabase + seeder):** create RFQ draft; edit/record response persists prices + `validity_date` + status→Responded; `send` marks Sent; `convert-to-po` yields a `PurchaseOrder` with matching lines and `source_document_id`; RFQ never appears on any receivable/payable/fiscal report (§1.12); permission matrix; tenant isolation.
+- **Feature (RefreshDatabase + seeder):** create RFQ draft; edit/record response persists prices + `validity_date` + status→Responded; `send` marks Sent; `convert-to-po` yields a `PurchaseOrder` with matching lines and `source_document_id`; RFQ never appears on any receivable/payable/fiscal report (§1.12); permission matrix; tenant isolation. **(Rev 3 group tests:)** fan-out with `partner_ids=[A,B,C]` creates 3 documents sharing one `group_id`, each with its own number; group endpoint returns all siblings + response state; award of B closes A and C with `closed_reason='lost'`; award on an already-awarded group → 422 `RFQ_GROUP_ALREADY_AWARDED`; re-award allowed after the winning PO is cancelled; single-supplier fan-out (N=1) behaves exactly like the plain flow.
 - **FE (Vitest):** list/form render, record-response flow, convert button routes to PO, i18n keys present; one Playwright pass create→respond→convert.
 
 ## 1.10 Phasing
 
-- **v1:** single-supplier RFQ; create, print/send, record response, convert to PO (price carry-over).
-- **Phase 2:** multi-supplier fan-out (RFQ group) + quote comparison + award-to-PO; supplier-reference dedup. **Gate:** OQ1 — is multi-supplier comparison a launch requirement?
+- **v1 (Rev 3):** multi-supplier RFQ groups — fan-out create, print/send, record responses, group comparison view, whole-RFQ award-to-PO with sibling auto-close (price carry-over). Single-supplier = group of one.
+- **Phase 2:** per-line split awards (multiple POs from one group); supplier-reference dedup; supplier portal / e-mail response ingestion.
 
 ## 1.11 Non-goals
 
@@ -173,7 +213,7 @@ A first-class `documents` row inherits fiscal/payment/status/totals machinery. T
 | **Statuses** | `Draft → Sent → Responded → (Converted \| Closed)` mapped onto existing `DocumentStatus` (`Draft`, `Confirmed`, `Cancelled`) + payload flags | `DocumentStatus` has only `Draft/Confirmed/Posted/Paid/Received/Cancelled` (verified `DocumentStatus.php:9-14`). Map: **Sent** = `Confirmed` + `payload.rfq.sent_at`; **Responded** = `Confirmed` + `payload.rfq.response_recorded_at`; **Converted** = source of a `DocumentConverted` to a PO (has a child PO with `source_document_id`); **Closed** = `Cancelled`. This avoids editing the shared status enum's exhaustive `match`es. `Posted`/`Paid`/`Received` are never reachable for an RFQ (no code path sets them). |
 | **Document totals** | totals compute from lines as usual (informational only); no fiscal meaning | reuse existing total computation; totals never post anywhere. |
 | **List filters** | RFQs appear only under the Demandes-de-prix list (filtered by `type='purchase_rfq'`), never in PO/invoice/fiscal lists | list endpoints already filter by `type`. |
-| **Supplier mandatory?** | `partner_id` **required** in v1 (single-supplier). | `documents.partner_id` is nullable since `2026_06_27_110000`, so the FormRequest enforces `required` for RFQ specifically. (Multi-supplier item-list-first RFQ is Phase 2.) |
+| **Supplier mandatory?** | `partner_id` **required** on every RFQ document — each sibling in a group has exactly one supplier (Rev 3). | `documents.partner_id` is nullable since `2026_06_27_110000`, so the FormRequest enforces `required` per document; multi-supplier = N sibling documents (§1.2), never one document with N partners. (A supplier-less item-list-first draft is Phase 2.) |
 
 ---
 
@@ -347,11 +387,13 @@ Réception — BC-2026-0042 · LaboDerm                         Réception n°: 
 ## 2.10 Phasing
 
 - **v1:** `goods_receipts`/`goods_receipt_lines` ledger + backfill; receipt service writes headers/lines; per-line `received_unit_price` + `free_qty` → per-line `landed_/accrual_unit_cost`/WAC/GR-IR; receipt-value freight allocation (single batch); matcher consumes receipt-line basis + creation-time snapshot + rematch command; **Purchase Price Variance** posting (WAC==GL invariant); `ReceiveGoodsRequest` FormRequest; `goods-receipt.edit-price` permission + audit columns; bonus composition. **No 422.**
-- **Phase 2:** multi-freight-document / cross-receipt landed-cost allocation (landed-cost spec); supplier-credit-note-driven price adjustment → WAC/GL true-up (§Cross-Cutting); multi-PO invoice matching over receipt lines.
+- **Phase 2:** multi-freight-document / cross-receipt landed-cost allocation (landed-cost spec); supplier-credit-note-driven price adjustment → WAC/GL true-up (§Cross-Cutting); receipt-first PO-less receiving (S5). (Multi-PO invoice matching moved INTO v1 Wave 8 — Rev 3/S4.)
 
 ## 2.11 Non-goals
 
 No retroactive re-costing of already-sold units at receipt (linked-cost sold/on-hand split — separate spec); no mutation of the PO contractual `unit_price`; no supplier-credit-note WAC true-up in v1 (§Cross-Cutting); the RFQ→PO price carry-over is Gap 1's concern.
+
+**Receipt-first (PO-less receiving) = Phase 2 — an explicit owner decision (Rev 3/S5, offered v1 and schema-ready options, chose full deferral).** `goods_receipts.purchase_order_id` stays NOT NULL in v1; Phase 2 relaxes it with a trivial nullable migration, adds a standalone "Nouvelle réception" entry point (product/qty/price entered directly — the receipt ledger already carries `received_unit_price`), and pairs with the Phase-2 PO-less two-way invoice. It slots into the **Léger** preset (§ Procurement Presets).
 
 ---
 
@@ -372,15 +414,22 @@ The **backend is complete; the UI does not exist.**
 **Wire three creation entry points, all converging on the existing `POST /supplier-invoices` at single-PO grain (link-at-create). Prefill and match-preview consume the Gap 2 receipt lines.**
 
 1. **From a PO** — "Créer facture fournisseur" button on PO detail, enabled when the PO has any receipt line with `received_qty + free_qty > quantity_invoiced`. Prefills lines from the **uninvoiced receipt lines** with `invoice_qty = matchable` and `unit_price = received_unit_price ?? PO unit_price` (Gap 2 basis).
-2. **From receipts** — "Facturer les réceptions" on `GoodsReceiptListPage` (now a real receipt-header list, not just received POs — Gap 2). Select receipt lines → prefill. **Cross-PO selection is blocked client-side with an explanation** (Codex M8): the picker groups receipt rows by their PO; selecting rows from a second PO disables the action with a tooltip "Une facture ne peut couvrir qu'un seul bon de commande (multi-BC = Phase 2)." Because the create endpoint takes a single `source_document_id` and every line must belong to it (`CreateSupplierInvoiceRequest.php:113-123,143-162`), the UI never lets the user compose a draft that can only fail at submit.
+2. **From receipts** — "Facturer les réceptions" on `GoodsReceiptListPage` (now a real receipt-header list, not just received POs — Gap 2). Select receipt lines → prefill. **Cross-PO selection is blocked client-side until Wave 8** (Codex M8, interim): the picker groups receipt rows by their PO; selecting rows from a second PO disables the action with a tooltip "Multi-BC arrive avec la dernière vague." Because the create endpoint takes a single `source_document_id` until Wave 8 relaxes it (`CreateSupplierInvoiceRequest.php:113-123,143-162`), the UI never lets the user compose a payload that can only fail at submit. **After Wave 8 (Rev 3/S4): same-supplier cross-PO selection is allowed; cross-SUPPLIER selection stays blocked.**
 3. **Standalone then link** — from the supplier-invoices list "Nouvelle facture" → pick supplier → load that supplier's open POs (`GET /purchase-orders?partner_id=&status=received&has_uninvoiced=1`) → pick one → prefill from its receipt lines. Feels standalone; still resolves to one PO before submit.
 
-A **truly PO-less supplier invoice** (service invoice, `MatchMode::TwoWay`) and **multi-PO invoices** both require relaxing `CreateSupplierInvoiceRequest` (null/multiple `source_document_id`) + a multi-source matcher — **Phase 2** (smaller now that receipt lines exist, but still out of v1 scope). v1 does not build them.
+**Rev 3 (S4): multi-PO invoices are IN v1, as the final wave** (after the receipt-line matcher is proven on single-PO):
+
+- `CreateSupplierInvoiceRequest` accepts `source_document_ids: uuid[]` (min 1; every id a `PurchaseOrder` of the **same company, partner, and currency** — the same-supplier guard replaces the single-PO rule). `lines.*.source_line_id` must belong to *one of* the listed POs.
+- `documents.source_document_id` (single column) keeps the **first** PO for backward compatibility with every existing reader; the full list persists in `payload->supplier_invoice.source_document_ids`. Line-level linkage (`source_line_id`, and the §2.5 `matched_receipt_line_id` snapshot) is already per-line and therefore PO-count-agnostic — the matcher consumes receipt lines FIFO *per PO line* regardless of how many POs contribute lines.
+- Posting is unchanged structurally: it clears each consumed receipt line at its own immutable `accrual_unit_cost`; the B3-style basis guard, over-clear invariant, and PPV routing (§2.4) all operate per line and need no multi-PO awareness beyond iterating the lines present.
+- UI: the from-receipts picker and the standalone entry point allow selecting receipt lines across POs **of one supplier** (cross-supplier stays blocked); the create page shows a "BC liés: BC-…42, BC-…57" chip row. Until this wave lands, intermediate waves keep the Rev 2 single-PO client block.
+
+A **truly PO-less supplier invoice** (service invoice, `MatchMode::TwoWay`) still requires a null-source contract + two-way matcher — **Phase 2** (with S5 receipt-first, which it pairs with naturally).
 
 ### Alternatives (briefly)
 
-- **Multi-PO invoice in v1** — rejected: `CreateSupplierInvoiceRequest` forbids it (:113-123); the from-receipts UX blocks it client-side instead of failing at submit.
-- **A new dedicated invoice-creation endpoint** — rejected: the backend service + validation already exist and are correct; this gap is FE wiring + receipt-line prefill.
+- **A join table for invoice↔PO links** — rejected: line-level `source_line_id` already carries the truth; a header-level array in `payload` + first-PO compat column is enough, and no reader today joins on a multi-PO header.
+- **A new dedicated invoice-creation endpoint** — rejected: the backend service + validation already exist and are correct; this gap is FE wiring + receipt-line prefill + the final-wave request relaxation.
 
 ## 3.3 Schema deltas
 
@@ -452,12 +501,30 @@ No DB migration for v1 (the §2.5 `price_match_basis`/`matched_receipt_line_id` 
 
 ## 3.11 Phasing
 
-- **v1:** three entry points (single-PO), receipt-line prefill/match, match preview + tolerance display, attachments, `external_document_number` + duplicate warning.
-- **Phase 2:** true PO-less/service invoices; multi-PO invoices (relax `CreateSupplierInvoiceRequest`, multi-source matcher over receipt lines); OCR prefill; hard duplicate-reference uniqueness.
+- **v1 (waves before the last):** three entry points at single-PO grain, receipt-line prefill/match, match preview + tolerance display, attachments, `external_document_number` + duplicate warning.
+- **v1 FINAL wave (Rev 3/S4):** multi-PO invoices — `source_document_ids[]` request relaxation, same-supplier guard, cross-PO receipt-line selection UI, payload source list + first-PO compat column.
+- **Phase 2:** true PO-less/service invoices (pairs with S5 receipt-first); OCR prefill; hard duplicate-reference uniqueness.
 
 ## 3.12 Non-goals
 
-No multi-PO invoice in v1; no OCR in v1; no supplier-statement reconciliation; no change to the matcher/posting engines beyond the Gap 2 receipt-line basis + PPV.
+No PO-less invoice in v1; no OCR in v1; no supplier-statement reconciliation; no change to the matcher/posting engines beyond the Gap 2 receipt-line basis + PPV (the multi-PO wave iterates lines, it does not alter clearing semantics).
+
+---
+
+# Procurement Presets (NEW in Rev 3 — S8)
+
+**A `ProcurementPreset` enum — `Complet | Standard | Leger` — as named bundles over the existing `procurement_policies` fields. The fields stay the source of truth; a preset is just which values get written, plus a record of which bundle was applied.**
+
+| Preset | Chain | `match_mode` | `match_enforcement` | Notes |
+|---|---|---|---|---|
+| **Complet** | RFQ → PO → receipt → invoice | `three_way` | `block` | strictest control; RFQ encouraged (never *required* by code in v1 — a PO can still be created directly; "RFQ required" hard-gating is a Phase-2 policy flag if demanded) |
+| **Standard** (default) | PO → receipt → invoice, RFQ optional | `three_way` | `warn` | today's seeded behavior, now nameable |
+| **Léger** | PO → receipt → invoice, lightest control | `two_way` | `warn` | Phase-2 receipt-first (S5) lands here: direct no-PO receipts become a Léger capability |
+
+- **Schema:** add `procurement_policies.preset varchar(20) NULL` (records the applied bundle; NULL = custom/hand-tuned fields). New enum `ProcurementPreset` (rule 9) with a `values(): array` mapping preset → policy field values.
+- **Seeding:** `RolesAndPermissionsSeeder`-style preset application in the procurement policy seeder — per tenant/vertical (demo seeders: parapharmacy = `Standard`); `DemoPharmacySeeder` asserts the preset it expects.
+- **Settings:** `PUT /api/v1/procurement-policies` (existing policy update path or a thin new endpoint) accepts either `preset` (applies the bundle, stamps the column) or raw fields (clears `preset` to NULL). Company-settings UI: a three-card preset picker + an "avancé" section exposing the raw fields.
+- **Tests:** applying each preset writes exactly the mapped fields; raw-field edit nulls the preset; seeder idempotency; the §2.5 matcher honors `two_way` (no receipt-line requirement for matching under Léger — two-way = invoice vs PO price only, receipt lines still *created* and *cleared* for GR-IR correctness).
 
 ---
 
@@ -469,13 +536,13 @@ No multi-PO invoice in v1; no OCR in v1; no supplier-statement reconciliation; n
 - **No float prerequisite** on the receipt/WAC path: `recordPurchase` is string-contract (`WeightedAverageCostService.php:144`). Choosing PPV over a `recordCostAdjustment` true-up specifically *avoids* dragging in that method's `float $additionalCost` blocker (`:674`).
 - **Gap 2 → Gap 3 dependency:** the receipt ledger + matcher basis (§2.5) and receipt-line prefill (§3.4) mean **Gap 2 must land before Gap 3** (Gap 3 has no meaningful prefill without receipt lines). This is a firmer ordering than Revision 1's "prefers, but can ship on `unit_price`."
 
-## Open Questions for the Owner (5 total)
+## Open Questions — RESOLVED by owner review (Rev 3, 2026-07-03)
 
-1. **(Gap 1)** RFQ numbering prefix — `DP` (demande de prix) or `RFQ`? And is single-supplier RFQ acceptable for launch, or is **multi-supplier price comparison a v1 requirement**? (If the customer's competitor ERP does supplier comparison under "demande de prix," single-supplier v1 is below bar — §1.2.)
-2. **(Gap 2)** Confirm the supplier-invoice match basis is the **receipt-line accrual price** (what we booked) — recommended; the snapshot (§2.5) makes it stable for existing drafts.
-3. **(Gap 2, expert-comptable)** The invoice-vs-received residual now posts to a **Purchase Price Variance account** (WAC==GL preserved). Confirm this vs a full inventory/COGS true-up, and confirm the France PCG / Tunisia account numbers for the PPV expense/income pair. (§2.4)
-4. **(Gap 2)** Who holds `goods-receipt.edit-price` — receiving clerk or supervisor-only? Dual-control (supervisor approval column) needed? (§2.7)
-5. **(Gap 3)** Supplier's own invoice number: v1 **non-blocking duplicate warning** on `(company_id, partner_id, external_document_number)`, or a hard uniqueness constraint now? (§3.3)
+1. **(Gap 1)** ~~single- vs multi-supplier~~ → **Multi-supplier RFQ is a v1 requirement** (owner: very practical, also needed for automotive) — S7, sibling-group design (§1.2). Prefix: `DP` (default accepted; trivial to change before Wave 1 ships).
+2. **(Gap 2)** Match basis = **receipt-line accrual price** — ACCEPTED as recommended.
+3. **(Gap 2)** **PPV posting ACCEPTED** as the mechanism (WAC==GL invariant). Still owed: expert-comptable countersign of the France PCG / Tunisia **account numbers** for the PPV expense/income pair (numbers only — does not block implementation; seeder ships with 601-side/7-side placeholders mirroring 658/758).
+4. **(Gap 2)** `goods-receipt.edit-price` = **separate permission** — ACCEPTED. Default seeding: owner/manager roles, not the receiving-clerk role; no dual-control column in v1 (additive later if wanted).
+5. **(Gap 3)** Duplicate supplier reference = **non-blocking warning** — ACCEPTED. Hard uniqueness deferred.
 
 ---
 
@@ -483,13 +550,17 @@ No multi-PO invoice in v1; no OCR in v1; no supplier-statement reconciliation; n
 
 Each wave is one TDD-able unit (tests first, red→green→refactor), scoped to explicit paths, with an inline `claude -p` / Codex review gate before merge, and `./scripts/preflight.sh` at the end. Run scoped PHPUnit by path — never the full suite.
 
-- **Wave 1 — Gap 1 backend (RFQ core).** `PurchaseQuoteRequest = 'purchase_rfq'` enum + helper arms (+ length assertion) + exhaustive-`match` fixes; RFQ invariants (§1.12) incl. NonFiscal test + zero-GL/zero-stock test; `PurchaseQuoteRequestToPurchaseOrderConverter` + registration; `CreatePurchaseQuoteRequestRequest`; controller + routes + seeder permissions; blade. Exit: create→respond→convert-to-PO green; PO carries `source_document_id` + carried prices; RFQ posts nothing.
-- **Wave 2 — Gap 1 frontend (RFQ UI).** List/form/detail; record-response + convert + print/email; routes under `purchases` gating; i18n. Exit: Playwright create→respond→convert.
+- **Wave 1 — Gap 1 backend (RFQ core + groups).** `PurchaseQuoteRequest = 'purchase_rfq'` enum + helper arms (+ length assertion) + exhaustive-`match` fixes; RFQ invariants (§1.12) incl. NonFiscal test + zero-GL/zero-stock test; **fan-out create (`partner_ids[]` → N siblings, one `group_id`, single txn) + group read endpoint + group index migration (Rev 3)**; `PurchaseQuoteRequestToPurchaseOrderConverter` + registration + **award sibling auto-close + `RFQ_GROUP_ALREADY_AWARDED` guard**; `CreatePurchaseQuoteRequestRequest`; controller + routes + seeder permissions; blade. Exit: fan-out→respond→compare(API)→award green; siblings close; PO carries `source_document_id` + carried prices; RFQ posts nothing.
+- **Wave 2 — Gap 1 frontend (RFQ UI + comparison).** List/form/detail with multi-select supplier picker; record-response + convert + print/email; **group comparison view with best-price highlighting + award action (Rev 3)**; routes under `purchases` gating; i18n. Exit: Playwright fan-out(2 suppliers)→respond both→compare→award→sibling shows Clôturée.
 - **Wave 3 — Gap 2a: receipt ledger foundation.** `goods_receipts` + `goods_receipt_lines` migrations + enums + DTOs; `GoodsReceiptStatus`; `GoodsReceiptService` writes header+lines and keeps PO-line counters as derived aggregates (§2.3.1); **backfill console command** (headers-from-movements, idempotent, per-tenant) + compat fallback. Exit: receiving writes a GRN header/lines; PO counters reconcile; backfill reproduces historical single-basis behavior; existing GR-IR/posting tests stay green.
 - **Wave 4 — Gap 2b: received-price cost flow + PPV.** `ReceiveGoodsRequest` Laravel FormRequest (closes precision outlier); per-line `received_unit_price` + `free_qty` → per-receipt-line `landed_/accrual_/effective_unit_cost`; receipt-value freight allocation; two movements with paid-last ordering; `goods-receipt.edit-price` permission + audit columns; **new `PurchasePriceVariance` account purposes + GL plug split** (price delta → PPV, non-rec VAT/rounding → Inventory). Exit: GL walk-through Cases A/B/C green (408 nets 0; **WAC==GL invariant asserted**); B3 guard green; bonus `last_purchase_cost`=paid-price test.
 - **Wave 5 — Gap 2c: matcher receipt-line basis + transition.** Matcher consumes receipt-line `accrual_unit_cost`, FIFO consumption, `matchableQty` per receipt line; `price_match_basis`/`matched_receipt_line_id` snapshot at creation; posting re-runs matcher against snapshot; `procurement:rematch-drafts` command + release note. Exit: no-reclassify test for a pre-existing draft after a new receipt; multi-price two-receipt clearing test (both bases, 408 nets 0) — **the case Rev 1's 422 forbade**.
 - **Wave 6 — Gap 2 frontend (receive dialog).** Gated per-line price + bonus cells + variance chip; GRN number surfaced; string payloads; Vitest + one Playwright receive-at-variance / two-price-two-receipt pass.
 - **Wave 7 — Gap 3 (supplier-invoice creation UI).** Wire `useCreateSupplierInvoice`; PO-detail "Create Invoice" button; three entry points (from-PO, from-receipts with **single-PO client guard**, standalone-via-supplier); receipt-line prefill; match preview + tolerance display; `external_document_number` + duplicate warning; attachments; routes + gating + i18n. Exit: Playwright received-PO → create → Matched → post → 408 clears, WAC==GL.
-- **Wave 8 — forward-looking (optional).** `InvoiceToDeliveryNoteConverter` stub + a short flexible-doc-chain follow-up spec. No behavioral shipping.
+- **Wave 8 — multi-PO supplier invoices (Rev 3/S4 — v1 FINAL wave).** Relax `CreateSupplierInvoiceRequest` to `source_document_ids[]` + same-supplier/currency/company guard; payload source list + first-PO compat column; cross-PO receipt-line selection UI (drop the single-PO client block, keep cross-supplier block); "BC liés" chips. Exit: one invoice over receipt lines from two POs of one supplier — matches, posts, clears each receipt line at its own basis, 408 nets 0, cross-supplier rejected 422.
+- **Wave 9 — Procurement presets (Rev 3/S8).** `ProcurementPreset` enum + `procurement_policies.preset` column; seeder preset application per tenant/vertical; settings endpoint preset/raw-fields semantics; preset picker UI card in company settings; two-way-mode matcher test. Small; can run parallel to Waves 6–8 once Wave 5's matcher lands.
+- **Wave 10 — forward-looking (optional, unchanged from Rev 2 Wave 8).** `InvoiceToDeliveryNoteConverter` stub + a short flexible-doc-chain follow-up spec. No behavioral shipping.
 
-**Dependency order (Rev 2):** Waves 1–2 (Gap 1) are independent. **Gap 2 is now sequential (3 → 4 → 5 → 6) and MUST precede Gap 3 (Wave 7)** — Gap 3's prefill/match has no substance without the receipt ledger. This is the biggest phasing change from Revision 1, where Gap 3 could ship on `unit_price` ahead of Gap 2. Effort: Gap 2 roughly **doubles** vs Revision 1 (new tables + backfill + service refactor + matcher rewrite + PPV), so plan it as the critical path.
+**Dependency order (Rev 3):** Waves 1–2 (Gap 1, now incl. groups) are independent of Gap 2/3. **Gap 2 is sequential (3 → 4 → 5 → 6) and MUST precede Gap 3 (Wave 7)**; **Wave 8 (multi-PO) strictly follows Wave 7**; Wave 9 (presets) needs only Wave 5's matcher for its two-way test. Effort: Gap 2 remains the critical path; Rev 3 adds ~1.5 waves of scope (groups + multi-PO + presets).
+
+**Integration target (Rev 3, owner):** all waves merge to the **`post-demo`** integration branch (fast-forwarded onto current `dev` tip first); promotion to demo/`origin/dev` only after the owner's stability call.
