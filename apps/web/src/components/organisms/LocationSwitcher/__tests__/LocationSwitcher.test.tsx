@@ -62,7 +62,7 @@ function renderSwitcher() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/']}>
         <Routes>
@@ -72,6 +72,7 @@ function renderSwitcher() {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return { ...result, queryClient }
 }
 
 describe('LocationSwitcher manage-locations entry', () => {
@@ -85,5 +86,31 @@ describe('LocationSwitcher manage-locations entry', () => {
     await user.click(manageItem)
 
     expect(screen.getByText('locations page probe')).toBeInTheDocument()
+  })
+})
+
+describe('LocationSwitcher location-switch invalidation', () => {
+  it('invalidates all queries on location switch (parity with company switch)', async () => {
+    const user = userEvent.setup()
+    const { queryClient } = renderSwitcher()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await user.click(screen.getByRole('button', { name: 'common:locations.selectLocation' }))
+    await user.click(screen.getByRole('button', { name: /Branch Sfax/ }))
+
+    expect(mockSwitchLocation).toHaveBeenCalledWith('location-2')
+    // No predicate/filters → global invalidation, parity with CompanySelector
+    expect(invalidateSpy).toHaveBeenCalledWith()
+  })
+
+  it('does not invalidate when re-selecting the current location', async () => {
+    const user = userEvent.setup()
+    const { queryClient } = renderSwitcher()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await user.click(screen.getByRole('button', { name: 'common:locations.selectLocation' }))
+    await user.click(screen.getByRole('button', { name: /Main Shop/ }))
+
+    expect(invalidateSpy).not.toHaveBeenCalled()
   })
 })
