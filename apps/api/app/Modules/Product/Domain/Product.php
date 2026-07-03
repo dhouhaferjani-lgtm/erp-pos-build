@@ -377,7 +377,12 @@ class Product extends Model implements SellableContract
      */
     public function latestEnrichmentResult(): HasOne
     {
-        return $this->hasOne(EnrichmentResult::class)->latestOfMany();
+        // NOTE: latestOfMany() cannot be used here — Laravel's one-of-many relation
+        // appends a MAX(<primary key>) tiebreaker, and the enrichment_results primary
+        // key is a UUID, which PostgreSQL cannot aggregate (function max(uuid) does not
+        // exist). An ordered hasOne resolves the latest row (eager-load matchOne / lazy
+        // first()) without any aggregate over the UUID key.
+        return $this->hasOne(EnrichmentResult::class)->latest();
     }
 
     /**
