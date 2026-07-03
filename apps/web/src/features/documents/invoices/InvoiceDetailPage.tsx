@@ -23,6 +23,7 @@ import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal'
 import { Button, Input, Textarea } from '../../../components/atoms'
+import { EntityLink } from '../../../components/molecules/EntityLink'
 import { tokens } from '../../../lib/designTokens'
 import { CloseWithWriteoffSection } from './components/CloseWithWriteoffSection'
 import { useCompany } from '../../../hooks/useCompany'
@@ -362,7 +363,12 @@ export function InvoiceDetailPage() {
                 {t('documents.customer')}
               </dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {invoice.partner_name || '-'}
+                <EntityLink
+                  type="partner"
+                  id={invoice.partner_id}
+                  partnerType="customer"
+                  label={invoice.partner_name || '-'}
+                />
               </dd>
             </div>
 
@@ -418,7 +424,11 @@ export function InvoiceDetailPage() {
               {invoice.lines?.map((line) => (
                 <tr key={line.id}>
                   <td className="px-6 py-4 text-sm text-gray-900">
-                    {line.description}
+                    <EntityLink
+                      type="product"
+                      id={line.product_id}
+                      label={line.description}
+                    />
                     {line.notes && (
                       <div className="text-xs text-gray-500 mt-1">{line.notes}</div>
                     )}

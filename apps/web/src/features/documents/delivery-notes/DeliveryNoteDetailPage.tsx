@@ -10,6 +10,7 @@ import { bccomp } from '../../../lib/decimal'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { Modal } from '../../../components/organisms'
+import { EntityLink } from '../../../components/molecules/EntityLink'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { CreateReturnNoteForm } from '../components/CreateReturnNoteForm'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
@@ -163,7 +164,14 @@ export function DeliveryNoteDetailPage() {
             <Building2 className="w-4 h-4" />
             {t('documents.customer')}
           </h3>
-          <p className="text-lg font-medium text-gray-900">{deliveryNote.partner_name}</p>
+          <p className="text-lg font-medium text-gray-900">
+            <EntityLink
+              type="partner"
+              id={deliveryNote.partner_id}
+              partnerType="customer"
+              label={deliveryNote.partner_name}
+            />
+          </p>
           {deliveryNote.partner_email && (
             <p className="text-sm text-gray-600 mt-1">{deliveryNote.partner_email}</p>
           )}
@@ -225,7 +233,13 @@ export function DeliveryNoteDetailPage() {
               {(deliveryNote.lines ?? []).map((line) => (
                 <tr key={line.id}>
                   <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900">{line.description}</div>
+                    <div className="text-sm font-medium text-gray-900">
+                      <EntityLink
+                        type="product"
+                        id={line.product_id}
+                        label={line.description}
+                      />
+                    </div>
                     {line.notes && (
                       <div className="text-sm text-gray-500 mt-1">{line.notes}</div>
                     )}

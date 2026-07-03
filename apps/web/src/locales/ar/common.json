@@ -293,6 +293,11 @@
     "title": "إدارة المواقع",
     "subtitle": "أدِر مواقع نشاطك التجاري والمستودعات والمتاجر",
     "addLocation": "إضافة موقع",
+    "manageLocations": "إدارة المواقع",
+    "modal": {
+      "taxIdRequired": "المعرّف الجبائي مطلوب لهذا الموقع",
+      "createdCompleteDetails": "تم إنشاء الموقع. أكمل بياناته (العنوان، المعرّف الجبائي) في المواقع والفروع."
+    },
     "editLocation": "تعديل الموقع",
     "deleteLocation": "حذف الموقع",
     "setDefault": "تعيين كافتراضي",
@@ -357,6 +362,7 @@
   "clearAll": "مسح الكل",
   "activeFilters": "{{count}} عامل تصفية نشط",
   "remove": "إزالة",
+  "clearSearch": "مسح البحث",
   "sort": "ترتيب",
   "sortBy": "ترتيب حسب",
   "ascending": "تصاعدي",

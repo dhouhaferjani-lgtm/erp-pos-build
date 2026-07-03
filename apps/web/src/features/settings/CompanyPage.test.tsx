@@ -35,6 +35,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, s?: unknown) => (typeof s === 'string' ? s : key),
   }),
+  Trans: ({ i18nKey }: { i18nKey: string }) => <span>{i18nKey}</span>,
 }))
 
 vi.mock('./components/ReceiptSettingsTab', () => ({ ReceiptSettingsTab: () => null }))

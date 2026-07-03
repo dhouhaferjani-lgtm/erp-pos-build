@@ -8,6 +8,7 @@ import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { formatCurrency, formatQuantity } from '../../../lib/format'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { Button } from '../../../components/atoms/Button/Button'
+import { EntityLink } from '../../../components/molecules/EntityLink'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { Modal } from '../../../components/organisms'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
@@ -183,12 +184,13 @@ export function CreditNoteDetailPage() {
           <div className="flex items-center gap-2 text-sm text-blue-800">
             <FileText className="w-4 h-4" />
             <span>{t('creditNotes.sourceInvoice')}:</span>
-            <Link
-              to={`/sales/invoices/${creditNote.source_document_id}`}
-              className="font-medium hover:underline"
-            >
-              {creditNote.source_document_number}
-            </Link>
+            <EntityLink
+              type="document"
+              id={creditNote.source_document_id}
+              documentType="invoice"
+              label={creditNote.source_document_number}
+              className="font-medium"
+            />
           </div>
         </div>
       )}
@@ -200,7 +202,14 @@ export function CreditNoteDetailPage() {
             <Building2 className="w-4 h-4" />
             {t('documents.customer')}
           </h3>
-          <p className="text-lg font-medium text-gray-900">{creditNote.partner_name}</p>
+          <p className="text-lg font-medium text-gray-900">
+            <EntityLink
+              type="partner"
+              id={creditNote.partner_id}
+              partnerType="customer"
+              label={creditNote.partner_name}
+            />
+          </p>
           {creditNote.partner_email && (
             <p className="text-sm text-gray-600 mt-1">{creditNote.partner_email}</p>
           )}
@@ -262,7 +271,13 @@ export function CreditNoteDetailPage() {
               {(creditNote.lines ?? []).map((line) => (
                 <tr key={line.id}>
                   <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900">{line.description}</div>
+                    <div className="text-sm font-medium text-gray-900">
+                      <EntityLink
+                        type="product"
+                        id={line.product_id}
+                        label={line.description}
+                      />
+                    </div>
                     {line.notes && (
                       <div className="text-sm text-gray-500 mt-1">{line.notes}</div>
                     )}

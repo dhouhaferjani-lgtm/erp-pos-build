@@ -110,6 +110,30 @@ class DocumentController extends Controller
             ]);
         }
 
+        if ($request->has('page')) {
+            $perPage = min(max($request->integer('per_page', 25), 1), 100);
+            $page = max($request->integer('page', 1), 1);
+            $paginator = $query
+                ->with(['vehicleContext', 'lines'])
+                ->orderBy('created_at', 'desc')
+                ->orderBy('id', 'desc')
+                ->paginate($perPage, ['*'], 'page', $page);
+
+            return response()->json([
+                'data' => $paginator->getCollection()
+                    ->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, true))
+                    ->values(),
+                'meta' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+            ]);
+        }
+
         // Order by created_at desc and id for consistent cursor pagination (in case created_at is the same)
         $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
 

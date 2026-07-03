@@ -44,7 +44,7 @@ return [
         'label' => 'Pharmacy',
         'description' => 'Pharmaceutical retail with prescription management',
         'product' => 'izipos',
-        'compatible_extras' => ['BatchExpiry', 'Prescription', 'Ecommerce'],
+        'compatible_extras' => ['BatchExpiry', 'Prescription', 'Ecommerce', 'PurchaseBonus'],
         'product_defaults' => [
             'requires_batch_tracking' => true,
         ],
@@ -134,7 +134,7 @@ return [
         'description' => 'General retail and merchandise',
         'product' => 'izipos',
         // CompositeItems upgrade = kits/bundles (BOM) of existing products.
-        'compatible_extras' => ['Loyalty', 'Ecommerce', 'CompositeItems'],
+        'compatible_extras' => ['Loyalty', 'Ecommerce', 'CompositeItems', 'PurchaseBonus'],
         'product_defaults' => [
             'requires_batch_tracking' => false,
         ],
@@ -164,7 +164,7 @@ return [
         // CompositeItems upgrade = garment BOM (a shirt = fabric + buttons +
         // thread). The frontend useVerticalLabels maps fashion -> 'sewing' and
         // relabels "recipe" as "bill of materials".
-        'compatible_extras' => ['Loyalty', 'Ecommerce', 'CompositeItems'],
+        'compatible_extras' => ['Loyalty', 'Ecommerce', 'CompositeItems', 'PurchaseBonus'],
         'product_defaults' => [
             'requires_batch_tracking' => false,
         ],
@@ -337,7 +337,7 @@ return [
         'label' => 'Parapharmacy',
         'description' => 'Health and wellness retail',
         'product' => 'izipos',
-        'compatible_extras' => ['Loyalty', 'Ecommerce', 'CompositeItems'],
+        'compatible_extras' => ['Loyalty', 'Ecommerce', 'CompositeItems', 'PurchaseBonus'],
         'product_defaults' => [
             'requires_batch_tracking' => true,
         ],
@@ -357,6 +357,7 @@ return [
             // Merchandising is bundled for parapharmacy: shelf/planogram
             // management and product display/layout features.
             'Merchandising',
+            'PurchaseBonus',
         ],
     ],
 ];

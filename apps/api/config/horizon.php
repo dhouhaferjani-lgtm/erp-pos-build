@@ -228,6 +228,19 @@ return [
             ],
         ],
 
+        // Staging (erp.otospex.dev) MUST have an entry: Horizon's
+        // ProvisioningPlan::deploy() silently starts ZERO supervisors for an
+        // environment with no plan — on 2026-07-03 staging Horizon ran
+        // "healthy" while consuming nothing and every queued job sat in
+        // Redis forever. Guarded by HorizonQueueCoverageTest.
+        'staging' => [
+            'supervisor-1' => [
+                'maxProcesses' => 5,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
+        ],
+
         'local' => [
             'supervisor-1' => [
                 'maxProcesses' => 3,

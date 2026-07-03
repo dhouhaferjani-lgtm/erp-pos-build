@@ -12,21 +12,30 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\LocationType;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Procurement\Application\SupplierCreditNotePostingService;
 use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -67,6 +76,8 @@ final class SupplierCreditNoteGlTest extends TestCase
 
     private Account $inventoryAccount;
 
+    private Account $purchaseExpensesAccount;
+
     private GeneralLedgerHashService $hashService;
 
     protected function setUp(): void
@@ -95,6 +106,7 @@ final class SupplierCreditNoteGlTest extends TestCase
         $this->stampDutyAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchaseStampDuty);
         $this->payableAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SupplierPayable);
         $this->inventoryAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Inventory);
+        $this->purchaseExpensesAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchaseExpenses);
 
         $this->supplier = Partner::create([
             'tenant_id' => $this->tenant->id,
@@ -390,6 +402,107 @@ final class SupplierCreditNoteGlTest extends TestCase
 
         // quantity_invoiced reduced 5 → 3 (reopens the PO line for re-invoicing).
         $this->assertSame('3.0000', $this->freshLine($poLine)->quantity_invoiced);
+    }
+
+    public function test_bonus_goods_return_decrements_free_counter_issues_stock_at_wac_and_avoids_supplier_payable(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('20.0000', '5.000');
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Bonus Stock Product',
+            'cost_price' => '4.761904',
+        ]);
+
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Main stock',
+            'code' => 'MAIN',
+            'type' => LocationType::Warehouse,
+            'is_default' => true,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '21.0000',
+            'reserved' => '0.0000',
+        ]);
+
+        $poLine->forceFill([
+            'product_id' => $product->id,
+            'quantity_received' => '20.0000',
+            'quantity_invoiced' => '20.0000',
+            'free_quantity' => '1.0000',
+            'free_quantity_received' => '1.0000',
+            'free_quantity_invoiced' => '1.0000',
+        ])->save();
+
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierCreditNote,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SCN-FREE-'.Str::upper(Str::random(6)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'source_document_id' => $invoice->id,
+            'subtotal' => '0.000',
+            'line_tax_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '0.000',
+            'supplier_credit_note_reason' => SupplierCreditNoteReason::GoodsReturn,
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $creditNote->id,
+            'line_number' => 1,
+            'description' => 'Returned bonus unit',
+            'quantity' => '1.0000',
+            'unit_price' => '5.000',
+            'line_total' => '0.000',
+            'allocated_costs' => '0.0000',
+            'tax_amount' => '0.000',
+            'recoverable_tax_amount' => '0.000',
+            'non_recoverable_tax_amount' => '0.000',
+            'source_line_id' => $poLine->id,
+            'is_bonus_line' => true,
+        ]);
+
+        $this->service()->post($creditNote->fresh(['lines']) ?? $creditNote);
+
+        $freshPoLine = $this->freshLine($poLine);
+        $this->assertSame('20.0000', $freshPoLine->quantity_invoiced);
+        $this->assertSame('0.0000', $freshPoLine->free_quantity_invoiced);
+
+        $movement = StockMovement::where('reference_id', $creditNote->id)->firstOrFail();
+        $this->assertSame(MovementType::Issue, $movement->movement_type);
+        $this->assertSame('-1.0000', (string) $movement->quantity);
+        $this->assertSame('4.761904', (string) $movement->unit_cost);
+
+        $this->assertDatabaseHas('stock_levels', [
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '20.0000',
+        ]);
+
+        $entry = $this->creditEntry($creditNote);
+        $this->assertNull($this->legOn($entry, $this->payableAccount));
+        $drExpense = $this->legOn($entry, $this->purchaseExpensesAccount);
+        $this->assertNotNull($drExpense);
+        $this->assertSame('4.762', $drExpense->debit);
+        $this->assertSame('0.000', $drExpense->credit);
+        $crInventory = $this->legOn($entry, $this->inventoryAccount);
+        $this->assertNotNull($crInventory);
+        $this->assertSame('0.000', $crInventory->debit);
+        $this->assertSame('4.762', $crInventory->credit);
+        $this->assertBalanced($entry);
     }
 
     // =========================================================================
@@ -1042,7 +1155,7 @@ final class SupplierCreditNoteGlTest extends TestCase
         // by directly updating the row without going through the service, so NO JE is created.
         // JEs are immutable once posted, so we cannot delete one created by the service —
         // instead we force the inconsistent state directly in the raw column.
-        \Illuminate\Support\Facades\DB::table('documents')
+        DB::table('documents')
             ->where('id', $creditNote->id)
             ->update(['status' => 'posted']);
 
@@ -1110,16 +1223,16 @@ final class SupplierCreditNoteGlTest extends TestCase
         $threw = false;
         try {
             JournalEntry::create([
-                'tenant_id'    => $this->tenant->id,
-                'company_id'   => $this->company->id,
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
                 'entry_number' => 'JE-DUPE-TEST',
-                'entry_date'   => now()->toDateString(),
-                'description'  => 'Duplicate JE — must be rejected by unique constraint',
-                'status'       => JournalEntryStatus::Draft,
-                'source_type'  => 'supplier_credit_note',
-                'source_id'    => $creditNote->id,   // same as the first JE
+                'entry_date' => now()->toDateString(),
+                'description' => 'Duplicate JE — must be rejected by unique constraint',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'supplier_credit_note',
+                'source_id' => $creditNote->id,   // same as the first JE
             ]);
-        } catch (\Illuminate\Database\UniqueConstraintViolationException|\Illuminate\Database\QueryException $e) {
+        } catch (UniqueConstraintViolationException|QueryException $e) {
             $threw = true;
         }
 

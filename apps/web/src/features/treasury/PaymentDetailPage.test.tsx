@@ -27,7 +27,7 @@ vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
   return {
     ...actual,
-    Link: ({ children }: { children: ReactNode }) => <a href="/test">{children}</a>,
+    Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
     useNavigate: () => mockNavigate,
     useParams: () => ({ id: 'payment-1' }),
   }
@@ -137,5 +137,41 @@ describe('PaymentDetailPage presentation', () => {
     const badge = await screen.findByText('payments.statuses.completed')
     expect(badge.tagName).toBe('SPAN')
     expect(badge.className).toContain('rounded-full')
+  })
+
+  it('links supplier-payment allocations to supplier invoice detail pages', async () => {
+    mockApiGet.mockImplementation(async (url: string) => {
+      if (url === '/payments/payment-1/can-refund') {
+        return { data: { data: { can_refund: true, status: 'completed', amount: '150.00' } } }
+      }
+      if (url === '/payments/payment-1/refund-history') {
+        return { data: { data: [] } }
+      }
+      if (url === '/payments/payment-1') {
+        return {
+          data: {
+            data: {
+              ...paymentFixture(),
+              payment_type: 'supplier_payment',
+              partner: { id: 'partner-1', name: 'Supplier A', type: 'supplier' },
+              allocations: [
+                {
+                  id: 'allocation-1',
+                  document_id: 'supplier-invoice-1',
+                  document_number: 'SIN-001',
+                  amount: '150.00',
+                },
+              ],
+            },
+          },
+        }
+      }
+      return { data: { data: [] } }
+    })
+
+    render(<PaymentDetailPage />, { wrapper: wrapper(createClient()) })
+
+    const allocationLink = await screen.findByRole('link', { name: 'SIN-001' })
+    expect(allocationLink).toHaveAttribute('href', '/purchases/supplier-invoices/supplier-invoice-1')
   })
 })

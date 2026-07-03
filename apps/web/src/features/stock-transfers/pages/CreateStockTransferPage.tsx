@@ -11,10 +11,17 @@ import { Button } from '@/components/atoms/Button/Button'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { ProductPicker, type ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
-import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '@/components/molecules/line-items/LineItemsTable'
+import {
+  LineItemEntryBar,
+  LineItemsTable,
+  QuantityCell,
+  type LineItemEntryAddMeta,
+  type LineItemsTableColumn,
+  type ProductLineProduct,
+} from '@/components/molecules/line-items'
 import { textColors, borderColors, tokens, colors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
-import { bccomp, bcsub } from '@/lib/decimal'
+import { bcadd, bccomp, bcsub } from '@/lib/decimal'
 import { getQuantityDecimals } from '@/lib/quantityScale'
 import { useProductBatches } from '@/features/batches/hooks/useBatches'
 import type { Batch } from '@/features/batches/types'
@@ -34,6 +41,12 @@ interface DraftLine {
   variantId: string | null
   quantity: string
   batchAllocations: DraftBatchAllocation[]
+}
+
+/** A parent product scanned by code that still needs a variant chosen. */
+interface PendingVariantChoice {
+  product: ProductLineProduct
+  code: string
 }
 
 /** Active variants of the line's product, cached for submit-time validation. */
@@ -95,6 +108,20 @@ function buildFefoAllocations(
   return allocations
 }
 
+function sumAllocations(allocations: DraftBatchAllocation[]): string {
+  return allocations.reduce((total, allocation) => bcadd(total, allocation.quantity, 4), '0.0000')
+}
+
+/**
+ * Whether the FEFO/manual allocation for a batch line fully covers the line
+ * quantity. A batch line that is not covered is blocked from submit and shows
+ * the "needs allocation" affordance.
+ */
+function isBatchAllocationCovered(allocations: DraftBatchAllocation[], requestedQuantity: string): boolean {
+  const requested = requestedQuantity.trim() === '' ? '0' : requestedQuantity
+  return bccomp(sumAllocations(allocations), requested) >= 0
+}
+
 function sortBatchesByExpiry(batches: Batch[]): Batch[] {
   return Array.from(batches).sort((a, b) => a.expiry_date.localeCompare(b.expiry_date))
 }
@@ -116,6 +143,49 @@ function RemoveLineButton({ disabled, label, onRemove }: RemoveLineButtonProps) 
     >
       <Trash2 className="h-4 w-4" />
     </button>
+  )
+}
+
+interface VariantChooserProps {
+  product: ProductLineProduct
+  onChoose: (variantId: string) => void
+}
+
+/**
+ * Inline chooser shown when a parent-with-variants product is scanned. The
+ * component fetches the product's variants (mirroring the row-level variant
+ * select) so the operator can disambiguate the scan into a concrete line.
+ */
+function VariantChooser({ product, onChoose }: VariantChooserProps) {
+  const { t } = useTranslation('stock-transfers')
+  const variantsQuery = useProductVariants(product.id)
+  const variants = useMemo(() => activeVariants(variantsQuery.data), [variantsQuery.data])
+
+  return (
+    <div
+      role="dialog"
+      aria-label={t('create.entry.chooseVariantFor', { product: product.name })}
+      className={`mt-2 rounded-md border ${borderColors.light} bg-white p-3 shadow-sm`}
+    >
+      <div className={`mb-2 text-sm font-medium ${textColors.primary}`}>
+        {t('create.entry.chooseVariantFor', { product: product.name })}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {variants.map((variant) => (
+          <Button
+            key={variant.id}
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              onChoose(variant.id)
+            }}
+          >
+            {[variant.name_suffix, variant.sku].filter(Boolean).join(' ')}
+          </Button>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -233,6 +303,12 @@ function BatchToggleCell({ line, sourceLocationId, expanded, onToggle, onAllocat
 
   const isLoading = batchesQuery.isLoading || batchesQuery.isFetching
 
+  // Derived UI affordance on top of the single reconciliation path above: once
+  // batches are loaded and FEFO still cannot cover the requested quantity, the
+  // line is blocked and the operator is prompted to allocate lots manually.
+  const covered = isBatchAllocationCovered(line.batchAllocations, line.quantity)
+  const needsAllocation = requiresBatch && sourceLocationId !== '' && !isLoading && !covered
+
   // FEFO re-allocation is owned by the reconciliation effect above; the toggle
   // only opens/closes the panel.
   const handleToggle = (): void => {
@@ -240,19 +316,26 @@ function BatchToggleCell({ line, sourceLocationId, expanded, onToggle, onAllocat
   }
 
   return (
-    <Button
-      type="button"
-      variant="secondary"
-      size="sm"
-      onClick={handleToggle}
-      disabled={sourceLocationId === '' || isLoading}
-      aria-expanded={expanded}
-    >
-      <PackageSearch className="me-1 h-4 w-4" />
-      {line.batchAllocations.length > 0
-        ? t('create.batch.allocated', { count: line.batchAllocations.length })
-        : t('create.batch.action')}
-    </Button>
+    <div className="space-y-1">
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={handleToggle}
+        disabled={sourceLocationId === '' || isLoading}
+        aria-expanded={expanded}
+      >
+        <PackageSearch className="me-1 h-4 w-4" />
+        {needsAllocation
+          ? t('create.batch.needsAllocation')
+          : line.batchAllocations.length > 0
+            ? t('create.batch.allocated', { count: line.batchAllocations.length })
+            : t('create.batch.action')}
+      </Button>
+      {needsAllocation ? (
+        <div className={`text-xs ${textColors.error}`}>{t('create.batch.cannotAllocate')}</div>
+      ) : null}
+    </div>
   )
 }
 
@@ -318,7 +401,8 @@ function AvailabilityCell({ line, sourceLocationId }: AvailabilityCellProps) {
     return <span className={`text-xs ${textColors.error}`}>{t('create.availability.error')}</span>
   }
 
-  const available = stockQuery.data?.locations.find((loc) => loc.location_id === sourceLocationId)?.available ?? '0'
+  const stockLocations = Array.isArray(stockQuery.data?.locations) ? stockQuery.data.locations : []
+  const available = stockLocations.find((loc) => loc.location_id === sourceLocationId)?.available ?? '0'
   const exceeds = line.quantity.trim() !== '' && bccomp(line.quantity, available) > 0
 
   return (
@@ -407,6 +491,7 @@ export function CreateStockTransferPage() {
     { uid: generateUid(), product: null, variantId: null, quantity: '1', batchAllocations: [] },
   ])
   const [expandedBatchLineUid, setExpandedBatchLineUid] = useState<string | null>(null)
+  const [pendingVariantChoice, setPendingVariantChoice] = useState<PendingVariantChoice | null>(null)
   // Active variants per product, populated by VariantSelectCell as products
   // are picked. Read at submit to require a variant on variant-bearing products
   // (the backend enforces the same rule and returns 422 if bypassed).
@@ -436,6 +521,86 @@ export function CreateStockTransferPage() {
     variantsByProduct.current.set(productId, variants)
   }, [])
 
+  // Source-location-first guard for the entry bar: nothing can be added until a
+  // source is chosen (the availability/FEFO reads are all source-scoped).
+  const ensureSourceForEntry = useCallback((): boolean => {
+    if (sourceLocationId === '') {
+      toast.error(t('create.validation.sourceRequiredForEntry'))
+      return false
+    }
+    return true
+  }, [sourceLocationId, t])
+
+  // Entry-bar add: increment an existing product+variant line or replace the
+  // first blank line / append a new one. Batch allocation is intentionally NOT
+  // touched here — the reconciliation effect in BatchToggleCell owns the FEFO
+  // split and re-derives it whenever the quantity changes.
+  const upsertEntryLine = useCallback((product: ProductLineProduct, meta: LineItemEntryAddMeta): void => {
+    const pickerProduct: ProductPickerValue = {
+      id: product.id,
+      sku: product.sku ?? '',
+      name: product.name,
+      quantity_decimals: product.quantity_decimals ?? null,
+      requires_batch_tracking: product.requires_batch_tracking ?? false,
+    }
+    const variantId = meta.variantId ?? null
+    const increment = String(meta.incrementBy > 0 ? meta.incrementBy : 1)
+
+    setLines((prev) => {
+      const existing = prev.find(
+        (line) => line.product?.id === pickerProduct.id && line.variantId === variantId,
+      )
+
+      if (existing !== undefined) {
+        if (pickerProduct.requires_batch_tracking) {
+          setExpandedBatchLineUid(existing.uid)
+        }
+        const nextQuantity = bcadd(existing.quantity, increment, getQuantityDecimals(existing.product))
+        return prev.map((line) =>
+          line.uid === existing.uid ? { ...line, quantity: nextQuantity } : line,
+        )
+      }
+
+      const nextLine: DraftLine = {
+        uid: generateUid(),
+        product: pickerProduct,
+        variantId,
+        quantity: increment,
+        batchAllocations: [],
+      }
+      if (pickerProduct.requires_batch_tracking) {
+        setExpandedBatchLineUid(nextLine.uid)
+      }
+
+      const blankIndex = prev.findIndex((line) => line.product === null)
+      if (blankIndex === -1) {
+        return [...prev, nextLine]
+      }
+      return prev.map((line, index) => (index === blankIndex ? nextLine : line))
+    })
+  }, [])
+
+  const handleRequiresVariant = useCallback((product: ProductLineProduct, code: string): void => {
+    setPendingVariantChoice({ product, code })
+  }, [])
+
+  const choosePendingVariant = useCallback((variantId: string): void => {
+    if (pendingVariantChoice === null) {
+      return
+    }
+    upsertEntryLine(pendingVariantChoice.product, {
+      source: 'scan',
+      incrementBy: 1,
+      variantId,
+      code: pendingVariantChoice.code,
+    })
+    setPendingVariantChoice(null)
+  }, [pendingVariantChoice, upsertEntryLine])
+
+  const handleEntryNotFound = useCallback((code: string): void => {
+    toast.error(t('create.entry.notFound', { code }))
+  }, [t])
+
   const submitTransfer = async (): Promise<void> => {
     if (!sourceLocationId || !destinationLocationId) {
       toast.error(t('create.field.selectLocation'))
@@ -461,8 +626,11 @@ export function CreateStockTransferPage() {
         toast.error(t('create.validation.quantityPositive'))
         return
       }
-      if (line.product.requires_batch_tracking && line.batchAllocations.length === 0) {
-        toast.error(t('create.batch.required'))
+      // A batch-tracked line must be FULLY covered by its allocation. The
+      // reconciliation effect keeps this in sync with FEFO; when FEFO cannot
+      // cover the quantity the line is blocked and the operator must allocate.
+      if (line.product.requires_batch_tracking && !isBatchAllocationCovered(line.batchAllocations, line.quantity)) {
+        toast.error(t('create.batch.cannotAllocateSubmit'))
         return
       }
       // A product with active variants must have a variant chosen. The backend
@@ -705,6 +873,18 @@ export function CreateStockTransferPage() {
           <h2 className={`mb-4 text-lg font-semibold ${textColors.primary}`}>
             {t('create.section.lines')}
           </h2>
+          {/* Search/scan entry bar: the fast path for adding transfer lines. */}
+          <div className="mb-4">
+            <LineItemEntryBar
+              onBeforeAdd={ensureSourceForEntry}
+              onAddProduct={upsertEntryLine}
+              onRequiresVariant={handleRequiresVariant}
+              onNotFound={handleEntryNotFound}
+            />
+            {pendingVariantChoice !== null ? (
+              <VariantChooser product={pendingVariantChoice.product} onChoose={choosePendingVariant} />
+            ) : null}
+          </div>
           <LineItemsTable
             lines={lines}
             columns={lineColumns}

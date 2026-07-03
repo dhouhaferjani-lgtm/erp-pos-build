@@ -6,10 +6,15 @@ namespace App\Modules\Product\Presentation\Controllers;
 
 use App\Modules\Catalog\Application\DTOs\ProductMediaData;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Application\DTOs\ProductData;
+use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\CurrencyScale;
 use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\DTOs\ProductVariantSummary;
+use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -19,6 +24,7 @@ final class LineEntryController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly ProductVariantLookup $variantLookup,
+        private readonly MarginService $marginService,
     ) {}
 
     public function resolveCode(Request $request): JsonResponse
@@ -62,6 +68,91 @@ final class LineEntryController extends Controller
             'kind' => 'not_found',
             'code' => $code,
         ], $request);
+    }
+
+    public function bulkPricingContext(Request $request): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+        $validated = $request->validate([
+            'partner_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('partners', $company->tenant_id, $company->id),
+            ],
+            'lines' => ['required', 'array', 'min:1', 'max:100'],
+            'lines.*.product_id' => [
+                'required',
+                'uuid',
+                ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id),
+            ],
+            'lines.*.variant_id' => ['nullable', 'uuid'],
+            'lines.*.unit_price' => ['required', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+        ], [
+            'lines.*.unit_price.regex' => 'Unit price must have at most 3 decimal places.',
+        ]);
+
+        /** @var list<array{product_id: string, variant_id?: string|null, unit_price: string|int|float}> $lines */
+        $lines = $validated['lines'];
+        $productIds = array_values(array_unique(array_map(
+            static fn (array $line): string => $line['product_id'],
+            $lines,
+        )));
+
+        /** @var \Illuminate\Database\Eloquent\Collection<int, Product> $products */
+        $products = Product::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->whereIn('id', $productIds)
+            ->with('company')
+            ->get()
+            ->keyBy('id');
+
+        $items = [];
+        $currency = $company->currency ?? 'TND';
+        $moneyScale = CurrencyScale::for($currency);
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(403);
+        }
+
+        foreach ($lines as $line) {
+            /** @var Product|null $product */
+            $product = $products->get($line['product_id']);
+            if ($product === null) {
+                continue;
+            }
+
+            $variantId = $line['variant_id'] ?? null;
+            $key = $this->pricingContextKey($product->id, $variantId);
+            $unitPrice = (string) $line['unit_price'];
+            $margins = $this->marginService->getEffectiveMargins($product);
+            $marginLevel = $this->marginService->getMarginLevel($product, $unitPrice);
+            $policy = $this->marginService->canSellAtPrice($product, $unitPrice, $user);
+
+            $items[$key] = [
+                'currency' => $currency,
+                'cost_wac' => CurrencyScale::bcformat($product->cost_price ?? '0', 6),
+                'last_purchase_cost' => $product->last_purchase_cost === null
+                    ? null
+                    : CurrencyScale::bcformat($product->last_purchase_cost, 6),
+                'last_purchase_at' => null,
+                'last_sale_to_partner' => $this->lastSaleToPartner(
+                    $validated['partner_id'] ?? null,
+                    $product->id,
+                    $variantId,
+                ),
+                'suggested_price' => CurrencyScale::bcformat((string) $this->marginService->getSuggestedPrice($product), $moneyScale),
+                'target_margin_pct' => $margins['target_margin'],
+                'minimum_margin_pct' => $margins['minimum_margin'],
+                'policy' => [
+                    'level' => $marginLevel['level'],
+                    'allowed' => $policy['allowed'],
+                    'requires_permission' => $policy['requires_permission'] ?? null,
+                ],
+            ];
+        }
+
+        return $this->success(['items' => $items], $request);
     }
 
     private function findProductByCode(string $code, string $column, string $tenantId, string $companyId): ?Product
@@ -115,6 +206,48 @@ final class LineEntryController extends Controller
                 'image_url' => $variant->imageUrl,
             ],
         ], $request);
+    }
+
+    private function pricingContextKey(string $productId, ?string $variantId): string
+    {
+        if ($variantId === null || $variantId === '') {
+            return $productId;
+        }
+
+        return "{$productId}:{$variantId}";
+    }
+
+    /**
+     * @return array{unit_price: string, at: string|null, document_no: string}|null
+     */
+    private function lastSaleToPartner(?string $partnerId, string $productId, ?string $variantId): ?array
+    {
+        if ($partnerId === null || $partnerId === '') {
+            return null;
+        }
+
+        $line = DocumentLine::query()
+            ->where('product_id', $productId)
+            ->when($variantId !== null && $variantId !== '', static function ($query) use ($variantId): void {
+                $query->where('variant_id', $variantId);
+            })
+            ->with('document')
+            ->join('documents', 'documents.id', '=', 'document_lines.document_id')
+            ->where('documents.partner_id', $partnerId)
+            ->orderByDesc('documents.document_date')
+            ->orderByDesc('document_lines.created_at')
+            ->select('document_lines.*')
+            ->first();
+
+        if ($line === null) {
+            return null;
+        }
+
+        return [
+            'unit_price' => CurrencyScale::bcformat($line->unit_price, 3),
+            'at' => $line->document->document_date->toDateString(),
+            'document_no' => $line->document->document_number,
+        ];
     }
 
     /**

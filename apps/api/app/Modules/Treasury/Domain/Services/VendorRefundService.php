@@ -30,7 +30,7 @@ final class VendorRefundService
      *
      * Creates a refund payment with negative allocation, restores the PO's
      * balance_due, and creates the GL reversal entry if the repository
-     * has an account_id.
+     * has a gl_account_id.
      *
      * @param  numeric-string  $amount
      */
@@ -151,14 +151,14 @@ final class VendorRefundService
             $resolvedRepository->balance = bcsub($repoBalance, $amount, $scale);
             $resolvedRepository->save();
 
-            // Create GL reversal if repository has account_id
-            if ($resolvedRepository->account_id) {
+            // Create GL reversal if repository has a GL account.
+            if ($resolvedRepository->gl_account_id !== null) {
                 $journalEntry = $this->glService->reverseSupplierAdvanceJournalEntry(
                     companyId: $lockedPo->company_id,
                     partnerId: $lockedPo->partner_id,
                     refundId: $payment->id,
                     amount: $amount,
-                    paymentMethodAccountId: $resolvedRepository->account_id,
+                    paymentMethodAccountId: $resolvedRepository->gl_account_id,
                     date: now(),
                     description: "Supplier advance refund - {$lockedPo->document_number}".($reason ? " - {$reason}" : ''),
                     postedByUserId: $userId,

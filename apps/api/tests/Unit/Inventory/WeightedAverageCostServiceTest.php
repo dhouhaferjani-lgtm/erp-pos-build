@@ -154,17 +154,23 @@ class WeightedAverageCostServiceTest extends TestCase
 
     public function test_service_has_record_purchase_method(): void
     {
-        $this->assertTrue(method_exists(WeightedAverageCostService::class, 'recordPurchase'));
+        $method = new \ReflectionMethod(WeightedAverageCostService::class, 'recordPurchase');
+
+        $this->assertTrue($method->isPublic());
     }
 
     public function test_service_has_record_sale_method(): void
     {
-        $this->assertTrue(method_exists(WeightedAverageCostService::class, 'recordSale'));
+        $method = new \ReflectionMethod(WeightedAverageCostService::class, 'recordSale');
+
+        $this->assertTrue($method->isPublic());
     }
 
     public function test_service_has_record_return_method(): void
     {
-        $this->assertTrue(method_exists(WeightedAverageCostService::class, 'recordReturn'));
+        $method = new \ReflectionMethod(WeightedAverageCostService::class, 'recordReturn');
+
+        $this->assertTrue($method->isPublic());
     }
 
     /**
@@ -212,14 +218,52 @@ class WeightedAverageCostServiceTest extends TestCase
 
         $this->service->recordCostAdjustment(
             product: $this->product,
-            additionalCost: 100.0,
+            additionalCost: '100.0000',
             reason: 'freight',
             tenantId: $this->tenant->id,
             companyId: $this->company->id,
         );
 
+        $fresh = $this->product->fresh();
+        $this->assertNotNull($fresh);
         // 100 / 100 company-wide = +1.00 -> 6 (cost_price casts decimal:6).
-        $this->assertEquals('6.000000', $this->product->fresh()->cost_price);
+        $this->assertEquals('6.000000', $fresh->cost_price);
+    }
+
+    public function test_cost_adjustment_accepts_numeric_string_without_float_rebase(): void
+    {
+        StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $this->location->id,
+            'quantity' => '3.0000',
+        ]);
+
+        $this->product->forceFill(['cost_price' => '0.100000'])->save();
+
+        $this->service->recordCostAdjustment(
+            product: $this->product,
+            additionalCost: '0.200000',
+            reason: 'precision freight',
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            reference: 'PREC-STRING',
+            referenceType: 'test',
+            referenceId: 'precision-string',
+        );
+
+        $fresh = $this->product->fresh();
+        $this->assertNotNull($fresh);
+        $this->assertEquals('0.166666', $fresh->cost_price);
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id' => $this->product->id,
+            'reference' => 'PREC-STRING',
+            'total_cost' => '0.200000',
+            'avg_cost_before' => '0.100000',
+            'avg_cost_after' => '0.166666',
+        ]);
     }
 
     /**
@@ -304,7 +348,7 @@ class WeightedAverageCostServiceTest extends TestCase
 
         $this->service->recordCostAdjustment(
             product: $this->product,
-            additionalCost: 100.0,
+            additionalCost: '100.0000',
             reason: 'freight',
             tenantId: $this->tenant->id,
             companyId: $this->company->id,
@@ -328,7 +372,7 @@ class WeightedAverageCostServiceTest extends TestCase
 
         $result = $this->service->recordCostAdjustment(
             product: $this->product,
-            additionalCost: 100.0,
+            additionalCost: '100.0000',
             reason: 'freight',
             tenantId: $this->tenant->id,
             companyId: $this->company->id,
@@ -814,7 +858,8 @@ class WeightedAverageCostServiceTest extends TestCase
 
         // Assert
         $this->assertCount(1, $movements);
-        $this->assertEquals('DN-001', $movements->first()->reference);
-        $this->assertEquals($documentId1, $movements->first()->reference_id);
+        $movement = $movements->firstOrFail();
+        $this->assertEquals('DN-001', $movement->reference);
+        $this->assertEquals($documentId1, $movement->reference_id);
     }
 }

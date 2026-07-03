@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -19,6 +18,7 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompany } from '../../hooks/useCompany'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { EntityLink } from '../../components/molecules/EntityLink'
 import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from './components/ReceiveGoodsDialog'
 
 interface PurchaseOrderLine {
@@ -28,6 +28,8 @@ interface PurchaseOrderLine {
   description: string
   quantity: number
   quantity_received: number
+  free_quantity?: string | number | null
+  free_quantity_received?: string | number | null
   quantity_decimals?: number
   requires_batch_tracking?: boolean
   unit_price: number
@@ -309,12 +311,13 @@ export function GoodsReceiptListPage() {
                   {/* Order Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
-                      <Link
-                        to={`/purchases/orders/${po.id}`}
+                      <EntityLink
+                        type="document"
+                        id={po.id}
+                        documentType="purchase_order"
+                        label={po.document_number}
                         className="text-lg font-semibold text-gray-900 hover:text-blue-600"
-                      >
-                        {po.document_number}
-                      </Link>
+                      />
                       {isFullyReceived ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
                           <CheckCircle2 className="h-3 w-3" />
@@ -336,7 +339,12 @@ export function GoodsReceiptListPage() {
                     <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-500">
                       <span className="flex items-center gap-1">
                         <Building2 className="h-4 w-4" />
-                        {po.partner_name}
+                        <EntityLink
+                          type="supplier"
+                          id={po.partner_id}
+                          label={po.partner_name}
+                          className="text-sm"
+                        />
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="h-4 w-4" />
@@ -379,9 +387,12 @@ export function GoodsReceiptListPage() {
                       {po.lines.slice(0, 3).map((line, idx) => (
                         <div key={line.id} className="flex items-center gap-2">
                           <span className="text-gray-400">{idx + 1}.</span>
-                          <span className="truncate">
-                            {line.product_name ?? line.description}
-                          </span>
+                          <EntityLink
+                            type="product"
+                            id={line.product_id}
+                            label={line.product_name ?? line.description}
+                            className="truncate"
+                          />
                           <span className="text-gray-400">
                             ({line.quantity_received ?? 0}/{line.quantity})
                           </span>
@@ -411,13 +422,18 @@ export function GoodsReceiptListPage() {
                         {isLoadingReceiveDetail ? t('common:status.loading') : t('inventory:goodsReceipt.receiveAll')}
                       </button>
                     )}
-                    <Link
-                      to={`/purchases/orders/${po.id}`}
+                    <EntityLink
+                      type="document"
+                      id={po.id}
+                      documentType="purchase_order"
+                      label={(
+                        <>
+                          {t('common:actions.view')}
+                          <ChevronRight className="h-4 w-4" />
+                        </>
+                      )}
                       className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      {t('common:actions.view')}
-                      <ChevronRight className="h-4 w-4" />
-                    </Link>
+                    />
                   </div>
                 </div>
               </div>

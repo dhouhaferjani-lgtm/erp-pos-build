@@ -171,6 +171,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:reports.view')
         ->name('reports.balance-sheet');
 
+    Route::get('/reports/cash-movements', [ReportsController::class, 'cashMovements'])
+        ->middleware('can:reports.view')
+        ->name('reports.cash-movements');
+
     Route::get('/reports/aged-receivables', [ReportsController::class, 'agedReceivables'])
         ->middleware('can:reports.view')
         ->name('reports.aged-receivables');
@@ -211,4 +215,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/reports/sales/summary', [ReportsController::class, 'salesSummary'])
         ->middleware('can:dashboard.owner')
         ->name('reports.sales.summary');
+
+    Route::get('/reports/sales/live', [ReportsController::class, 'liveSales'])
+        ->middleware('can:dashboard.owner')
+        ->name('reports.sales.live');
 });

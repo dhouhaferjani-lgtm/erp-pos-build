@@ -140,6 +140,7 @@ vi.mock('../../products/components', async (importOriginal) => {
 })
 vi.mock('../api/platformQueries', () => ({
   useProductSubmission: () => ({ mutate: vi.fn() }),
+  useEnrichmentRefresh: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 // ── productImages API — captured for assertions ───────────────────────────────

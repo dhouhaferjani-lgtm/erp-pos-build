@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Presentation\Controllers;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\User;
@@ -58,20 +59,20 @@ class CompanySettingsController extends Controller
             ], Response::HTTP_FORBIDDEN);
         }
 
-        $tenant = Tenant::find($user->tenant_id);
+        $company = Company::query()->find($this->companyContext->requireCompanyId());
 
-        if ($tenant === null) {
+        if ($company === null) {
             return response()->json([
                 'error' => [
                     'code' => 'NOT_FOUND',
-                    'message' => 'Tenant not found.',
+                    'message' => 'Company not found.',
                 ],
                 'meta' => $this->getMeta($request),
             ], Response::HTTP_NOT_FOUND);
         }
 
         return response()->json([
-            'data' => CompanySettingsData::fromTenant($tenant),
+            'data' => CompanySettingsData::fromCompany($company),
             'meta' => $this->getMeta($request),
         ]);
     }
@@ -84,13 +85,13 @@ class CompanySettingsController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $tenant = Tenant::find($user->tenant_id);
+        $company = Company::query()->find($this->companyContext->requireCompanyId());
 
-        if ($tenant === null) {
+        if ($company === null) {
             return response()->json([
                 'error' => [
                     'code' => 'NOT_FOUND',
-                    'message' => 'Tenant not found.',
+                    'message' => 'Company not found.',
                 ],
                 'meta' => $this->getMeta($request),
             ], Response::HTTP_NOT_FOUND);
@@ -101,42 +102,67 @@ class CompanySettingsController extends Controller
 
         // Track changes for audit log
         $fieldsToUpdate = [
-            'name', 'legal_name', 'tax_id', 'registration_number',
-            'phone', 'email', 'website', 'primary_color',
-            'country_code', 'currency_code', 'timezone', 'date_format', 'locale',
+            'name' => 'name',
+            'legal_name' => 'legal_name',
+            'tax_id' => 'tax_id',
+            'registration_number' => 'registration_number',
+            'phone' => 'phone',
+            'email' => 'email',
+            'website' => 'website',
+            'primary_color' => 'primary_color',
+            'country_code' => 'country_code',
+            'currency_code' => 'currency',
+            'timezone' => 'timezone',
+            'date_format' => 'date_format',
+            'locale' => 'locale',
         ];
 
-        foreach ($fieldsToUpdate as $field) {
-            if (array_key_exists($field, $validated)) {
-                $changes[$field] = [
-                    'old' => $tenant->{$field},
-                    'new' => $validated[$field],
+        $attributes = [];
+
+        foreach ($fieldsToUpdate as $requestKey => $column) {
+            if (array_key_exists($requestKey, $validated)) {
+                $changes[$requestKey] = [
+                    'old' => $company->{$column},
+                    'new' => $validated[$requestKey],
                 ];
+                $attributes[$column] = $validated[$requestKey];
             }
         }
 
         // Handle address separately (nested array)
         if (array_key_exists('address', $validated)) {
+            $address = $validated['address'] ?? [];
             $changes['address'] = [
-                'old' => $tenant->address,
+                'old' => [
+                    'street' => $company->address_street,
+                    'city' => $company->address_city,
+                    'postal_code' => $company->address_postal_code,
+                    'country' => $company->country_code,
+                ],
                 'new' => $validated['address'],
             ];
+            $attributes['address_street'] = $address['street'] ?? null;
+            $attributes['address_city'] = $address['city'] ?? null;
+            $attributes['address_postal_code'] = $address['postal_code'] ?? null;
+
+            if (array_key_exists('country', $address)) {
+                $attributes['country_code'] = $address['country'];
+            }
         }
 
-        // Update the tenant
-        $tenant->update($validated);
+        $company->update($attributes);
 
         // Log audit event
         $this->logAuditEvent(
             eventType: 'tenant.settings_updated',
-            aggregateId: $tenant->id,
+            aggregateId: $company->tenant_id,
             userId: $user->id,
             companyId: $this->companyContext->requireCompanyId(),
             payload: ['changes' => $changes]
         );
 
         return response()->json([
-            'data' => CompanySettingsData::fromTenant($tenant->refresh()),
+            'data' => CompanySettingsData::fromCompany($company->refresh()),
             'meta' => $this->getMeta($request),
         ]);
     }

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -19,6 +19,9 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge'
 import { statusTone } from '@/components/atoms/StatusBadge/statusTone'
+import { EntityLink } from '@/components/molecules/EntityLink'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
+import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
 
 interface DocumentLine {
   id: string
@@ -46,7 +49,12 @@ interface Document {
 interface DocumentsResponse {
   data: Document[]
   meta?: {
+    current_page?: number
+    last_page?: number
+    per_page?: number
     total?: number
+    from?: number | null
+    to?: number | null
   }
 }
 
@@ -56,43 +64,37 @@ interface ProductDocumentsTabProps {
 
 const documentTypeConfig: Record<
   string,
-  { label: string; tone: StatusTone; icon: typeof FileText; path: string }
+  { label: string; tone: StatusTone; icon: typeof FileText }
 > = {
   quote: {
     label: 'Quote',
     tone: 'info',
     icon: ClipboardList,
-    path: '/sales/quotes',
   },
   sales_order: {
     label: 'Sales Order',
     tone: 'info',
     icon: ShoppingCart,
-    path: '/sales/orders',
   },
   invoice: {
     label: 'Invoice',
     tone: 'success',
     icon: Receipt,
-    path: '/sales/invoices',
   },
   purchase_order: {
     label: 'Purchase Order',
     tone: 'warning',
     icon: Truck,
-    path: '/purchases/orders',
   },
   credit_note: {
     label: 'Credit Note',
     tone: 'danger',
     icon: FileX,
-    path: '/sales/credit-notes',
   },
   delivery_note: {
     label: 'Delivery Note',
     tone: 'neutral',
     icon: Truck,
-    path: '/sales/delivery-notes',
   },
 }
 
@@ -119,16 +121,23 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
   const currentCompany = useCompanyStore((state) =>
     state.companies.find((company) => company.id === state.currentCompanyId) ?? null
   )
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
 
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
 
   const { data, isLoading, error } = useQuery({
-    queryKey: tenantScopedKey(['product-documents', productId]),
+    queryKey: tenantScopedKey(['product-documents', productId, page, perPage]),
     queryFn: async () => {
+      const params = new URLSearchParams({
+        product_id: productId,
+        page: String(page),
+        per_page: String(perPage),
+      })
       const response = await api.get<DocumentsResponse>(
-        `/documents?product_id=${productId}`
+        `/documents?${params.toString()}`
       )
       return response.data
     },
@@ -270,16 +279,27 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
               {documentsWithProductTotals.map((doc) => {
                 const typeConfig = getDocumentConfig(doc.type)
                 const TypeIcon = typeConfig.icon
+                const documentType = documentRouteTypeFromSource(doc.type)
 
                 return (
                   <tr key={doc.id} className={tokens.table.rowHover}>
                     <td className="whitespace-nowrap px-6 py-4">
-                      <Link
-                        to={`${typeConfig.path}/${doc.id}`}
-                        className={`font-medium ${textColors.brand} hover:underline`}
-                      >
-                        {getDocumentNumberLabel(doc.document_number)}
-                      </Link>
+                      {documentType ? (
+                        <EntityLink
+                          type="document"
+                          id={doc.id}
+                          documentType={documentType}
+                          label={getDocumentNumberLabel(doc.document_number)}
+                          className="font-medium"
+                        />
+                      ) : (
+                        <Link
+                          to={`/documents/${doc.id}`}
+                          className={`font-medium ${textColors.brand} hover:underline`}
+                        >
+                          {getDocumentNumberLabel(doc.document_number)}
+                        </Link>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -294,16 +314,13 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm">
                       {doc.partner_id && doc.partner_name ? (
-                        <Link
-                          to={
-                            doc.type === 'purchase_order'
-                              ? `/purchases/suppliers/${doc.partner_id}`
-                              : `/sales/customers/${doc.partner_id}`
-                          }
-                          className={`${textColors.brand} hover:underline`}
-                        >
-                          {doc.partner_name}
-                        </Link>
+                        <EntityLink
+                          type="partner"
+                          id={doc.partner_id}
+                          partnerType={doc.type === 'purchase_order' ? 'supplier' : 'customer'}
+                          label={doc.partner_name}
+                          className="font-medium"
+                        />
                       ) : (
                         <span className={textColors.disabled}>-</span>
                       )}
@@ -335,6 +352,21 @@ export function ProductDocumentsTab({ productId }: ProductDocumentsTabProps) {
               })}
             </tbody>
           </table>
+          {data?.meta?.current_page && data.meta.last_page && data.meta.last_page > 1 && (
+            <OffsetPagination
+              currentPage={data.meta.current_page}
+              lastPage={data.meta.last_page}
+              total={data.meta.total ?? documents.length}
+              perPage={data.meta.per_page ?? perPage}
+              from={data.meta.from ?? null}
+              to={data.meta.to ?? null}
+              onPageChange={setPage}
+              onPerPageChange={(nextPerPage) => {
+                setPerPage(nextPerPage)
+                setPage(1)
+              }}
+            />
+          )}
         </div>
       )}
     </div>

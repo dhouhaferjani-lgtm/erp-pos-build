@@ -170,6 +170,9 @@ function purchaseOrderFixture() {
         product_id: 'product-1',
         product_name: 'Stock',
         description: 'Stock',
+        product_code: 'STK-001',
+        product_barcode: '619000000001',
+        primary_image_url: '/stock.png',
         quantity: '5.00',
         requires_batch_tracking: false,
         unit_price: '100.00',
@@ -399,6 +402,14 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
       ).length
       expect(receiptStatusFetches).toBeGreaterThan(1)
     })
+  })
+
+  it('renders purchase order lines with ProductCell identity fields', async () => {
+    render(<PurchaseOrderDetailPage />, { wrapper: wrapper(createClient()) })
+
+    expect(await screen.findByRole('img', { name: 'Stock' })).toHaveAttribute('src', '/stock.png')
+    expect(screen.getByText('STK-001')).toBeInTheDocument()
+    expect(screen.getByText('619000000001')).toBeInTheDocument()
   })
 
   it('requires and submits batch data for batch-tracked receipt lines', async () => {

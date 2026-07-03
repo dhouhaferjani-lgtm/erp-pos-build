@@ -11,9 +11,9 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 class EnrichedProductData extends Data
 {
     /**
-     * @param  array<string, string>  $classification  Category/classification hierarchy from enrichment
-     * @param  array<int, string>  $ingredients  List of product ingredients
-     * @param  array<int, array{url: string, type?: string}>  $images  Enriched product images
+     * @param  array<string, mixed>  $classification  Category/classification hierarchy from enrichment
+     * @param  list<array{name: string, position: int}>  $ingredients  List of product ingredients
+     * @param  list<array{url: ?string, thumbnail: ?string, type: ?string}>  $images  Enriched product images
      * @param  array<string, int>|null  $field_confidence  Per-field confidence scores (0-100)
      * @param  array<int, string>|null  $enrichment_sources  Sources used for enrichment
      */

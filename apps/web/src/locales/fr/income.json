@@ -1,0 +1,49 @@
+{
+  "title": "Revenus",
+  "description": "Enregistrez l'argent reçu dans vos caisses et comptes bancaires",
+  "recordIncome": "Enregistrer un revenu",
+  "createIncome": "Enregistrer un revenu",
+  "editIncome": "Modifier le revenu",
+  "noIncome": "Aucun revenu enregistré",
+  "noIncomeDescription": "Commencez par enregistrer votre premier revenu",
+  "searchPlaceholder": "Rechercher un revenu par source, référence…",
+  "confirmPost": "Comptabiliser ce revenu ? Cette action est irréversible.",
+  "post": "Comptabiliser",
+  "status": {
+    "draft": "Brouillon",
+    "posted": "Comptabilisé"
+  },
+  "form": {
+    "sourceInfo": "Informations sur la source",
+    "sourceName": "Reçu de",
+    "sourceNamePlaceholder": "Nom du client, locataire ou source",
+    "referenceNumber": "Numéro de référence",
+    "referenceNumberPlaceholder": "Numéro de reçu ou de référence",
+    "incomeAccount": "Catégorie de revenu",
+    "selectIncomeAccount": "Sélectionner un compte de produit",
+    "noIncomeAccounts": "Aucun compte de produit disponible",
+    "noIncomeAccountsDescription": "Configurez des comptes de produits (classe 7) dans le plan comptable",
+    "amount": "Montant",
+    "date": "Date",
+    "paymentDetails": "Détails de l'encaissement",
+    "paymentDate": "Date de réception",
+    "paymentMethod": "Mode de paiement",
+    "paymentRepository": "Reçu dans",
+    "isReceived": "Marquer comme reçu",
+    "notes": "Notes",
+    "notesPlaceholder": "Ajoutez des notes supplémentaires",
+    "noPaymentMethods": "Aucun mode de paiement disponible",
+    "noPaymentMethodsDescription": "Configurez les modes de paiement dans les paramètres de trésorerie",
+    "noRepositories": "Aucune caisse disponible",
+    "noRepositoriesDescription": "Configurez les caisses dans les paramètres de trésorerie"
+  },
+  "messages": {
+    "created": "Revenu enregistré avec succès",
+    "updated": "Revenu mis à jour avec succès",
+    "posted": "Revenu comptabilisé avec succès",
+    "deleted": "Revenu supprimé avec succès"
+  },
+  "errors": {
+    "notFound": "Revenu introuvable"
+  }
+}

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Tests\Unit\Inventory;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Inventory\Application\Services\LandedCostService;
+use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\ProportionalMoneyAllocator;
 use Illuminate\Database\Eloquent\Collection;
-use Mockery;
 use Tests\TestCase;
 use Tests\Traits\WithCurrencyScale;
 
@@ -20,7 +22,7 @@ class LandedCostServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new LandedCostService($this->mockCurrencyScale());
+        $this->service = new LandedCostService($this->mockCurrencyScale(), new ProportionalMoneyAllocator);
     }
 
     public function test_calculate_allocated_cost_with_valid_inputs(): void
@@ -117,43 +119,33 @@ class LandedCostServiceTest extends TestCase
 
     public function test_get_allocation_breakdown(): void
     {
-        // Create a simple stdClass to simulate the product
-        $product = new \stdClass;
+        $product = new Product;
         $product->name = 'Test Product';
 
-        // Create a simple stdClass to simulate the line
-        $line = new \stdClass;
+        $line = new DocumentLine;
         $line->id = 'line-1';
-        $line->product = $product;
         $line->description = 'Test Description';
         $line->quantity = '5.00';
         $line->unit_price = '20.00';
         $line->line_total = '100.00';
         $line->allocated_costs = '10.00';
         $line->landed_unit_cost = '22.00';
+        $line->setRelation('product', $product);
 
         $lines = new Collection([$line]);
 
-        // Create mock document with proper getAttribute expectation
-        $document = Mockery::mock(Document::class)->shouldIgnoreMissing();
-        $document->shouldReceive('getAttribute')->with('lines')->andReturn($lines);
+        $document = new Document;
+        $document->setRelation('lines', $lines);
 
         $result = $this->service->getAllocationBreakdown($document);
 
-        $this->assertIsArray($result);
         $this->assertCount(1, $result);
         $this->assertEquals('line-1', $result[0]['line_id']);
         $this->assertEquals('Test Product', $result[0]['product_name']);
-        $this->assertEquals('5.00', $result[0]['quantity']);
-        $this->assertEquals('20.00', $result[0]['unit_price']);
-        $this->assertEquals('100.00', $result[0]['line_total']);
-        $this->assertEquals('10.00', $result[0]['allocated_costs']);
-        $this->assertEquals('22.00', $result[0]['landed_unit_cost']);
-    }
-
-    protected function tearDown(): void
-    {
-        Mockery::close();
-        parent::tearDown();
+        $this->assertEquals('5.0000', $result[0]['quantity']);
+        $this->assertEquals('20.000', $result[0]['unit_price']);
+        $this->assertEquals('100.000', $result[0]['line_total']);
+        $this->assertEquals('10.000000', $result[0]['allocated_costs']);
+        $this->assertEquals('22.000000', $result[0]['landed_unit_cost']);
     }
 }

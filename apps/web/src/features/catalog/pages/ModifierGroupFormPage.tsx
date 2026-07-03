@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { Input, FormField, Button, Select, MoneyInput, QuantityInput, Checkbox } from '@/components/atoms'
 import { PageHeader } from '@/components/molecules'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
-import { ProductSearchSelect } from '@/components/ui/ProductSearchSelect'
+import { ProductLineSelect } from '@/components/molecules/line-items'
 import { cn } from '@/lib/utils'
 import { tokens, textColors } from '@/lib/designTokens'
 import { useCompanyConfig } from '@/contexts'
@@ -340,7 +340,7 @@ export function ModifierGroupFormPage() {
                     </td>
                     <td className="px-3 py-4 text-sm">
                       <div className="flex items-center gap-2">
-                        <ProductSearchSelect
+                        <ProductLineSelect
                           value={mod.component_id ?? ''}
                           onChange={(productId) => { handleUpdateModifier(mod.id, 'component_id', productId); }}
                           placeholder={t('catalog:searchComponent')}

@@ -26,6 +26,7 @@ return [
     'updated' => ':resource mis(e) à jour avec succès.',
     'deleted' => ':resource supprimé(e) avec succès.',
     'restored' => ':resource restauré(e) avec succès.',
+    'income_posted' => 'Revenu enregistré avec succès.',
 
     // Documents
     'document' => [

@@ -13,6 +13,18 @@ type DocumentType =
   | 'delivery_note'
   | 'return_note'
   | 'expense'
+  | 'supplier_invoice'
+  | 'supplier_credit_note'
+
+export type ExpenseKind = 'generic' | 'linked_cost'
+export type AdditionalCostType =
+  | 'transport'
+  | 'shipping'
+  | 'insurance'
+  | 'customs'
+  | 'handling'
+  | 'other'
+export type LandedCostSplitMethod = 'by_value' | 'by_quantity'
 
 /**
  * Expense metadata with payment and category information
@@ -25,6 +37,11 @@ export interface ExpenseMetadata {
   expense_category_id: string | null
   payment_method_id: string | null
   payment_repository_id: string | null
+  expense_kind: ExpenseKind
+  linked_invoice_id?: string | null
+  linked_operation_id?: string | null
+  cost_type?: AdditionalCostType | null
+  split_method?: LandedCostSplitMethod | null
   category?: {
     id: string
     name: string
@@ -114,6 +131,44 @@ export interface CreateExpenseDTO {
   status?: DocumentStatus
   document_date?: string
   idempotency_key?: string
+  expense_kind?: ExpenseKind
+  linked_invoice_id?: string
+  linked_operation_id?: string
+  cost_type?: AdditionalCostType
+  split_method?: LandedCostSplitMethod
+}
+
+export interface LinkableInvoice {
+  id: string
+  document_number: string
+  partner_name: string | null
+  document_date: string | null
+  total: string
+  currency: string
+  side: 'purchase' | 'sales'
+}
+
+export interface OperationRef {
+  document_id: string
+  kind: string
+  number: string
+  date: string | null
+  status: string
+  received_at: string | null
+  line_count: number
+  total: string
+  currency: string
+}
+
+export interface OperationResolution {
+  side: 'purchase' | 'sales'
+  invoice: {
+    id: string
+    document_number: string
+    currency: string
+  }
+  operations: OperationRef[]
+  auto_selected_id: string | null
 }
 
 /**

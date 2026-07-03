@@ -26,6 +26,7 @@ class CompanyConfig implements \JsonSerializable
         public readonly array $enabledExtras,
         public readonly array $compatibleExtras,
         public readonly array $allEnabledModules,
+        public readonly bool $purchaseBonusEnabled = false,
     ) {}
 
     /**
@@ -41,6 +42,7 @@ class CompanyConfig implements \JsonSerializable
             enabledExtras: $data['enabled_extras'] ?? [],
             compatibleExtras: $data['compatible_extras'] ?? [],
             allEnabledModules: $data['all_enabled_modules'] ?? [],
+            purchaseBonusEnabled: (bool) ($data['purchase_bonus_enabled'] ?? false),
         );
     }
 
@@ -65,6 +67,7 @@ class CompanyConfig implements \JsonSerializable
             'enabled_extras' => $this->enabledExtras,
             'compatible_extras' => $this->compatibleExtras,
             'all_enabled_modules' => $this->allEnabledModules,
+            'purchase_bonus_enabled' => $this->purchaseBonusEnabled,
         ];
     }
 

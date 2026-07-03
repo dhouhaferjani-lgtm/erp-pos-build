@@ -54,8 +54,8 @@ vi.mock('@/contexts', () => ({
   useCompanyConfig: () => ({ config: { vertical: 'fnb', currency: 'TND' }, hasModule: () => false }),
 }))
 
-vi.mock('@/components/ui/ProductSearchSelect', () => ({
-  ProductSearchSelect: () => null,
+vi.mock('@/components/molecules/line-items', () => ({
+  ProductLineSelect: () => null,
 }))
 
 describe('ModifierGroupFormPage', () => {

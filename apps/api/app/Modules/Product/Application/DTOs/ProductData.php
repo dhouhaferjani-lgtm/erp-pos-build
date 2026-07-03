@@ -46,15 +46,22 @@ class ProductData extends Data
         public ?array $cross_references,
         public ?string $target_margin_override,
         public ?string $minimum_margin_override,
+        public ?string $platform_product_id,
         public string $created_at,
         public ?string $updated_at,
         public bool $has_variants = false,
         public ?string $primary_image_url = null,
         public array $media = [],
         public ?BrandData $brand = null,
+        public ?string $brand_source = null,
+        public ?CategoryData $category = null,
         public ?ParapharmacyProductMetadataData $parapharmacy_metadata = null,
         public ?AutomotiveProductMetadataData $automotive_metadata = null,
         public ?OpeningStateData $opening = null,
+        public ?string $enrichment_status = null,
+        /** @var array{id: string, status: string}|null */
+        public ?array $latest_enrichment_result = null,
+        public ?string $stock_quantity = null,
     ) {}
 
     public static function fromModel(Product $product, ?ProductMediaData $media = null, ?OpeningStateData $opening = null): self
@@ -86,6 +93,7 @@ class ProductData extends Data
             cross_references: $product->cross_references,
             target_margin_override: $product->target_margin_override !== null ? (string) $product->target_margin_override : null,
             minimum_margin_override: $product->minimum_margin_override !== null ? (string) $product->minimum_margin_override : null,
+            platform_product_id: $product->platform_product_id,
             created_at: $product->created_at?->toIso8601String() ?? '',
             updated_at: $product->updated_at?->toIso8601String(),
             has_variants: $product->has_variants,
@@ -94,6 +102,10 @@ class ProductData extends Data
             brand: $product->relationLoaded('brand') && $product->brand !== null
                 ? BrandData::fromModel($product->brand)
                 : null,
+            brand_source: $product->brand_source?->value,
+            category: $product->relationLoaded('category') && $product->category !== null
+                ? CategoryData::fromModel($product->category)
+                : null,
             parapharmacy_metadata: $product->relationLoaded('parapharmacyMetadata') && $product->parapharmacyMetadata !== null
                 ? ParapharmacyProductMetadataData::fromModel($product->parapharmacyMetadata)
                 : null,
@@ -101,6 +113,14 @@ class ProductData extends Data
                 ? AutomotiveProductMetadataData::fromModel($product->automotiveMetadata)
                 : null,
             opening: $opening,
+            enrichment_status: $product->enrichment_status?->value,
+            latest_enrichment_result: $product->relationLoaded('latestEnrichmentResult') && $product->latestEnrichmentResult !== null
+                ? [
+                    'id' => $product->latestEnrichmentResult->id,
+                    'status' => $product->latestEnrichmentResult->status->value,
+                ]
+                : null,
+            stock_quantity: self::stockQuantity($product),
         );
     }
 
@@ -111,5 +131,25 @@ class ProductData extends Data
         }
 
         return 4;
+    }
+
+    private static function stockQuantity(Product $product): ?string
+    {
+        $value = $product->getAttribute('stock_quantity');
+        if ($value !== null) {
+            return bcadd((string) $value, '0', 4);
+        }
+
+        if ($product->relationLoaded('stockLevels')) {
+            /** @var numeric-string $sum */
+            $sum = '0.0000';
+            foreach ($product->stockLevels as $stockLevel) {
+                $sum = bcadd($sum, (string) $stockLevel->quantity, 4);
+            }
+
+            return $sum;
+        }
+
+        return null;
     }
 }

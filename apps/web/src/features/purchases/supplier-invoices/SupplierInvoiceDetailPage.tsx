@@ -15,6 +15,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { EntityLink } from '../../../components/molecules/EntityLink'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { formatCurrency, formatQuantity } from '../../../lib/decimal'
 import type { SupplierInvoiceMatchStatus } from './types'
@@ -146,7 +147,11 @@ export function SupplierInvoiceDetailPage() {
               {invoice.number}
             </h1>
             <p className={`mt-1 text-sm ${textColors.tertiary}`}>
-              {invoice.partner.name}
+              <EntityLink
+                type="supplier"
+                id={invoice.partner.id}
+                label={invoice.partner.name}
+              />
             </p>
           </div>
 
@@ -243,16 +248,21 @@ export function SupplierInvoiceDetailPage() {
             <p className={`text-xs font-medium uppercase tracking-wide ${textColors.tertiary}`}>
               {t('purchases:supplierInvoices.detail.linkedPO')}
             </p>
-            <Link
+            <EntityLink
               data-testid="link-source-po"
-              to={`/purchases/orders/${invoice.source_purchase_order.id}`}
-              className={`mt-1 inline-flex items-center gap-1 text-sm font-medium ${textColors.brand} hover:underline`}
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              {t('purchases:supplierInvoices.detail.poNumber', {
-                number: invoice.source_purchase_order.number,
-              })}
-            </Link>
+              type="document"
+              id={invoice.source_purchase_order.id}
+              documentType="purchase_order"
+              label={(
+                <span className="inline-flex items-center gap-1">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  {t('purchases:supplierInvoices.detail.poNumber', {
+                    number: invoice.source_purchase_order.number,
+                  })}
+                </span>
+              )}
+              className="mt-1 inline-flex items-center gap-1 text-sm font-medium"
+            />
           </div>
         )}
       </div>

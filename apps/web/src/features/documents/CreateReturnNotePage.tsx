@@ -15,6 +15,7 @@ import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
+import { entityRoutes } from '@/lib/entityRoutes'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
 import { DeliveryNoteSearchSelect } from '@/components/ui/DeliveryNoteSearchSelect'
@@ -230,15 +231,16 @@ export function CreateReturnNotePage() {
         }))
       }
 
-      const response = await api.post('/return-notes', payload)
+      const response = await api.post<{ data?: { id?: string }; id?: string }>('/return-notes', payload)
       return response.data
     },
-    onSuccess: async () => {
+    onSuccess: async (createdReturnNote) => {
       toast.success(t('sales:returnNotes.messages.created'))
       await queryClient.invalidateQueries({
         predicate: scopedNamespacePredicate('return-notes', tenantId, companyId),
       })
-      navigate('/sales/return-notes')
+      const returnNoteId = createdReturnNote.data?.id ?? createdReturnNote.id
+      navigate(returnNoteId ? entityRoutes.document(returnNoteId, { documentType: 'return_note' }) : '/sales/return-notes')
     },
     onError: (error: Error) => {
       toast.error(error.message || t('sales:returnNotes.messages.createFailed'))

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Edit, Trash2, Tag } from 'lucide-react'
@@ -8,6 +8,7 @@ import { useCompanyStore } from '../../stores/companyStore'
 import { useAuthStore } from '../../stores/authStore'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
+import { usePermissions } from '../../hooks/usePermissions'
 import { formatCurrency } from '../../lib/format'
 import { bccomp, bcdiv, bcmul, bcsub } from '../../lib/decimal'
 import { cn } from '../../lib/utils'
@@ -28,6 +29,8 @@ import { useProductRealtime } from '../products/hooks/useProductRealtime'
 import { ProductStockLevels } from './components'
 import { useTaxConfigName } from '../../hooks/useTaxConfigName'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
+import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
+import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
 import { ProductHero } from '../products/editor/components/ProductHero'
 import {
   PRODUCT_DETAIL_SECTIONS,
@@ -52,6 +55,8 @@ interface Product {
   stock_quantity?: string | null
   brand?: { id?: string; name: string; source?: string | null } | null
   category?: { id?: string; name: string } | null
+  enrichment_status: string | null
+  platform_product_id: string | null
   oem_numbers: string[] | null
   cross_references: { brand: string; reference: string }[] | null
   created_at: string
@@ -60,6 +65,13 @@ interface Product {
 
 interface ProductResponse {
   data: Product
+}
+
+const PRODUCT_DETAIL_TABS = ['details', 'movements', 'financialOperations'] as const
+type ProductDetailTab = typeof PRODUCT_DETAIL_TABS[number]
+
+function isProductDetailTab(value: string | null): value is ProductDetailTab {
+  return value !== null && (PRODUCT_DETAIL_TABS as readonly string[]).includes(value)
 }
 
 export function ProductDetailPage() {
@@ -77,8 +89,19 @@ export function ProductDetailPage() {
 
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const tabParam = searchParams.get('tab')
+  const activeTab: ProductDetailTab = isProductDetailTab(tabParam) ? tabParam : 'details'
+
+  const handleTabChange = (tab: string) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', tab)
+    setSearchParams(next)
+  }
+
+  const { hasPermission } = usePermissions()
 
   const { data, isLoading, error } = useQuery({
     queryKey: tenantScopedKey(['product', id]),
@@ -102,6 +125,14 @@ export function ProductDetailPage() {
   // "Rendered more hooks than during the previous render". The hook null-guards
   // its argument internally, so `data?.…` is safe before the product loads.
   const taxConfigName = useTaxConfigName(data?.default_tax_configuration_id)
+  const fastPathState = useEnrichmentFastPath({
+    productId: id ?? '',
+    enabled: Boolean(
+      id &&
+      data?.enrichment_status === 'pending' &&
+      hasPermission('enrichment.view'),
+    ),
+  })
 
   const deleteMutation = useMutation({
     mutationFn: () => {
@@ -378,8 +409,14 @@ export function ProductDetailPage() {
         }
       />
 
+      <EnrichmentReadyCard
+        state={fastPathState}
+        canReview={hasPermission('enrichment.review')}
+        productId={product.id}
+      />
+
       {/* Tabs */}
-      <Tabs defaultValue="details">
+      <Tabs defaultValue="details" value={activeTab} onChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="details">{t('products.tabs.details')}</TabsTrigger>
           <TabsTrigger value="movements">{t('products.tabs.movements')}</TabsTrigger>

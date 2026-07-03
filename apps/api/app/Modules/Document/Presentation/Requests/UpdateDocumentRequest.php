@@ -6,12 +6,15 @@ namespace App\Modules\Document\Presentation\Requests;
 
 use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Enums\PriceEntryMode;
 use App\Modules\Document\Presentation\Requests\Concerns\AppliesDiscountToleranceRule;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Services\CompanyConfigService;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateDocumentRequest extends FormRequest
 {
@@ -19,6 +22,8 @@ class UpdateDocumentRequest extends FormRequest
 
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly CompanyConfigService $configService,
+        private readonly PurchaseBonusGate $purchaseBonusGate,
     ) {
         parent::__construct();
     }
@@ -45,10 +50,9 @@ class UpdateDocumentRequest extends FormRequest
         $company = $this->companyContext->requireCompany();
         $scopedTenantId = $company->tenant_id;
 
-        // Check if Vehicle module is enabled for this tenant
-        $configService = app(CompanyConfigService::class);
         $hasVehicleModule = $user->tenant !== null
-            && $configService->getConfigForTenant($user->tenant)->hasModule('Vehicle');
+            && $this->configService->getConfigForTenant($user->tenant)->hasModule('Vehicle');
+        $purchaseBonusEnabled = $this->purchaseBonusGate->enabledFor($company);
 
         $rules = [
             'partner_id' => [
@@ -87,7 +91,17 @@ class UpdateDocumentRequest extends FormRequest
             ],
             'lines.*.description' => ['required_with:lines', 'string', 'min:1', 'max:500'],
             'lines.*.quantity' => ['required_with:lines', 'numeric', 'gt:0', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'lines.*.free_quantity' => $purchaseBonusEnabled
+                ? ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/']
+                : ['prohibited'],
             'lines.*.unit_price' => ['required_with:lines', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'lines.*.line_total' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'lines.*.price_entry_mode' => $purchaseBonusEnabled
+                ? ['nullable', Rule::in(PriceEntryMode::values())]
+                : ['nullable', Rule::in([PriceEntryMode::Unit->value])],
+            'lines.*.is_bonus_line' => $purchaseBonusEnabled
+                ? ['nullable', 'boolean']
+                : ['prohibited'],
             'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
@@ -114,7 +128,9 @@ class UpdateDocumentRequest extends FormRequest
     {
         return [
             'lines.*.quantity.regex' => 'Line quantity must have at most 4 decimal places',
+            'lines.*.free_quantity.regex' => 'Line free quantity must have at most 4 decimal places',
             'lines.*.unit_price.regex' => 'Line unit price must have at most 3 decimal places',
+            'lines.*.line_total.regex' => 'Line total must have at most 3 decimal places',
             'lines.*.discount_percent.regex' => 'Line discount percentage must have at most 2 decimal places',
             'lines.*.discount_amount.regex' => 'Line discount amount must have at most 3 decimal places',
             'lines.*.tax_rate.regex' => 'Line tax rate must have at most 2 decimal places',
@@ -138,5 +154,28 @@ class UpdateDocumentRequest extends FormRequest
             }, $this->input('lines'));
             $this->merge(['lines' => $lines]);
         }
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $lines = $this->input('lines');
+
+            if (! is_array($lines)) {
+                return;
+            }
+
+            foreach ($lines as $index => $line) {
+                if (! is_array($line)) {
+                    continue;
+                }
+
+                $mode = (string) ($line['price_entry_mode'] ?? PriceEntryMode::Unit->value);
+
+                if ($mode === PriceEntryMode::Total->value && ! array_key_exists('line_total', $line)) {
+                    $validator->errors()->add("lines.{$index}.line_total", 'Line total is required when price entry mode is total.');
+                }
+            }
+        });
     }
 }

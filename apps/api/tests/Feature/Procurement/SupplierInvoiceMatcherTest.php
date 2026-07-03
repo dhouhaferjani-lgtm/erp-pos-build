@@ -212,6 +212,42 @@ final class SupplierInvoiceMatcherTest extends TestCase
         $this->assertSame('4.0000', $this->matcher->matchableQty($freshPoLine));
     }
 
+    public function test_explicit_bonus_invoice_line_is_skipped_from_paid_qty_and_price_checks(): void
+    {
+        ['poLine' => $poLine] = $this->seedPo([
+            'quantity' => '20.0000',
+            'quantity_received' => '20.0000',
+            'quantity_invoiced' => '0.0000',
+            'free_quantity' => '1.0000',
+            'free_quantity_received' => '1.0000',
+            'free_quantity_invoiced' => '0.0000',
+            'unit_price' => '5.000',
+        ]);
+
+        $invoice = $this->seedInvoice([
+            'quantity' => '20.0000',
+            'unit_price' => '5.000',
+            'line_total' => '100.000',
+            'source_line_id' => $poLine->id,
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 2,
+            'description' => 'Remise en nature - Paracetamol 500mg x100',
+            'quantity' => '1.0000',
+            'unit_price' => '5.000',
+            'discount_percent' => '100.00',
+            'line_total' => '0.000',
+            'source_line_id' => $poLine->id,
+            'is_bonus_line' => true,
+        ]);
+        $invoice->load('lines');
+
+        $this->assertSame(SupplierInvoiceMatchStatus::Matched, $this->matcher->match($invoice));
+        $this->matcher->assertPostable($invoice, MatchEnforcement::Warn);
+    }
+
     // -------------------------------------------------------------------------
     // Test 2 — over-clear: quantity_variance is NEVER bypassable by warn
     // -------------------------------------------------------------------------

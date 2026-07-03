@@ -19,7 +19,10 @@ import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal'
 import { Button, Input, Textarea } from '../../../components/atoms'
+import { EntityLink } from '../../../components/molecules/EntityLink'
+import { ProductCell } from '../../../components/molecules/line-items'
 import { tokens } from '../../../lib/designTokens'
+import { entityRoutes } from '../../../lib/entityRoutes'
 import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -92,12 +95,10 @@ export function PurchaseOrderDetailPage() {
     message: '',
     ccEmails: '',
   })
-  const purchaseOrderQueryKey = tenantScopedKey(['document', 'purchase_order', id])
-  const receiptStatusQueryKey = tenantScopedKey(['purchase-order', 'receipt-status', id])
 
   // Fetch purchase order
   const { data: purchaseOrder, isLoading, error } = useQuery({
-    queryKey: purchaseOrderQueryKey,
+    queryKey: tenantScopedKey(['document', 'purchase_order', id]),
     queryFn: async () => {
       const response = await api.get<{ data: Document }>(`/purchase-orders/${id}`)
       return response.data.data
@@ -106,7 +107,7 @@ export function PurchaseOrderDetailPage() {
   })
 
   const { data: receiptStatusData } = useQuery({
-    queryKey: receiptStatusQueryKey,
+    queryKey: tenantScopedKey(['purchase-order', 'receipt-status', id]),
     queryFn: async () => {
       const response = await api.get<{ data: ReceiptStatusResponse }>(`/purchase-orders/${id}/receipt-status`)
       return response.data.data
@@ -125,7 +126,7 @@ export function PurchaseOrderDetailPage() {
     mutationFn: () => apiPost<Document>(`/purchase-orders/${id}/confirm`, {}),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: purchaseOrderQueryKey }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', id]) }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
@@ -146,8 +147,8 @@ export function PurchaseOrderDetailPage() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
-        queryClient.invalidateQueries({ queryKey: purchaseOrderQueryKey }),
-        queryClient.invalidateQueries({ queryKey: receiptStatusQueryKey }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', id]) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['purchase-order', 'receipt-status', id]) }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('stock-levels', tenantId, companyId),
         }),
@@ -210,7 +211,7 @@ export function PurchaseOrderDetailPage() {
   const handlePaymentSuccess = async () => {
     setShowPaymentModal(false)
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: purchaseOrderQueryKey }),
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['document', 'purchase_order', id]) }),
       queryClient.invalidateQueries({
         predicate: scopedNamespacePredicate('documents', tenantId, companyId),
       }),
@@ -376,7 +377,12 @@ export function PurchaseOrderDetailPage() {
                 {t('documents.supplier')}
               </dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {purchaseOrder.partner_name || '-'}
+                <EntityLink
+                  type="partner"
+                  id={purchaseOrder.partner_id}
+                  partnerType="supplier"
+                  label={purchaseOrder.partner_name || '-'}
+                />
               </dd>
             </div>
 
@@ -422,7 +428,29 @@ export function PurchaseOrderDetailPage() {
               {purchaseOrder.lines?.map((line) => (
                 <tr key={line.id}>
                   <td className="px-6 py-4 text-sm text-gray-900">
-                    {line.description}
+                    {line.product_id ? (
+                      <Link to={entityRoutes.product(line.product_id)} className="block hover:underline">
+                        <ProductCell
+                          product={{
+                            name: line.product_name || line.description,
+                            sku: line.product_code ?? null,
+                            barcode: line.product_barcode ?? null,
+                            primary_image_url: line.primary_image_url ?? null,
+                          }}
+                          size="sm"
+                        />
+                      </Link>
+                    ) : (
+                      <ProductCell
+                        product={{
+                          name: line.product_name || line.description,
+                          sku: line.product_code ?? null,
+                          barcode: line.product_barcode ?? null,
+                          primary_image_url: line.primary_image_url ?? null,
+                        }}
+                        size="sm"
+                      />
+                    )}
                     {line.notes && (
                       <div className="text-xs text-gray-500 mt-1">{line.notes}</div>
                     )}

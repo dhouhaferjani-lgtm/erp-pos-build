@@ -15,6 +15,7 @@ import { ArrowLeft, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
+import { entityRoutes } from '@/lib/entityRoutes'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
@@ -139,7 +140,7 @@ export function CreateCreditNotePage() {
 
         const quantities = new Map<string, number>()
         documentLines.forEach(line => {
-          quantities.set(line.id, line.quantity)
+          quantities.set(line.id, Number(line.quantity))
         })
         setLineQuantities(quantities)
       }
@@ -172,7 +173,7 @@ export function CreateCreditNotePage() {
       const line = lines.find(l => l.id === lineId)
       if (line) {
         const newQuantities = new Map(lineQuantities)
-        newQuantities.set(lineId, line.quantity)
+        newQuantities.set(lineId, Number(line.quantity))
         setLineQuantities(newQuantities)
       }
     }
@@ -191,8 +192,10 @@ export function CreateCreditNotePage() {
     return lines
       .filter(line => selectedLineIds.has(line.id))
       .reduce((sum, line) => {
-        const qty = lineQuantities.get(line.id) || line.quantity
-        const lineTotal = qty * line.unit_price * (1 + line.tax_rate / 100)
+        const qty = lineQuantities.get(line.id) || Number(line.quantity)
+        const unitPrice = Number(line.unit_price)
+        const taxRate = Number(line.tax_rate)
+        const lineTotal = qty * unitPrice * (1 + taxRate / 100)
         return sum + lineTotal
       }, 0)
   }
@@ -229,10 +232,10 @@ export function CreateCreditNotePage() {
         }))
       }
 
-      const response = await api.post('/credit-notes', payload)
+      const response = await api.post<{ data?: { id?: string }; id?: string }>('/credit-notes', payload)
       return response.data
     },
-    onSuccess: async () => {
+    onSuccess: async (createdCreditNote) => {
       toast.success(t('sales:creditNotes.messages.created'))
       await Promise.all([
         queryClient.invalidateQueries({
@@ -242,7 +245,8 @@ export function CreateCreditNotePage() {
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
         }),
       ])
-      navigate('/sales/credit-notes')
+      const creditNoteId = createdCreditNote.data?.id ?? createdCreditNote.id
+      navigate(creditNoteId ? entityRoutes.document(creditNoteId, { documentType: 'credit_note' }) : '/sales/credit-notes')
     },
     onError: (error: Error) => {
       toast.error(error.message || t('sales:creditNotes.messages.createFailed'))
@@ -574,7 +578,7 @@ export function CreateCreditNotePage() {
                                 <input
                                   type="number"
                                   min="1"
-                                  max={line.quantity}
+                                  max={Number(line.quantity)}
                                   value={creditQty}
                                   onChange={(e) => { updateLineQuantity(line.id, parseInt(e.target.value)); }}
                                   className="w-20 rounded border border-gray-300 px-2 py-1 text-end"
@@ -585,10 +589,10 @@ export function CreateCreditNotePage() {
                               <span className="text-gray-400 ms-1">/ {line.quantity}</span>
                             </td>
                             <td className="px-3 py-4 text-end text-sm text-gray-900">
-                              {line.unit_price.toFixed(decimals)}
+                              {Number(line.unit_price).toFixed(decimals)}
                             </td>
                             <td className="px-3 py-4 text-end text-sm font-medium text-gray-900">
-                              {((isSelected ? creditQty : 0) * line.unit_price * (1 + line.tax_rate / 100)).toFixed(decimals)}
+                              {((isSelected ? Number(creditQty) : 0) * Number(line.unit_price) * (1 + Number(line.tax_rate) / 100)).toFixed(decimals)}
                             </td>
                           </tr>
                         )
@@ -616,6 +620,7 @@ export function CreateCreditNotePage() {
               <DocumentLineEditor
                 lines={lines}
                 onChange={setLines}
+                partnerId={partnerId}
               />
             </div>
           )}

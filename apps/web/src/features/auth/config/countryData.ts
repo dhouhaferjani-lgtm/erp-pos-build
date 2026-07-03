@@ -5,7 +5,9 @@ export interface CountryDefaults {
   dialCode: string
 }
 
-export const PINNED_COUNTRIES: string[] = ['FR', 'TN', 'GB', 'IT', 'MA', 'DZ', 'US']
+// Launch-market ordering (TN first) — consumers that iterate this list in
+// order should not present France ahead of the primary markets.
+export const PINNED_COUNTRIES: string[] = ['TN', 'MA', 'DZ', 'FR', 'GB', 'IT', 'US']
 
 export const COUNTRY_DEFAULTS: Record<string, CountryDefaults> = {
   // Pinned countries

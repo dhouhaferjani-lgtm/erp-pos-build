@@ -9,6 +9,7 @@ use App\Modules\Product\Application\DTOs\OpeningStateData;
 use App\Modules\Product\Application\DTOs\ProductData;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Enums\EnrichmentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -50,5 +51,20 @@ class ProductDataOpeningStateTest extends TestCase
         $data = ProductData::fromModel($product);
 
         $this->assertNull($data->opening);
+    }
+
+    public function test_product_data_includes_enrichment_status_and_platform_product_id(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'enrichment_status' => EnrichmentStatus::Pending,
+            'platform_product_id' => '11111111-1111-4111-8111-111111111111',
+        ]);
+
+        $data = ProductData::fromModel($product);
+
+        $this->assertSame(EnrichmentStatus::Pending->value, $data->enrichment_status);
+        $this->assertSame('11111111-1111-4111-8111-111111111111', $data->platform_product_id);
     }
 }

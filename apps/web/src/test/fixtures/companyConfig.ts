@@ -26,6 +26,7 @@ export const defaultCompanyConfig: TestCompanyConfig = {
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
   line_designation_override_enabled: false,
+  purchase_bonus_enabled: false,
 }
 
 export const pharmacyCompanyConfig: TestCompanyConfig = {
@@ -39,6 +40,7 @@ export const pharmacyCompanyConfig: TestCompanyConfig = {
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
   line_designation_override_enabled: false,
+  purchase_bonus_enabled: false,
 }
 
 /**
@@ -58,6 +60,7 @@ export const parapharmacyCompanyConfig: TestCompanyConfig = {
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
   line_designation_override_enabled: false,
+  purchase_bonus_enabled: false,
 }
 
 /**
@@ -80,6 +83,7 @@ export const genericWithParapharmacyExtraCompanyConfig: TestCompanyConfig = {
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
   line_designation_override_enabled: false,
+  purchase_bonus_enabled: false,
 }
 
 /**
@@ -97,6 +101,7 @@ export const mechanicCompanyConfig: TestCompanyConfig = {
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
   line_designation_override_enabled: false,
+  purchase_bonus_enabled: false,
 }
 
 /**
@@ -114,4 +119,5 @@ export const mechanicWithExtrasCompanyConfig: TestCompanyConfig = {
   smart_prompts_enabled: false,
   smart_prompts_variant: 'off',
   line_designation_override_enabled: false,
+  purchase_bonus_enabled: false,
 }

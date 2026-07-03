@@ -14,6 +14,13 @@
     </thead>
     <tbody>
         @foreach($lines as $index => $line)
+        @php
+            $freeQuantity = (string) ($line->free_quantity ?? '0');
+            $hasFreeQuantity = bccomp($freeQuantity, '0', 4) > 0;
+            $physicalQuantity = $hasFreeQuantity
+                ? bcadd((string) $line->quantity, $freeQuantity, 4)
+                : (string) $line->quantity;
+        @endphp
         <tr>
             <td>{{ $index + 1 }}</td>
             <td>
@@ -23,6 +30,14 @@
                 @endif
                 @if(config('features.documents.line_designation_override.enabled') && $line->notes)
                     <div class="item-description">{{ $line->notes }}</div>
+                @endif
+                @if($hasFreeQuantity)
+                    <div class="item-description">
+                        {{ __('documents.bonus_quantity.sub_row', ['quantity' => $formatNumber($freeQuantity, 2)]) }}
+                    </div>
+                    <div class="item-description">
+                        {{ __('documents.bonus_quantity.line_total', ['quantity' => $formatNumber($physicalQuantity, 2)]) }}
+                    </div>
                 @endif
             </td>
             <td class="center">{{ $formatNumber($line->quantity, 2) }}</td>

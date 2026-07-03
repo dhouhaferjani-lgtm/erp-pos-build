@@ -12,7 +12,9 @@ use App\Modules\Accounting\Application\Services\FiscalPeriodResolverService;
 use App\Modules\Accounting\Application\Services\Reports\AgedPayablesService;
 use App\Modules\Accounting\Application\Services\Reports\AgedReceivablesService;
 use App\Modules\Accounting\Application\Services\Reports\BalanceSheetService;
+use App\Modules\Accounting\Application\Services\Reports\CashMovementsReportService;
 use App\Modules\Accounting\Application\Services\Reports\CashRegisterReportService;
+use App\Modules\Accounting\Application\Services\Reports\LiveSalesReportService;
 use App\Modules\Accounting\Application\Services\Reports\OwnerReportScope;
 use App\Modules\Accounting\Application\Services\Reports\OwnerSalesSummaryService;
 use App\Modules\Accounting\Application\Services\Reports\ProfitLossService;
@@ -23,6 +25,7 @@ use App\Modules\Accounting\Application\Services\Reports\UpcomingPaymentsService;
 use App\Modules\Accounting\Presentation\Requests\GetAgedPayablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetAgedReceivablesRequest;
 use App\Modules\Accounting\Presentation\Requests\GetBalanceSheetRequest;
+use App\Modules\Accounting\Presentation\Requests\GetCashMovementsRequest;
 use App\Modules\Accounting\Presentation\Requests\GetOwnerCashReconciliationRequest;
 use App\Modules\Accounting\Presentation\Requests\GetOwnerSalesReportRequest;
 use App\Modules\Accounting\Presentation\Requests\GetOwnerStockAlertsRequest;
@@ -35,6 +38,7 @@ use Carbon\Carbon;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * ReportsController
@@ -78,6 +82,7 @@ class ReportsController extends Controller
         private readonly TrialBalanceService $trialBalanceService,
         private readonly ProfitLossService $profitLossService,
         private readonly BalanceSheetService $balanceSheetService,
+        private readonly CashMovementsReportService $cashMovementsReportService,
         private readonly AgedReceivablesService $agedReceivablesService,
         private readonly AgedPayablesService $agedPayablesService,
         private readonly UpcomingPaymentsService $upcomingPaymentsService,
@@ -86,6 +91,7 @@ class ReportsController extends Controller
         private readonly StockAlertReportService $stockAlertReportService,
         private readonly CashRegisterReportService $cashRegisterReportService,
         private readonly OwnerSalesSummaryService $ownerSalesSummaryService,
+        private readonly LiveSalesReportService $liveSalesReportService,
     ) {}
 
     public function salesByLocation(GetOwnerSalesReportRequest $request): JsonResponse
@@ -194,6 +200,48 @@ class ReportsController extends Controller
                 locationIds: $locationIds,
             ),
         ]);
+    }
+
+    public function liveSales(Request $request): JsonResponse
+    {
+        $user = $this->ownerUser($request->user());
+        $companyIds = $this->ownerReportScope->companyIds(null, $user);
+        $locationIds = $this->ownerReportScope->locationIds($companyIds, null, $user);
+
+        $report = $this->liveSalesReportService->report($companyIds, $locationIds);
+
+        return response()->json([
+            'data' => [
+                'recent_receipts' => $report->recent_receipts,
+                // Cast so an empty map serializes as {} (FE expects Record<string, number>).
+                'open_shifts_by_location' => (object) $report->open_shifts_by_location,
+                'generated_at' => $report->generated_at,
+            ],
+        ]);
+    }
+
+    public function cashMovements(GetCashMovementsRequest $request): JsonResponse
+    {
+        try {
+            $company = $this->companyContext->requireCompany();
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COMPANY_CONTEXT_REQUIRED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 401);
+        }
+
+        return response()->json($this->cashMovementsReportService->generate(
+            companyId: $company->id,
+            companyCurrency: $company->currency,
+            from: $request->fromDate(),
+            to: $request->toDate(),
+            repositoryId: $request->repositoryId(),
+            page: $request->page(),
+            perPage: $request->perPage(),
+        ));
     }
 
     private function ownerUser(?Authenticatable $user): User

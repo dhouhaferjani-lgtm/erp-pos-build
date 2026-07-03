@@ -21,11 +21,14 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
     // Expense documents
     Route::get('expenses', [ExpenseController::class, 'index'])->middleware('can:expenses.view')->name('expenses.index');
+    Route::get('expenses/linkable-invoices', [ExpenseController::class, 'linkableInvoices'])->middleware('can:expenses.create')->name('expenses.linkable-invoices');
+    Route::get('expenses/linkable-operations', [ExpenseController::class, 'linkableOperations'])->middleware('can:expenses.create')->name('expenses.linkable-operations');
     Route::post('expenses', [ExpenseController::class, 'store'])->middleware('can:expenses.create')->name('expenses.store');
     Route::get('expenses/{id}', [ExpenseController::class, 'show'])->name('expenses.show');
     Route::match(['put', 'patch'], 'expenses/{id}', [ExpenseController::class, 'update'])->name('expenses.update');
     Route::delete('expenses/{id}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
     Route::post('expenses/{id}/post', [ExpenseController::class, 'post'])->name('expenses.post');
+    Route::post('expenses/{id}/reverse', [ExpenseController::class, 'reverse'])->name('expenses.reverse');
 
     // Expense categories
     Route::get('expense-categories', [ExpenseCategoryController::class, 'index'])->middleware('can:expense-categories.view')->name('expense-categories.index');
