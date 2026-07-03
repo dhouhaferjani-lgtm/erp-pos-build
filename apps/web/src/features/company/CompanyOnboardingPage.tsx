@@ -6,6 +6,7 @@ import { useMutation } from '@tanstack/react-query'
 import { createCompany, type CreateCompanyInput } from './api'
 import { useInvalidateCompanies } from './CompanyProvider'
 import { getErrorMessage } from '../../lib/api'
+import { orderCountries } from '../../lib/orderCountries'
 import { useCompanyStore } from '../../stores/companyStore'
 import { cn } from '@/lib/utils'
 import { tokens, textColors, colors, borderColors } from '@/lib/designTokens'
@@ -32,6 +33,10 @@ const COUNTRIES: CountryConfig[] = [
   { name: 'Algeria', code: 'DZ', currency: 'DZD', locale: 'ar_DZ', timezone: 'Africa/Algiers' },
   { name: 'United States', code: 'US', currency: 'USD', locale: 'en_US', timezone: 'America/New_York' },
 ]
+
+// Onboarding happens before any company exists, so there is no "current
+// country" to prefer — plain alphabetical, no hardcoded France-first bias.
+const ORDERED_COUNTRIES = orderCountries(COUNTRIES, null)
 
 export function CompanyOnboardingPage() {
   const { t } = useTranslation(['common', 'settings'])
@@ -211,7 +216,7 @@ export function CompanyOnboardingPage() {
               </div>
 
               <div className="space-y-3">
-                {COUNTRIES.map((country) => (
+                {ORDERED_COUNTRIES.map((country) => (
                   <button
                     key={country.code}
                     type="button"

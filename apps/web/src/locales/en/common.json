@@ -341,10 +341,10 @@
       "namePlaceholder": "Main Warehouse",
       "codePlaceholder": "WH-001",
       "emailPlaceholder": "warehouse@company.com",
-      "phonePlaceholder": "+33 1 23 45 67 89",
-      "streetPlaceholder": "123 Industrial Ave",
-      "cityPlaceholder": "Paris",
-      "postalCodePlaceholder": "75001"
+      "phonePlaceholder": "",
+      "streetPlaceholder": "",
+      "cityPlaceholder": "",
+      "postalCodePlaceholder": ""
     },
     "form": {
       "name": "Location Name",

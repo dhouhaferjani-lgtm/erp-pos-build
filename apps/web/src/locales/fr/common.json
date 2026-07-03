@@ -328,10 +328,10 @@
       "namePlaceholder": "Entrepôt principal",
       "codePlaceholder": "ENT-001",
       "emailPlaceholder": "entrepot@entreprise.com",
-      "phonePlaceholder": "+33 1 23 45 67 89",
-      "streetPlaceholder": "123 Avenue Industrielle",
-      "cityPlaceholder": "Paris",
-      "postalCodePlaceholder": "75001"
+      "phonePlaceholder": "",
+      "streetPlaceholder": "",
+      "cityPlaceholder": "",
+      "postalCodePlaceholder": ""
     },
     "form": {
       "name": "Nom de l'emplacement",
