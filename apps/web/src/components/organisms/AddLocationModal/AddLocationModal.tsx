@@ -8,6 +8,8 @@ import { createLocation, type CreateLocationInput, transformLocationResponse } f
 import { useInvalidateLocations } from '../../../features/location/LocationProvider'
 import { isBranchTaxIdRequiredCountry } from '../../../features/location/branchTaxCountries'
 import { useCountries } from '../../../features/settings/hooks/useCountries'
+import { useCountryProfile } from '../../../features/settings/hooks/useCountryProfile'
+import { getCountryPlaceholders } from '../../../lib/countryPlaceholders'
 import { useCompany } from '../../../hooks/useCompany'
 import { getErrorMessage } from '../../../lib/api'
 import { cn } from '../../../lib/utils'
@@ -68,6 +70,12 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
 
   const requiresTaxId =
     formData.type === 'shop' && isBranchTaxIdRequiredCountry(formData.addressCountry)
+
+  // Country-profile-driven tax label + placeholders for the selected country
+  const normalizedCountry = formData.addressCountry.trim().toUpperCase()
+  const { profile: countryProfile } = useCountryProfile(normalizedCountry)
+  const taxIdLabel = countryProfile?.taxIdLabel ?? t('common:locations.form.taxId')
+  const countryPlaceholders = getCountryPlaceholders(normalizedCountry, countryProfile?.phonePrefix)
 
   const mutation = useMutation({
     mutationFn: async (input: CreateLocationInput) => {
@@ -355,7 +363,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="taxId" className={tokens.label.base}>
-                  {t('common:locations.form.taxId')} <span className={tokens.label.required}>*</span>
+                  {taxIdLabel} <span className={tokens.label.required}>*</span>
                 </label>
                 <input
                   type="text"
@@ -363,6 +371,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
                   name="taxId"
                   value={formData.taxId}
                   onChange={handleChange}
+                  placeholder={countryPlaceholders.taxId}
                   className={tokens.input.base}
                 />
                 <p className={cn('mt-1 text-xs', textColors.tertiary)}>

@@ -5,6 +5,8 @@ import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truc
 import { fetchLocations, createLocation, updateLocation, deleteLocation, setDefaultLocation } from '../location/api'
 import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput } from '../location/api'
 import { isBranchTaxIdRequiredCountry } from '../location/branchTaxCountries'
+import { useCountryProfile } from './hooks/useCountryProfile'
+import { getCountryPlaceholders } from '../../lib/countryPlaceholders'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { cn } from '../../lib/utils'
@@ -213,6 +215,12 @@ export function LocationsPage() {
   const isMutating = createMutation.isPending || updateMutation.isPending
   const isTaxIdRequiredHint =
     formData.type === 'shop' && isBranchTaxIdRequiredCountry(formData.addressCountry)
+
+  // Country-profile-driven tax label + placeholder for the form's country
+  const formCountry = formData.addressCountry.trim().toUpperCase()
+  const { profile: countryProfile } = useCountryProfile(formCountry)
+  const taxIdLabel = countryProfile?.taxIdLabel ?? t('locations.form.taxId')
+  const countryPlaceholders = getCountryPlaceholders(formCountry, countryProfile?.phonePrefix)
 
   if (isLoading) {
     return (
@@ -449,7 +457,7 @@ export function LocationsPage() {
             {/* Tax Identity */}
             <div className="grid grid-cols-2 gap-4">
               <FormField
-                label={isTaxIdRequiredHint ? `${t('locations.form.taxId')} *` : t('locations.form.taxId')}
+                label={isTaxIdRequiredHint ? `${taxIdLabel} *` : taxIdLabel}
                 htmlFor="taxId"
                 helperText={isTaxIdRequiredHint ? t('locations.form.taxIdRequiredHint') : undefined}
               >
@@ -458,6 +466,7 @@ export function LocationsPage() {
                   id="taxId"
                   value={formData.taxId}
                   onChange={(e) => { setFormData({ ...formData, taxId: e.target.value }) }}
+                  placeholder={countryPlaceholders.taxId}
                   aria-required={isTaxIdRequiredHint}
                   aria-describedby={isTaxIdRequiredHint ? 'taxId-required-hint' : undefined}
                 />

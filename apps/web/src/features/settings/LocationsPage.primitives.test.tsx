@@ -34,6 +34,24 @@ vi.mock('@/components/ui/ConfirmDialog', () => ({
     isOpen ? <button type="button">{confirmText}</button> : null,
 }))
 
+vi.mock('./hooks/useCountryProfile', () => ({
+  useCountryProfile: (code: string | null | undefined) =>
+    (code ?? '').trim().toUpperCase() === 'TN'
+      ? {
+          profile: {
+            taxIdLabel: 'Matricule Fiscal',
+            taxIdRegex: null,
+            phonePrefix: '216',
+            currencyCode: 'TND',
+            currencySymbol: 'DT',
+            dateFormat: 'DD/MM/YYYY',
+            timezone: 'Africa/Tunis',
+          },
+          isLoading: false,
+        }
+      : { profile: null, isLoading: false },
+}))
+
 function setTenant() {
   useAuthStore.setState({
     user: {
@@ -127,5 +145,14 @@ describe('LocationsPage shared primitives', () => {
     render(<LocationsPage />, { wrapper: wrapper() })
     await screen.findByRole('button', { name: 'locations.addLocation' })
     expect(screen.getByText('settings:locations.scopeHint')).toBeInTheDocument()
+  })
+
+  it('labels the edit-form tax field from the country profile for a TN location', async () => {
+    render(<LocationsPage />, { wrapper: wrapper() })
+    // The fixture location has address_country 'TN'
+    await userEvent.click(await screen.findByRole('button', { name: /actions\.edit/ }))
+
+    const taxInput = await screen.findByLabelText(/matricule fiscal/i)
+    expect(taxInput).toHaveAttribute('placeholder', '1234567AM000')
   })
 })

@@ -75,13 +75,21 @@ function countryFixture(overrides: Partial<Country>): Country {
   }
 }
 
+function countryList(): Country[] {
+  return [
+    countryFixture({ code: 'TN', name: 'Tunisia' }),
+    countryFixture({ code: 'FR', name: 'France', tax_id_label: 'SIREN', phone_prefix: '33' }),
+    countryFixture({ code: 'DE', name: 'Germany', tax_id_label: null, phone_prefix: '49' }),
+  ]
+}
+
 vi.mock('@/features/settings/hooks/useCountries', () => ({
   useCountries: () => ({
-    data: [
-      countryFixture({ code: 'TN', name: 'Tunisia' }),
-      countryFixture({ code: 'FR', name: 'France', tax_id_label: 'SIREN' }),
-      countryFixture({ code: 'DE', name: 'Germany', tax_id_label: null }),
-    ],
+    data: countryList(),
+    isLoading: false,
+  }),
+  useCountry: (code: string) => ({
+    data: countryList().find((country) => country.code === code),
     isLoading: false,
   }),
 }))
@@ -129,7 +137,21 @@ describe('AddLocationModal country + branch tax fields', () => {
     await user.selectOptions(screen.getByLabelText(/form\.type/i), 'warehouse')
 
     expect(screen.queryByLabelText(/form\.taxId/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/matricule fiscal/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/form\.vatNumber/i)).not.toBeInTheDocument()
+  })
+
+  it('labels the tax field from the selected country profile and flips on country change', async () => {
+    const user = userEvent.setup()
+    renderModal({ companyCountry: 'TN' })
+
+    expect(screen.getByLabelText(/matricule fiscal/i)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('1234567AM000')).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText(/form\.country/i), 'FR')
+
+    expect(screen.getByLabelText(/SIREN/i)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('FR12345678901')).toBeInTheDocument()
   })
 
   it('sends country and tax fields in the create payload', async () => {
@@ -158,7 +180,8 @@ describe('AddLocationModal country + branch tax fields', () => {
     renderModal({ companyCountry: 'TN' })
 
     await user.type(screen.getByLabelText(/form\.name/i), 'Branch Sfax')
-    await user.type(screen.getByLabelText(/form\.taxId/i), '1234567AM000')
+    // Country is TN → the tax field is labeled from the country profile (Task 7)
+    await user.type(screen.getByLabelText(/matricule fiscal/i), '1234567AM000')
     await user.click(screen.getByRole('button', { name: /modal\.createButton/i }))
 
     expect(createLocationMock).toHaveBeenCalledWith(
