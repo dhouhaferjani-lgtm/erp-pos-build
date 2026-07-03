@@ -16,8 +16,13 @@ import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { Button, Checkbox, FormField, Input, Textarea, MoneyInput, Toggle, QuantityInput } from '../../components/atoms'
 import { CatalogBanner } from './components/CatalogBanner'
+import { EnrichmentCapturePanel, type EnrichmentAttributeRow } from './components/EnrichmentCapturePanel'
+import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
 import { useEnrichmentRefresh, useProductSubmission } from './api/platformQueries'
+import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
+import type { SubmitForEnrichmentPayload } from './api/platformApi'
 import type { LookupState, SuggestedProduct } from './types/platform'
+import type { UploadedPhoto } from './api/enrichmentPhotos'
 import { ProductImageSection, ParapharmacyMetadataFields, CreateModeImageBuffer } from '../products/components'
 import { uploadProductImage } from '../products/api/productImages'
 import { ProductVariantMatrixEditor } from '../catalog/components/ProductVariantMatrixEditor'
@@ -81,6 +86,8 @@ interface Product {
   shelf_location: string | null
   reorder_point: string | null
   reorder_quantity: string | null
+  enrichment_status: string | null
+  platform_product_id: string | null
   created_at: string
   updated_at: string | null
   // Generated type: App.Modules.Product.Application.DTOs.OpeningStateData
@@ -254,6 +261,9 @@ export function ProductForm() {
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [isResettingOpening, setIsResettingOpening] = useState(false)
   const [enrichmentOptIn, setEnrichmentOptIn] = useState(true)
+  const [capturePhotos, setCapturePhotos] = useState<UploadedPhoto[]>([])
+  const [captureBrand, setCaptureBrand] = useState('')
+  const [captureAttributes, setCaptureAttributes] = useState<EnrichmentAttributeRow[]>([])
   const suggestedProductRef = useRef<SuggestedProduct | null>(null)
   const [prefilledFields, setPrefilledFields] = useState<Set<string>>(new Set())
   // create-mode image buffer: files held client-side until product id is known
@@ -345,6 +355,14 @@ export function ProductForm() {
     }
   }, [])
 
+  useEffect(() => {
+    if (lookupState !== 'not_found') {
+      setCapturePhotos([])
+      setCaptureBrand('')
+      setCaptureAttributes([])
+    }
+  }, [lookupState])
+
   const oemNumbers = watch('oem_numbers')
   const categoryId = watch('category_id')
   const requiresBatchTracking = watch('requires_batch_tracking')
@@ -390,6 +408,14 @@ export function ProductForm() {
       return response.data.data
     },
     enabled: isEditing && !!tenantId && !!companyId,
+  })
+  const fastPathState = useEnrichmentFastPath({
+    productId: id,
+    enabled: Boolean(
+      isEditing &&
+      product?.enrichment_status === 'pending' &&
+      hasPermission('enrichment.view'),
+    ),
   })
 
   // Opening state derivations — must follow useQuery so `product` is in scope.
@@ -588,16 +614,56 @@ export function ProductForm() {
       const created = await createMutation.mutateAsync(data)
 
       if (lookupState === 'not_found' && enrichmentOptIn) {
-        const payload: Parameters<typeof submissionMutation.mutate>[0] = {
+        const payload: SubmitForEnrichmentPayload = {
           product_id: created.id,
           barcode: data.barcode || null,
           name: data.name,
-          brand: suggestedProductRef.current?.brand ?? '',
+          brand: captureBrand.trim() !== '' ? captureBrand.trim() : null,
+          photo_ids: capturePhotos.map((photo) => photo.photoId),
         }
         if (data.description) {
           payload.description = data.description
         }
-        submissionMutation.mutate(payload)
+        const attributes = Object.fromEntries(
+          captureAttributes
+            .filter((row) => row.key.trim() !== '')
+            .map((row) => [row.key.trim(), row.value]),
+        )
+        if (Object.keys(attributes).length > 0) {
+          payload.attributes = attributes
+        }
+        submissionMutation.mutate(payload, {
+          onError: (error: unknown) => {
+            if (!isApiError(error)) {
+              return
+            }
+
+            const code = error.response?.data.error.code
+            if (code === 'invalid_barcode') {
+              toast.error(t('inventory:barcodeLookup.invalidBarcode'))
+              return
+            }
+
+            if (code === 'enrichment_tracking_conflict') {
+              const details = error.response?.data.error.details ?? {}
+              const holderName = typeof details['holder_product_name'] === 'string'
+                ? details['holder_product_name']
+                : t('inventory:products.singular')
+              const holderId = typeof details['holder_product_id'] === 'string'
+                ? details['holder_product_id']
+                : null
+
+              toast.error(t('inventory:barcodeLookup.trackingConflict', { name: holderName }), holderId
+                ? {
+                    action: {
+                      label: t('actions.view'),
+                      onClick: () => navigate(`/inventory/products/${holderId}`),
+                    },
+                  }
+                : undefined)
+            }
+          },
+        })
         toast.success(t('inventory:barcodeLookup.toastSavedWithEnrichment'))
       } else if (lookupState === 'found') {
         toast.success(t('inventory:barcodeLookup.toastSavedWithCatalog'))
@@ -997,20 +1063,41 @@ export function ProductForm() {
         strip={readyToSellStrip}
       />
 
+      {isEditing ? (
+        <EnrichmentReadyCard
+          state={fastPathState}
+          canReview={hasPermission('enrichment.review')}
+          productQueryKey={tenantScopedKey(['product', id])}
+        />
+      ) : null}
+
       {/* Enrichment opt-in — shown under the hero when barcode not found in
           catalog so the operator can submit for enrichment on save. */}
       {lookupState === 'not_found' && (
-        <div className={cn('flex items-center gap-2.5 rounded-lg px-3.5 py-3', colors.neutral[100])}>
-          <Checkbox
-            id="enrichment-opt-in"
-            checked={enrichmentOptIn}
-            onChange={(e) => setEnrichmentOptIn(e.target.checked)}
-          />
-          <label htmlFor="enrichment-opt-in" className="text-sm">
-            <span className="font-medium">{t('inventory:barcodeLookup.enrichmentCheckbox')}</span>
-            <br />
-            <span className="text-xs opacity-70">{t('inventory:barcodeLookup.enrichmentDescription')}</span>
-          </label>
+        <div className="space-y-3">
+          <div className={cn('flex items-center gap-2.5 rounded-lg px-3.5 py-3', colors.neutral[100])}>
+            <Checkbox
+              id="enrichment-opt-in"
+              checked={enrichmentOptIn}
+              onChange={(e) => setEnrichmentOptIn(e.target.checked)}
+            />
+            <label htmlFor="enrichment-opt-in" className="text-sm">
+              <span className="font-medium">{t('inventory:barcodeLookup.enrichmentCheckbox')}</span>
+              <br />
+              <span className="text-xs opacity-70">{t('inventory:barcodeLookup.enrichmentDescription')}</span>
+            </label>
+          </div>
+          {enrichmentOptIn ? (
+            <EnrichmentCapturePanel
+              photos={capturePhotos}
+              onPhotosChange={setCapturePhotos}
+              brand={captureBrand}
+              onBrandChange={setCaptureBrand}
+              attributes={captureAttributes}
+              onAttributesChange={setCaptureAttributes}
+              disabled={isSubmitting}
+            />
+          ) : null}
         </div>
       )}
 

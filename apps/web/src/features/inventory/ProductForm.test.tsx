@@ -26,13 +26,15 @@ vi.mock('react-router-dom', () => ({
 }))
 
 // Shared mutateAsync handle so tests can configure per-test resolution.
-const { mockMutateAsync, mockApiPost, mockApiPatch } = vi.hoisted(() => {
+const { mockMutateAsync, mockApiPost, mockApiPatch, mockSubmitForEnrichment, mockUploadEnrichmentPhoto } = vi.hoisted(() => {
   const mutateAsync = vi.fn()
 
   return {
     mockMutateAsync: mutateAsync,
     mockApiPost: vi.fn((_: string, payload: unknown) => mutateAsync(payload)),
     mockApiPatch: vi.fn((_: string, payload: unknown) => mutateAsync(payload)),
+    mockSubmitForEnrichment: vi.fn(),
+    mockUploadEnrichmentPhoto: vi.fn(),
   }
 })
 
@@ -93,8 +95,12 @@ vi.mock('../../hooks/useCurrency', () => ({
   getDecimals: () => 2,
 }))
 vi.mock('./api/platformQueries', () => ({
-  useProductSubmission: () => ({ mutate: vi.fn() }),
+  useProductSubmission: () => ({ mutate: mockSubmitForEnrichment }),
   useEnrichmentRefresh: () => ({ mutate: vi.fn(), isPending: false }),
+}))
+vi.mock('./api/enrichmentPhotos', () => ({
+  MAX_PHOTO_BYTES: 5_242_880,
+  uploadEnrichmentPhoto: mockUploadEnrichmentPhoto,
 }))
 vi.mock('../catalog/hooks/useVariants', () => ({
   useVariantsForProduct: () => ({ data: [] }),
@@ -150,6 +156,8 @@ beforeEach(() => {
   mockMutateAsync.mockReset()
   mockApiPost.mockClear()
   mockApiPatch.mockClear()
+  mockSubmitForEnrichment.mockClear()
+  mockUploadEnrichmentPhoto.mockReset()
   vi.mocked(useCatalogBarcodeLookup).mockImplementation(() => ({ isSearching: false }))
 })
 
@@ -173,6 +181,16 @@ function mockFoundLookup(suggestion: SuggestedProduct): void {
       onLookupStateChange('found')
       onProductData(suggestion)
     }, [onLookupStateChange, onProductData])
+
+    return { isSearching: false }
+  })
+}
+
+function mockNotFoundLookup(): void {
+  vi.mocked(useCatalogBarcodeLookup).mockImplementation(({ onLookupStateChange }) => {
+    useEffect(() => {
+      onLookupStateChange('not_found')
+    }, [onLookupStateChange])
 
     return { isSearching: false }
   })
@@ -309,6 +327,77 @@ describe('ProductForm (canonical layout)', () => {
 
     await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
     expect(getProductsPostPayload()).not.toHaveProperty('platform_product_id')
+  })
+
+  it('renders the capture panel for not_found opt-in submissions', async () => {
+    mockNotFoundLookup()
+
+    render(<ProductForm />)
+
+    expect(await screen.findByText('barcodeLookup.capturePhotoHelp')).toBeInTheDocument()
+  })
+
+  it('submits capture panel brand and uploaded photo ids for not_found opt-in', async () => {
+    mockNotFoundLookup()
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-not-found' })
+    mockUploadEnrichmentPhoto.mockResolvedValueOnce({ photoId: 'ph_1', filename: 'front.jpg' })
+
+    render(<ProductForm />)
+
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Manual Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-NF' } })
+    fireEvent.change(await screen.findByLabelText('barcodeLookup.captureAddPhoto'), {
+      target: { files: [new File(['front'], 'front.jpg', { type: 'image/jpeg' })] },
+    })
+    await waitFor(() => expect(mockUploadEnrichmentPhoto).toHaveBeenCalled())
+    fireEvent.change(screen.getByLabelText('barcodeLookup.captureBrandLabel'), {
+      target: { value: 'BrandX' },
+    })
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => {
+      expect(mockSubmitForEnrichment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          brand: 'BrandX',
+          photo_ids: ['ph_1'],
+        }),
+        expect.objectContaining({ onError: expect.any(Function) }),
+      )
+    })
+  })
+
+  it('submits null brand for not_found opt-in when capture brand is empty', async () => {
+    mockNotFoundLookup()
+    mockMutateAsync.mockResolvedValueOnce({ id: 'prod-null-brand' })
+
+    render(<ProductForm />)
+
+    fireEvent.change(screen.getByLabelText('inventory:products.name', { exact: false }), { target: { value: 'Manual Product' } })
+    fireEvent.change(screen.getByLabelText('inventory:products.sku', { exact: false }), { target: { value: 'SKU-NULL' } })
+    await screen.findByText('barcodeLookup.capturePhotoHelp')
+    fireEvent.submit(document.getElementById('product-editor-form') as HTMLFormElement)
+
+    await waitFor(() => {
+      expect(mockSubmitForEnrichment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          brand: null,
+          photo_ids: [],
+        }),
+        expect.objectContaining({ onError: expect.any(Function) }),
+      )
+    })
+  })
+
+  it('does not render the capture panel in idle or found lookup states', async () => {
+    const { rerender } = render(<ProductForm />)
+    expect(screen.queryByText('barcodeLookup.capturePhotoHelp')).not.toBeInTheDocument()
+
+    mockFoundLookup(makeSuggestedProduct())
+    rerender(<ProductForm />)
+
+    await waitFor(() => {
+      expect(screen.queryByText('barcodeLookup.capturePhotoHelp')).not.toBeInTheDocument()
+    })
   })
 })
 

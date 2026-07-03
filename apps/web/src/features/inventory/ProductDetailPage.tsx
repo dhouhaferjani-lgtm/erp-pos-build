@@ -8,6 +8,7 @@ import { useCompanyStore } from '../../stores/companyStore'
 import { useAuthStore } from '../../stores/authStore'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
+import { usePermissions } from '../../hooks/usePermissions'
 import { formatCurrency } from '../../lib/format'
 import { bccomp, bcdiv, bcmul, bcsub } from '../../lib/decimal'
 import { cn } from '../../lib/utils'
@@ -28,6 +29,8 @@ import { useProductRealtime } from '../products/hooks/useProductRealtime'
 import { ProductStockLevels } from './components'
 import { useTaxConfigName } from '../../hooks/useTaxConfigName'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
+import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
+import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
 import { ProductHero } from '../products/editor/components/ProductHero'
 import {
   PRODUCT_DETAIL_SECTIONS,
@@ -52,6 +55,8 @@ interface Product {
   stock_quantity?: string | null
   brand?: { id?: string; name: string; source?: string | null } | null
   category?: { id?: string; name: string } | null
+  enrichment_status: string | null
+  platform_product_id: string | null
   oem_numbers: string[] | null
   cross_references: { brand: string; reference: string }[] | null
   created_at: string
@@ -96,6 +101,8 @@ export function ProductDetailPage() {
     setSearchParams(next)
   }
 
+  const { hasPermission } = usePermissions()
+
   const { data, isLoading, error } = useQuery({
     queryKey: tenantScopedKey(['product', id]),
     queryFn: async () => {
@@ -118,6 +125,14 @@ export function ProductDetailPage() {
   // "Rendered more hooks than during the previous render". The hook null-guards
   // its argument internally, so `data?.…` is safe before the product loads.
   const taxConfigName = useTaxConfigName(data?.default_tax_configuration_id)
+  const fastPathState = useEnrichmentFastPath({
+    productId: id ?? '',
+    enabled: Boolean(
+      id &&
+      data?.enrichment_status === 'pending' &&
+      hasPermission('enrichment.view'),
+    ),
+  })
 
   const deleteMutation = useMutation({
     mutationFn: () => {
@@ -183,6 +198,7 @@ export function ProductDetailPage() {
   }
 
   const product = data
+  const productQueryKey = tenantScopedKey(['product', product.id])
   const productMargin = product.sale_price !== null && product.cost_price !== null
     ? bcsub(product.sale_price, product.cost_price, 3)
     : null
@@ -392,6 +408,12 @@ export function ProductDetailPage() {
             </Button>
           </>
         }
+      />
+
+      <EnrichmentReadyCard
+        state={fastPathState}
+        canReview={hasPermission('enrichment.review')}
+        productQueryKey={productQueryKey}
       />
 
       {/* Tabs */}
