@@ -14,6 +14,10 @@
       "title": "Informations de l'entreprise",
       "description": "Mettre à jour les détails de l'entreprise et les informations commerciales"
     },
+    "locations": {
+      "title": "Sites & succursales",
+      "description": "Gérez l'adresse, les contacts et l'identifiant fiscal de chaque succursale"
+    },
     "tax": {
       "title": "Paramètres fiscaux",
       "description": "Configurer les taux de taxe et les paramètres de l'exercice fiscal"
@@ -49,6 +53,7 @@
   },
   "company": {
     "title": "Paramètres de l'entreprise",
+    "scopeBanner": "Ces paramètres s'appliquent à toute l'entreprise {{company}}. Les détails des succursales (adresse, identifiant fiscal) se modifient dans <locationsLink>Sites & succursales</locationsLink>.",
     "tabs": {
       "general": "Général",
       "receipt": "Ticket"
@@ -89,15 +94,15 @@
       "legalNamePlaceholder": "Mon Entreprise SARL",
       "tunisiaLegalNamePlaceholder": "PharmaBio Tunisie SARL",
       "emailPlaceholder": "contact@entreprise.com",
-      "phonePlaceholder": "+33 1 23 45 67 89",
+      "phonePlaceholder": "",
       "tunisiaPhonePlaceholder": "+216 71 123 456",
-      "streetPlaceholder": "123 Rue Principale",
+      "streetPlaceholder": "",
       "tunisiaStreetPlaceholder": "12 Avenue Habib Bourguiba",
-      "cityPlaceholder": "Paris",
+      "cityPlaceholder": "",
       "tunisiaCityPlaceholder": "Tunis",
-      "postalCodePlaceholder": "75001",
+      "postalCodePlaceholder": "",
       "tunisiaPostalCodePlaceholder": "1000",
-      "taxIdPlaceholder": "FR12345678901",
+      "taxIdPlaceholder": "",
       "tunisiaTaxIdPlaceholder": "1234567/A/M/000",
       "selectCountry": "Sélectionnez votre pays",
       "selectCountryHint": "Cela déterminera votre devise, fuseau horaire et paramètres régionaux par défaut",
@@ -121,14 +126,6 @@
       "replaceLogo": "Remplacer"
     },
     "placeholders": {
-      "taxId": "FR12345678901",
-      "tunisiaTaxId": "1234567/A/M/000",
-      "registrationNumber": "123 456 789 RCS Paris",
-      "tunisiaRegistrationNumber": "B123456789",
-      "street": "123 Rue des Affaires",
-      "tunisiaStreet": "12 Avenue Habib Bourguiba",
-      "city": "Ville",
-      "tunisiaCity": "Tunis",
       "primaryColor": "#2563EB"
     },
     "currencies": {
@@ -169,6 +166,9 @@
       "uploadLogo": "Cliquez pour télécharger le logo",
       "logoFormats": "PNG, JPG, SVG jusqu'à 2 Mo"
     }
+  },
+  "locations": {
+    "scopeHint": "Données propres à chaque succursale. Les champs fiscaux vides héritent des valeurs de l'entreprise."
   },
   "receipt": {
     "title": "Paramètres du ticket",

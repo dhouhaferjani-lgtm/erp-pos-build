@@ -5,6 +5,8 @@ import { X, Loader2 } from 'lucide-react'
 import { createCompany, type CreateCompanyInput } from '../../../features/company/api'
 import { useInvalidateCompanies } from '../../../features/company/CompanyProvider'
 import { getErrorMessage } from '../../../lib/api'
+import { orderCountries } from '../../../lib/orderCountries'
+import { useCompany } from '../../../hooks/useCompany'
 import { useCompanyStore } from '../../../stores/companyStore'
 
 interface AddCompanyModalProps {
@@ -40,6 +42,9 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
   const { t } = useTranslation(['settings', 'common', 'countries'])
   const invalidateCompanies = useInvalidateCompanies()
   const setCurrentCompany = useCompanyStore((state) => state.setCurrentCompany)
+  const { currentCompany } = useCompany()
+  // Current company's country first, then alphabetical — no hardcoded bias.
+  const orderedCountries = orderCountries(COUNTRIES, currentCompany?.countryCode)
 
   const [formData, setFormData] = useState({
     name: '',
@@ -157,7 +162,7 @@ export function AddCompanyModal({ isOpen, onClose }: AddCompanyModalProps) {
               onChange={handleChange}
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              {COUNTRIES.map((country) => (
+              {orderedCountries.map((country) => (
                 <option key={country.code} value={country.code}>
                   {t(`countries:${country.code}`, { defaultValue: country.name })}
                 </option>

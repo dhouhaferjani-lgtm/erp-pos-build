@@ -124,6 +124,7 @@ import arAdmin from '../locales/ar/admin.json'
 import arPurchases from '../locales/ar/purchases.json'
 import arProducts from '../locales/ar/products.json'
 import arSales from '../locales/ar/sales.json'
+import arSettings from '../locales/ar/settings.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -283,7 +284,13 @@ const resources = {
     finance: enFinance,
     expenses: enExpenses,
     import: enImport,
-    settings: enSettings,
+    settings: {
+      ...enSettings,
+      ...arSettings,
+      sections: { ...enSettings.sections, ...arSettings.sections },
+      company: { ...enSettings.company, ...arSettings.company },
+      locations: { ...enSettings.locations, ...arSettings.locations },
+    },
     uom: enUom,
     products: { ...enProducts, ...arProducts },
     parapharmacy: enParapharmacy,
