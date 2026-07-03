@@ -70,3 +70,13 @@ passed explicitly. Only minor/nit-level notes below, all mirroring the pre-exist
 
 ## One-line
 Ship-ready as a gate PASS; optionally tighten the controller post-guard to `!== Draft` before merge.
+
+---
+
+## Independent orchestrator gate (second treasury-reviewer instance) — VERDICT: PASS-WITH-NITS
+
+Independent of the implementer-run gate above; verified against code with citations. All nine axes PASS: createFromIncome debits repository `gl_account_id` (tenant+company pinned) / credits class-7 with explicit currency and no float; RepositoryInflow exactly-once (422 + no double-increment both asserted); DocumentType::Income append-only with every external match carrying a default arm; per-verb `can:income.*` + seeder + gated FE routes; server-side Revenue-type account restriction + money regex; `!== Draft` post-guard sound (no cancel/void hole); FE money strings end-to-end, i18n en/fr/ar key parity (39 leaf keys); `income_metadata` migration correctly under `migrations/tenant/` with unique idempotency key; module boundaries via Shared/Contracts + public services.
+
+Non-blocking minors (on record): (1) `is_received=false` books Dr Cash/Cr Revenue but skips the treasury increment — exact mirror of Expense `is_paid`; follow-up on GL roadmap: debit a receivable instead; (2) idempotency pre-check outside the transaction — concurrent duplicate key surfaces 500 instead of returning the existing document (client-UUID, low probability); (3) journal_lines decimal(15,2) DB vs decimal:3 model — pre-existing repo-wide drift, not introduced by C7.
+
+Merged into `feat/treasury-cash-movements-income` after a clean 3-way with origin/post-demo (`2556d2b5d` multiloc); merged-state verification: 31 BE tests / 127 assertions + 6 FE tests + typecheck, all green.
