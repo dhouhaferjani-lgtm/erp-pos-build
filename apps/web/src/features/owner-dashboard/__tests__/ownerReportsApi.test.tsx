@@ -4,6 +4,7 @@ import {
   fetchLowStockAlerts,
   fetchPaymentMethodBreakdown,
   fetchRevenueByCategory,
+  fetchLiveSales,
   fetchSalesByLocation,
   fetchTopSkus,
 } from '../api/ownerReportsApi'
@@ -40,12 +41,14 @@ describe('owner reports API', () => {
     await fetchPaymentMethodBreakdown({ from: '2026-05-01', to: '2026-05-31' })
     await fetchLowStockAlerts({ threshold_pct: 100 })
     await fetchCashRegisterReconciliation({ from: '2026-05-01', to: '2026-05-31' })
+    await fetchLiveSales()
 
     expect(mockApiGet).toHaveBeenCalledWith('/reports/sales/top-skus?from=2026-05-01&to=2026-05-31&limit=20&sort_by=quantity')
     expect(mockApiGet).toHaveBeenCalledWith('/reports/sales/revenue-by-category?from=2026-05-01&to=2026-05-31')
     expect(mockApiGet).toHaveBeenCalledWith('/reports/sales/payment-method-breakdown?from=2026-05-01&to=2026-05-31')
     expect(mockApiGet).toHaveBeenCalledWith('/reports/stock/alerts?threshold_pct=100')
     expect(mockApiGet).toHaveBeenCalledWith('/reports/cash-register/reconciliation?from=2026-05-01&to=2026-05-31')
+    expect(mockApiGet).toHaveBeenCalledWith('/reports/sales/live')
   })
 
   it('exposes stable query key factories for tenantScopedKey wrapping', () => {
@@ -55,5 +58,6 @@ describe('owner reports API', () => {
       { from: '2026-05-01', to: '2026-05-31' },
     ])
     expect(ownerReportKeys.stockAlerts({ threshold_pct: 100 })).toEqual(['owner-reports', 'stock-alerts', { threshold_pct: 100 }])
+    expect(ownerReportKeys.liveSales()).toEqual(['owner-reports', 'live-sales'])
   })
 })

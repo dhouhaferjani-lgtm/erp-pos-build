@@ -19,6 +19,11 @@ describe('SalesSummaryCards', () => {
     expect(screen.getByText('5.0000')).toBeInTheDocument()  // itemsSold via formatQuantity
   })
 
+  it('renders a live badge on total sales when the selected range includes today', () => {
+    render(<SalesSummaryCards data={data} isLoading={false} isError={false} isLive />)
+    expect(screen.getByText('reports:ownerDashboard.kpi.live')).toBeInTheDocument()
+  })
+
   it('renders an error card on error', () => {
     render(<SalesSummaryCards data={undefined} isLoading={false} isError />)
     expect(screen.getByText('reports:ownerDashboard.kpi.error')).toBeInTheDocument()

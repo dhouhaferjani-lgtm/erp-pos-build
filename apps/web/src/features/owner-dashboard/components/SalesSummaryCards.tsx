@@ -9,9 +9,10 @@ interface SalesSummaryCardsProps {
   data: SalesSummaryReport | undefined
   isLoading: boolean
   isError: boolean
+  isLive?: boolean
 }
 
-export function SalesSummaryCards({ data, isLoading, isError }: SalesSummaryCardsProps) {
+export function SalesSummaryCards({ data, isLoading, isError, isLive = false }: SalesSummaryCardsProps) {
   const { t } = useTranslation(['reports'])
 
   if (isLoading) {
@@ -52,12 +53,20 @@ export function SalesSummaryCards({ data, isLoading, isError }: SalesSummaryCard
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-      <StatCard
-        label={t('reports:ownerDashboard.kpi.totalSales')}
-        value={formatCurrency(data.grossSales, true, currency)}
-        icon={ShoppingBag}
-        {...(grossSalesTrend ? { trend: grossSalesTrend } : {})}
-      />
+      <div className="relative">
+        <StatCard
+          label={t('reports:ownerDashboard.kpi.totalSales')}
+          value={formatCurrency(data.grossSales, true, currency)}
+          icon={ShoppingBag}
+          {...(grossSalesTrend ? { trend: grossSalesTrend } : {})}
+        />
+        {isLive && (
+          <span className={`absolute end-4 top-4 inline-flex items-center gap-1 text-xs font-medium ${textColors.success}`}>
+            <span className={`h-2 w-2 animate-pulse rounded-full ${colors.success[600]}`} />
+            {t('reports:ownerDashboard.kpi.live')}
+          </span>
+        )}
+      </div>
       <StatCard
         label={t('reports:ownerDashboard.kpi.transactions')}
         value={String(data.salesCount)}

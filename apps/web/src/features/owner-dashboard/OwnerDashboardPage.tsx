@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { textColors } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
+import { BranchLeaderboard } from './components/BranchLeaderboard'
 import { CashRegisterReconciliationTable } from './components/CashRegisterReconciliationTable'
+import { LiveSalesFeed } from './components/LiveSalesFeed'
 import { LowStockAlertsList } from './components/LowStockAlertsList'
 import { OwnerDashboardFilters, type OwnerDashboardFiltersValue } from './components/OwnerDashboardFilters'
 import { PaymentMethodBreakdownPie } from './components/PaymentMethodBreakdownPie'
 import { RevenueByCategoryDonut } from './components/RevenueByCategoryDonut'
-import { SalesByLocationChart } from './components/SalesByLocationChart'
 import { SalesSummaryCards } from './components/SalesSummaryCards'
 import { SalesTrendChart } from './components/SalesTrendChart'
 import { TopSkusWidget } from './components/TopSkusWidget'
@@ -22,16 +23,38 @@ import {
 } from './hooks/useOwnerReports'
 
 function defaultFilters(): OwnerDashboardFiltersValue {
-  const to = new Date()
-  const from = new Date()
-  from.setDate(to.getDate() - 29)
+  const today = formatDateInput(new Date())
 
   return {
-    from: from.toISOString().slice(0, 10),
-    to: to.toISOString().slice(0, 10),
-    granularity: 'day',
+    from: today,
+    to: today,
+    granularity: 'hour',
     locationIds: [],
   }
+}
+
+function formatDateInput(date: Date): string {
+  const year = String(date.getFullYear())
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function shiftDateInput(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00`)
+  date.setDate(date.getDate() + days)
+
+  return formatDateInput(date)
+}
+
+function isHourlySingleDay(filters: OwnerDashboardFiltersValue): boolean {
+  return filters.granularity === 'hour' && filters.from === filters.to
+}
+
+function dateRangeIncludesToday(from: string, to: string): boolean {
+  const today = formatDateInput(new Date())
+  return from <= today && today <= to
 }
 
 export function OwnerDashboardPage() {
@@ -42,6 +65,7 @@ export function OwnerDashboardPage() {
   const [paymentMode, setPaymentMode] = useState<'amount' | 'percentage'>('amount')
 
   const canViewOwnerDashboard = hasPermission('dashboard.owner')
+  const isLiveRange = dateRangeIncludesToday(filters.from, filters.to)
 
   const dateParams = useMemo(
     () => ({
@@ -65,6 +89,18 @@ export function OwnerDashboardPage() {
     { ...dateParams, granularity: filters.granularity },
     canViewOwnerDashboard,
   )
+  const comparisonDateParams = useMemo(
+    () => ({
+      from: shiftDateInput(filters.from, -7),
+      to: shiftDateInput(filters.to, -7),
+      ...(filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}),
+    }),
+    [filters.from, filters.to, filters.locationIds],
+  )
+  const comparisonSales = useSalesByLocation(
+    { ...comparisonDateParams, granularity: 'hour' },
+    canViewOwnerDashboard && isHourlySingleDay(filters),
+  )
   const topSkus = useTopSkus(
     { ...dateParams, limit: 20, sort_by: topSkuSortBy },
     canViewOwnerDashboard,
@@ -85,11 +121,25 @@ export function OwnerDashboardPage() {
         <p className={`text-sm ${textColors.tertiary}`}>{t('reports:ownerDashboard.subtitle')}</p>
       </div>
       <OwnerDashboardFilters value={filters} onChange={setFilters} />
-      <SalesSummaryCards data={summary.data} isLoading={summary.isLoading} isError={summary.isError} />
-      <SalesTrendChart data={sales.data ?? []} isLoading={sales.isLoading} isError={sales.isError} />
-      <div className="grid gap-4 xl:grid-cols-2">
-        <SalesByLocationChart data={sales.data ?? []} isLoading={sales.isLoading} isError={sales.isError} />
+      <SalesSummaryCards data={summary.data} isLoading={summary.isLoading} isError={summary.isError} isLive={isLiveRange} />
+      <div className="grid gap-4 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <SalesTrendChart
+            data={sales.data ?? []}
+            comparisonData={comparisonSales.data ?? []}
+            granularity={filters.granularity}
+            isLoading={sales.isLoading}
+            isError={sales.isError}
+          />
+        </div>
+        <BranchLeaderboard canFetch={canViewOwnerDashboard} />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-3">
+        <LiveSalesFeed canFetch={canViewOwnerDashboard} />
+        <TopSkusWidget data={topSkus.data ?? []} sortBy={topSkuSortBy} onSortByChange={setTopSkuSortBy} />
         <RevenueByCategoryDonut data={categories.data ?? []} isLoading={categories.isLoading} isError={categories.isError} />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-3">
         <PaymentMethodBreakdownPie
           data={payments.data ?? []}
           mode={paymentMode}
@@ -97,7 +147,6 @@ export function OwnerDashboardPage() {
           isLoading={payments.isLoading}
           isError={payments.isError}
         />
-        <TopSkusWidget data={topSkus.data ?? []} sortBy={topSkuSortBy} onSortByChange={setTopSkuSortBy} />
         <LowStockAlertsList data={stockAlerts.data ?? []} />
         <CashRegisterReconciliationTable data={cash.data ?? []} />
       </div>
