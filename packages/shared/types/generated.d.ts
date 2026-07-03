@@ -1413,7 +1413,7 @@ product_id: string;
 product_name: string;
 product_barcode: string | null;
 product_sku: string | null;
-tracking_id: string;
+tracking_id: string | null;
 status: string;
 enriched_data: App.Modules.Product.Application.DTOs.EnrichedProductData;
 enrichment_quality: string;

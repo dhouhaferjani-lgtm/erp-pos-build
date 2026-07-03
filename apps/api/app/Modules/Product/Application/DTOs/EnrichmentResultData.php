@@ -19,7 +19,7 @@ class EnrichmentResultData extends Data
         public string $product_name,
         public ?string $product_barcode,
         public ?string $product_sku,
-        public string $tracking_id,
+        public ?string $tracking_id,
         public string $status,
         public EnrichedProductData $enriched_data,
         public string $enrichment_quality,

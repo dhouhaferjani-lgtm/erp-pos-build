@@ -85,6 +85,49 @@ class EnrichmentReviewControllerTest extends TestCase
         $response->assertStatus(401);
     }
 
+    public function test_index_serializes_catalog_result_with_null_tracking_id(): void
+    {
+        $this->user->assignRole('admin');
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $enrichmentResult = EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => null,
+            'status' => EnrichmentReviewStatus::Accepted,
+            'enriched_data' => new EnrichedProductData(
+                name: 'Catalog Cream',
+                brand: null,
+                description: null,
+                classification: [],
+                ingredients: [],
+                images: [],
+                confidence_score: 95,
+                enrichment_tier: 'catalog',
+                field_confidence: null,
+                enrichment_sources: null,
+                assigned_barcode: $product->barcode,
+                assigned_barcode_type: null,
+            ),
+            'enrichment_quality' => 'catalog',
+            'reviewed_at' => now(),
+            'reviewed_by' => null,
+            'accepted_fields' => ['name' => true],
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/enrichment-results');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $enrichmentResult->id);
+        $response->assertJsonPath('data.0.tracking_id', null);
+    }
+
     public function test_accept_requires_enrichment_review_permission(): void
     {
         // Assign a role without enrichment.review permission
