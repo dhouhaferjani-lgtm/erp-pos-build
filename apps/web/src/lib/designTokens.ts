@@ -432,6 +432,9 @@ export const tokens = {
    */
   badge: {
     base: 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+    // Quiet outline chip for identity/context labels (e.g. document type) that
+    // must not compete with semantic status pills sitting next to them.
+    outline: 'border border-gray-300 bg-white text-gray-600',
     gray: 'bg-gray-100 text-gray-800',
     blue: 'bg-blue-100 text-blue-800',
     green: 'bg-green-100 text-green-800',

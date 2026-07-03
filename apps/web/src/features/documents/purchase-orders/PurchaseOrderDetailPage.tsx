@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Calendar, Building2, FileText, Package, TrendingUp, CreditCard } from 'lucide-react'
+import { Calendar, Building2, FileText, Package, TrendingUp } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { formatCurrency, formatQuantity } from '../../../lib/format'
@@ -13,12 +13,14 @@ import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
 import { PurchaseOrderLandedCostBreakdown } from '../components/PurchaseOrderLandedCostBreakdown'
 import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
+import { DocumentHeader } from '../components/DocumentHeader'
+import { DocumentOutstandingCallout } from '../components/DocumentOutstandingCallout'
 import { PaymentHistorySection, OutstandingAmountSection } from '../components'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal'
-import { Button, Input, Textarea } from '../../../components/atoms'
+import { Button, Input, Textarea, StatusBadge, type StatusTone } from '../../../components/atoms'
 import { EntityLink } from '../../../components/molecules/EntityLink'
 import { ProductCell } from '../../../components/molecules/line-items'
 import { tokens } from '../../../lib/designTokens'
@@ -50,10 +52,10 @@ interface ReceiptStatusResponse {
   lines: ReceiptStatusLine[]
 }
 
-const receiptStatusColors: Record<ReceiptStatusValue, string> = {
-  not_received: 'bg-gray-100 text-gray-800',
-  partially_received: 'bg-yellow-100 text-yellow-800',
-  fully_received: 'bg-green-100 text-green-800',
+const receiptStatusTones: Record<ReceiptStatusValue, StatusTone> = {
+  not_received: 'neutral',
+  partially_received: 'warning',
+  fully_received: 'success',
 }
 
 function fallbackReceiptStatus(documentStatus: string): ReceiptStatusValue {
@@ -283,65 +285,46 @@ export function PurchaseOrderDetailPage() {
     <div className="py-6">
       {/* Header */}
       <div className="mb-6">
-        <Link
-          to="/purchases/orders"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
+        <DocumentHeader
+          document={purchaseOrder}
+          backPath="/purchases/orders"
+          actions={
+            <DocumentActionBar
+              document={purchaseOrder}
+              basePath="/purchases/orders"
+              isActionPending={isActionPending}
+              onConfirm={() => { setConfirmAction('confirm'); }}
+              onReceiveGoods={() => { setShowReceiveDialog(true); }}
+              onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
+              onDownloadPdf={handleDownloadPdf}
+              onPreviewPdf={handlePreviewPdf}
+              onPrintPdf={handlePrintPdf}
+              onSendEmail={() => { setShowEmailModal(true); }}
+              isDownloading={downloadPdfMutation.isPending}
+              isPreviewing={previewPdfMutation.isPending}
+              isPrinting={printPdfMutation.isPending}
+            />
+          }
+          financialCallout={
+            ['confirmed', 'received'].includes(purchaseOrder.status) && !isPaid && outstandingAmount > 0 ? (
+              <DocumentOutstandingCallout
+                amount={outstandingAmount}
+                currency={currentCompany?.currency ?? 'EUR'}
+                {...(canRecordPayment ? { onRecordPayment: () => { setShowPaymentModal(true); } } : {})}
+              />
+            ) : undefined
+          }
         >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          {t('purchaseOrders.backToList')}
-        </Link>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{purchaseOrder.document_number}</h1>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-800">
-                {t('documents.types.purchase_order')}
-              </span>
-              <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                purchaseOrder.status === 'draft' ? 'bg-gray-100 text-gray-800' :
-                purchaseOrder.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                purchaseOrder.status === 'received' ? 'bg-green-100 text-green-800' :
-                'bg-red-100 text-red-800'
-              }`}>
-                {t(`sales:documents.statuses.${purchaseOrder.status}`, purchaseOrder.status)}
-              </span>
-              {canShowReceiptStatus && (
-                <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${receiptStatusColors[receiptStatus]}`}>
-                  <Package className="h-4 w-4" />
-                  {t(`purchaseOrders.receiptStatus.${receiptStatus}`)}
-                </span>
-              )}
-              {['confirmed', 'received'].includes(purchaseOrder.status) && purchaseOrder.payment_status && (
-                <>
-                  <PaymentStatusBadge status={purchaseOrder.payment_status as any} />
-                  {!isPaid && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-sm font-medium text-orange-800">
-                      <CreditCard className="h-4 w-4" />
-                      {t('purchaseOrders.outstandingAmount')}: {formatCurrency(outstandingAmount, { currency: currentCompany?.currency ?? 'EUR' })}
-                    </span>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
-          <DocumentActionBar
-            document={purchaseOrder}
-            basePath="/purchases/orders"
-            isActionPending={isActionPending}
-            onConfirm={() => { setConfirmAction('confirm'); }}
-            onReceiveGoods={() => { setShowReceiveDialog(true); }}
-            onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
-            onDownloadPdf={handleDownloadPdf}
-            onPreviewPdf={handlePreviewPdf}
-            onPrintPdf={handlePrintPdf}
-            onSendEmail={() => { setShowEmailModal(true); }}
-            isDownloading={downloadPdfMutation.isPending}
-            isPreviewing={previewPdfMutation.isPending}
-            isPrinting={printPdfMutation.isPending}
-          />
-        </div>
+          {canShowReceiptStatus && (
+            <StatusBadge tone={receiptStatusTones[receiptStatus]} className="gap-1.5">
+              <Package className="h-3 w-3" />
+              {t(`purchaseOrders.receiptStatus.${receiptStatus}`)}
+            </StatusBadge>
+          )}
+          {['confirmed', 'received'].includes(purchaseOrder.status) && purchaseOrder.payment_status && (
+            <PaymentStatusBadge status={purchaseOrder.payment_status as any} />
+          )}
+        </DocumentHeader>
       </div>
 
       {/* Main Content */}

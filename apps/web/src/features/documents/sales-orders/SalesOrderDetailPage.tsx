@@ -19,7 +19,7 @@ import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal'
-import { Button, Input, Textarea } from '../../../components/atoms'
+import { Button, Input, Textarea, StatusBadge, type StatusTone } from '../../../components/atoms'
 import { EntityLink } from '../../../components/molecules/EntityLink'
 import { tokens } from '../../../lib/designTokens'
 import { useCompany } from '../../../hooks/useCompany'
@@ -31,10 +31,10 @@ import type { PaymentStatus } from '../components/PaymentStatusBadge'
 type ConfirmAction = 'confirm' | 'convertToInvoice' | 'convertToDelivery' | null
 type ActiveTab = 'related' | 'attachments' | 'payments'
 
-const deliveryStatusColors = {
-  not_delivered: 'bg-gray-100 text-gray-800',
-  partially_delivered: 'bg-yellow-100 text-yellow-800',
-  fully_delivered: 'bg-green-100 text-green-800',
+const deliveryStatusTones: Record<string, StatusTone> = {
+  not_delivered: 'neutral',
+  partially_delivered: 'warning',
+  fully_delivered: 'success',
 }
 
 function scopedNamespacePredicate(
@@ -279,10 +279,10 @@ export function SalesOrderDetailPage() {
           }
         >
           {order.status === 'confirmed' && (
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${deliveryStatusColors[deliveryStatus as keyof typeof deliveryStatusColors]}`}>
+            <StatusBadge tone={deliveryStatusTones[String(deliveryStatus)] ?? 'neutral'} className="gap-1.5">
               <Truck className="h-3 w-3" />
               {t(`orders.deliveryStatus.${deliveryStatus}`)}
-            </span>
+            </StatusBadge>
           )}
           {order.status === 'confirmed' && order.payment_status && (
             <PaymentStatusBadge status={order.payment_status as 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' | 'overpaid'} />

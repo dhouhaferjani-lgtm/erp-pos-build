@@ -8,6 +8,12 @@
  *   Row 1: Back link
  *   Row 2: Identity (number + badges + children) | Actions (right-aligned)
  *   Row 3: Financial callout strip (optional, full-width)
+ *
+ * Badge discipline: every chip in the identity row renders at the shared
+ * `tokens.badge.base` size. The document type is an identity label (quiet
+ * outline chip); lifecycle status and workflow milestones are semantic
+ * StatusBadge tones. Amounts never appear in this row — they belong in the
+ * `financialCallout` strip.
  */
 
 import { Link } from 'react-router-dom'
@@ -18,28 +24,17 @@ import {
   Check,
   AlertTriangle,
   Truck,
-  Package,
 } from 'lucide-react'
+import { StatusBadge, type StatusTone } from '../../../components/atoms'
+import { tokens } from '../../../lib/designTokens'
 import type { Document } from '../../../types/document'
 
-// Type and status color mappings
-const typeColors: Record<string, string> = {
-  quote: 'bg-yellow-100 text-yellow-800',
-  order: 'bg-blue-100 text-blue-800',
-  sales_order: 'bg-blue-100 text-blue-800',
-  purchase_order: 'bg-purple-100 text-purple-800',
-  invoice: 'bg-green-100 text-green-800',
-  credit_note: 'bg-red-100 text-red-800',
-  delivery_note: 'bg-purple-100 text-purple-800',
-  return_note: 'bg-orange-100 text-orange-800',
-}
-
-const statusColors: Record<Document['status'], string> = {
-  draft: 'bg-gray-100 text-gray-800',
-  confirmed: 'bg-blue-100 text-blue-800',
-  posted: 'bg-green-100 text-green-800',
-  cancelled: 'bg-red-100 text-red-800',
-  received: 'bg-teal-100 text-teal-800',
+const statusTones: Record<Document['status'], StatusTone> = {
+  draft: 'pending',
+  confirmed: 'info',
+  posted: 'success',
+  cancelled: 'danger',
+  received: 'success',
 }
 
 export interface QuoteExpiryInfo {
@@ -115,30 +110,26 @@ export function DocumentHeader({
       {/* Row: identity + actions */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold text-gray-900">
               {getDocumentNumberLabel(document.document_number)}
             </h1>
 
-            {/* Document Type Badge */}
-            <span
-              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[document.type]}`}
-            >
+            {/* Document Type — identity label, kept quiet */}
+            <span className={`${tokens.badge.base} ${tokens.badge.outline}`}>
               {getTypeLabel(document.type)}
             </span>
 
-            {/* Status Badge */}
-            <span
-              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[document.status]}`}
-            >
+            {/* Lifecycle Status */}
+            <StatusBadge tone={statusTones[document.status]}>
               {getStatusLabel(document.status)}
-            </span>
+            </StatusBadge>
 
             {/* Converted to Order Link */}
             {isAlreadyConverted && document.converted_to_order_id != null && (
               <Link
                 to={`/sales/orders/${document.converted_to_order_id}`}
-                className="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800 hover:bg-purple-200 transition-colors"
+                className={`${tokens.badge.base} gap-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors`}
               >
                 <ArrowRight className="h-3 w-3" />
                 {t('documents.convertedToOrder')}
@@ -149,7 +140,7 @@ export function DocumentHeader({
             {hasSourceDocument && sourceDocumentPath && (
               <Link
                 to={`${sourceDocumentPath}/${document.source_document_id}`}
-                className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 hover:bg-gray-200 transition-colors"
+                className={`${tokens.badge.base} gap-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors`}
               >
                 <ArrowLeft className="h-3 w-3" />
                 {document.source_document_number}
@@ -158,42 +149,31 @@ export function DocumentHeader({
 
             {/* Fully Delivered Badge for sales orders */}
             {document.type === 'sales_order' && document.fully_delivered && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
+              <StatusBadge tone="success" className="gap-1.5">
                 <Truck className="h-3 w-3" />
                 {t('orders.fullyDelivered', 'Fully Delivered')}
-              </span>
+              </StatusBadge>
             )}
 
             {/* Fully Invoiced Badge for sales orders */}
             {document.type === 'sales_order' && document.fully_invoiced && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+              <StatusBadge tone="success" className="gap-1.5">
                 <Check className="h-3 w-3" />
                 {t('orders.fullyInvoiced', 'Fully Invoiced')}
-              </span>
-            )}
-
-            {/* Goods Received Badge for purchase orders */}
-            {document.goods_received && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-                <Package className="h-3 w-3" />
-                {t('purchaseOrders.goodsReceived', 'Goods Received')}
-              </span>
+              </StatusBadge>
             )}
 
             {/* Quote Expiry Warning */}
             {quoteExpiryInfo && (
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  quoteExpiryInfo.status === 'expired'
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-yellow-100 text-yellow-800'
-                }`}
+              <StatusBadge
+                tone={quoteExpiryInfo.status === 'expired' ? 'danger' : 'warning'}
+                className="gap-1.5"
               >
                 <AlertTriangle className="h-3 w-3" />
                 {quoteExpiryInfo.message === 'expiresIn'
                   ? t('quotes.expiry.expiresIn', { days: quoteExpiryInfo.days })
                   : t(`quotes.expiry.${quoteExpiryInfo.message}`)}
-              </span>
+              </StatusBadge>
             )}
 
             {/* Additional children (extra badges) */}

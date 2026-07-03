@@ -22,7 +22,7 @@ import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail, useCr
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal'
-import { Button, Input, Textarea } from '../../../components/atoms'
+import { Button, Input, Textarea, StatusBadge } from '../../../components/atoms'
 import { EntityLink } from '../../../components/molecules/EntityLink'
 import { tokens } from '../../../lib/designTokens'
 import { CloseWithWriteoffSection } from './components/CloseWithWriteoffSection'
@@ -315,10 +315,10 @@ export function InvoiceDetailPage() {
             <PaymentStatusBadge status={invoice.payment_status as 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' | 'overpaid'} />
           )}
           {isPosted && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800">
+            <StatusBadge tone="info" className="gap-1.5">
               <Lock className="h-3 w-3" />
               {t('invoices.fiscallySealed')}
-            </span>
+            </StatusBadge>
           )}
         </DocumentHeader>
         <CloseWithWriteoffSection

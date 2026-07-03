@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { PaymentStatusBadge } from './PaymentStatusBadge'
+import { tokens } from '../../../lib/designTokens'
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -10,49 +11,51 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('PaymentStatusBadge', () => {
-  it('renders unpaid status with red color', () => {
+  it('renders unpaid status with the danger tone', () => {
     render(<PaymentStatusBadge status="unpaid" />)
 
     const badge = screen.getByText('Unpaid')
     expect(badge).toBeInTheDocument()
-    expect(badge.className).toContain('bg-red-100')
-    expect(badge.className).toContain('text-red-800')
+    expect(badge.className).toContain(tokens.alert.error)
   })
 
-  it('renders partially paid status with yellow color', () => {
+  it('renders partially paid status with the warning tone', () => {
     render(<PaymentStatusBadge status="partially_paid" />)
 
     const badge = screen.getByText('Partially Paid')
     expect(badge).toBeInTheDocument()
-    expect(badge.className).toContain('bg-yellow-100')
-    expect(badge.className).toContain('text-yellow-800')
+    expect(badge.className).toContain(tokens.alert.warning)
   })
 
-  it('renders in payment status with blue color', () => {
+  it('renders in payment status with the info tone', () => {
     render(<PaymentStatusBadge status="in_payment" />)
 
     const badge = screen.getByText('In Payment')
     expect(badge).toBeInTheDocument()
-    expect(badge.className).toContain('bg-blue-100')
-    expect(badge.className).toContain('text-blue-800')
+    expect(badge.className).toContain(tokens.alert.info)
   })
 
-  it('renders paid status with green color', () => {
+  it('renders paid status with the success tone', () => {
     render(<PaymentStatusBadge status="paid" />)
 
     const badge = screen.getByText('Paid')
     expect(badge).toBeInTheDocument()
-    expect(badge.className).toContain('bg-green-100')
-    expect(badge.className).toContain('text-green-800')
+    expect(badge.className).toContain(tokens.alert.success)
   })
 
-  it('renders overpaid status with purple color', () => {
+  it('renders overpaid status with the warning tone', () => {
     render(<PaymentStatusBadge status="overpaid" />)
 
     const badge = screen.getByText('Overpaid')
     expect(badge).toBeInTheDocument()
-    expect(badge.className).toContain('bg-purple-100')
-    expect(badge.className).toContain('text-purple-800')
+    expect(badge.className).toContain(tokens.alert.warning)
+  })
+
+  it('renders at the shared badge size', () => {
+    render(<PaymentStatusBadge status="paid" />)
+
+    const badge = screen.getByText('Paid')
+    expect(badge.className).toContain('text-xs')
   })
 
   it('applies custom className', () => {

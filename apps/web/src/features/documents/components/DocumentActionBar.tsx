@@ -15,7 +15,9 @@ import {
   Send,
   Lock,
   MoreVertical,
+  type LucideIcon,
 } from 'lucide-react'
+import { Button } from '../../../components/atoms'
 import type { Document } from '../../../types/document'
 
 export interface DocumentActionBarProps {
@@ -40,6 +42,14 @@ export interface DocumentActionBarProps {
   isPreviewing?: boolean | undefined
   isPrinting?: boolean | undefined
   isSendingEmail?: boolean | undefined
+}
+
+interface VisibleAction {
+  key: string
+  icon: LucideIcon
+  label: string
+  onClick: () => void
+  disabled: boolean
 }
 
 export function DocumentActionBar({
@@ -120,119 +130,126 @@ export function DocumentActionBar({
     (document.type === 'invoice' && document.status === 'posted') ||
     (document.type === 'delivery_note' && document.status === 'confirmed')
 
+  // Build the visible action list in workflow order. The FIRST action is the
+  // single primary (filled) button; every other action renders as secondary.
+  // One primary per screen — the rainbow of per-action colors is deliberate slop removal.
+  const visibleActions: VisibleAction[] = []
+
+  if (canConfirm && onConfirm) {
+    visibleActions.push({
+      key: 'confirm',
+      icon: Check,
+      label: t('common:actions.confirm'),
+      onClick: onConfirm,
+      disabled: isActionPending,
+    })
+  }
+
+  if (canPost && onPost) {
+    visibleActions.push({
+      key: 'post',
+      icon: Lock,
+      label: t('documents.post'),
+      onClick: onPost,
+      disabled: isActionPending,
+    })
+  }
+
+  if (canConvert && onConvert) {
+    visibleActions.push({
+      key: 'convert',
+      icon: ArrowRight,
+      label: t('quotes.convertToOrder'),
+      onClick: onConvert,
+      disabled: isActionPending,
+    })
+  }
+
+  if (canConvertToDelivery && onConvertToDelivery) {
+    visibleActions.push({
+      key: 'convertToDelivery',
+      icon: Truck,
+      label: t('orders.convertToDelivery'),
+      onClick: onConvertToDelivery,
+      disabled: isActionPending,
+    })
+  }
+
+  if (canConvertToInvoice && onConvert) {
+    visibleActions.push({
+      key: 'convertToInvoice',
+      icon: ArrowRight,
+      label: t('orders.convertToInvoice'),
+      onClick: onConvert,
+      disabled: isActionPending,
+    })
+  }
+
+  if (canReceiveGoods && onReceiveGoods) {
+    visibleActions.push({
+      key: 'receiveGoods',
+      icon: Package,
+      label: t('purchaseOrders.receiveGoods'),
+      onClick: onReceiveGoods,
+      disabled: isActionPending,
+    })
+  }
+
+  if (canRecordPayment && onRecordPayment) {
+    visibleActions.push({
+      key: 'recordPayment',
+      icon: CreditCard,
+      label: t('documents.recordPayment'),
+      onClick: onRecordPayment,
+      disabled: false,
+    })
+  }
+
+  if (canCreateCreditNote && onCreateCreditNote) {
+    visibleActions.push({
+      key: 'createCreditNote',
+      icon: MinusCircle,
+      label: t('documents.createCreditNote'),
+      onClick: onCreateCreditNote,
+      disabled: false,
+    })
+  }
+
+  if (canCreateReturnNote && onCreateReturnNote) {
+    visibleActions.push({
+      key: 'createReturnNote',
+      icon: Package,
+      label:
+        document.type === 'invoice'
+          ? t('returnNotes.createFromInvoice', 'Create Return Note')
+          : t('returnNotes.createFromDelivery', 'Create Return Note'),
+      onClick: onCreateReturnNote,
+      disabled: false,
+    })
+  }
+
   // Check if there are any dropdown items
   const hasDropdownItems = canEdit || onDownloadPdf || onPreviewPdf || onPrintPdf || onSendEmail
 
   return (
     <div className="flex items-center gap-2">
-      {/* PRIMARY ACTIONS - always visible */}
-
-      {canConfirm && onConfirm && (
-        <button
-          type="button"
-          disabled={isActionPending}
-          onClick={onConfirm}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-        >
-          <Check className="h-4 w-4" />
-          {t('common:actions.confirm')}
-        </button>
-      )}
-
-      {canPost && onPost && (
-        <button
-          type="button"
-          disabled={isActionPending}
-          onClick={onPost}
-          className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
-        >
-          <Lock className="h-4 w-4" />
-          {t('documents.post')}
-        </button>
-      )}
-
-      {canConvert && onConvert && (
-        <button
-          type="button"
-          disabled={isActionPending}
-          onClick={onConvert}
-          className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
-        >
-          <ArrowRight className="h-4 w-4" />
-          {t('quotes.convertToOrder')}
-        </button>
-      )}
-
-      {canConvertToDelivery && onConvertToDelivery && (
-        <button
-          type="button"
-          disabled={isActionPending}
-          onClick={onConvertToDelivery}
-          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-        >
-          <Truck className="h-4 w-4" />
-          {t('orders.convertToDelivery')}
-        </button>
-      )}
-
-      {canConvertToInvoice && onConvert && (
-        <button
-          type="button"
-          disabled={isActionPending}
-          onClick={onConvert}
-          className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
-        >
-          <ArrowRight className="h-4 w-4" />
-          {t('orders.convertToInvoice')}
-        </button>
-      )}
-
-      {canReceiveGoods && onReceiveGoods && (
-        <button
-          type="button"
-          disabled={isActionPending}
-          onClick={onReceiveGoods}
-          className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50 transition-colors"
-        >
-          <Package className="h-4 w-4" />
-          {t('purchaseOrders.receiveGoods')}
-        </button>
-      )}
-
-      {canRecordPayment && onRecordPayment && (
-        <button
-          type="button"
-          onClick={onRecordPayment}
-          className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 transition-colors"
-        >
-          <CreditCard className="h-4 w-4" />
-          {t('documents.recordPayment')}
-        </button>
-      )}
-
-      {canCreateCreditNote && onCreateCreditNote && (
-        <button
-          type="button"
-          onClick={onCreateCreditNote}
-          className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
-        >
-          <MinusCircle className="h-4 w-4" />
-          {t('documents.createCreditNote')}
-        </button>
-      )}
-
-      {canCreateReturnNote && onCreateReturnNote && (
-        <button
-          type="button"
-          onClick={onCreateReturnNote}
-          className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
-        >
-          <Package className="h-4 w-4" />
-          {document.type === 'invoice'
-            ? t('returnNotes.createFromInvoice', 'Create Return Note')
-            : t('returnNotes.createFromDelivery', 'Create Return Note')}
-        </button>
-      )}
+      {/* WORKFLOW ACTIONS — first is the single primary, the rest secondary */}
+      {visibleActions.map((action, index) => {
+        const Icon = action.icon
+        return (
+          <Button
+            key={action.key}
+            type="button"
+            variant={index === 0 ? 'primary' : 'secondary'}
+            disabled={action.disabled}
+            onClick={action.onClick}
+            className="gap-2"
+          >
+            <Icon className="h-4 w-4" />
+            {action.label}
+          </Button>
+        )
+      })}
 
       {/* MORE DROPDOWN - secondary actions */}
       {hasDropdownItems && (
@@ -240,14 +257,14 @@ export function DocumentActionBar({
           <button
             type="button"
             onClick={() => { setIsDropdownOpen(!isDropdownOpen); }}
-            className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white p-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             aria-label={t('common:actions.more', 'More actions')}
           >
             <MoreVertical className="h-5 w-5" />
           </button>
 
           {isDropdownOpen && (
-            <div className="absolute right-0 z-20 mt-2 w-48 origin-top-right rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+            <div className="absolute right-0 z-20 mt-2 w-48 origin-top-right rounded-md border border-gray-200 bg-white py-1 shadow-lg">
               {canEdit && (
                 <Link
                   to={`${basePath}/${document.id}/edit`}
