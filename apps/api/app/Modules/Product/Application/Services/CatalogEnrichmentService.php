@@ -64,16 +64,30 @@ final class CatalogEnrichmentService
                     $acceptedFields['description'] = true;
                 }
 
-                if ($product->brand_id === null && filled($catalog->brand)) {
-                    $slug = Brand::slugFor($catalog->brand);
-                    $brand = Brand::firstOrCreate(
-                        ['tenant_id' => $product->tenant_id, 'slug' => $slug],
-                        ['name' => $catalog->brand, 'is_active' => true],
-                    );
+                if ($product->brand_id === null) {
+                    // Prefer the brand already resolved by the lookup's platform
+                    // brand mapping — never mint a duplicate when it resolved one.
+                    $resolvedBrand = $catalog->localBrandId !== null
+                        ? Brand::query()->where('tenant_id', $product->tenant_id)->find($catalog->localBrandId)
+                        : null;
 
-                    $productUpdates['brand_id'] = $brand->id;
-                    $productUpdates['brand_source'] = BrandSource::Enriched;
-                    $acceptedFields['brand'] = true;
+                    if ($resolvedBrand !== null) {
+                        $productUpdates['brand_id'] = $resolvedBrand->id;
+                        $productUpdates['brand_source'] = BrandSource::Enriched;
+                        $acceptedFields['brand'] = true;
+                    } elseif (filled($catalog->brand)) {
+                        // Legacy payloads (no resolved id) — or the resolved brand
+                        // was deleted between lookup and apply.
+                        $slug = Brand::slugFor($catalog->brand);
+                        $brand = Brand::firstOrCreate(
+                            ['tenant_id' => $product->tenant_id, 'slug' => $slug],
+                            ['name' => $catalog->brand, 'is_active' => true],
+                        );
+
+                        $productUpdates['brand_id'] = $brand->id;
+                        $productUpdates['brand_source'] = BrandSource::Enriched;
+                        $acceptedFields['brand'] = true;
+                    }
                 }
 
                 $ingredientsApplied = $this->applyIngredientsIfParapharmacy($product, $catalog);
@@ -102,6 +116,9 @@ final class CatalogEnrichmentService
                         enrichment_sources: null,
                         assigned_barcode: $catalog->barcode,
                         assigned_barcode_type: null,
+                        canonical_brand_id: $catalog->canonicalBrandId,
+                        canonical_brand_slug: $catalog->canonicalBrandSlug,
+                        external_brand_id: $catalog->externalBrandId,
                     ),
                     'enrichment_quality' => 'catalog',
                     'assigned_barcode' => $catalog->barcode,

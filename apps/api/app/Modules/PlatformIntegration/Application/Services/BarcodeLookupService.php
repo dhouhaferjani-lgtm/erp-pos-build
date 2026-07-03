@@ -153,6 +153,10 @@ final class BarcodeLookupService implements CatalogLookupInterface
 
         $product = $result->product;
 
+        // lookup() already ran withLocalBrand(), so a resolved local brand id
+        // (if any) is carried in the suggested product payload.
+        $suggestedBrandId = $result->suggestedProduct['brand_id'] ?? null;
+
         return new CatalogProductDTO(
             platformProductId: $product->id,
             barcode: $product->barcode,
@@ -164,6 +168,10 @@ final class BarcodeLookupService implements CatalogLookupInterface
             images: $product->images,
             confidenceScore: $product->confidenceScore,
             enrichmentTier: $product->enrichmentTier,
+            canonicalBrandId: $product->canonicalBrandId,
+            canonicalBrandSlug: $product->canonicalBrandSlug,
+            externalBrandId: $product->externalBrandId,
+            localBrandId: is_string($suggestedBrandId) ? $suggestedBrandId : null,
         );
     }
 }

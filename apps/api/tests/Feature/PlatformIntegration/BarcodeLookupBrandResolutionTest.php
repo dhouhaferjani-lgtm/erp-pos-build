@@ -162,6 +162,25 @@ final class BarcodeLookupBrandResolutionTest extends TestCase
         Queue::assertNotPushed(SendBrandMappingJob::class);
     }
 
+    public function test_lookup_catalog_product_carries_resolved_local_brand_id_and_canonical_fields(): void
+    {
+        Queue::fake();
+        $canonical = (string) Str::uuid();
+        $this->fakeFoundLookup([
+            'brand' => 'Avène',
+            'canonical_brand_id' => $canonical,
+            'external_brand_id' => null,
+        ]);
+
+        $dto = $this->service->lookupCatalogProduct(self::VALID_EAN_13, 'parapharmacy');
+
+        $this->assertNotNull($dto);
+        $brand = Brand::where('tenant_id', $this->tenant->id)->where('slug', 'avene')->sole();
+        $this->assertSame($brand->id, $dto->localBrandId);
+        $this->assertSame($canonical, $dto->canonicalBrandId);
+        $this->assertNull($dto->externalBrandId);
+    }
+
     /**
      * @param  array<string, mixed>  $productOverrides
      */
