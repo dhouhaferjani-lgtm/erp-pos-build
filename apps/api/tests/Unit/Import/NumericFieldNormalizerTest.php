@@ -65,6 +65,26 @@ class NumericFieldNormalizerTest extends TestCase
         $this->assertSame('10.00', $result['sale_price']);
     }
 
+    public function test_leaves_three_decimal_dot_values_unchanged(): void
+    {
+        $result = $this->normalizer->normalize(
+            ['sale_price' => '7.140'],
+            $this->rules
+        );
+
+        $this->assertSame('7.140', $result['sale_price']);
+    }
+
+    public function test_leaves_percent_scale_dot_decimals_for_precision_validation(): void
+    {
+        $result = $this->normalizer->normalize(
+            ['margin' => '12.555'],
+            ['margin' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,2})?$/']]
+        );
+
+        $this->assertSame('12.555', $result['margin']);
+    }
+
     public function test_does_not_touch_non_numeric_fields(): void
     {
         $result = $this->normalizer->normalize(

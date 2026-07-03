@@ -26,6 +26,8 @@ interface PartnerServiceInterface
     /**
      * Create or update a partner with smart type merging.
      *
+     * Matching precedence is company-scoped code, then VAT number, then name.
+     *
      * @param  array<string, mixed>  $data  Partner data
      * @return string The partner ID
      */

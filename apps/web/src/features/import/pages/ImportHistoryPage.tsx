@@ -180,20 +180,37 @@ export function ImportHistoryPage() {
                     {formatDate(job.created_at)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end">
-                    {(job.failed_rows ?? 0) > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          authenticatedDownload(
-                            importApi.downloadFailedRowsUrl(job.id),
-                            `import-${job.id}-failed-rows.csv`
-                          )
-                        }
-                        className={cn('inline-flex items-center gap-1 text-sm', textColors.brand, textColors.hoverBrand)}
-                      >
-                        <Download className="h-4 w-4" />
-                        {t('wizard.complete.downloadFailedRows')}
-                      </button>
+                    {job.status === 'completed' || job.status === 'failed' ? (
+                      <div className="flex flex-col items-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            authenticatedDownload(
+                              importApi.downloadResultWorkbookUrl(job.id),
+                              `import-${job.id}-result.xlsx`
+                            )
+                          }
+                          className={cn('inline-flex items-center gap-1 text-sm', textColors.brand, textColors.hoverBrand)}
+                        >
+                          <Download className="h-4 w-4" />
+                          {t('results.downloadWorkbook')}
+                        </button>
+                        {(job.failed_rows ?? 0) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              authenticatedDownload(
+                                importApi.downloadFailedRowsUrl(job.id),
+                                `import-${job.id}-failed-rows.csv`
+                              )
+                            }
+                            className={cn('inline-flex items-center gap-1 text-sm', textColors.brand, textColors.hoverBrand)}
+                          >
+                            <Download className="h-4 w-4" />
+                            {t('wizard.complete.downloadFailedRows')}
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <span className={cn('text-sm', textColors.disabled)}>-</span>
                     )}

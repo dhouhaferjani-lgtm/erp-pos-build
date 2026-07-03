@@ -774,7 +774,7 @@ export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending_verifica
 }
 declare namespace App.Modules.Import.Domain.Enums {
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
-export type ImportType = 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
+export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
 }
 declare namespace App.Modules.Inventory.Application.DTOs {
 export type StockLevelData = {

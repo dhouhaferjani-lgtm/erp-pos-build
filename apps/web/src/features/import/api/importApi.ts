@@ -12,6 +12,8 @@ import type {
   MigrationStatus,
   ImportType,
   ImportPreview,
+  ImportJobOptions,
+  ImportJobResponse,
 } from '../types'
 
 const IMPORT_URL = '/imports'
@@ -70,6 +72,17 @@ export const importApi = {
 
   downloadFailedRowsUrl: (jobId: string): string => {
     return `${IMPORT_URL}/${jobId}/failed-rows.csv`
+  },
+
+  downloadResultWorkbookUrl: (jobId: string): string => {
+    return `${IMPORT_URL}/${jobId}/result-workbook`
+  },
+
+  updateOptions: async (jobId: string, options: ImportJobOptions): Promise<ImportJobResponse> => {
+    const response = await api.patch<ImportJobResponse>(`${IMPORT_URL}/${jobId}/options`, {
+      options,
+    })
+    return response.data
   },
 
   getPreview: async (jobId: string): Promise<ImportPreview> => {

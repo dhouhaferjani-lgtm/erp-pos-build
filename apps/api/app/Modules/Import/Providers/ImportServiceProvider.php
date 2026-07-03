@@ -12,6 +12,10 @@ use App\Modules\Import\Presentation\Controllers\MigrationWizardController;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\NumericFieldNormalizer;
+use App\Modules\Import\Services\PartiesBalancesPhase;
+use App\Modules\Import\Services\PartiesRowMapper;
+use App\Modules\Import\Services\ProductOpeningStockPhase;
+use App\Modules\Import\Services\ProductPriceResolver;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
@@ -19,6 +23,7 @@ use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
+use App\Shared\Contracts\TaxDefaultResolverInterface;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -40,7 +45,12 @@ class ImportServiceProvider extends ServiceProvider
                 $app->make(LocationServiceInterface::class),
                 $app->make(AccountingServiceInterface::class),
                 $app->make(CompositeItemServiceInterface::class),
-                $app->make(NumericFieldNormalizer::class)
+                $app->make(NumericFieldNormalizer::class),
+                $app->make(PartiesRowMapper::class),
+                $app->make(PartiesBalancesPhase::class),
+                $app->make(ProductPriceResolver::class),
+                $app->make(TaxDefaultResolverInterface::class),
+                $app->make(ProductOpeningStockPhase::class)
             );
         });
 
@@ -56,18 +66,20 @@ class ImportServiceProvider extends ServiceProvider
 
     private function registerRoutes(): void
     {
-        Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])
+        Route::middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class, 'can:imports.manage'])
             ->prefix('api/v1')
             ->group(function (): void {
                 // Import routes
                 Route::get('/imports', [ImportController::class, 'index']);
                 Route::post('/imports', [ImportController::class, 'store']);
                 Route::get('/imports/{id}', [ImportController::class, 'show']);
+                Route::patch('/imports/{id}/options', [ImportController::class, 'updateOptions']);
                 Route::get('/imports/{id}/preview', [ImportController::class, 'preview']);
                 Route::get('/imports/{id}/errors', [ImportController::class, 'errors']);
                 Route::get('/imports/{id}/error-summary', [ImportController::class, 'errorSummary']);
                 Route::post('/imports/{id}/execute', [ImportController::class, 'execute']);
                 Route::get('/imports/{id}/failed-rows.csv', [ImportController::class, 'downloadFailedRows']);
+                Route::get('/imports/{id}/result-workbook', [ImportController::class, 'downloadResultWorkbook']);
 
                 // Migration wizard routes
                 Route::get('/migration-wizard/order', [MigrationWizardController::class, 'order']);

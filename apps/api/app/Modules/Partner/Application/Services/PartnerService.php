@@ -46,6 +46,7 @@ final class PartnerService implements PartnerServiceInterface
      * Create or update a partner with smart type merging.
      *
      * If a partner exists with a different type, the result will be 'both'.
+     * Matching precedence is company-scoped code, then VAT number, then name.
      *
      * @param  array<string, mixed>  $data  Partner data
      * @return string The partner ID
@@ -55,14 +56,17 @@ final class PartnerService implements PartnerServiceInterface
         string $companyId,
         array $data
     ): string {
+        $code = isset($data['code']) ? trim((string) $data['code']) : null;
+        $code = $code === '' ? null : $code;
         $vatNumber = ! empty($data['vat_number']) ? $data['vat_number'] : null;
         $newType = PartnerType::from($data['type']);
 
         // Find existing partner
         $existing = Partner::where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
-            ->when($vatNumber !== null, fn ($q) => $q->where('vat_number', $vatNumber))
-            ->when($vatNumber === null, fn ($q) => $q->where('name', $data['name']))
+            ->when($code !== null, fn ($q) => $q->where('code', $code))
+            ->when($code === null && $vatNumber !== null, fn ($q) => $q->where('vat_number', $vatNumber))
+            ->when($code === null && $vatNumber === null, fn ($q) => $q->where('name', $data['name']))
             ->first();
 
         // Smart type merging: customer + supplier = both
@@ -75,15 +79,18 @@ final class PartnerService implements PartnerServiceInterface
             }
         }
 
-        $searchCriteria = $vatNumber !== null
-            ? ['tenant_id' => $tenantId, 'company_id' => $companyId, 'vat_number' => $vatNumber]
-            : ['tenant_id' => $tenantId, 'company_id' => $companyId, 'name' => $data['name']];
+        $searchCriteria = match (true) {
+            $code !== null => ['tenant_id' => $tenantId, 'company_id' => $companyId, 'code' => $code],
+            $vatNumber !== null => ['tenant_id' => $tenantId, 'company_id' => $companyId, 'vat_number' => $vatNumber],
+            default => ['tenant_id' => $tenantId, 'company_id' => $companyId, 'name' => $data['name']],
+        };
 
         $partner = Partner::updateOrCreate(
             $searchCriteria,
             [
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
+                'code' => $code,
                 'name' => $data['name'],
                 'type' => $finalType,
                 'email' => $data['email'] ?? null,
