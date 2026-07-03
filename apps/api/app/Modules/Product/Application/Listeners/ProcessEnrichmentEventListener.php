@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\Listeners;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\Services\EnrichmentReviewService;
+use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Enums\EnrichmentStatus;
@@ -16,6 +18,7 @@ final class ProcessEnrichmentEventListener
 {
     public function __construct(
         private readonly EnrichmentReviewService $enrichmentReviewService,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     public function handle(EnrichmentWebhookReceived $event): void
@@ -29,18 +32,29 @@ final class ProcessEnrichmentEventListener
         // were ever dropped (emergency rollback, migration mistake,
         // partner restore, etc.). Defense-in-depth pairing with the
         // migration: code AND schema both reject the collision shape.
+        $resolvedFromExistingResult = false;
         try {
             $product = Product::where('platform_submission_id', $event->trackingId)->sole();
         } catch (ModelNotFoundException) {
-            // Legitimate async case: webhook arrived before the local
-            // Product was created (or after the Product was deleted).
-            // Log + return — do NOT crash the queue worker.
-            Log::warning('Enrichment webhook received for unknown tracking ID', [
-                'tracking_id' => $event->trackingId,
-                'status' => $event->status,
-            ]);
+            $product = EnrichmentResult::query()
+                ->where('tracking_id', $event->trackingId)
+                ->orderByDesc('version')
+                ->first()
+                ?->product;
 
-            return;
+            if ($product === null) {
+                // Legitimate async case: webhook arrived before the local
+                // Product was created (or after the Product was deleted).
+                // Log + return — do NOT crash the queue worker.
+                Log::warning('Enrichment webhook received for unknown tracking ID', [
+                    'tracking_id' => $event->trackingId,
+                    'status' => $event->status,
+                ]);
+
+                return;
+            }
+
+            $resolvedFromExistingResult = true;
         }
         // Note: MultipleRecordsFoundException intentionally NOT caught.
         // It signals a data-integrity violation (cross-tenant collision
@@ -50,7 +64,9 @@ final class ProcessEnrichmentEventListener
 
         // Map platform status to local enrichment status
         $enrichmentStatus = EnrichmentStatus::fromPlatformStatus($event->status);
-        $product->update(['enrichment_status' => $enrichmentStatus]);
+        if (! $resolvedFromExistingResult) {
+            $product->update(['enrichment_status' => $enrichmentStatus]);
+        }
 
         // Only a successful enrichment has reviewable data to fetch and store.
         // Other terminal states (Failed, NotEnrichable) — and Rejected — are
@@ -58,21 +74,27 @@ final class ProcessEnrichmentEventListener
         // enriched payload, so creating an enrichment_results row would surface
         // a phantom pending_review item in the operator queue.
         if ($enrichmentStatus === EnrichmentStatus::Completed) {
-            $enrichmentResult = $this->enrichmentReviewService->fetchAndStore(
-                $event->trackingId,
-                $product,
-                $event->locale,
-            );
+            try {
+                $this->companyContext->setCompanyId($product->company_id);
 
-            if ($enrichmentResult !== null) {
-                EnrichmentResultReadyEvent::dispatch(
-                    $enrichmentResult->id,
-                    $product->company_id,
-                    $product->id,
-                    $product->name,
-                    $enrichmentResult->enrichment_quality ?? 'unknown',
-                    $enrichmentResult->assigned_barcode,
+                $enrichmentResult = $this->enrichmentReviewService->fetchAndStore(
+                    $event->trackingId,
+                    $product,
+                    $event->locale,
                 );
+
+                if ($enrichmentResult !== null && $enrichmentResult->wasRecentlyCreated) {
+                    EnrichmentResultReadyEvent::dispatch(
+                        $enrichmentResult->id,
+                        $product->company_id,
+                        $product->id,
+                        $product->name,
+                        $enrichmentResult->enrichment_quality ?? 'unknown',
+                        $enrichmentResult->assigned_barcode,
+                    );
+                }
+            } finally {
+                $this->companyContext->clear();
             }
         }
 

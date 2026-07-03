@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Product\Application\DTOs;
 
+use App\Modules\Product\Domain\Enums\EnrichmentResultOrigin;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -20,6 +21,8 @@ class EnrichmentResultData extends Data
         public ?string $product_barcode,
         public ?string $product_sku,
         public string $tracking_id,
+        public int $version,
+        public EnrichmentResultOrigin $origin,
         public string $status,
         public EnrichedProductData $enriched_data,
         public string $enrichment_quality,
@@ -28,6 +31,7 @@ class EnrichmentResultData extends Data
         public ?string $reviewed_by,
         public ?array $accepted_fields,
         public ?string $rejection_reason,
+        public ?string $rejection_notes,
         public string $created_at,
     ) {}
 }

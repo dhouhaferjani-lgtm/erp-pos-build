@@ -14,13 +14,17 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
 use App\Modules\Product\Domain\EnrichmentResult;
+use App\Modules\Product\Domain\Enums\EnrichmentResultOrigin;
 use App\Modules\Product\Domain\Enums\EnrichmentReviewStatus;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Enums\EnrichmentFeedbackReason;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -99,7 +103,7 @@ class EnrichmentReviewControllerTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $product->id,
-            'tracking_id' => 'trk-perm-001',
+            'tracking_id' => (string) Str::uuid(),
             'status' => EnrichmentReviewStatus::PendingReview,
             'enriched_data' => new EnrichedProductData(
                 name: 'Enriched Name',
@@ -126,7 +130,52 @@ class EnrichmentReviewControllerTest extends TestCase
         $response->assertStatus(403);
     }
 
-    public function test_reject_validates_reason_length(): void
+    public function test_index_response_includes_version_origin_and_rejection_notes(): void
+    {
+        $this->user->assignRole('admin');
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => (string) Str::uuid(),
+            'version' => 2,
+            'origin' => EnrichmentResultOrigin::CuratedUpdate,
+            'status' => EnrichmentReviewStatus::Rejected,
+            'enriched_data' => new EnrichedProductData(
+                name: 'Enriched Name',
+                brand: null,
+                description: null,
+                classification: [],
+                ingredients: [],
+                images: [],
+                confidence_score: 50,
+                enrichment_tier: null,
+                field_confidence: null,
+                enrichment_sources: null,
+                assigned_barcode: null,
+                assigned_barcode_type: null,
+            ),
+            'enrichment_quality' => 'partial',
+            'rejection_reason' => EnrichmentFeedbackReason::BadData->value,
+            'rejection_notes' => 'Missing safety data',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/enrichment-results');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.version', 2);
+        $response->assertJsonPath('data.0.origin', EnrichmentResultOrigin::CuratedUpdate->value);
+        $response->assertJsonPath('data.0.rejection_notes', 'Missing safety data');
+    }
+
+    public function test_show_response_includes_version_origin_and_rejection_notes(): void
     {
         $this->user->assignRole('admin');
 
@@ -139,7 +188,134 @@ class EnrichmentReviewControllerTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $product->id,
-            'tracking_id' => 'trk-validate-001',
+            'tracking_id' => (string) Str::uuid(),
+            'version' => 2,
+            'origin' => EnrichmentResultOrigin::CuratedUpdate,
+            'status' => EnrichmentReviewStatus::Rejected,
+            'enriched_data' => new EnrichedProductData(
+                name: 'Enriched Name',
+                brand: null,
+                description: null,
+                classification: [],
+                ingredients: [],
+                images: [],
+                confidence_score: 50,
+                enrichment_tier: null,
+                field_confidence: null,
+                enrichment_sources: null,
+                assigned_barcode: null,
+                assigned_barcode_type: null,
+            ),
+            'enrichment_quality' => 'partial',
+            'rejection_reason' => EnrichmentFeedbackReason::WrongProduct->value,
+            'rejection_notes' => 'Different item',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/enrichment-results/{$enrichmentResult->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.version', 2);
+        $response->assertJsonPath('data.origin', EnrichmentResultOrigin::CuratedUpdate->value);
+        $response->assertJsonPath('data.rejection_notes', 'Different item');
+    }
+
+    public function test_reject_requires_reason(): void
+    {
+        $this->user->assignRole('admin');
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $enrichmentResult = EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => (string) Str::uuid(),
+            'status' => EnrichmentReviewStatus::PendingReview,
+            'enriched_data' => new EnrichedProductData(
+                name: 'Enriched Name',
+                brand: null,
+                description: null,
+                classification: [],
+                ingredients: [],
+                images: [],
+                confidence_score: 50,
+                enrichment_tier: null,
+                field_confidence: null,
+                enrichment_sources: null,
+                assigned_barcode: null,
+                assigned_barcode_type: null,
+            ),
+            'enrichment_quality' => 'partial',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/enrichment-results/{$enrichmentResult->id}/reject", []);
+
+        $response->assertUnprocessable();
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('reason', $response->json('error.errors'));
+    }
+
+    public function test_reject_validates_reason_enum(): void
+    {
+        $this->user->assignRole('admin');
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $enrichmentResult = EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => (string) Str::uuid(),
+            'status' => EnrichmentReviewStatus::PendingReview,
+            'enriched_data' => new EnrichedProductData(
+                name: 'Enriched Name',
+                brand: null,
+                description: null,
+                classification: [],
+                ingredients: [],
+                images: [],
+                confidence_score: 50,
+                enrichment_tier: null,
+                field_confidence: null,
+                enrichment_sources: null,
+                assigned_barcode: null,
+                assigned_barcode_type: null,
+            ),
+            'enrichment_quality' => 'partial',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/enrichment-results/{$enrichmentResult->id}/reject", [
+                'reason' => 'quality-too-low',
+            ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('reason', $response->json('error.errors'));
+    }
+
+    public function test_reject_validates_notes_length(): void
+    {
+        $this->user->assignRole('admin');
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $enrichmentResult = EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => (string) Str::uuid(),
             'status' => EnrichmentReviewStatus::PendingReview,
             'enriched_data' => new EnrichedProductData(
                 name: 'Enriched Name',
@@ -161,17 +337,19 @@ class EnrichmentReviewControllerTest extends TestCase
         // With a reason exceeding max:1000 chars, expect 422 validation error
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson("/api/v1/enrichment-results/{$enrichmentResult->id}/reject", [
-                'reason' => str_repeat('A', 1001),
+                'reason' => EnrichmentFeedbackReason::BadData->value,
+                'notes' => str_repeat('A', 1001),
             ]);
 
         // The app uses a custom validation error format: error.errors.{field}
         $response->assertUnprocessable();
         $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
-        $this->assertArrayHasKey('reason', $response->json('error.errors'));
+        $this->assertArrayHasKey('notes', $response->json('error.errors'));
     }
 
     public function test_reject_with_valid_reason_succeeds(): void
     {
+        Queue::fake();
         $this->user->assignRole('admin');
 
         $product = Product::factory()->create([
@@ -183,7 +361,7 @@ class EnrichmentReviewControllerTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'product_id' => $product->id,
-            'tracking_id' => 'trk-valid-reject-001',
+            'tracking_id' => (string) Str::uuid(),
             'status' => EnrichmentReviewStatus::PendingReview,
             'enriched_data' => new EnrichedProductData(
                 name: 'Enriched Name',
@@ -204,10 +382,15 @@ class EnrichmentReviewControllerTest extends TestCase
 
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson("/api/v1/enrichment-results/{$enrichmentResult->id}/reject", [
-                'reason' => 'Quality too low for our needs',
+                'reason' => EnrichmentFeedbackReason::BadData->value,
+                'notes' => 'Quality too low for our needs',
             ]);
 
         $response->assertOk();
         $response->assertJsonPath('data.message', 'Enrichment result rejected.');
+
+        $enrichmentResult->refresh();
+        $this->assertSame(EnrichmentFeedbackReason::BadData->value, $enrichmentResult->rejection_reason);
+        $this->assertSame('Quality too low for our needs', $enrichmentResult->rejection_notes);
     }
 }

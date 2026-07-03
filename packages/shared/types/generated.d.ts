@@ -1428,6 +1428,8 @@ product_name: string;
 product_barcode: string | null;
 product_sku: string | null;
 tracking_id: string;
+version: number;
+origin: App.Modules.Product.Domain.Enums.EnrichmentResultOrigin;
 status: string;
 enriched_data: App.Modules.Product.Application.DTOs.EnrichedProductData;
 enrichment_quality: string;
@@ -1436,6 +1438,7 @@ reviewed_at: string | null;
 reviewed_by: string | null;
 accepted_fields: Array<any> | null;
 rejection_reason: string | null;
+rejection_notes: string | null;
 created_at: string;
 };
 export type HealthClaimData = {
@@ -1572,6 +1575,7 @@ export type BrandQualityTier = 'oe' | 'oes' | 'premium_aftermarket' | 'aftermark
 export type BrandSource = 'user' | 'enriched';
 export type CrossReferenceType = 'oe' | 'oem' | 'trade' | 'iam' | 'ean' | 'internal';
 export type DosageForm = 'capsule' | 'tablet' | 'softgel' | 'liquid' | 'powder' | 'cream' | 'gel' | 'lotion' | 'spray' | 'patch' | 'other';
+export type EnrichmentResultOrigin = 'initial' | 'curated_update';
 export type EnrichmentReviewStatus = 'pending_review' | 'accepted' | 'rejected';
 export type EquivalenceType = 'generic' | 'therapeutic' | 'brand_alt';
 export type ParapharmacyCategory = 'supplement' | 'cosmetic' | 'medical_device' | 'herbal' | 'baby_care' | 'sports_nutrition' | 'other';
@@ -2189,6 +2193,8 @@ export type VarianceDirection = 'over' | 'under' | 'balanced';
 export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }
 declare namespace App.Shared.Enums {
+export type EnrichmentFeedbackAction = 'confirmed' | 'rejected';
+export type EnrichmentFeedbackReason = 'wrong_product' | 'bad_data';
 export type EnrichmentStatus = 'pending' | 'enriching' | 'completed' | 'failed' | 'rejected' | 'not_enrichable';
 }
 

@@ -4,7 +4,7 @@ export interface EnrichedProductData {
   description: string | null
   classification: Record<string, unknown>
   ingredients: string[]
-  images: Array<{ url: string; type?: string }>
+  images: { url: string; type?: string }[]
   confidence_score: number
   enrichment_tier: string | null
   field_confidence: Record<string, number> | null
@@ -12,6 +12,9 @@ export interface EnrichedProductData {
   assigned_barcode: string | null
   assigned_barcode_type: string | null
 }
+
+export type EnrichmentResultOrigin = 'initial' | 'curated_update'
+export type EnrichmentRejectionReason = 'wrong_product' | 'bad_data'
 
 export interface EnrichmentResult {
   id: string
@@ -21,6 +24,8 @@ export interface EnrichmentResult {
   product_sku: string | null
   tracking_id: string
   status: 'pending_review' | 'accepted' | 'rejected'
+  version: number
+  origin: EnrichmentResultOrigin
   enriched_data: EnrichedProductData
   enrichment_quality: 'high' | 'medium' | 'low'
   assigned_barcode: string | null
@@ -28,6 +33,7 @@ export interface EnrichmentResult {
   reviewed_by: string | null
   accepted_fields: Record<string, boolean> | null
   rejection_reason: string | null
+  rejection_notes: string | null
   created_at: string
 }
 
