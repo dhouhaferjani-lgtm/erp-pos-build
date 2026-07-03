@@ -8,18 +8,20 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Application\DTOs\BarcodeLookupResultData;
 use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformProductData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
+use App\Modules\Product\Application\Services\BrandResolutionService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 final class BarcodeLookupService
 {
-    private const CACHE_PREFIX = 'platform:lookup:';
+    private const CACHE_PREFIX = 'platform:lookup:v2:';
 
     private const CACHE_TTL_SECONDS = 3600;
 
     public function __construct(
         private readonly PlatformHttpClient $platformClient,
         private readonly CompanyContext $companyContext,
+        private readonly BrandResolutionService $brandResolution,
     ) {}
 
     public function lookup(string $barcode, ?string $vertical = null): BarcodeLookupResultData
@@ -44,7 +46,7 @@ final class BarcodeLookupService
         // Check cache — stores BarcodeLookupResultData objects directly
         $cached = Cache::get($cacheKey);
         if ($cached instanceof BarcodeLookupResultData) {
-            return $cached;
+            return $this->withLocalBrand($cached);
         }
 
         // Check circuit breaker
@@ -72,7 +74,7 @@ final class BarcodeLookupService
 
                 Cache::put($cacheKey, $result, self::CACHE_TTL_SECONDS);
 
-                return $result;
+                return $this->withLocalBrand($result);
             }
 
             $trackingId = $response['tracking_id'] ?? null;
@@ -89,6 +91,43 @@ final class BarcodeLookupService
             ]);
 
             return BarcodeLookupResultData::error($normalizedBarcode, 'platform_error');
+        }
+    }
+
+    private function withLocalBrand(BarcodeLookupResultData $result): BarcodeLookupResultData
+    {
+        $product = $result->product;
+
+        if ($result->status !== 'found' || $product === null) {
+            return $result;
+        }
+
+        if ($product->canonicalBrandId === null && $product->externalBrandId === null) {
+            return $result;
+        }
+
+        if (! filled($product->brand)) {
+            return $result;
+        }
+
+        try {
+            $company = $this->companyContext->requireCompany();
+            $resolution = $this->brandResolution->resolve(
+                $company->tenant_id,
+                (string) $product->brand,
+                $product->canonicalBrandId,
+                $product->externalBrandId,
+            );
+            $this->brandResolution->dispatchPushIfNeeded($resolution, $company->id);
+
+            return BarcodeLookupResultData::found((string) $result->barcode, $product, $resolution->brand->id);
+        } catch (\Throwable $e) {
+            Log::warning('Brand resolution during lookup failed', [
+                'barcode' => $result->barcode,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $result;
         }
     }
 

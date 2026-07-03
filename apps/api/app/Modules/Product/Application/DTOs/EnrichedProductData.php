@@ -34,5 +34,11 @@ class EnrichedProductData extends Data
         // locale-based routing/analytics or filtering, promote this to a
         // dedicated enrichment_results.locale column (index-friendly).
         public ?string $locale = null,
+        // Cross-ERP brand mapping. Read-time, partner-scoped on the platform
+        // lookup endpoint; defensively parsed here so accept can honor them if
+        // lookup-status enriched_data starts carrying them.
+        public ?string $canonical_brand_id = null,
+        public ?string $canonical_brand_slug = null,
+        public ?string $external_brand_id = null,
     ) {}
 }

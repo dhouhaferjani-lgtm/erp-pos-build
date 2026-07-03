@@ -1420,6 +1420,9 @@ enrichment_sources: Array<any> | null;
 assigned_barcode: string | null;
 assigned_barcode_type: string | null;
 locale: string | null;
+canonical_brand_id: string | null;
+canonical_brand_slug: string | null;
+external_brand_id: string | null;
 };
 export type EnrichmentResultData = {
 id: string;
@@ -2193,6 +2196,7 @@ export type VarianceDirection = 'over' | 'under' | 'balanced';
 export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }
 declare namespace App.Shared.Enums {
+export type BrandMappingPushResult = 'mapped' | 'conflict' | 'not_found' | 'failed';
 export type EnrichmentFeedbackAction = 'confirmed' | 'rejected';
 export type EnrichmentFeedbackReason = 'wrong_product' | 'bad_data';
 export type EnrichmentStatus = 'pending' | 'enriching' | 'completed' | 'failed' | 'rejected' | 'not_enrichable';

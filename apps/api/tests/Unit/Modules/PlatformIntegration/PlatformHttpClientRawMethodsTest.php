@@ -6,6 +6,7 @@ namespace Tests\Unit\Modules\PlatformIntegration;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Mockery;
@@ -106,5 +107,68 @@ class PlatformHttpClientRawMethodsTest extends TestCase
         Http::assertSent(function ($request) {
             return $request->hasHeader('Idempotency-Key', 'idem-123');
         });
+    }
+
+    public function test_post_with_status_returns_status_and_body_on_success(): void
+    {
+        Http::fake([
+            'platform.test/*' => Http::response(['data' => ['brand_id' => 'x']], 200),
+        ]);
+
+        $response = $this->client->postWithStatus('/api/v1/brands/abc/external-mapping', ['external_brand_id' => 'b1']);
+
+        $this->assertSame(200, $response->status);
+        $this->assertSame(['data' => ['brand_id' => 'x']], $response->body);
+    }
+
+    public function test_post_with_status_returns_422_without_tripping_circuit(): void
+    {
+        Http::fake([
+            'platform.test/*' => Http::response(['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'already mapped']], 422),
+        ]);
+
+        $response = $this->client->postWithStatus('/x', []);
+
+        $this->assertSame(422, $response->status);
+        $this->assertSame('VALIDATION_ERROR', $response->body['error']['code'] ?? null);
+        $this->assertFalse($this->client->isCircuitOpen());
+        $this->assertNull(Cache::get('platform:circuit_failures'));
+    }
+
+    public function test_post_with_status_returns_404_without_tripping_circuit(): void
+    {
+        Http::fake([
+            'platform.test/*' => Http::response(['error' => ['code' => 'RESOURCE_NOT_FOUND']], 404),
+        ]);
+
+        $response = $this->client->postWithStatus('/x', []);
+
+        $this->assertSame(404, $response->status);
+        $this->assertNull(Cache::get('platform:circuit_failures'));
+    }
+
+    public function test_post_with_status_records_failure_on_5xx(): void
+    {
+        Http::fake([
+            'platform.test/*' => Http::response(['error' => 'boom'], 503),
+        ]);
+
+        $response = $this->client->postWithStatus('/x', []);
+
+        $this->assertSame(503, $response->status);
+        $this->assertNotNull(Cache::get('platform:circuit_failures'));
+    }
+
+    public function test_post_with_status_throws_and_records_failure_on_connection_error(): void
+    {
+        Http::fake(fn (): never => throw new ConnectionException('unreachable'));
+
+        $this->expectException(ConnectionException::class);
+
+        try {
+            $this->client->postWithStatus('/x', []);
+        } finally {
+            $this->assertNotNull(Cache::get('platform:circuit_failures'));
+        }
     }
 }

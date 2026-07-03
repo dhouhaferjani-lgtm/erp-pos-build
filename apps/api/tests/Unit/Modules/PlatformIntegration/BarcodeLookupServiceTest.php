@@ -11,6 +11,7 @@ use App\Modules\PlatformIntegration\Application\DTOs\BarcodeLookupResultData;
 use App\Modules\PlatformIntegration\Application\Services\BarcodeLookupService;
 use App\Modules\PlatformIntegration\Domain\ValueObjects\PlatformProductData;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
+use App\Modules\Product\Application\Services\BrandResolutionService;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -153,7 +154,7 @@ class BarcodeLookupServiceTest extends TestCase
 
         // Pre-populate cache
         $cachedResult = BarcodeLookupResultData::notFound($barcode, 'trk-cached');
-        Cache::put('platform:lookup:automotive:'.$barcode, $cachedResult, 3600);
+        Cache::put('platform:lookup:v2:automotive:'.$barcode, $cachedResult, 3600);
 
         Http::fake(); // nothing should be sent
 
@@ -202,6 +203,7 @@ class BarcodeLookupServiceTest extends TestCase
         $this->service = new BarcodeLookupService(
             new PlatformHttpClient($companyContext),
             $companyContext,
+            new BrandResolutionService,
         );
     }
 }

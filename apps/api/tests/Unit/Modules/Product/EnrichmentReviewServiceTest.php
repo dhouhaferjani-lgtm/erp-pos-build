@@ -390,6 +390,142 @@ class EnrichmentReviewServiceTest extends TestCase
         $this->assertSame('fr_FR', $result->enriched_data->locale);
     }
 
+    public function test_fetch_and_store_persists_brand_mapping_fields(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Original Product',
+        ]);
+
+        $trackingId = (string) Str::uuid();
+        $canonical = (string) Str::uuid();
+
+        Http::fake([
+            'platform.test/*' => Http::response([
+                'tracking_id' => $trackingId,
+                'status' => 'enriched',
+                'enrichment_quality' => 'full',
+                'enriched_data' => [
+                    'name' => 'Enriched Name',
+                    'brand' => 'La Roche-Posay',
+                    'description' => 'Enriched Description',
+                    'classification' => [],
+                    'ingredients' => [],
+                    'images' => [],
+                    'confidence_score' => 85,
+                    'enrichment_tier' => 'high',
+                    'assigned_barcode' => '3017620422003',
+                    'assigned_barcode_type' => 'EAN-13',
+                    'canonical_brand_id' => $canonical,
+                    'canonical_brand_slug' => 'la-roche-posay',
+                    'external_brand_id' => 'erp-brand-42',
+                ],
+            ]),
+        ]);
+
+        $result = $this->service->fetchAndStore($trackingId, $product);
+
+        $this->assertNotNull($result);
+        $this->assertSame($canonical, $result->enriched_data->canonical_brand_id);
+        $this->assertSame('la-roche-posay', $result->enriched_data->canonical_brand_slug);
+        $this->assertSame('erp-brand-42', $result->enriched_data->external_brand_id);
+    }
+
+    public function test_payload_differing_only_in_mapping_fields_is_a_no_op_for_accepted_result(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Original Product',
+        ]);
+
+        $trackingId = (string) Str::uuid();
+        $canonical = (string) Str::uuid();
+        $accepted = EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => $trackingId,
+            'status' => EnrichmentReviewStatus::Accepted,
+            'enriched_data' => new EnrichedProductData(
+                name: 'Enriched Name',
+                brand: 'Enriched Brand',
+                description: 'Enriched Description',
+                classification: [],
+                ingredients: [],
+                images: [],
+                confidence_score: 85,
+                enrichment_tier: 'high',
+                field_confidence: null,
+                enrichment_sources: null,
+                assigned_barcode: '3017620422003',
+                assigned_barcode_type: 'EAN-13',
+                external_brand_id: null,
+            ),
+            'enrichment_quality' => 'full',
+            'assigned_barcode' => '3017620422003',
+            'reviewed_at' => now(),
+            'reviewed_by' => $this->user->id,
+            'accepted_fields' => ['name' => true],
+        ]);
+
+        Http::fake([
+            'platform.test/*' => Http::response([
+                'tracking_id' => $trackingId,
+                'status' => 'approved',
+                'enrichment_quality' => 'full',
+                'assigned_barcode' => '3017620422003',
+                'enriched_data' => [
+                    'name' => 'Enriched Name',
+                    'brand' => 'Enriched Brand',
+                    'description' => 'Enriched Description',
+                    'classification' => [],
+                    'ingredients' => [],
+                    'images' => [],
+                    'confidence_score' => 85,
+                    'enrichment_tier' => 'high',
+                    'assigned_barcode' => '3017620422003',
+                    'assigned_barcode_type' => 'EAN-13',
+                    'canonical_brand_id' => $canonical,
+                    'canonical_brand_slug' => 'enriched-brand',
+                    'external_brand_id' => 'erp-brand-42',
+                ],
+            ]),
+        ]);
+
+        $result = $this->service->fetchAndStore($trackingId, $product);
+
+        $this->assertNotNull($result);
+        $this->assertSame($accepted->id, $result->id);
+        $this->assertSame(1, EnrichmentResult::where('tracking_id', $trackingId)->count());
+    }
+
+    public function test_legacy_enriched_data_without_mapping_keys_hydrates(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Original Product',
+        ]);
+
+        $result = EnrichmentResult::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'tracking_id' => (string) Str::uuid(),
+            'status' => EnrichmentReviewStatus::PendingReview,
+            'enriched_data' => $this->enrichedData(name: 'Legacy Name'),
+            'enrichment_quality' => 'full',
+        ]);
+
+        $rehydrated = EnrichmentResult::findOrFail($result->id);
+
+        $this->assertNull($rehydrated->enriched_data->canonical_brand_id);
+        $this->assertNull($rehydrated->enriched_data->canonical_brand_slug);
+        $this->assertNull($rehydrated->enriched_data->external_brand_id);
+    }
+
     public function test_accept_merges_fields_into_product(): void
     {
         Queue::fake();

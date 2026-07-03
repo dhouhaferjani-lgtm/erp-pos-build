@@ -10,6 +10,7 @@ use App\Modules\PlatformIntegration\Application\DTOs\SubmissionResultData;
 use App\Modules\PlatformIntegration\Application\Services\ProductSubmissionService;
 use App\Modules\PlatformIntegration\Infrastructure\Http\PlatformHttpClient;
 use App\Shared\DTOs\SubmissionStatusDTO;
+use App\Shared\Enums\BrandMappingPushResult;
 use App\Shared\Enums\EnrichmentFeedbackAction;
 use App\Shared\Enums\EnrichmentFeedbackReason;
 use Illuminate\Http\Client\ConnectionException;
@@ -221,6 +222,55 @@ class ProductSubmissionServiceTest extends TestCase
 
         $this->assertFalse($result);
         $this->assertContains('Failed to send enrichment feedback to platform', array_column($logger->warnings, 'message'));
+    }
+
+    public function test_push_brand_mapping_returns_mapped_on_success(): void
+    {
+        Http::fake([
+            'platform.test/api/v1/brands/*/external-mapping' => Http::response([
+                'data' => ['brand_id' => 'c1', 'external_brand_id' => 'b1', 'partner_id' => 'p1'],
+            ], 200),
+        ]);
+
+        $result = $this->service->pushBrandMapping('c1', 'b1');
+
+        $this->assertSame(BrandMappingPushResult::Mapped, $result);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/api/v1/brands/c1/external-mapping')
+            && $request['external_brand_id'] === 'b1');
+    }
+
+    public function test_push_brand_mapping_returns_conflict_on_422(): void
+    {
+        Http::fake([
+            'platform.test/*' => Http::response(['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'already mapped']], 422),
+        ]);
+
+        $this->assertSame(BrandMappingPushResult::Conflict, $this->service->pushBrandMapping('c1', 'b1'));
+    }
+
+    public function test_push_brand_mapping_returns_not_found_on_404(): void
+    {
+        Http::fake([
+            'platform.test/*' => Http::response(['error' => ['code' => 'RESOURCE_NOT_FOUND']], 404),
+        ]);
+
+        $this->assertSame(BrandMappingPushResult::NotFound, $this->service->pushBrandMapping('c1', 'b1'));
+    }
+
+    public function test_push_brand_mapping_returns_failed_on_server_error(): void
+    {
+        Http::fake([
+            'platform.test/*' => Http::response([], 503),
+        ]);
+
+        $this->assertSame(BrandMappingPushResult::Failed, $this->service->pushBrandMapping('c1', 'b1'));
+    }
+
+    public function test_push_brand_mapping_returns_failed_on_exception(): void
+    {
+        Http::fake(fn (): never => throw new ConnectionException('unreachable'));
+
+        $this->assertSame(BrandMappingPushResult::Failed, $this->service->pushBrandMapping('c1', 'b1'));
     }
 
     public function test_request_upload_url_returns_presigned_data(): void

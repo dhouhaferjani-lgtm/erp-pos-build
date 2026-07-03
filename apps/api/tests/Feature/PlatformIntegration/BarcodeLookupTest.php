@@ -143,6 +143,7 @@ class BarcodeLookupTest extends TestCase
         $this->assertSame('Bosch', $result->product->brand);
         $this->assertNotNull($result->suggestedProduct);
         $this->assertSame('Bosch Brake Pad Set', $result->suggestedProduct['name']);
+        $this->assertNull($result->suggestedProduct['brand_id']);
         $this->assertNull($result->errorReason);
     }
 

@@ -11,6 +11,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
+use App\Modules\Product\Application\Jobs\SendBrandMappingJob;
 use App\Modules\Product\Application\Services\EnrichmentReviewService;
 use App\Modules\Product\Domain\Brand;
 use App\Modules\Product\Domain\EnrichmentResult;
@@ -84,8 +85,10 @@ final class EnrichmentBrandAcceptTest extends TestCase
 
     /**
      * Build a minimal EnrichmentResult for a product with the given brand name.
+     *
+     * @param  array<string, mixed>  $enrichedOverrides
      */
-    private function makeEnrichmentResult(Product $product, ?string $brand = null): EnrichmentResult
+    private function makeEnrichmentResult(Product $product, ?string $brand = null, array $enrichedOverrides = []): EnrichmentResult
     {
         return EnrichmentResult::create([
             'tenant_id' => $this->tenant->id,
@@ -106,6 +109,15 @@ final class EnrichmentBrandAcceptTest extends TestCase
                 enrichment_sources: null,
                 assigned_barcode: null,
                 assigned_barcode_type: null,
+                canonical_brand_id: is_string($enrichedOverrides['canonical_brand_id'] ?? null)
+                    ? $enrichedOverrides['canonical_brand_id']
+                    : null,
+                canonical_brand_slug: is_string($enrichedOverrides['canonical_brand_slug'] ?? null)
+                    ? $enrichedOverrides['canonical_brand_slug']
+                    : null,
+                external_brand_id: is_string($enrichedOverrides['external_brand_id'] ?? null)
+                    ? $enrichedOverrides['external_brand_id']
+                    : null,
             ),
             'enrichment_quality' => 'full',
         ]);
@@ -193,5 +205,81 @@ final class EnrichmentBrandAcceptTest extends TestCase
         $this->assertSame($productA->brand_id, $productB->brand_id);
         $this->assertSame(BrandSource::Enriched, $productA->brand_source);
         $this->assertSame(BrandSource::Enriched, $productB->brand_source);
+    }
+
+    public function test_accept_persists_canonical_brand_id_and_dispatches_push(): void
+    {
+        $canonical = (string) Str::uuid();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Avène Cleanser',
+            'enrichment_status' => EnrichmentStatus::Completed,
+            'platform_submission_id' => (string) Str::uuid(),
+        ]);
+
+        $enrichmentResult = $this->makeEnrichmentResult($product, 'Avène', [
+            'canonical_brand_id' => $canonical,
+            'external_brand_id' => null,
+        ]);
+
+        $this->service->accept($enrichmentResult, ['brand'], $this->user->id);
+
+        $brand = Brand::where('tenant_id', $this->tenant->id)->where('slug', 'avene')->sole();
+        $this->assertSame($canonical, $brand->canonical_brand_id);
+
+        Queue::assertPushed(SendBrandMappingJob::class, fn (SendBrandMappingJob $job): bool => $job->canonicalBrandId === $canonical
+            && $job->externalBrandId === $brand->id
+            && $job->companyId === $this->company->id);
+    }
+
+    public function test_accept_reuses_mapped_brand_and_skips_creation_and_push(): void
+    {
+        $canonical = (string) Str::uuid();
+        $existing = Brand::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Avène Laboratoires',
+            'slug' => 'avene-laboratoires',
+            'canonical_brand_id' => $canonical,
+            'is_active' => true,
+        ]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Avène Cleanser',
+            'enrichment_status' => EnrichmentStatus::Completed,
+            'platform_submission_id' => (string) Str::uuid(),
+        ]);
+
+        $enrichmentResult = $this->makeEnrichmentResult($product, 'Avène', [
+            'canonical_brand_id' => $canonical,
+            'external_brand_id' => $existing->id,
+        ]);
+
+        $this->service->accept($enrichmentResult, ['brand'], $this->user->id);
+
+        $this->assertSame(1, Brand::where('tenant_id', $this->tenant->id)->count());
+        $this->assertSame($existing->id, $product->fresh()->brand_id);
+        $this->assertSame('Avène Laboratoires', $existing->fresh()->name, 'never renamed');
+        Queue::assertNotPushed(SendBrandMappingJob::class);
+    }
+
+    public function test_accept_without_mapping_fields_behaves_as_before_and_pushes_nothing(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Avène Cleanser',
+            'enrichment_status' => EnrichmentStatus::Completed,
+            'platform_submission_id' => (string) Str::uuid(),
+        ]);
+
+        $enrichmentResult = $this->makeEnrichmentResult($product, 'Avène');
+
+        $this->service->accept($enrichmentResult, ['brand'], $this->user->id);
+
+        $brand = Brand::where('tenant_id', $this->tenant->id)->where('slug', 'avene')->sole();
+        $this->assertNull($brand->canonical_brand_id);
+        Queue::assertNotPushed(SendBrandMappingJob::class);
     }
 }

@@ -62,4 +62,29 @@ class PlatformProductDataTest extends TestCase
         $this->assertSame(0, $product->confidenceScore);
         $this->assertNull($product->enrichmentTier);
     }
+
+    public function test_from_api_response_parses_brand_mapping_fields(): void
+    {
+        $data = PlatformProductData::fromApiResponse([
+            'id' => 'p1',
+            'barcode' => '123',
+            'name' => 'X',
+            'canonical_brand_id' => 'c1',
+            'canonical_brand_slug' => 'la-roche-posay',
+            'external_brand_id' => 'b1',
+        ]);
+
+        $this->assertSame('c1', $data->canonicalBrandId);
+        $this->assertSame('la-roche-posay', $data->canonicalBrandSlug);
+        $this->assertSame('b1', $data->externalBrandId);
+    }
+
+    public function test_from_api_response_defaults_mapping_fields_to_null(): void
+    {
+        $data = PlatformProductData::fromApiResponse(['id' => 'p1', 'barcode' => '123', 'name' => 'X']);
+
+        $this->assertNull($data->canonicalBrandId);
+        $this->assertNull($data->canonicalBrandSlug);
+        $this->assertNull($data->externalBrandId);
+    }
 }
