@@ -14,6 +14,7 @@ use App\Modules\Accounting\Application\Services\Reports\AgedReceivablesService;
 use App\Modules\Accounting\Application\Services\Reports\BalanceSheetService;
 use App\Modules\Accounting\Application\Services\Reports\CashMovementsReportService;
 use App\Modules\Accounting\Application\Services\Reports\CashRegisterReportService;
+use App\Modules\Accounting\Application\Services\Reports\FinanceSummaryService;
 use App\Modules\Accounting\Application\Services\Reports\LiveSalesReportService;
 use App\Modules\Accounting\Application\Services\Reports\OwnerReportScope;
 use App\Modules\Accounting\Application\Services\Reports\OwnerSalesSummaryService;
@@ -92,6 +93,7 @@ class ReportsController extends Controller
         private readonly CashRegisterReportService $cashRegisterReportService,
         private readonly OwnerSalesSummaryService $ownerSalesSummaryService,
         private readonly LiveSalesReportService $liveSalesReportService,
+        private readonly FinanceSummaryService $financeSummaryService,
     ) {}
 
     public function salesByLocation(GetOwnerSalesReportRequest $request): JsonResponse
@@ -822,6 +824,40 @@ class ReportsController extends Controller
                 'error' => [
                     'code' => 'REPORT_GENERATION_ERROR',
                     'message' => 'Failed to generate upcoming payments report: '.$e->getMessage(),
+                ],
+            ], 500);
+        }
+    }
+
+    /**
+     * Compact financial snapshot for the Trésorerie FinanceWidget.
+     *
+     * Aggregates balance-sheet totals, month-/year-to-date net income, and the
+     * outstanding aged-receivables / aged-payables grand totals into a single
+     * payload of currency-scaled money strings.
+     */
+    public function financeSummary(Request $request): JsonResponse
+    {
+        try {
+            $companyId = $this->companyContext->requireCompanyId();
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'COMPANY_CONTEXT_REQUIRED',
+                    'message' => $e->getMessage(),
+                ],
+            ], 401);
+        }
+
+        try {
+            return response()->json([
+                'data' => $this->financeSummaryService->generate($companyId),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'REPORT_GENERATION_ERROR',
+                    'message' => 'Failed to generate finance summary report: '.$e->getMessage(),
                 ],
             ], 500);
         }

@@ -17,7 +17,6 @@ import type {
   AgedReceivablesFilters,
   AgedPayablesData,
   AgedPayablesFilters,
-  FinanceSummary,
 } from './types'
 
 export async function getAccounts(filters?: AccountFilters): Promise<Account[]> {
@@ -213,8 +212,10 @@ export async function getAgedPayables(
   return apiGet<AgedPayablesData>(url)
 }
 
-export async function getFinanceSummary(): Promise<FinanceSummary> {
-  return apiGet<FinanceSummary>('/reports/finance-summary')
+export async function getFinanceSummary(): Promise<App.Modules.Accounting.Application.DTOs.Reports.FinanceSummaryData> {
+  return apiGet<App.Modules.Accounting.Application.DTOs.Reports.FinanceSummaryData>(
+    '/reports/finance-summary'
+  )
 }
 
 export async function getUpcomingPayments(
