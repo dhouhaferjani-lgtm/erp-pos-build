@@ -121,6 +121,15 @@ revenue: string;
 percentage: string;
 quantity: string;
 };
+export type FinanceSummaryData = {
+total_assets: string;
+total_liabilities: string;
+total_equity: string;
+net_income_mtd: string;
+net_income_ytd: string;
+accounts_receivable: string;
+accounts_payable: string;
+};
 export type LedgerData = {
 opening_balance: string;
 closing_balance: string;

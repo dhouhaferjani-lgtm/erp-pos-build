@@ -328,15 +328,9 @@ export interface AgedPayablesFilters {
 
 // ===== Finance widget summary ==========================================
 
-// FRONTEND-ONLY: no matching PHP DTO exists. The `/finance/summary`
-// endpoint assembles this shape ad-hoc in the controller. When a proper
-// DTO is created, tag it with `#[TypeScript]` and re-export.
-export interface FinanceSummary {
-  total_assets: string
-  total_liabilities: string
-  total_equity: string
-  net_income_mtd: string
-  net_income_ytd: string
-  accounts_receivable: string
-  accounts_payable: string
-}
+// The finance summary shape is now backed by a real PHP DTO
+// (App\Modules\Accounting\Application\DTOs\Reports\FinanceSummaryData) exposed
+// via the generated global namespace
+// `App.Modules.Accounting.Application.DTOs.Reports.FinanceSummaryData`.
+// Consume that generated type directly (see `getFinanceSummary` in ./api.ts)
+// rather than a hand-written interface.
