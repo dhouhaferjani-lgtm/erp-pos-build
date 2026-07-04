@@ -115,6 +115,12 @@ final readonly class FinanceSummaryService
      * Zero-balance accounts are filtered out of the line set upstream, which
      * is equivalent for a sum. Supports multiple accounts per purpose.
      *
+     * REQUIRES a flat balance-sheet result (includeHierarchy: false): flat mode
+     * reports every account's own direct balance with is_parent=false. Under
+     * includeHierarchy: true, parent accounts (e.g. seeded 411/401, which have
+     * child accounts) get their amount overwritten with the children subtotal
+     * and is_parent=true — the leaf-only skip would then zero AR/AP.
+     *
      * @param  list<array{account_code: string, account_name: string, account_type: string, amount: string, level: int, is_parent: bool}>  $lines
      * @return numeric-string
      */
