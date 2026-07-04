@@ -2,7 +2,32 @@
 
 **Date:** 2026-06-15
 **Scope:** `apps/api/app/Modules/` -- all 37 modules (Workshop counted as 3 sub-modules)
-**Verified:** 2026-06-29 against `origin/dev` @ `96f421c56` (see Verification Update below)
+**Verified:** 2026-07-04 against `dev` @ `8cb507faa` (latest); prior pass 2026-06-29 @ `96f421c56` (see Verification Updates below)
+
+---
+
+## ⚠️ Verification Update (2026-07-04, `dev` @ `8cb507faa`)
+
+One more module shipped since the 2026-06-29 pass, plus counts drifted up again.
+
+**One new module — Income** (created 2026-07-03):
+
+| Module | Models | Actions/Services | Routes | Tests | Events | Status |
+|--------|--------|-------------------|--------|-------|--------|--------|
+| **Income** | 1 (IncomeMetadata sidecar on the unified `documents` table, `DocumentType::Income`) | 1 (IncomeService — GL Dr cash/bank / Cr class-7 revenue + repository inflow via `RepositoryInflowInterface`) | Yes (6 routes: `income.view/create/update/delete/post`) | 2 (IncomeStore, IncomePost) | 0 | **Partial** — the mirror of Expense; money-received recording, shipped in treasury C7 |
+
+**Procurement (existing row) — RFQ Waves 1-2 landed:** now also owns multi-supplier **RFQ groups** (services `PurchaseQuoteRequestService`, `PurchaseQuoteRequestAwardService`, `CreateRfqData`/`UpdateRfqData`, `RfqPayload`; `DocumentType::PurchaseRfq`; controller `PurchaseQuoteRequestController` — index/group/store/reopen/show/update/send/convert-to-po; FE `apps/web/src/features/purchases/quote-requests/`). Tests ~11 across `tests/Feature/Procurement/`. Status stays **Partial**.
+
+**Corrected summary statistics (2026-07-04):**
+
+| Metric | 2026-06-29 | Current (2026-07-04) |
+|--------|------------|----------------------|
+| Total modules | 44 (42 dirs, Workshop=3) | **45** (43 top-level dirs, Workshop = 3) |
+| Total test files | 1126 | **1190** (`find apps/api/tests -name '*Test.php' \| wc -l`) |
+| Migrations | 445 | **456** (all `central`/`tenant`/`manual` subdirs) |
+| Frontend feature dirs | ~45 | **52** (`apps/web/src/features/`) |
+
+**Other shipped-since-2026-06-29 that this inventory does not re-rate module-by-module** (verified present in code, see PRODUCT-BIBLE §3/§4/§8): unified-imports phases 0-2 (`Import/Services/PartiesBalancesPhase`, `ProductOpeningStockPhase`, `ProductPriceResolver`, `ResultWorkbookService`; `can:imports.manage` gate), treasury C1-C7 (`UpcomingPaymentsService`, `TreasuryOverviewPage`, `RepositoryInflow/OutflowService`), enrichment H-A/H-B/H-C + cross-ERP brand mapping (`canonical_brand_id`), owner-dashboard live sales (`ReportsController@liveSales`).
 
 ---
 
@@ -61,7 +86,8 @@ This audit was re-verified two weeks after authoring. The codebase drifted mater
 | **Document** | 7 (Document, DocumentLine, DocumentAdditionalCost, DocumentSequence, CreditNoteAllocation, ReturnNoteMetadata, DocumentVehicleContext) | 12 (CreditNote, Posting, Numbering, PDF, FacturX, Conversion pipeline, etc.) | Yes | 57 | 17 | **Complete** -- most tested module, full conversion pipeline |
 | **Expense** | 2 (ExpenseCategory, ExpenseMetadata) | 1 (ExpenseService) | Yes | 0 | 0 | **Scaffolded** -- CRUD only, no tests, no events |
 | **Identity** | 3 (User, Device, EmailVerificationToken) | 1 (EmailVerification) | Yes | 10 | 0 | **Partial** -- auth works, RBAC tested, no domain events |
-| **Import** | 2 (ImportJob, ImportRow) | 5 (Import, MigrationWizard, SpreadsheetParser, ValidationEngine, FailedRowsExport) | Yes | 5 | 2 | **Partial** -- functional with broadcasting, moderate tests |
+| **Import** | 2 (ImportJob, ImportRow) | 10+ (Import, MigrationWizard, SpreadsheetParser, ValidationEngine, FailedRowsExport, **PartiesBalancesPhase, PartiesRowMapper, ProductOpeningStockPhase, ProductPriceResolver, ResultWorkbookService, NumericFieldNormalizer**) | Yes (all gated `can:imports.manage`) | 5+ | 2 | **Partial** -- unified two-file import phases 0-2 (parties + signed opening balances → AR/AP open items; sell-ready products TTC/HT/margin + opening stock + result workbook) |
+| **Income** | 1 (IncomeMetadata; unified `documents`, `DocumentType::Income`) | 1 (IncomeService — GL + `RepositoryInflowInterface`) | Yes (6, `income.*`) | 2 | 0 | **Partial** -- money-received recording, mirror of Expense (shipped 2026-07-03, treasury C7) |
 | **Inventory** | 7 (StockLevel, StockMovement, StockReservation, InventoryCounting, InventoryCountingItem, InventoryCountingAssignment, InventoryCounterMetrics) | 9 (Counting, Reconciliation, GoodsReceipt, LandedCost, WAC, Reservation, etc.) | Yes | 15 | 5 | **Complete** |
 | **Loyalty** | 9 (LoyaltyProgram, LoyaltyMember, Tier, EarningRule, Reward, Transaction, Enrollment, StampCardDefinition, MemberStampCard) | 6 (Earning, Enrollment, PointAdjustment, ProgramMgmt, Redemption, TierMgmt) + 6 domain services | Yes | 25 | 17 | **Complete** -- full DDD, repository pattern, extensive tests |
 | **Marketplace** | 5 (MarketplaceListing, MarketplaceOrder, MarketplaceOrderLine, MarketplaceSeller, BuyerSellerMapping) | 4 (ListingSync, MarketplaceOrder, Search, PriceComparison) | Yes | 6 | 0 | **Partial** -- functional, no events, moderate tests |
@@ -91,16 +117,18 @@ This audit was re-verified two weeks after authoring. The codebase drifted mater
 
 ## Summary Statistics
 
-| Metric | Count |
+> These figures are the ORIGINAL 2026-06-15 snapshot; see the two Verification Updates at the top for current numbers (**45 modules / 1190 test files / 456 migrations** as of 2026-07-04 @ `8cb507faa`).
+
+| Metric | Count (2026-06-15 snapshot) |
 |--------|-------|
-| **Total modules** | 37 (Workshop = 3 sub-modules) |
+| **Total modules** | 37 (Workshop = 3 sub-modules) → **45** (2026-07-04) |
 | **Complete** | 18 |
-| **Partial** | 14 |
-| **Scaffolded** | 5 (Communication, Dashboard, Expense, Media, Pricing) |
-| **Total test files** | ~545 |
+| **Partial** | 14 → +Income, +Procurement, +Expense |
+| **Scaffolded** | 5 (Communication, Dashboard, Expense, Media, Pricing) → 4 (Expense promoted) |
+| **Total test files** | ~545 → **1190** (2026-07-04) |
 | **Total domain events** | ~147 |
 | **Modules with routes** | 35 (all except Communication and Admin/Billing which use api.php) |
-| **Migrations** | 330 |
+| **Migrations** | 330 → **456** (2026-07-04) |
 
 ---
 

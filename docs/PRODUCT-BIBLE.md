@@ -1,8 +1,10 @@
 # Synerivia ERP — Product Bible
 
-> **Last updated:** 2026-06-30
+> **Last updated:** 2026-07-04 (re-verified against `dev` @ `8cb507faa`; original discovery 2026-06-30)
 > **Session:** Product Discovery with Houssam (founder)
 > **Status:** DRAFT (vision + architecture + launch boundary locked; some §6–§10 cells pending — see Open Questions)
+
+> **Re-verification note (2026-07-04):** §3 module map, §4 flows, and §8 tech-debt re-checked against the actual code on `dev` @ `8cb507faa` (a ~5-day shipping window since the 2026-06-29 pass). Substantive deltas: the **Income** module (created 2026-07-03) is now folded in everywhere; module count corrected **44 → 45** (43 top-level dirs, not 42; Workshop = 3); unified-imports phases 0-2, procurement RFQ Waves 1-2, treasury C1-C7, enrichment H-A/H-B/H-C, owner-dashboard live sales, and cross-ERP brand mapping verified shipped; four newly-surfaced debt/bug items added to §8 (TD-011..TD-014). Per the laptop constraint, no test suites were executed — items requiring a red/green run to confirm are flagged **unverified (not test-run)** with a dated note.
 
 This document is the single source of truth for **Synerivia ERP**. If it is not in this document, it is not decided. Every architectural choice, business rule, priority, and quality bar is documented here. It is the operating manual for the orchestrator agent and all domain agents.
 
@@ -140,40 +142,42 @@ Tailwind v4 design tokens; two themes — **IziPOS copper**, **Otospex pink** �
 
 ## 3. Module Status Map
 
-> **Source of truth for per-module detail:** `docs/autonomous-product-dev-setup/discovery-module-inventory.md` (verified 2026-06-29 against `origin/dev` @ `96f421c56`). To avoid drift, this Bible records the **summary + deltas** and points there rather than duplicating all 44 rows.
+> **Source of truth for per-module detail:** `docs/autonomous-product-dev-setup/discovery-module-inventory.md` (re-verified 2026-07-04 against `dev` @ `8cb507faa`; prior pass 2026-06-29 @ `96f421c56`). To avoid drift, this Bible records the **summary + deltas** and points there rather than duplicating all 45 rows.
 
-**Current totals (verified 2026-06-29):** **44 modules** (42 top-level dirs; Workshop = 3 sub-modules). Test files **1126**. Migrations **445**.
+**Current totals (verified 2026-07-04, `dev` @ `8cb507faa`):** **45 modules** (43 top-level dirs; Workshop = 3 sub-modules). Backend test files **1190** (`find apps/api/tests -name '*Test.php' | wc -l`). Migrations **456** (all `central`/`tenant`/`manual` subdirs). Frontend feature dirs **52** (`apps/web/src/features/`).
 
-**Four modules added since the original audit:**
+**Five modules added since the original 2026-06-15 audit** (Income is new since the 2026-06-29 pass):
 
-| Module | Status | What it does |
-|--------|--------|--------------|
-| **Procurement** | Partial | Phase-1 procure-to-pay AP: GR-first 3-way match + GR-IR clearing posting. Does NOT own GoodsReceipt (Inventory) or a supplier-invoice model (Documents). |
-| **Fiscal** | Complete | Device-authored fiscal event engine (projection/quarantine), 70 tests. NF525 canonical projection. |
-| **Voucher** | Complete | Issuance/redemption/cascade/lookup, append-only ledger, fraud alerts, POS sync. |
-| **Channel** | Complete | Sales-channel / marketplace sync: webhook ingestion, dispatch jobs, drift detection. |
+| Module | Status | What it does | Path |
+|--------|--------|--------------|------|
+| **Income** | Partial | Business-income recording — the mirror of Expense. Records money received into cash/bank repositories against class-7 revenue accounts; posts a GL entry (Dr cash/bank, Cr class-7) and increases the receiving repository balance via the `RepositoryInflowInterface` port. Reuses the unified `documents` table (`DocumentType::Income`, `IncomeMetadata` sidecar). 6 permission-gated routes (`income.view/create/update/delete/post`), 2 feature tests. Shipped 2026-07-03 as part of treasury C7. | `apps/api/app/Modules/Income/` |
+| **Procurement** | Partial | Phase-1 procure-to-pay AP: GR-first 3-way match + GR-IR clearing posting, **plus multi-supplier RFQ groups** (RFQ Waves 1-2 — fan-out create, response recording, ordered-lock award + reopen, RFQ→PO converter). Does NOT own GoodsReceipt (Inventory) or a supplier-invoice model (Documents). | `apps/api/app/Modules/Procurement/` |
+| **Fiscal** | Complete | Device-authored fiscal event engine (projection/quarantine), 70 tests. NF525 canonical projection. | `apps/api/app/Modules/Fiscal/` |
+| **Voucher** | Complete | Issuance/redemption/cascade/lookup, append-only ledger, fraud alerts, POS sync. | `apps/api/app/Modules/Voucher/` |
+| **Channel** | Complete | Sales-channel / marketplace sync: webhook ingestion, dispatch jobs, drift detection. | `apps/api/app/Modules/Channel/` |
 
-**Notable status corrections:** Expense **Scaffolded → Partial** (now 8 tests). Inventory/Treasury/Document/Product/BatchExpiry counts drifted up. The original "modules with zero tests" list is stale (Billing 3, Communication 1, Dashboard 1, Expense 8, Media 26 — none zero; treat Billing/Communication/Dashboard as *thin*).
+**Notable status corrections:** Income **new → Partial** (mirrors Expense; GL + repository-inflow wired, 2 feature tests). Expense **Scaffolded → Partial** (now 8 tests). Inventory/Treasury/Document/Product/BatchExpiry counts drifted up. The original "modules with zero tests" list is stale (Billing 3, Communication 1, Dashboard 1, Expense 8, Media 26 — none zero; treat Billing/Communication/Dashboard as *thin*).
 
-**Frontend features:** ~45 feature dirs under `apps/web/src/features/` map ~1:1 to backend modules (see template list). Parapharmacy is the most advanced retail-vertical feature set (merchandising, skin-type capture, Caisse redesign in progress).
+**Frontend features:** ~52 feature dirs under `apps/web/src/features/` map ~1:1 to backend modules (incl. `income/`, `treasury/`, `finance/`, `enrichment/`, `purchases/quote-requests/`, `purchases/supplier-invoices/`). Parapharmacy is the most advanced retail-vertical feature set (merchandising, skin-type capture, Caisse redesign in progress).
 
 ---
 
 ## 4. Business Flows
 
-> **Source of truth for per-step detail:** `docs/autonomous-product-dev-setup/discovery-flow-analysis.md` (verified 2026-06-29). Summary + the gaps that matter for launch below.
+> **Source of truth for per-step detail:** `docs/autonomous-product-dev-setup/discovery-flow-analysis.md` (verified 2026-06-29; flow deltas below re-checked 2026-07-04 @ `8cb507faa`). Summary + the gaps that matter for launch below.
 
 | Flow | Completeness | Key remaining gap | Launch impact |
 |------|-------------|-------------------|---------------|
-| **Sales** | ~95% | minor (no auto-notifications) | none |
-| **Purchase** | ~90% | no PO→supplier-invoice *registry converter* (covered via `source_line_id` + 3-way matcher); supplier payment via generic path | none (Procurement + GR-IR shipped) |
-| **POS** | ~90% | **POS-sale COGS not posted to GL** (invoice COGS *is* posted via `PostCOGSOnInvoice`; POS bypasses the invoice flow) | **Priority backlog** |
+| **Sales** | ~95% | minor (no auto-notifications). **Owner dashboard shipped**: hour-granularity sales report + live-sales endpoint `GET /reports/sales/live` (`Accounting/.../ReportsController@liveSales`, `GetOwnerSalesReportRequest` granularity `hour\|day\|week\|month`). | none |
+| **Purchase / Procurement** | ~92% | no PO→supplier-invoice *registry converter* (covered via `source_line_id` + 3-way matcher); supplier payment via generic path. **RFQ Waves 1-2 shipped** — multi-supplier RFQ groups (fan-out create, response recording, ordered-lock award + reopen with fail-closed gating, RFQ→PO converter; FE list/create/detail/comparison at `apps/web/src/features/purchases/quote-requests/`). ⚠️ **Supplier invoices are API-only** — no web-UI create page (see TD-014). | none |
+| **POS** | ~90% | **POS-sale COGS not posted to GL** (invoice COGS *is* posted via `PostCOGSOnInvoice` at `Inventory/Listeners/`; POS bypasses the invoice flow) | **Priority backlog** (TD-001) |
 | **Inventory** | ~88% | batch write-off GL automated; **general adjustment/transfer still GL-blind**; no dedicated `WriteOff` movement type | medium |
-| **Accounting** | ~92% | **hierarchy balance calc broken** (3 TODOs, `ReportsController.php:275/430/581`) | **Priority backlog** |
-| **Treasury** | ~80% | **no cash-flow report; instrument lifecycle no GL; no bank-statement auto-match** ("money-movement spine") | **Priority backlog** |
+| **Accounting** | ~92% | **hierarchy balance calc broken** (3 TODOs, `ReportsController.php:326/481/632` as of `8cb507faa` — line numbers drifted from the prior `275/430/581`) | **Priority backlog** (TD-003) |
+| **Treasury** | ~85% | **C1-C7 shipped**: seeded books, report pages, upcoming payments (`Accounting/.../Reports/UpcomingPaymentsService` + `finance/hooks/useUpcomingPayments`), bank-rec fixes, trésorerie overview (`finance/pages/TreasuryOverviewPage`), and the **repository inflow/outflow money-movement ports** (`Treasury/.../RepositoryInflowService`/`RepositoryOutflowService`, consumed by Income + Expense). **Still open:** cash-flow report, instrument-lifecycle GL, bank-statement auto-match (rest of "money-movement spine") | **Priority backlog** (TD-002, narrowed) |
+| **Income** | ~85% (new) | Income recording BE + FE shipped (mirror of Expense; GL Dr cash/bank / Cr class-7 + repository inflow). Known FE defect: `/income` list reportedly stuck on "Chargement…" (TD-013). | low (para launch: nice-to-have) |
 | **Workshop (automotive)** | not re-traced | — | relevant to France auto client / vertical #2 |
 
-**Top-3 prioritized gaps (founder-selected):** POS COGS posting, Treasury money-spine, Accounting hierarchy-balance bug. These are financial-correctness gaps prioritized *above* parapharmacy launch polish — the accounting backbone must be airtight even while parapharmacy is the go-to-market.
+**Top-3 prioritized gaps (founder-selected):** POS COGS posting, Treasury money-spine, Accounting hierarchy-balance bug. These are financial-correctness gaps prioritized *above* parapharmacy launch polish — the accounting backbone must be airtight even while parapharmacy is the go-to-market. (Treasury C1-C7 has since delivered the report/overview/upcoming-payments layer and the inflow/outflow ports; the remaining spine work — cash-flow report, instrument GL, bank auto-match — is what keeps TD-002 open.)
 
 ---
 
@@ -197,7 +201,7 @@ Source of truth: `apps/api/config/verticals.php` (`default_modules` + `compatibl
 
 - **Skin IQ** — end-customer loyalty/customer-success app (parapharmacy), pulls demand back through the chain.
 - **Growth Coach** — AI lifecycle advisor (module-activation + focus guidance). Likely evolves from the existing `Progression` (onboarding advisor) module.
-- **Scenario data enrichment** — automated data entry / verification / product-combination discovery (relates to enrichment + `SmartPrompts`).
+- **Scenario data enrichment** — automated data entry / verification / product-combination discovery (relates to enrichment + `SmartPrompts`). **Pipeline foundations shipped (enrichment H-A/H-B/H-C):** FOUND-backlink + queued auto-accept, photo-first capture panel (server-normalized barcode, holder pre-check, upload-url proxy, fast-path polling), and non-regressing result versioning + fire-and-forget feedback callback. Also shipped: **cross-ERP brand mapping** — `canonical_brand_id` persistence + mapped-brand reuse + damped push-back (`Product/.../BrandResolutionService`, `SendBrandMappingJob`, brands `canonical_brand_id` unique index migration 2026-07-03). Webhook-driven enrichment remains blocked (webhook/poller is tenant-blind under db-per-tenant — see enrichment notes).
 - **CLI + MCP control surface** — run the business from WhatsApp/messenger; agent-drivable.
 
 ---
@@ -216,11 +220,11 @@ Source of truth: `apps/api/config/verticals.php` (`default_modules` + `compatibl
 
 ### 6.2 Document Lifecycle Rules
 
-Unified `documents` table; `type` ∈ `DocumentType` (Quote, SalesOrder, DeliveryNote, Invoice, CreditNote, PurchaseOrder, GoodsReceipt, **SupplierInvoice**, **SupplierCreditNote**, …). Lifecycle: **Draft → Confirmed → Posted → Paid / Voided** (fiscal_status `Voided` on cancel; posting adds to the fiscal hash chain). Precise transitions: `Document/Domain/Services/DocumentPostingService` + the conversion registry. Stock issues on **delivery-note confirmation**; posting validates delivery compliance for physical products.
+Unified `documents` table; `type` ∈ `DocumentType` (Quote, SalesOrder, DeliveryNote, Invoice, CreditNote, PurchaseOrder, **PurchaseRfq** (procurement RFQ groups), GoodsReceipt, **SupplierInvoice**, **SupplierCreditNote**, **Income** (money-received records, `IncomeMetadata` sidecar), …). Lifecycle: **Draft → Confirmed → Posted → Paid / Voided** (fiscal_status `Voided` on cancel; posting adds to the fiscal hash chain). Precise transitions: `Document/Domain/Services/DocumentPostingService` + the conversion registry. Stock issues on **delivery-note confirmation**; posting validates delivery compliance for physical products.
 
 ### 6.3 Pricing Rules
 
-Required at launch and **mostly implemented**: **B2C tax-inclusive (TTC) POS** (canonical SALE_RECEIPT `unit_price` is the inclusive cart price; net = `line_subtotal`); **B2B price lists / partner pricing**; **promotions & loyalty** (loyalty earn-on-purchase shipped); **margin-driven auto-pricing** (sale price from WAC cost + target margin; margin-override hierarchy on an unmerged branch). `unit_price` is context-overloaded (TTC in B2C POS, net/HT in B2B) — enforce fiscal integrity at the aggregate level. See `docs/architecture/precision-contract.md`.
+Required at launch and **mostly implemented**: **B2C tax-inclusive (TTC) POS** (canonical SALE_RECEIPT `unit_price` is the inclusive cart price; net = `line_subtotal`); **B2B price lists / partner pricing**; **promotions & loyalty** (loyalty earn-on-purchase shipped); **margin-driven auto-pricing** (sale price from WAC cost + target margin; margin-override hierarchy on an unmerged branch). The **sell-ready products import** (unified imports Phase 2) applies the same authority resolution — a per-row `TTC | HT | margin` authority resolves the canonical `sale_price` (bcmath, conflict warnings) via `ProductPriceResolver` (`apps/api/app/Modules/Import/Services/ProductPriceResolver.php`). `unit_price` is context-overloaded (TTC in B2C POS, net/HT in B2B) — enforce fiscal integrity at the aggregate level. See `docs/architecture/precision-contract.md`.
 
 ### 6.4 Multi-Tenancy & Multi-Branch Rules
 
@@ -288,13 +292,13 @@ Automated gates above + founder manual verification of critical flows (Playwrigh
 
 ## 8. Technical Debt Register
 
-> Verified detail: `docs/autonomous-product-dev-setup/discovery-tech-debt.md` (2026-06-29).
+> Verified detail: `docs/autonomous-product-dev-setup/discovery-tech-debt.md` (2026-06-29); register re-checked 2026-07-04 @ `8cb507faa`.
 
 | ID | Item | Status | Priority |
 |----|------|--------|----------|
-| TD-001 | **POS-sale COGS not posted to GL** | Open | **High (founder top-3)** |
-| TD-002 | **Treasury money-spine**: no cash-flow report, instrument GL, bank auto-match | Open | **High (founder top-3)** |
-| TD-003 | **Accounting hierarchy balance calc broken** (3 TODOs) | Open | **High (founder top-3)** |
+| TD-001 | **POS-sale COGS not posted to GL** (invoice COGS posts via `Inventory/Listeners/PostCOGSOnInvoice`; POS bypasses it) | Open (verified still present) | **High (founder top-3)** |
+| TD-002 | **Treasury money-spine**: cash-flow report, instrument-lifecycle GL, bank-statement auto-match. **Narrowed by C1-C7:** upcoming-payments report, trésorerie overview, and repository inflow/outflow ports now shipped; the three named items remain. | Open (narrowed) | **High (founder top-3)** |
+| TD-003 | **Accounting hierarchy balance calc broken** (3 TODOs, `ReportsController.php:326/481/632`) | Open (verified; line #s drifted) | **High (founder top-3)** |
 | TD-004 | General inventory adjustment/transfer GL-blind; no `WriteOff` movement type | Open | Medium |
 | TD-005 | Hardcoded FE permissions map (`usePermissions.ts`) | Open | Medium |
 | TD-006 | Category margin override commented out (lives on unmerged branch) | Open | Medium |
@@ -302,10 +306,15 @@ Automated gates above + founder manual verification of critical flows (Playwrigh
 | TD-008 | DailyExpiryCheck sysadmin alert TODO (company alerts done) | Open | Low |
 | TD-009 | Residual `(float)` boundary casts (mostly fixed; PHPStan guard added) | Mostly resolved | Low |
 | TD-010 | Cross-module `Domain/` imports / circular deps (deptrac now exists) | Open, guarded | Medium |
+| TD-011 | **CustomerAdvance GL-line bug** surfaced by `tests/Feature/Partner/RecordCustomerDepositTest.php` (overflow deposit must post a customer-advance credit line via `SystemAccountPurpose::CustomerAdvance`) — reported 2026-07-04. **Unverified (not test-run)** per laptop constraint; test + `RecordCustomerDepositService` confirmed present. | Open | **High (money correctness)** |
+| TD-012 | **`/reports/finance-summary` endpoint never existed on the backend** — FE (`web/src/features/finance/api.ts:217`) calls it, gets 404, so `FinanceWidget` shows zeros. Backend grep for the route is empty. | Open (verified) | Medium |
+| TD-013 | **`/income` FE list reportedly stuck on "Chargement…"** — `IncomeListPage.tsx` present; stuck-loading behavior reported 2026-07-04 but **not runtime-verified** here. | Open (reported, not runtime-verified) | Medium |
+| TD-014 | **Supplier invoices cannot be created via the web UI** — API-only; `useCreateSupplierInvoice` (`web/src/features/purchases/supplier-invoices/api.ts:143`) is defined but imported by no page (only its own tenant-scope test). FE has List + Detail pages, no Create page. | Open (verified) | Medium |
+| TD-015 | **RoleController has no role-management permission authorization** — privilege-escalation launch blocker (per `docs/superpowers/audits/.../go-live security audit`). Routes are tenant-scoped (`#[CrossTenantRoute]` on `Identity/.../RoleController`) but role create/update carry no `can:roles.*` gate. **Unfixed.** | Open | **Launch blocker** |
 
 ### 8.3 Missing/Thin Test Coverage
 
-Billing (3), Communication (1), Dashboard (1) are thin and financial/integration-adjacent — raise toward the 90% bar before those modules are launch-critical.
+Billing (3), Communication (1), Dashboard (1) are thin and financial/integration-adjacent — raise toward the 90% bar before those modules are launch-critical. Income is new with only 2 feature tests (store + post) — thin for a GL-posting module; raise before it is launch-critical.
 
 ---
 
@@ -391,9 +400,12 @@ Billing (3), Communication (1), Dashboard (1) are thin and financial/integration
 | **Fiscal chain / Audit log** | SHA-256 fiscal hash chain (compliance) + TimescaleDB event log (fraud detection). |
 | **Document** | Unified entity for quotes, orders, delivery/goods-receipt notes, invoices, credit notes, supplier invoices. |
 
-### C. Stats (verified 2026-06-29)
+### C. Stats (verified 2026-07-04, `dev` @ `8cb507faa`)
 
-- Modules: **44** (42 dirs, Workshop = 3)
-- Backend test files: **1126**
-- Migrations: **445**
-- New modules since 2026-06-15: Channel, Fiscal, Procurement, Voucher
+- Modules: **45** (43 top-level dirs, Workshop = 3)
+- Backend test files: **1190**
+- Migrations: **456**
+- Frontend feature dirs: **52** (`apps/web/src/features/`)
+- New modules since 2026-06-15: **Income** (2026-07-03), Channel, Fiscal, Procurement, Voucher
+
+_Prior pass (2026-06-29 @ `96f421c56`): 44 modules / 1126 tests / 445 migrations._
