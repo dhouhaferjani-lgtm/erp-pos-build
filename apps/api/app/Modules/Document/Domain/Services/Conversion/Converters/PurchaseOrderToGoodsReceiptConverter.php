@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Event;
  * Options:
  * - 'received_quantities' (array<string, string>): Map of line IDs to quantities to receive.
  *   If provided, enables partial receipt. If omitted, full receipt is performed.
+ * - 'actor_user_id' (string|null): User receiving the goods for audit fields.
  *
  * Validates:
  * - Source must be PurchaseOrder type
@@ -107,13 +108,16 @@ final class PurchaseOrderToGoodsReceiptConverter implements DocumentConverterInt
     /**
      * Receive goods for a purchase order.
      *
-     * @param  array<string, mixed>  $options  Options: 'received_quantities' (array<string, string>)
+     * @param  array<string, mixed>  $options  Options: 'received_quantities' (array<string, string>), 'actor_user_id' (string|null)
      * @return Document The updated PurchaseOrder document
      */
     public function convert(Document $source, array $options = []): Document
     {
         /** @var array<string, string>|null $receivedQuantities */
         $receivedQuantities = $options['received_quantities'] ?? null;
+        $actorUserId = isset($options['actor_user_id']) && is_string($options['actor_user_id'])
+            ? $options['actor_user_id']
+            : null;
 
         if ($source->type !== DocumentType::PurchaseOrder) {
             throw new \InvalidArgumentException('Source document must be a purchase order');
@@ -133,10 +137,10 @@ final class PurchaseOrderToGoodsReceiptConverter implements DocumentConverterInt
 
         // Use GoodsReceiptService for the actual business logic
         if ($receivedQuantities !== null && count($receivedQuantities) > 0) {
-            $updatedDocument = $this->goodsReceiptService->receiveGoods($source, $receivedQuantities)->purchaseOrder;
+            $updatedDocument = $this->goodsReceiptService->receiveGoods($source, $receivedQuantities, [], [], $actorUserId)->purchaseOrder;
         } else {
             // Receive all remaining quantities
-            $updatedDocument = $this->goodsReceiptService->receiveAll($source)->purchaseOrder;
+            $updatedDocument = $this->goodsReceiptService->receiveAll($source, $actorUserId)->purchaseOrder;
         }
 
         // Dispatch conversion event for audit trail
@@ -149,7 +153,7 @@ final class PurchaseOrderToGoodsReceiptConverter implements DocumentConverterInt
             targetDocumentNumber: $updatedDocument->document_number,
             sourceType: $source->type->value,
             targetType: $updatedDocument->type->value,
-            userId: null,
+            userId: $actorUserId,
             convertedAt: now()->toIso8601String(),
             isPartial: $receivedQuantities !== null,
             metadata: ['converter_class' => self::class],

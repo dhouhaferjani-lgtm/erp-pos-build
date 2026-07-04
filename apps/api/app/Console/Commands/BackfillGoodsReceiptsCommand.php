@@ -10,7 +10,6 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
-use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
@@ -18,7 +17,9 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * @cross-tenant-by-design Iterates companies fleet-wide unless --company narrows scope; synthesizes receipt ledger rows from historical stock movements.
@@ -59,6 +60,7 @@ final class BackfillGoodsReceiptsCommand extends Command
         $eligibleMovements = 0;
         $createdReceipts = 0;
         $createdLines = 0;
+        $skippedUnmappableGroups = 0;
 
         foreach ($companies as $company) {
             $movements = $this->eligibleMovements((string) $company->id);
@@ -68,14 +70,16 @@ final class BackfillGoodsReceiptsCommand extends Command
                 continue;
             }
 
-            [$receipts, $lines] = $this->backfillCompany($company, $movements);
+            [$receipts, $lines, $skipped] = $this->backfillCompany($company, $movements);
             $createdReceipts += $receipts;
             $createdLines += $lines;
+            $skippedUnmappableGroups += $skipped;
         }
 
         $this->info("Eligible movements: {$eligibleMovements}");
         $this->info("Created receipts: {$createdReceipts}");
         $this->info("Created lines: {$createdLines}");
+        $this->info("Skipped unmappable groups: {$skippedUnmappableGroups}");
 
         return self::SUCCESS;
     }
@@ -101,9 +105,12 @@ final class BackfillGoodsReceiptsCommand extends Command
         return StockMovement::query()
             ->where('company_id', $companyId)
             ->where('movement_type', MovementType::Receipt)
-            ->where('reason', MovementReason::GoodsReceipt)
             ->where('reference_type', 'Document')
             ->whereNotNull('reference_id')
+            ->whereIn('reference_id', Document::query()
+                ->select('id')
+                ->where('company_id', $companyId)
+                ->where('type', DocumentType::PurchaseOrder))
             ->when($claimedMovementIds !== [], fn ($query) => $query->whereNotIn('id', $claimedMovementIds))
             ->orderBy('reference_id')
             ->orderBy('created_at')
@@ -113,102 +120,192 @@ final class BackfillGoodsReceiptsCommand extends Command
 
     /**
      * @param  Collection<int, StockMovement>  $movements
-     * @return array{int, int}
+     * @return array{int, int, int}
      */
     private function backfillCompany(Company $company, Collection $movements): array
     {
         $createdReceipts = 0;
         $createdLines = 0;
+        $skippedUnmappableGroups = 0;
 
-        /** @var array<string, list<StockMovement>> $groups */
-        $groups = [];
-        foreach ($movements as $movement) {
-            $groups[$movement->reference_id.'|'.$movement->created_at?->toIso8601String()][] = $movement;
-        }
+        $groups = $this->clusterMovementsByReceiptBatch($movements);
 
         /** @var array<string, string> $invoicedRemaining */
         $invoicedRemaining = [];
+        /** @var array<string, string> $assignedPaidQuantities */
+        $assignedPaidQuantities = [];
+        /** @var array<string, string> $assignedFreeQuantities */
+        $assignedFreeQuantities = [];
 
         foreach ($groups as $groupMovements) {
-            [$receiptCreated, $linesCreated] = DB::transaction(function () use ($company, $groupMovements, &$invoicedRemaining): array {
-                $po = Document::query()
-                    ->where('company_id', $company->id)
-                    ->where('type', DocumentType::PurchaseOrder)
-                    ->with('lines')
-                    ->find($groupMovements[0]->reference_id);
+            try {
+                [$receiptCreated, $linesCreated, $skipped] = DB::transaction(function () use (
+                    $company,
+                    $groupMovements,
+                    &$invoicedRemaining,
+                    &$assignedPaidQuantities,
+                    &$assignedFreeQuantities
+                ): array {
+                    $po = Document::query()
+                        ->where('company_id', $company->id)
+                        ->where('type', DocumentType::PurchaseOrder)
+                        ->with('lines')
+                        ->find($groupMovements[0]->reference_id);
 
-                if (! $po instanceof Document) {
-                    return [0, 0];
+                    if (! $po instanceof Document) {
+                        return [0, 0, 1];
+                    }
+
+                    $linePlans = $this->planLinesForGroup($po, $groupMovements, $assignedPaidQuantities, $assignedFreeQuantities);
+                    if ($linePlans === []) {
+                        $this->warn("PO {$po->document_number} has an unmappable goods-receipt movement group; no header was created.");
+
+                        return [0, 0, 1];
+                    }
+
+                    $receipt = GoodsReceipt::create([
+                        'tenant_id' => $po->tenant_id,
+                        'company_id' => $po->company_id,
+                        'purchase_order_id' => $po->id,
+                        'receipt_number' => $this->numberingService->generateForKey($po->tenant_id, $po->company_id, 'goods_receipt', 'GRN'),
+                        'status' => GoodsReceiptStatus::Posted,
+                        'received_at' => $groupMovements[0]->created_at,
+                        'received_by' => null,
+                        'payload' => ['backfilled_at' => now()->toIso8601String()],
+                    ]);
+
+                    foreach ($linePlans as $linePlan) {
+                        $this->createReceiptLine(
+                            $receipt,
+                            $linePlan['po_line'],
+                            $linePlan['paid_movement'],
+                            $linePlan['free_movement'],
+                            $invoicedRemaining,
+                        );
+                    }
+
+                    $this->warnOnCounterMismatch($po);
+
+                    return [1, count($linePlans), 0];
+                });
+            } catch (QueryException $exception) {
+                if (! $this->isMovementClaimUniqueViolation($exception)) {
+                    throw $exception;
                 }
 
-                $receipt = GoodsReceipt::create([
-                    'tenant_id' => $po->tenant_id,
-                    'company_id' => $po->company_id,
-                    'purchase_order_id' => $po->id,
-                    'receipt_number' => $this->numberingService->generateForKey($po->tenant_id, $po->company_id, 'goods_receipt', 'GRN'),
-                    'status' => GoodsReceiptStatus::Posted,
-                    'received_at' => $groupMovements[0]->created_at,
-                    'received_by' => null,
-                    'payload' => ['backfilled_at' => now()->toIso8601String()],
-                ]);
-
-                $linesCreated = $this->createLinesForGroup($po, $receipt, $groupMovements, $invoicedRemaining);
-
-                return [1, $linesCreated];
-            });
+                $this->warn('A goods-receipt movement was already claimed; skipping the concurrently claimed group.');
+                [$receiptCreated, $linesCreated, $skipped] = [0, 0, 0];
+            }
 
             $createdReceipts += $receiptCreated;
             $createdLines += $linesCreated;
+            $skippedUnmappableGroups += $skipped;
         }
 
-        return [$createdReceipts, $createdLines];
+        return [$createdReceipts, $createdLines, $skippedUnmappableGroups];
+    }
+
+    /**
+     * @param  Collection<int, StockMovement>  $movements
+     * @return list<list<StockMovement>>
+     */
+    private function clusterMovementsByReceiptBatch(Collection $movements): array
+    {
+        /** @var list<list<StockMovement>> $groups */
+        $groups = [];
+        $currentReferenceId = null;
+        $currentGroup = [];
+        $previousCreatedAt = null;
+
+        foreach ($movements as $movement) {
+            $createdAt = $movement->created_at;
+            $startsNewGroup = $currentGroup === []
+                || $currentReferenceId !== $movement->reference_id
+                || $createdAt === null
+                || $previousCreatedAt === null
+                || $createdAt->diffInSeconds($previousCreatedAt, true) > 5;
+
+            if ($startsNewGroup && $currentGroup !== []) {
+                $groups[] = $currentGroup;
+                $currentGroup = [];
+            }
+
+            $currentReferenceId = $movement->reference_id;
+            $previousCreatedAt = $createdAt;
+            $currentGroup[] = $movement;
+        }
+
+        if ($currentGroup !== []) {
+            $groups[] = $currentGroup;
+        }
+
+        return $groups;
     }
 
     /**
      * @param  list<StockMovement>  $movements
-     * @param  array<string, string>  $invoicedRemaining
+     * @param  array<string, string>  $assignedPaidQuantities
+     * @param  array<string, string>  $assignedFreeQuantities
+     * @return list<array{po_line: DocumentLine, paid_movement: ?StockMovement, free_movement: ?StockMovement}>
      */
-    private function createLinesForGroup(Document $po, GoodsReceipt $receipt, array $movements, array &$invoicedRemaining): int
-    {
-        $linesCreated = 0;
+    private function planLinesForGroup(
+        Document $po,
+        array $movements,
+        array &$assignedPaidQuantities,
+        array &$assignedFreeQuantities,
+    ): array {
+        $linePlans = [];
         $paidMovements = array_values(array_filter(
             $movements,
-            static fn (StockMovement $movement): bool => bccomp((string) $movement->unit_cost, '0.000000', 6) > 0,
+            fn (StockMovement $movement): bool => bccomp($this->decimalString($movement->unit_cost, 6), '0.000000', 6) > 0,
         ));
         $freeMovements = array_values(array_filter(
             $movements,
-            static fn (StockMovement $movement): bool => bccomp((string) $movement->unit_cost, '0.000000', 6) <= 0,
+            fn (StockMovement $movement): bool => bccomp($this->decimalString($movement->unit_cost, 6), '0.000000', 6) <= 0,
         ));
 
         foreach ($paidMovements as $paidMovement) {
-            $poLine = $this->resolvePoLine($po, $paidMovement);
+            $poLine = $this->resolvePoLine($po, $paidMovement, $assignedPaidQuantities, false);
             if (! $poLine instanceof DocumentLine) {
                 continue;
             }
 
             $freeMovement = $this->shiftMatchingFreeMovement($freeMovements, $paidMovement);
-            $this->createReceiptLine($receipt, $poLine, $paidMovement, $freeMovement, $invoicedRemaining);
-            $linesCreated++;
+            if ($freeMovement instanceof StockMovement) {
+                $this->consumeLineCapacity($poLine, $this->decimalString($freeMovement->quantity, 4), $assignedFreeQuantities);
+            }
+            $linePlans[] = [
+                'po_line' => $poLine,
+                'paid_movement' => $paidMovement,
+                'free_movement' => $freeMovement,
+            ];
         }
 
         foreach ($freeMovements as $freeMovement) {
-            $poLine = $this->resolvePoLine($po, $freeMovement);
+            $poLine = $this->resolvePoLine($po, $freeMovement, $assignedFreeQuantities, true);
             if (! $poLine instanceof DocumentLine) {
                 continue;
             }
 
-            $this->createReceiptLine($receipt, $poLine, null, $freeMovement, $invoicedRemaining);
-            $linesCreated++;
+            $linePlans[] = [
+                'po_line' => $poLine,
+                'paid_movement' => null,
+                'free_movement' => $freeMovement,
+            ];
         }
 
-        return $linesCreated;
+        return $linePlans;
     }
 
-    private function resolvePoLine(Document $po, StockMovement $movement): ?DocumentLine
+    /**
+     * @param  array<string, string>  $assignedQuantities
+     */
+    private function resolvePoLine(Document $po, StockMovement $movement, array &$assignedQuantities, bool $free): ?DocumentLine
     {
         $matches = $po->lines
             ->filter(fn (DocumentLine $line): bool => $line->product_id === $movement->product_id
                 && (string) ($line->variant_id ?? '') === (string) ($movement->variant_id ?? ''))
+            ->sortBy('line_number')
             ->values();
 
         if ($matches->count() > 1) {
@@ -219,11 +316,43 @@ final class BackfillGoodsReceiptsCommand extends Command
             return null;
         }
 
-        return $matches->first();
+        foreach ($matches as $line) {
+            $freeCapacity = $this->decimalString($line->free_quantity, 4);
+            $capacity = $free && bccomp($freeCapacity, '0.0000', 4) > 0
+                ? $freeCapacity
+                : $this->decimalString($line->quantity, 4);
+            $alreadyAssigned = $this->decimalString($assignedQuantities[(string) $line->id] ?? '0.0000', 4);
+            $remaining = bcsub($capacity, $alreadyAssigned, 4);
+
+            if (bccomp($remaining, '0.0000', 4) <= 0) {
+                continue;
+            }
+
+            $movementQuantity = $this->decimalString($movement->quantity, 4);
+            if (bccomp($movementQuantity, $remaining, 4) > 0 && $matches->count() > 1) {
+                continue;
+            }
+
+            $this->consumeLineCapacity($line, $movementQuantity, $assignedQuantities);
+
+            return $line;
+        }
+
+        return null;
     }
 
     /**
-     * @param  list<StockMovement>  $freeMovements
+     * @param  array<string, string>  $assignedQuantities
+     * @param  numeric-string  $quantity
+     */
+    private function consumeLineCapacity(DocumentLine $line, string $quantity, array &$assignedQuantities): void
+    {
+        $lineId = (string) $line->id;
+        $assignedQuantities[$lineId] = bcadd($this->decimalString($assignedQuantities[$lineId] ?? '0.0000', 4), $quantity, 4);
+    }
+
+    /**
+     * @param  array<int, StockMovement>  $freeMovements
      */
     private function shiftMatchingFreeMovement(array &$freeMovements, StockMovement $paidMovement): ?StockMovement
     {
@@ -251,20 +380,21 @@ final class BackfillGoodsReceiptsCommand extends Command
         array &$invoicedRemaining,
     ): void {
         $poLineId = (string) $poLine->id;
-        $receivedQty = $paidMovement !== null ? (string) $paidMovement->quantity : '0.0000';
-        $freeQty = $freeMovement !== null ? (string) $freeMovement->quantity : '0.0000';
-        $basis = (string) ($poLine->accrual_unit_cost ?? $poLine->landed_unit_cost ?? $poLine->unit_price);
+        $receivedQty = $paidMovement !== null ? $this->decimalString($paidMovement->quantity, 4) : '0.0000';
+        $freeQty = $freeMovement !== null ? $this->decimalString($freeMovement->quantity, 4) : '0.0000';
+        $basis = $this->decimalString($poLine->accrual_unit_cost ?? $poLine->landed_unit_cost ?? $poLine->unit_price, 6);
 
         if (! array_key_exists($poLineId, $invoicedRemaining)) {
-            $invoicedRemaining[$poLineId] = (string) ($poLine->quantity_invoiced ?? '0.0000');
+            $invoicedRemaining[$poLineId] = $this->decimalString($poLine->quantity_invoiced, 4);
         }
 
         $quantityInvoiced = '0.0000';
-        if (bccomp($receivedQty, '0.0000', 4) > 0 && bccomp($invoicedRemaining[$poLineId], '0.0000', 4) > 0) {
-            $quantityInvoiced = bccomp($invoicedRemaining[$poLineId], $receivedQty, 4) >= 0
+        $invoicedRemainingForLine = $this->decimalString($invoicedRemaining[$poLineId], 4);
+        if (bccomp($receivedQty, '0.0000', 4) > 0 && bccomp($invoicedRemainingForLine, '0.0000', 4) > 0) {
+            $quantityInvoiced = bccomp($invoicedRemainingForLine, $receivedQty, 4) >= 0
                 ? $receivedQty
-                : $invoicedRemaining[$poLineId];
-            $invoicedRemaining[$poLineId] = bcsub($invoicedRemaining[$poLineId], $quantityInvoiced, 4);
+                : $invoicedRemainingForLine;
+            $invoicedRemaining[$poLineId] = bcsub($invoicedRemainingForLine, $quantityInvoiced, 4);
         }
 
         GoodsReceiptLine::create([
@@ -286,6 +416,59 @@ final class BackfillGoodsReceiptsCommand extends Command
         ]);
     }
 
+    private function warnOnCounterMismatch(Document $po): void
+    {
+        foreach ($po->lines as $poLine) {
+            $received = GoodsReceiptLine::query()
+                ->where('po_line_id', $poLine->id)
+                ->selectRaw('COALESCE(SUM(received_qty), 0) as received_qty, COALESCE(SUM(free_qty), 0) as free_qty')
+                ->first();
+
+            $synthesizedReceived = $this->decimalString($received->received_qty ?? '0.0000', 4);
+            $synthesizedFree = $this->decimalString($received->free_qty ?? '0.0000', 4);
+            $poReceived = $this->decimalString($poLine->quantity_received, 4);
+            $poFree = $this->decimalString($poLine->free_quantity_received, 4);
+
+            if (bccomp($synthesizedReceived, $poReceived, 4) === 0 && bccomp($synthesizedFree, $poFree, 4) === 0) {
+                continue;
+            }
+
+            $message = "PO {$po->document_number} synthesized received/free quantities do not match PO counters";
+            $this->warn($message);
+            Log::warning($message, [
+                'purchase_order_id' => $po->id,
+                'po_line_id' => $poLine->id,
+                'synthesized_received_qty' => $synthesizedReceived,
+                'po_received_qty' => $poReceived,
+                'synthesized_free_qty' => $synthesizedFree,
+                'po_free_qty' => $poFree,
+            ]);
+        }
+    }
+
+    private function isMovementClaimUniqueViolation(QueryException $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+        $isUniqueViolation = $exception->getCode() === '23505'
+            || str_contains($message, 'unique constraint')
+            || str_contains($message, 'unique');
+
+        if (! $isUniqueViolation) {
+            return false;
+        }
+
+        return str_contains($message, 'goods_receipt_lines_movement_id_unique')
+            || str_contains($message, 'goods_receipt_lines_free_movement_id_unique')
+            || str_contains($message, 'goods_receipt_lines.movement_id')
+            || str_contains($message, 'goods_receipt_lines.free_movement_id');
+    }
+
+    /**
+     * @param  numeric-string  $receivedQty
+     * @param  numeric-string  $freeQty
+     * @param  numeric-string  $basis
+     * @return numeric-string
+     */
     private function effectiveUnitCost(string $receivedQty, string $freeQty, string $basis): string
     {
         $totalQty = bcadd($receivedQty, $freeQty, 4);
@@ -295,5 +478,17 @@ final class BackfillGoodsReceiptsCommand extends Command
         }
 
         return CurrencyScale::bcround(bcdiv(bcmul($receivedQty, $basis, 10), $totalQty, 10), 6);
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function decimalString(mixed $value, int $scale): string
+    {
+        if ($value === null || $value === '') {
+            return CurrencyScale::bcformatStrict('0', $scale);
+        }
+
+        return CurrencyScale::bcformatStrict((string) $value, $scale);
     }
 }

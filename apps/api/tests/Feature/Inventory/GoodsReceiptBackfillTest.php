@@ -7,13 +7,14 @@ namespace Tests\Feature\Inventory;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
-use App\Modules\Inventory\Domain\Enums\MovementReason;
+use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
@@ -53,6 +54,8 @@ final class GoodsReceiptBackfillTest extends TestCase
 
         $this->company = $this->createCompany('GR Backfill Company', 'GR-BF-TAX');
         $this->otherCompany = $this->createCompany('Other GR Backfill Company', 'GR-BF-TAX-2');
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->location = Location::create([
             'company_id' => $this->company->id,
@@ -112,6 +115,133 @@ final class GoodsReceiptBackfillTest extends TestCase
     }
 
     #[Test]
+    public function backfill_selects_real_purchase_receipt_movements_with_null_reason_and_ignores_non_po_receipts(): void
+    {
+        $product = $this->createProduct('GR-BF-REAL');
+        $po = $this->createPurchaseOrder();
+        $poLine = $this->createPoLine($po, $product, quantity: '3.0000', invoiced: '0.0000', unitCost: '7.000000');
+
+        $movement = app(WeightedAverageCostService::class)->recordPurchase(
+            product: $product,
+            location: $this->location,
+            quantity: '3.0000',
+            landedUnitCost: '7.000000',
+            reference: $po->document_number,
+            referenceType: 'Document',
+            referenceId: $po->id,
+        );
+        $movement->forceFill([
+            'created_at' => CarbonImmutable::parse('2026-07-01 10:00:00'),
+            'updated_at' => CarbonImmutable::parse('2026-07-01 10:00:00'),
+        ])->save();
+
+        $nonPo = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::CreditNote,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'CN-GR-BF-0001',
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '0.000',
+        ]);
+        $this->createMovement($product, $nonPo, '2.0000', '7.000000', CarbonImmutable::parse('2026-07-01 10:01:00'));
+
+        $this->assertNull($movement->fresh()?->reason);
+
+        $this->artisan('procurement:backfill-goods-receipts')
+            ->expectsOutputToContain('Eligible movements: 1')
+            ->expectsOutputToContain('Created receipts: 1')
+            ->assertExitCode(0);
+
+        $line = GoodsReceiptLine::query()->sole();
+        $this->assertSame($poLine->id, $line->po_line_id);
+        $this->assertSame($movement->id, $line->movement_id);
+    }
+
+    #[Test]
+    public function unmappable_groups_create_no_header_burn_no_grn_and_report_stably_on_rerun(): void
+    {
+        $poProduct = $this->createProduct('GR-BF-MAP-PO');
+        $movementProduct = $this->createProduct('GR-BF-MAP-MOVE');
+        $po = $this->createPurchaseOrder();
+        $this->createPoLine($po, $poProduct, quantity: '2.0000', invoiced: '0.0000', unitCost: '5.000000');
+        $this->createMovement($movementProduct, $po, '2.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
+
+        $this->artisan('procurement:backfill-goods-receipts')
+            ->expectsOutputToContain('Created receipts: 0')
+            ->expectsOutputToContain('Created lines: 0')
+            ->expectsOutputToContain('Skipped unmappable groups: 1')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseCount('goods_receipts', 0);
+        $this->assertDatabaseCount('goods_receipt_lines', 0);
+
+        $this->artisan('procurement:backfill-goods-receipts')
+            ->expectsOutputToContain('Created receipts: 0')
+            ->expectsOutputToContain('Created lines: 0')
+            ->expectsOutputToContain('Skipped unmappable groups: 1')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseCount('document_sequences', 0);
+    }
+
+    #[Test]
+    public function batch_grouping_keeps_movements_within_five_seconds_together(): void
+    {
+        $product = $this->createProduct('GR-BF-GAP');
+        $po = $this->createPurchaseOrder();
+        $this->createPoLine($po, $product, quantity: '3.0000', invoiced: '0.0000', unitCost: '5.000000');
+
+        $this->createMovement($product, $po, '1.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:59'));
+        $this->createMovement($product, $po, '2.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:01:01'));
+
+        $this->artisan('procurement:backfill-goods-receipts')
+            ->expectsOutputToContain('Created receipts: 1')
+            ->expectsOutputToContain('Created lines: 2')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseCount('goods_receipts', 1);
+        $this->assertDatabaseCount('goods_receipt_lines', 2);
+    }
+
+    #[Test]
+    public function batch_grouping_keeps_receipts_one_minute_apart_separate(): void
+    {
+        $product = $this->createProduct('GR-BF-GAP-FAR');
+        $po = $this->createPurchaseOrder();
+        $this->createPoLine($po, $product, quantity: '3.0000', invoiced: '0.0000', unitCost: '5.000000');
+
+        $this->createMovement($product, $po, '1.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
+        $this->createMovement($product, $po, '2.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:01:00'));
+
+        $this->artisan('procurement:backfill-goods-receipts')
+            ->expectsOutputToContain('Created receipts: 2')
+            ->expectsOutputToContain('Created lines: 2')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseCount('goods_receipts', 2);
+        $this->assertDatabaseCount('goods_receipt_lines', 2);
+    }
+
+    #[Test]
+    public function backfill_warns_when_synthesized_quantities_do_not_reconcile_to_po_counters(): void
+    {
+        $product = $this->createProduct('GR-BF-RECON');
+        $po = $this->createPurchaseOrder();
+        $this->createPoLine($po, $product, quantity: '2.0000', invoiced: '0.0000', unitCost: '0.000000');
+        $this->createMovement($product, $po, '2.0000', '0.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
+
+        $this->artisan('procurement:backfill-goods-receipts')
+            ->expectsOutputToContain("PO {$po->document_number} synthesized received/free quantities do not match PO counters")
+            ->assertExitCode(0);
+    }
+
+    #[Test]
     public function dry_run_and_company_scope_do_not_write_outside_the_requested_company(): void
     {
         $product = $this->createProduct('GR-BF-SCOPE');
@@ -144,15 +274,18 @@ final class GoodsReceiptBackfillTest extends TestCase
         $product = $this->createProduct('GR-BF-DUP');
         $po = $this->createPurchaseOrder();
         $firstLine = $this->createPoLine($po, $product, quantity: '1.0000', invoiced: '0.0000', unitCost: '5.000000', lineNumber: 1);
-        $this->createPoLine($po, $product, quantity: '1.0000', invoiced: '0.0000', unitCost: '6.000000', lineNumber: 2);
+        $secondLine = $this->createPoLine($po, $product, quantity: '2.0000', invoiced: '0.0000', unitCost: '6.000000', lineNumber: 2);
         $this->createMovement($product, $po, '1.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
+        $this->createMovement($product, $po, '2.0000', '6.000000', CarbonImmutable::parse('2026-07-01 10:00:01'));
 
         $this->artisan('procurement:backfill-goods-receipts')
             ->expectsOutputToContain('duplicate product PO lines')
             ->assertExitCode(0);
 
-        $receiptLine = GoodsReceiptLine::query()->sole();
-        $this->assertSame($firstLine->id, $receiptLine->po_line_id);
+        $receiptLines = GoodsReceiptLine::query()->orderBy('created_at')->orderBy('id')->get();
+        $this->assertCount(2, $receiptLines);
+        $this->assertSame($firstLine->id, $receiptLines[0]->po_line_id);
+        $this->assertSame($secondLine->id, $receiptLines[1]->po_line_id);
     }
 
     private function createCompany(string $name, string $taxId): Company
@@ -250,7 +383,7 @@ final class GoodsReceiptBackfillTest extends TestCase
             'product_id' => $product->id,
             'location_id' => $this->location->id,
             'movement_type' => MovementType::Receipt,
-            'reason' => MovementReason::GoodsReceipt,
+            'reason' => null,
             'quantity' => $quantity,
             'quantity_before' => '0.0000',
             'quantity_after' => $quantity,

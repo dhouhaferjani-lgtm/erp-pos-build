@@ -16,6 +16,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Services\Conversion\Converters\PurchaseOrderToGoodsReceiptConverter;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptResult;
@@ -199,6 +200,22 @@ final class GoodsReceiptLedgerWriteTest extends TestCase
     }
 
     #[Test]
+    public function paid_only_effective_unit_cost_uses_the_same_half_up_rounding_as_landed_cost(): void
+    {
+        $product = $this->createProduct('GRL-ROUND', 'Ledger Rounding Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '1.0000', 'free_quantity' => '0.0000', 'unit_price' => '1.000', 'landed_unit_cost' => '1.1234567'],
+        ]);
+        $line = $po->lines->first();
+
+        $result = app(GoodsReceiptService::class)->receiveGoods($po, [$line->id => '1.0000'], [], [], $this->user->id);
+
+        $receiptLine = GoodsReceiptLine::query()->where('goods_receipt_id', $result->receipt->id)->sole();
+        $this->assertSame('1.123457', (string) $receiptLine->landed_unit_cost);
+        $this->assertSame('1.123457', (string) $receiptLine->effective_unit_cost);
+    }
+
+    #[Test]
     public function receive_all_writes_a_receipt_header(): void
     {
         $product = $this->createProduct('GRL-ALL', 'Ledger Receive All Product');
@@ -210,6 +227,23 @@ final class GoodsReceiptLedgerWriteTest extends TestCase
 
         $this->assertInstanceOf(GoodsReceiptResult::class, $result);
         $this->assertSame($po->id, $result->receipt->purchase_order_id);
+    }
+
+    #[Test]
+    public function purchase_order_converter_stamps_the_actor_on_the_goods_receipt(): void
+    {
+        $product = $this->createProduct('GRL-CONVERT', 'Ledger Converter Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '2.0000', 'free_quantity' => '0.0000', 'unit_price' => '9.000', 'landed_unit_cost' => '9.000000'],
+        ]);
+        $line = $po->lines->first();
+
+        app(PurchaseOrderToGoodsReceiptConverter::class)->convert($po, [
+            'received_quantities' => [$line->id => '2.0000'],
+            'actor_user_id' => $this->user->id,
+        ]);
+
+        $this->assertSame($this->user->id, GoodsReceipt::query()->sole()->received_by);
     }
 
     #[Test]

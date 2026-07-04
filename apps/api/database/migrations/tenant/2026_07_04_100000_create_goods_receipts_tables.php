@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -30,7 +31,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->uuid('tenant_id');
             $table->uuid('company_id');
-            $table->foreignUuid('goods_receipt_id')->constrained('goods_receipts')->cascadeOnDelete();
+            $table->foreignUuid('goods_receipt_id')->constrained('goods_receipts')->restrictOnDelete();
             $table->uuid('po_line_id');
             $table->uuid('product_id');
             $table->uuid('variant_id')->nullable();
@@ -52,10 +53,23 @@ return new class extends Migration
             $table->index(['tenant_id', 'po_line_id']);
             $table->index(['tenant_id', 'goods_receipt_id']);
         });
+
+        DB::statement(
+            'CREATE UNIQUE INDEX goods_receipt_lines_movement_id_unique
+                ON goods_receipt_lines (movement_id)
+                WHERE movement_id IS NOT NULL'
+        );
+        DB::statement(
+            'CREATE UNIQUE INDEX goods_receipt_lines_free_movement_id_unique
+                ON goods_receipt_lines (free_movement_id)
+                WHERE free_movement_id IS NOT NULL'
+        );
     }
 
     public function down(): void
     {
+        DB::statement('DROP INDEX IF EXISTS goods_receipt_lines_free_movement_id_unique');
+        DB::statement('DROP INDEX IF EXISTS goods_receipt_lines_movement_id_unique');
         Schema::dropIfExists('goods_receipt_lines');
         Schema::dropIfExists('goods_receipts');
     }

@@ -89,6 +89,11 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
         $this->assertStringContainsString("decimal('effective_unit_cost', 19, 6)", $migration);
         $this->assertStringContainsString("decimal('quantity_invoiced', 15, 4)", $migration);
         $this->assertStringContainsString("decimal('price_override_old_basis', 15, 6)", $migration);
+        $this->assertStringContainsString('restrictOnDelete()', $migration);
+        $this->assertStringContainsString('goods_receipt_lines_movement_id_unique', $migration);
+        $this->assertStringContainsString('goods_receipt_lines_free_movement_id_unique', $migration);
+        $this->assertStringContainsString('WHERE movement_id IS NOT NULL', $migration);
+        $this->assertStringContainsString('WHERE free_movement_id IS NOT NULL', $migration);
 
         $this->assertSame(['draft', 'posted', 'cancelled'], array_map(
             static fn (GoodsReceiptStatus $status): string => $status->value,
@@ -108,6 +113,8 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
         $this->assertIndexExists('goods_receipts_tenant_id_receipt_number_unique', true);
         $this->assertIndexExists('goods_receipt_lines_tenant_id_po_line_id_index', false);
         $this->assertIndexExists('goods_receipt_lines_tenant_id_goods_receipt_id_index', false);
+        $this->assertIndexExists('goods_receipt_lines_movement_id_unique', true);
+        $this->assertIndexExists('goods_receipt_lines_free_movement_id_unique', true);
     }
 
     private function assertColumn(

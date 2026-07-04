@@ -330,7 +330,7 @@ final class GoodsReceiptService
                 'effective_unit_cost' => $this->effectiveUnitCost(
                     $qtyToReceive,
                     $freeQtyToReceive,
-                    CurrencyScale::bcformatStrict($landedUnitCost, self::COST_SCALE),
+                    CurrencyScale::bcround($landedUnitCost, self::COST_SCALE),
                 ),
                 'movement_id' => $movementId,
                 'free_movement_id' => $freeMovementId,

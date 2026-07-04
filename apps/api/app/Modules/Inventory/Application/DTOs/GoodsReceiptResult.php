@@ -13,17 +13,4 @@ final readonly class GoodsReceiptResult
         public Document $purchaseOrder,
         public GoodsReceipt $receipt,
     ) {}
-
-    public function __get(string $name): mixed
-    {
-        return $this->purchaseOrder->{$name};
-    }
-
-    /**
-     * @param  array<int, mixed>  $arguments
-     */
-    public function __call(string $name, array $arguments): mixed
-    {
-        return $this->purchaseOrder->{$name}(...$arguments);
-    }
 }

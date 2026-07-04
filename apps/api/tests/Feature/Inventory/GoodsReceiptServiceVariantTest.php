@@ -243,7 +243,7 @@ class GoodsReceiptServiceVariantTest extends TestCase
 
         $result = $service->receiveGoods($po, $receivedQty);
 
-        $this->assertEquals(DocumentStatus::Received, $result->status);
+        $this->assertEquals(DocumentStatus::Received, $result->purchaseOrder->status);
 
         // Variant-scoped stock row must exist with the correct quantity
         $variantStock = StockLevel::where('product_id', $product->id)
@@ -308,7 +308,7 @@ class GoodsReceiptServiceVariantTest extends TestCase
 
         $result = $service->receiveGoods($po, $receivedQty);
 
-        $this->assertEquals(DocumentStatus::Received, $result->status);
+        $this->assertEquals(DocumentStatus::Received, $result->purchaseOrder->status);
 
         // Product-level stock row must exist
         $productLevelStock = StockLevel::where('product_id', $product->id)
@@ -376,7 +376,7 @@ class GoodsReceiptServiceVariantTest extends TestCase
 
         $result = $service->receiveGoods($po, $receivedQty);
 
-        $this->assertEquals(DocumentStatus::Received, $result->status);
+        $this->assertEquals(DocumentStatus::Received, $result->purchaseOrder->status);
 
         // Product A: variant-scoped row
         $variantStock = StockLevel::where('product_id', $productA->id)
