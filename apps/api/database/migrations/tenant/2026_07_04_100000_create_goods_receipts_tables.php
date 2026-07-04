@@ -1,0 +1,80 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('goods_receipts', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->uuid('tenant_id');
+            $table->uuid('company_id');
+            $table->uuid('purchase_order_id');
+            $table->string('receipt_number', 30);
+            $table->string('status', 20);
+            $table->timestampTz('received_at');
+            $table->uuid('received_by')->nullable();
+            $table->text('notes')->nullable();
+            $table->jsonb('payload')->nullable();
+            $table->timestampsTz();
+
+            // GRN numbers come from document_sequences scoped per (company_id, type, year),
+            // so uniqueness must be per company — a tenant with 2+ companies would otherwise
+            // collide on each company's first GRN-YYYY-0001. Keep tenant_id indexed for lookups.
+            $table->unique(['company_id', 'receipt_number']);
+            $table->index('tenant_id');
+        });
+
+        Schema::create('goods_receipt_lines', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->uuid('tenant_id');
+            $table->uuid('company_id');
+            $table->foreignUuid('goods_receipt_id')->constrained('goods_receipts')->restrictOnDelete();
+            $table->uuid('po_line_id');
+            $table->uuid('product_id');
+            $table->uuid('variant_id')->nullable();
+            $table->decimal('received_qty', 15, 4);
+            $table->decimal('free_qty', 15, 4)->default('0.0000');
+            $table->decimal('received_unit_price', 15, 3)->nullable();
+            $table->decimal('landed_unit_cost', 19, 6);
+            $table->decimal('accrual_unit_cost', 15, 6);
+            $table->decimal('effective_unit_cost', 19, 6);
+            $table->uuid('movement_id')->nullable();
+            $table->uuid('free_movement_id')->nullable();
+            $table->decimal('quantity_invoiced', 15, 4)->default('0.0000');
+            $table->uuid('price_override_by')->nullable();
+            $table->timestampTz('price_override_at')->nullable();
+            $table->decimal('price_override_old_basis', 15, 6)->nullable();
+            $table->string('price_override_reason', 255)->nullable();
+            $table->timestampsTz();
+
+            $table->index(['tenant_id', 'po_line_id']);
+            $table->index(['tenant_id', 'goods_receipt_id']);
+        });
+
+        DB::statement(
+            'CREATE UNIQUE INDEX goods_receipt_lines_movement_id_unique
+                ON goods_receipt_lines (movement_id)
+                WHERE movement_id IS NOT NULL'
+        );
+        DB::statement(
+            'CREATE UNIQUE INDEX goods_receipt_lines_free_movement_id_unique
+                ON goods_receipt_lines (free_movement_id)
+                WHERE free_movement_id IS NOT NULL'
+        );
+    }
+
+    public function down(): void
+    {
+        DB::statement('DROP INDEX IF EXISTS goods_receipt_lines_free_movement_id_unique');
+        DB::statement('DROP INDEX IF EXISTS goods_receipt_lines_movement_id_unique');
+        Schema::dropIfExists('goods_receipt_lines');
+        Schema::dropIfExists('goods_receipts');
+    }
+};

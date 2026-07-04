@@ -118,6 +118,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'purchase-orders.delete',
             'purchase-orders.confirm',
             'purchase-orders.receive',
+            'goods-receipt.edit-price',
 
             // Purchase Quote Requests / RFQ
             'purchase-quote-requests.view',
@@ -424,7 +425,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'documents.view', 'documents.update',
             'quotes.view', 'quotes.create', 'quotes.update', 'quotes.convert',
             'orders.view', 'orders.create', 'orders.update', 'orders.confirm',
-            'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.update', 'purchase-orders.confirm', 'purchase-orders.receive',
+            'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.update', 'purchase-orders.confirm', 'purchase-orders.receive', 'goods-receipt.edit-price',
             'purchase-quote-requests.view', 'purchase-quote-requests.create', 'purchase-quote-requests.update', 'purchase-quote-requests.convert', 'purchase-quote-requests.delete',
             'invoices.view', 'invoices.create', 'invoices.update', 'invoices.post', 'invoices.print',
             'credit-notes.view', 'credit-notes.create', 'credit-notes.post',

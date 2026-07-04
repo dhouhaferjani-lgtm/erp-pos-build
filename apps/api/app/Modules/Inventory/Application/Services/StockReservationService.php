@@ -43,6 +43,8 @@ use Illuminate\Support\Str;
  */
 class StockReservationService implements InventoryReservationServiceInterface
 {
+    private const int QUANTITY_SCALE = 4;
+
     public function __construct(
         private FEFOInventoryService $fefoService,
         private BatchStockService $batchStockService,
@@ -151,12 +153,12 @@ class StockReservationService implements InventoryReservationServiceInterface
             if ($batchId !== null) {
                 // Update batch stock reserved quantity
                 $batchStock->update([
-                    'reserved_quantity' => bcadd((string) $batchStock->reserved_quantity, $quantity, 4),
+                    'reserved_quantity' => bcadd((string) $batchStock->reserved_quantity, $quantity, self::QUANTITY_SCALE),
                 ]);
             } else {
                 // Update aggregate stock level reserved field
                 $stockLevel->update([
-                    'reserved' => bcadd((string) $stockLevel->reserved, $quantity, 4),
+                    'reserved' => bcadd((string) $stockLevel->reserved, $quantity, self::QUANTITY_SCALE),
                 ]);
             }
 

@@ -37,6 +37,29 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
 
         // First pass: Create all accounts without parent links
         foreach ($accounts as $account) {
+            $existing = DB::table('accounts')
+                ->where('company_id', $companyId)
+                ->where('code', $account['code'])
+                ->first();
+            if ($existing !== null) {
+                $accountIdMap[$account['code']] = (string) $existing->id;
+
+                continue;
+            }
+
+            $purpose = $account['system_purpose'] ?? null;
+            if ($purpose !== null) {
+                $existingPurpose = DB::table('accounts')
+                    ->where('company_id', $companyId)
+                    ->where('system_purpose', $purpose)
+                    ->first();
+                if ($existingPurpose !== null) {
+                    $accountIdMap[$account['code']] = (string) $existingPurpose->id;
+
+                    continue;
+                }
+            }
+
             $id = Str::uuid()->toString();
             $accountIdMap[$account['code']] = $id;
 
@@ -210,6 +233,8 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             ['code' => '645', 'name' => 'Charges de sécurité sociale et de prévoyance', 'type' => 'expense', 'parent_code' => '64'],
             ['code' => '65', 'name' => 'Autres charges de gestion courante', 'type' => 'expense', 'parent_code' => '6',
                 'system_purpose' => SystemAccountPurpose::GeneralExpense->value, 'is_system' => true],
+            ['code' => '6585', 'name' => 'Écart sur prix d\'achat', 'type' => 'expense', 'parent_code' => '65',
+                'system_purpose' => SystemAccountPurpose::PurchasePriceVarianceExpense->value, 'is_system' => true],
             ['code' => '66', 'name' => 'Charges financières', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '661', 'name' => 'Charges d\'intérêts', 'type' => 'expense', 'parent_code' => '66'],
             ['code' => '67', 'name' => 'Charges exceptionnelles', 'type' => 'expense', 'parent_code' => '6'],
@@ -240,6 +265,8 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
                 'system_purpose' => SystemAccountPurpose::MarketingGoodwillExpense->value, 'is_system' => true],
             ['code' => '7592', 'name' => 'Produits sur bons d\'achat non utilisés (breakage)', 'type' => 'revenue', 'parent_code' => '75',
                 'system_purpose' => SystemAccountPurpose::VoucherBreakageIncome->value, 'is_system' => true],
+            ['code' => '7585', 'name' => 'Écart sur prix d\'achat', 'type' => 'revenue', 'parent_code' => '75',
+                'system_purpose' => SystemAccountPurpose::PurchasePriceVarianceIncome->value, 'is_system' => true],
             ['code' => '6588', 'name' => 'Pertes d\'arrondis sur bons d\'achat', 'type' => 'expense', 'parent_code' => '65',
                 'system_purpose' => SystemAccountPurpose::RoundingLossExpense->value, 'is_system' => true],
             ['code' => '5810', 'name' => 'Compte d\'attente règlements TPV (bons d\'achat)', 'type' => 'asset', 'parent_code' => '5',

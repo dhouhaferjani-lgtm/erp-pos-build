@@ -216,12 +216,12 @@ class GoodsReceiptTest extends TestCase
         $result = $service->receiveGoods($po, $receivedQty);
 
         // PO should be fully received
-        $this->assertEquals(DocumentStatus::Received, $result->status);
-        $this->assertTrue($result->payload['fully_received']);
-        $this->assertNotNull($result->payload['goods_received_at']);
+        $this->assertEquals(DocumentStatus::Received, $result->purchaseOrder->status);
+        $this->assertTrue($result->purchaseOrder->payload['fully_received']);
+        $this->assertNotNull($result->purchaseOrder->payload['goods_received_at']);
 
         // All lines should have quantity_received == quantity
-        foreach ($result->lines as $line) {
+        foreach ($result->purchaseOrder->lines as $line) {
             $this->assertEquals(
                 0,
                 bccomp((string) $line->quantity, (string) $line->quantity_received, 4),
@@ -254,8 +254,8 @@ class GoodsReceiptTest extends TestCase
         $service = app(GoodsReceiptService::class);
         $result = $service->receiveAll($po);
 
-        $this->assertEquals(DocumentStatus::Received, $result->status);
-        $this->assertTrue($result->payload['fully_received']);
+        $this->assertEquals(DocumentStatus::Received, $result->purchaseOrder->status);
+        $this->assertTrue($result->purchaseOrder->payload['fully_received']);
 
         $stock = StockLevel::where('product_id', $product->id)
             ->where('location_id', $this->warehouse->id)
@@ -286,11 +286,11 @@ class GoodsReceiptTest extends TestCase
         $result = $service->receiveGoods($po, $receivedQty);
 
         // PO should remain confirmed (not yet fully received)
-        $this->assertEquals(DocumentStatus::Confirmed, $result->status);
-        $this->assertFalse($result->payload['fully_received']);
+        $this->assertEquals(DocumentStatus::Confirmed, $result->purchaseOrder->status);
+        $this->assertFalse($result->purchaseOrder->payload['fully_received']);
 
         // Line should show partial receipt
-        $updatedLine = $result->lines->first();
+        $updatedLine = $result->purchaseOrder->lines->first();
         $this->assertEquals(0, bccomp('12.0000', (string) $updatedLine->quantity_received, 4));
 
         // Stock should reflect partial receipt
@@ -317,24 +317,24 @@ class GoodsReceiptTest extends TestCase
             $receivedQty[$line->id] = '10.0000';
         }
         $result = $service->receiveGoods($po, $receivedQty);
-        $this->assertEquals(DocumentStatus::Confirmed, $result->status);
+        $this->assertEquals(DocumentStatus::Confirmed, $result->purchaseOrder->status);
 
         // Second partial receipt: 15 of remaining 20
         $receivedQty2 = [];
-        foreach ($result->lines as $line) {
+        foreach ($result->purchaseOrder->lines as $line) {
             $receivedQty2[$line->id] = '15.0000';
         }
-        $result2 = $service->receiveGoods($result, $receivedQty2);
-        $this->assertEquals(DocumentStatus::Confirmed, $result2->status);
+        $result2 = $service->receiveGoods($result->purchaseOrder, $receivedQty2);
+        $this->assertEquals(DocumentStatus::Confirmed, $result2->purchaseOrder->status);
 
         // Final receipt: remaining 5
         $receivedQty3 = [];
-        foreach ($result2->lines as $line) {
+        foreach ($result2->purchaseOrder->lines as $line) {
             $receivedQty3[$line->id] = '5.0000';
         }
-        $result3 = $service->receiveGoods($result2, $receivedQty3);
-        $this->assertEquals(DocumentStatus::Received, $result3->status);
-        $this->assertTrue($result3->payload['fully_received']);
+        $result3 = $service->receiveGoods($result2->purchaseOrder, $receivedQty3);
+        $this->assertEquals(DocumentStatus::Received, $result3->purchaseOrder->status);
+        $this->assertTrue($result3->purchaseOrder->payload['fully_received']);
 
         // Stock should be 30
         $stock = StockLevel::where('product_id', $product->id)
@@ -387,14 +387,14 @@ class GoodsReceiptTest extends TestCase
 
         // Try to receive 5 more (only 3 remaining)
         $receivedQty2 = [];
-        foreach ($result->lines as $line) {
+        foreach ($result->purchaseOrder->lines as $line) {
             $receivedQty2[$line->id] = '5.0000';
         }
 
         $this->expectException(\DomainException::class);
         $this->expectExceptionMessageMatches('/Cannot receive more than ordered/');
 
-        $service->receiveGoods($result, $receivedQty2);
+        $service->receiveGoods($result->purchaseOrder, $receivedQty2);
     }
 
     // =========================================================================
@@ -518,7 +518,7 @@ class GoodsReceiptTest extends TestCase
             ->first();
 
         $this->assertNotNull($batch);
-        $this->assertSame($batch->id, $result->lines->firstOrFail()->batch_id);
+        $this->assertSame($batch->id, $result->purchaseOrder->lines->firstOrFail()->batch_id);
 
         $batchStock = BatchStock::where('batch_id', $batch->id)
             ->where('location_id', $this->warehouse->id)
@@ -648,7 +648,7 @@ class GoodsReceiptTest extends TestCase
         }
         $result = $service->receiveGoods($po, $receivedQty);
 
-        $status = $service->getReceiptStatus($result);
+        $status = $service->getReceiptStatus($result->purchaseOrder);
 
         $this->assertEquals('partially_received', $status['status']);
         $this->assertEquals(0, bccomp('20.0000', $status['total_ordered'], 4));
@@ -668,7 +668,7 @@ class GoodsReceiptTest extends TestCase
         $service = app(GoodsReceiptService::class);
         $result = $service->receiveAll($po);
 
-        $status = $service->getReceiptStatus($result);
+        $status = $service->getReceiptStatus($result->purchaseOrder);
 
         $this->assertEquals('fully_received', $status['status']);
         $this->assertEquals(0, bccomp('10.0000', $status['total_ordered'], 4));
@@ -691,7 +691,7 @@ class GoodsReceiptTest extends TestCase
 
         $result = $service->receiveAll($po);
 
-        $this->assertTrue($service->isFullyReceived($result));
+        $this->assertTrue($service->isFullyReceived($result->purchaseOrder));
     }
 
     public function test_has_received_goods_returns_correct_value(): void
@@ -712,7 +712,7 @@ class GoodsReceiptTest extends TestCase
         }
         $result = $service->receiveGoods($po, $receivedQty);
 
-        $this->assertTrue($service->hasReceivedGoods($result));
+        $this->assertTrue($service->hasReceivedGoods($result->purchaseOrder));
     }
 
     // =========================================================================

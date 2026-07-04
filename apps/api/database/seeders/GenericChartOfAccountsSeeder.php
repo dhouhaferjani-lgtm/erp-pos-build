@@ -33,6 +33,29 @@ class GenericChartOfAccountsSeeder extends Seeder
 
         // First pass: Create all accounts without parent links
         foreach ($accounts as $account) {
+            $existing = DB::table('accounts')
+                ->where('company_id', $companyId)
+                ->where('code', $account['code'])
+                ->first();
+            if ($existing !== null) {
+                $accountIdMap[$account['code']] = (string) $existing->id;
+
+                continue;
+            }
+
+            $purpose = $account['system_purpose'] ?? null;
+            if ($purpose !== null) {
+                $existingPurpose = DB::table('accounts')
+                    ->where('company_id', $companyId)
+                    ->where('system_purpose', $purpose)
+                    ->first();
+                if ($existingPurpose !== null) {
+                    $accountIdMap[$account['code']] = (string) $existingPurpose->id;
+
+                    continue;
+                }
+            }
+
             $id = Str::uuid()->toString();
             $accountIdMap[$account['code']] = $id;
 
@@ -137,6 +160,8 @@ class GenericChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::PurchaseStampDuty->value, 'is_system' => true],
             ['code' => '6580', 'name' => 'Payment Tolerance Expense', 'type' => 'expense', 'parent_code' => '6000',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceExpense->value, 'is_system' => true],
+            ['code' => '6585', 'name' => 'Écart sur prix d\'achat', 'type' => 'expense', 'parent_code' => '6000',
+                'system_purpose' => SystemAccountPurpose::PurchasePriceVarianceExpense->value, 'is_system' => true],
             ['code' => '6660', 'name' => 'Realized FX Loss', 'type' => 'expense', 'parent_code' => '6000',
                 'system_purpose' => SystemAccountPurpose::RealizedFxLoss->value, 'is_system' => true],
 
@@ -152,6 +177,8 @@ class GenericChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::SalesDiscount->value, 'is_system' => true],
             ['code' => '7580', 'name' => 'Payment Tolerance Income', 'type' => 'revenue', 'parent_code' => '7000',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],
+            ['code' => '7585', 'name' => 'Écart sur prix d\'achat', 'type' => 'revenue', 'parent_code' => '7000',
+                'system_purpose' => SystemAccountPurpose::PurchasePriceVarianceIncome->value, 'is_system' => true],
             ['code' => '7660', 'name' => 'Realized FX Gain', 'type' => 'revenue', 'parent_code' => '7000',
                 'system_purpose' => SystemAccountPurpose::RealizedFxGain->value, 'is_system' => true],
 
