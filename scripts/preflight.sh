@@ -10,6 +10,31 @@ NC='\033[0m' # No Color
 echo -e "${YELLOW}🔍 Running preflight checks...${NC}"
 echo ""
 
+# -----------------------------------------------------------------------------
+# PREFLIGHT_SCOPE — laptop-safe by default, full suite on the VPS/CI.
+#
+# The FULL PHPUnit suite is FORBIDDEN on the owner's laptop: it exhausts memory
+# and crashes the machine. It is desired on the VPS / CI, where resources are
+# not shared with the owner's work. This variable gates the PHPUnit invocation
+# ONLY. Every other gate (Pint, PHPStan, TypeScript, ESLint, TanStack key audit,
+# Vitest, fiscal-fixture parity, §14.3 chokepoint) runs UNCONDITIONALLY in both
+# modes.
+#
+#   PREFLIGHT_SCOPE=paths  (DEFAULT — laptop-safe)
+#       Runs ONLY the tests listed in PREFLIGHT_TEST_PATHS (space-separated),
+#       or SKIPS PHPUnit with a loud warning when PREFLIGHT_TEST_PATHS is empty.
+#       Examples:
+#         ./scripts/preflight.sh
+#         PREFLIGHT_TEST_PATHS='tests/Feature/Partner tests/Unit/Fiscal' ./scripts/preflight.sh
+#
+#   PREFLIGHT_SCOPE=full   (VPS / CI ONLY — CRASHES the laptop)
+#       Runs the entire PHPUnit suite via `php artisan test`.
+#       Example:
+#         PREFLIGHT_SCOPE=full ./scripts/preflight.sh
+# -----------------------------------------------------------------------------
+PREFLIGHT_SCOPE="${PREFLIGHT_SCOPE:-paths}"
+PHPUNIT_SKIPPED=0
+
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
@@ -28,9 +53,38 @@ echo -e "\n${YELLOW}Running PHPStan (static analysis)...${NC}"
 ./vendor/bin/phpstan analyse --level=8 --memory-limit=2G
 echo -e "${GREEN}✓ PHPStan passed${NC}"
 
-echo -e "\n${YELLOW}Running PHPUnit tests...${NC}"
-php artisan test
-echo -e "${GREEN}✓ PHPUnit passed${NC}"
+echo -e "\n${YELLOW}Running PHPUnit tests (scope: ${PREFLIGHT_SCOPE})...${NC}"
+case "$PREFLIGHT_SCOPE" in
+    full)
+        echo -e "${YELLOW}  Scope=full — running the ENTIRE PHPUnit suite (VPS/CI only).${NC}"
+        php artisan test
+        echo -e "${GREEN}✓ PHPUnit passed (full suite)${NC}"
+        ;;
+    paths)
+        if [ -n "${PREFLIGHT_TEST_PATHS:-}" ]; then
+            echo -e "${YELLOW}  Scope=paths — running only: ${PREFLIGHT_TEST_PATHS}${NC}"
+            # shellcheck disable=SC2086
+            php artisan test ${PREFLIGHT_TEST_PATHS}
+            echo -e "${GREEN}✓ PHPUnit passed (scoped paths)${NC}"
+        else
+            PHPUNIT_SKIPPED=1
+            echo -e "${RED}⚠️  ============================================================${NC}"
+            echo -e "${RED}⚠️  SKIPPING PHPUnit: PREFLIGHT_SCOPE=paths (default) and no${NC}"
+            echo -e "${RED}⚠️  PREFLIGHT_TEST_PATHS were provided.${NC}"
+            echo -e "${RED}⚠️  Backend tests were NOT run — this preflight is INCOMPLETE.${NC}"
+            echo -e "${RED}⚠️${NC}"
+            echo -e "${RED}⚠️  Run the tests that cover your change (laptop-safe):${NC}"
+            echo -e "${RED}⚠️    PREFLIGHT_TEST_PATHS='tests/Feature/Foo tests/Unit/Bar' ./scripts/preflight.sh${NC}"
+            echo -e "${RED}⚠️  Or run the FULL suite on the VPS/CI (NEVER on the laptop):${NC}"
+            echo -e "${RED}⚠️    PREFLIGHT_SCOPE=full ./scripts/preflight.sh${NC}"
+            echo -e "${RED}⚠️  ============================================================${NC}"
+        fi
+        ;;
+    *)
+        echo -e "${RED}✗ Unknown PREFLIGHT_SCOPE='${PREFLIGHT_SCOPE}' (expected 'paths' or 'full')${NC}"
+        exit 1
+        ;;
+esac
 
 # Type Generation — drift guard
 # Regenerates packages/shared/types/generated.d.ts from the current PHP DTOs
@@ -119,5 +173,11 @@ echo -e "${GREEN}✓ §14.3 chokepoint gate OK${NC}"
 # Summary
 echo ""
 echo "=================================="
-echo -e "${GREEN}✅ All preflight checks passed!${NC}"
+if [ "$PHPUNIT_SKIPPED" -eq 1 ]; then
+    echo -e "${YELLOW}⚠️  Preflight finished — but PHPUnit was SKIPPED (no PREFLIGHT_TEST_PATHS).${NC}"
+    echo -e "${YELLOW}⚠️  This run is NOT a full green. Backend tests were not exercised.${NC}"
+    echo -e "${YELLOW}⚠️  Run the covering tests, or PREFLIGHT_SCOPE=full on the VPS/CI.${NC}"
+else
+    echo -e "${GREEN}✅ All preflight checks passed!${NC}"
+fi
 echo "=================================="
