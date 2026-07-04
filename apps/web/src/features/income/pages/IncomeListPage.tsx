@@ -7,6 +7,7 @@ import { Button } from '@/components/atoms/Button'
 import { ListPageLayout } from '@/components/molecules/ListPageLayout'
 import { SearchInput } from '@/components/molecules/SearchInput'
 import { RequirePermission } from '@/components/auth/RequirePermission'
+import { QueryError } from '@/components/QueryError'
 import { formatCurrency } from '@/lib/format'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import type { IncomeFilters } from '../types'
@@ -20,7 +21,7 @@ export function IncomeListPage() {
   const [filters, setFilters] = useState<IncomeFilters>({})
   const [searchTerm, setSearchTerm] = useState('')
 
-  const { data, isLoading } = useIncomeList(filters)
+  const { data, isLoading, isError, error, refetch } = useIncomeList(filters)
   const postIncome = usePostIncome()
 
   const handleSearch = (value: string) => {
@@ -60,7 +61,15 @@ export function IncomeListPage() {
         />
       }
     >
-      {isLoading ? (
+      {isError ? (
+        <QueryError
+          error={error}
+          onRetry={() => {
+            void refetch()
+          }}
+          title={t('common:errors.loadingFailed')}
+        />
+      ) : isLoading ? (
         <div className={`p-6 text-sm ${textColors.tertiary}`}>{t('common:loading')}</div>
       ) : rows.length === 0 ? (
         <div className={`p-8 text-center ${textColors.tertiary}`}>
