@@ -6,10 +6,12 @@ namespace App\Modules\Product\Application\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Category;
+use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxResolutionService;
 use App\Shared\Contracts\ProductServiceInterface;
+use Illuminate\Support\Str;
 
 /**
  * Application service for product operations.
@@ -20,6 +22,7 @@ final class ProductService implements ProductServiceInterface
 {
     public function __construct(
         private readonly TaxResolutionService $taxResolution,
+        private readonly BrandResolutionService $brandResolution,
     ) {}
 
     /**
@@ -51,13 +54,19 @@ final class ProductService implements ProductServiceInterface
         string $companyId,
         array $data
     ): string {
+        $fileSku = $this->emptyToNull($data['sku'] ?? null);
+        $barcode = $this->emptyToNull($data['barcode'] ?? null);
+        $nameSku = $this->skuFromName((string) $data['name']);
+        $existing = $this->findExistingProduct($tenantId, $companyId, $fileSku, $barcode, $nameSku);
+        $createSku = $fileSku ?? ($barcode ?? $nameSku);
+
         $attributes = [
             'name' => $data['name'],
-            'type' => isset($data['type']) ? ProductType::from($data['type']) : null,
+            'type' => ProductType::from((string) ($this->emptyToNull($data['type'] ?? null) ?? ProductType::Part->value)),
             'description' => $this->emptyToNull($data['description'] ?? null),
             'sale_price' => $this->emptyToNull($data['sale_price'] ?? null),
             'purchase_price' => $this->emptyToNull($data['purchase_price'] ?? null),
-            'barcode' => $this->emptyToNull($data['barcode'] ?? null),
+            'barcode' => $barcode,
             'tax_rate' => $this->emptyToNull($data['tax_rate'] ?? null),
             'unit' => $this->emptyToNull($data['unit'] ?? null),
         ];
@@ -79,12 +88,13 @@ final class ProductService implements ProductServiceInterface
             }
         }
 
-        if (($attributes['tax_rate'] ?? null) === null) {
-            $existing = Product::where('tenant_id', $tenantId)
-                ->where('company_id', $companyId)
-                ->where('sku', $data['sku'])
-                ->first();
+        if (isset($data['brand']) && trim((string) $data['brand']) !== '') {
+            $brand = $this->brandResolution->resolve($tenantId, trim((string) $data['brand']), null, null)->brand;
+            $attributes['brand_id'] = $brand->id;
+            $attributes['brand_source'] = BrandSource::User;
+        }
 
+        if (($attributes['tax_rate'] ?? null) === null) {
             if ($existing !== null && $existing->tax_rate !== null) {
                 // Re-import without a rate column must not clobber an existing explicit rate.
                 $attributes['tax_rate'] = $existing->tax_rate;
@@ -100,16 +110,50 @@ final class ProductService implements ProductServiceInterface
             }
         }
 
-        $product = Product::updateOrCreate(
-            [
+        if ($existing !== null) {
+            $existing->fill($attributes);
+            $existing->save();
+
+            return $existing->id;
+        }
+
+        $product = Product::create(
+            array_merge([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                'sku' => $data['sku'],
-            ],
-            $attributes
+                'sku' => $createSku,
+            ], $attributes)
         );
 
         return $product->id;
+    }
+
+    private function skuFromName(string $name): string
+    {
+        $sku = strtoupper(substr(Str::slug($name, '-'), 0, 100));
+
+        return $sku !== '' ? $sku : 'PRODUCT';
+    }
+
+    private function findExistingProduct(
+        string $tenantId,
+        string $companyId,
+        ?string $fileSku,
+        ?string $barcode,
+        string $nameSku
+    ): ?Product {
+        $query = Product::where('tenant_id', $tenantId)
+            ->where('company_id', $companyId);
+
+        if ($fileSku !== null) {
+            return $query->where('sku', $fileSku)->first();
+        }
+
+        if ($barcode !== null) {
+            return $query->where('barcode', $barcode)->first();
+        }
+
+        return $query->where('sku', $nameSku)->first();
     }
 
     /**

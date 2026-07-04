@@ -91,5 +91,80 @@
       "attachmentUploaded": "تم رفع المرفق",
       "attachmentDeleted": "تم حذف المرفق"
     }
+  },
+  "quoteRequests": {
+    "title": "طلبات الأسعار",
+    "description": "قارن ردود الموردين قبل إنشاء أمر شراء",
+    "empty": "لا توجد طلبات أسعار",
+    "list": {
+      "groupChip_zero": "{{count}} مورد — {{responseCount}} ردود",
+      "groupChip_one": "مورد واحد — {{responseCount}} ردود",
+      "groupChip_two": "موردان — {{responseCount}} ردود",
+      "groupChip_few": "{{count}} موردين — {{responseCount}} ردود",
+      "groupChip_many": "{{count}} مورداً — {{responseCount}} ردود",
+      "groupChip_other": "{{count}} مورد — {{responseCount}} ردود"
+    },
+    "create": {
+      "title": "طلب سعر جديد",
+      "description": "أدخل البنود مرة واحدة ثم أرسلها إلى عدة موردين.",
+      "suppliers": "الموردون",
+      "lines": "البنود المطلوبة"
+    },
+    "detail": {
+      "response": "رد المورد",
+      "lines": "البنود"
+    },
+    "comparison": {
+      "title": "مقارنة العروض",
+      "description": "قارن الأسعار والمهل والصلاحية حسب المورد.",
+      "unmatched": "غير مقدم",
+      "awaitingResponse": "بانتظار الرد"
+    },
+    "columns": {
+      "number": "رقم الطلب",
+      "suppliers": "الموردون",
+      "status": "الحالة",
+      "total": "الإجمالي",
+      "actions": "الإجراءات"
+    },
+    "fields": {
+      "supplier": "المورد",
+      "product": "المنتج",
+      "description": "الوصف",
+      "quantity": "الكمية",
+      "unitPrice": "سعر الوحدة المقترح",
+      "validityDate": "الصلاحية",
+      "notes": "ملاحظات",
+      "leadTimeDays": "المهلة (أيام)",
+      "total": "الإجمالي",
+      "respondedAt": "تم تسجيل الرد",
+      "supplierReference": "مرجع المورد"
+    },
+    "status": {
+      "draft": "مسودة",
+      "sent": "مرسلة",
+      "confirmed": "تم تسجيل الرد",
+      "cancelled": "مغلق",
+      "lost": "مغلق (غير مختار)"
+    },
+    "actions": {
+      "new": "طلب جديد",
+      "open": "فتح",
+      "addSupplier": "إضافة مورد",
+      "removeSupplier": "حذف المورد",
+      "addLine": "إضافة بند",
+      "removeLine": "حذف البند",
+      "create": "إنشاء الطلب",
+      "send": "إرسال",
+      "recordResponse": "تسجيل الرد",
+      "saveResponse": "حفظ الرد",
+      "convert": "تحويل إلى أمر شراء",
+      "award": "اعتماد العرض",
+      "reopen": "إعادة فتح المجموعة"
+    },
+    "confirm": {
+      "awardTitle": "اعتماد هذا العرض",
+      "awardMessage": "ينشئ هذا الإجراء أمر شراء ويغلق الردود الأخرى في المجموعة."
+    }
   }
 }

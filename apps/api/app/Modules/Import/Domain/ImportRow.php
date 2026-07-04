@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed> $data
  * @property bool $is_valid
  * @property array<string, array<string>>|null $errors
+ * @property list<array{code: string, detail: string}>|null $warnings
  * @property bool $is_imported
  * @property string|null $imported_entity_id
  * @property string|null $import_error
@@ -41,6 +42,7 @@ class ImportRow extends Model
         'data',
         'is_valid',
         'errors',
+        'warnings',
         'is_imported',
         'imported_entity_id',
         'import_error',
@@ -62,6 +64,7 @@ class ImportRow extends Model
         return [
             'data' => 'array',
             'errors' => 'array',
+            'warnings' => 'array',
             'is_valid' => 'boolean',
             'is_imported' => 'boolean',
         ];

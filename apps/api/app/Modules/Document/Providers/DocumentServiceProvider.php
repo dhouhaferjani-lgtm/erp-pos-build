@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Services\Conversion\Converters\DeliveryNoteToInvoiceConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\InvoiceToCreditNoteConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\PurchaseOrderToGoodsReceiptConverter;
+use App\Modules\Document\Domain\Services\Conversion\Converters\PurchaseQuoteRequestToPurchaseOrderConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\QuoteToSalesOrderConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToDeliveryNoteConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToInvoiceConverter;
@@ -48,6 +49,7 @@ class DocumentServiceProvider extends ServiceProvider
             $registry->register($app->make(DeliveryNoteToInvoiceConverter::class));
             $registry->register($app->make(InvoiceToCreditNoteConverter::class));
             $registry->register($app->make(PurchaseOrderToGoodsReceiptConverter::class));
+            $registry->register($app->make(PurchaseQuoteRequestToPurchaseOrderConverter::class));
 
             return $registry;
         });

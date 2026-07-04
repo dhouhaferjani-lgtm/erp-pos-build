@@ -18,6 +18,7 @@ import type { ImportType, ImportTypeMetadata, DependencyCheck } from '../types'
 import { importApi } from '../api/importApi'
 
 const typeIcons: Record<ImportType, React.ComponentType<{ className?: string }>> = {
+  parties: Users,
   partners: Users,
   products: Package,
   stock_levels: Package,

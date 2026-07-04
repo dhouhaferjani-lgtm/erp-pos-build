@@ -18,6 +18,9 @@
     "deleted": "Travail d'import supprimé",
     "deleteError": "Échec de la suppression du travail d'import"
   },
+  "results": {
+    "downloadWorkbook": "Télécharger le rapport d'import"
+  },
   "dashboard": {
     "title": "Importation de données",
     "description": "Importez vos données depuis des fichiers CSV ou Excel",
@@ -30,12 +33,24 @@
     "step3": "Mappez vos colonnes aux champs requis",
     "step4": "Vérifiez et corrigez les erreurs de validation, puis importez",
     "importTypes": "Types d'import",
+    "primaryTitle": "Imports principaux",
+    "advancedTitle": "Imports avancés",
+    "advancedHint": "Utilisez-les pour les migrations détaillées et les anciens formats d'import.",
+    "orderHint": "Importez d'abord les partenaires commerciaux, puis les produits.",
+    "accountingOpeningBalances": {
+      "title": "Soldes d'ouverture comptables",
+      "description": "Ouvrir l'assistant par lots pour les soldes d'ouverture du grand livre et les détails comptables"
+    },
     "tips": "Conseils pour des importations réussies",
     "tip1": "Assurez-vous que votre fichier a des en-têtes dans la première ligne",
     "tip2": "Utilisez les modèles fournis pour de meilleurs résultats",
     "tip3": "Le stock ne peut être importé que lors de la configuration des soldes d'ouverture. Après le démarrage, utilisez Bons de Commande → Bons de Réception pour augmenter le stock."
   },
   "types": {
+    "parties": {
+      "title": "Partenaires commerciaux",
+      "description": "Importez clients et fournisseurs avec soldes d'ouverture"
+    },
     "partners": {
       "title": "Partenaires",
       "description": "Importez clients et fournisseurs"
@@ -87,6 +102,7 @@
     "steps": {
       "upload": "Télécharger",
       "mapping": "Mapper",
+      "options": "Options",
       "validation": "Vérifier",
       "execute": "Importer",
       "complete": "Terminé"
@@ -144,6 +160,15 @@
     "confirmPartialImport": "Import avec erreurs",
     "partialImportDescription": "{{valid}} lignes sont valides et seront importées. {{failed}} lignes ont des erreurs et seront ignorées. Vous pouvez télécharger les lignes échouées après l'import.",
     "proceedWithValid": "Importer les lignes valides"
+  },
+  "options": {
+    "priceAuthorityTitle": "Quel prix fait foi ?",
+    "priceAuthority": {
+      "ttc": "Prix TTC",
+      "ht": "Prix HT",
+      "margin": "Marge sur coût"
+    },
+    "priceAuthorityHint": "En cas de conflit entre colonnes de prix, celle-ci l'emporte ; les autres génèrent des avertissements."
   },
   "mapping": {
     "sourceColumn": "Colonne source",

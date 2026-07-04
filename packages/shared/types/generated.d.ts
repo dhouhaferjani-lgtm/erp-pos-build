@@ -703,7 +703,7 @@ export type CostApplicationPath = 'landed_cost' | 'wac_adjustment' | 'profit_onl
 export type CreditNoteReason = 'return' | 'price_adjustment' | 'billing_error' | 'damaged_goods' | 'service_issue' | 'other';
 export type DeliveryStatus = 'not_delivered' | 'partially_delivered' | 'fully_delivered';
 export type DocumentStatus = 'draft' | 'confirmed' | 'posted' | 'paid' | 'received' | 'cancelled';
-export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense' | 'supplier_invoice' | 'supplier_credit_note' | 'income';
+export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense' | 'supplier_invoice' | 'supplier_credit_note' | 'income' | 'purchase_rfq';
 export type FacturXProfile = 'minimum' | 'basicwl' | 'basic' | 'en16931' | 'extended';
 export type FiscalCategory = 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE' | 'DELIVERY_NOTE' | 'RETURN_NOTE';
 export type FiscalStatus = 'DRAFT' | 'SEALED' | 'VOIDED';
@@ -774,7 +774,7 @@ export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending_verifica
 }
 declare namespace App.Modules.Import.Domain.Enums {
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
-export type ImportType = 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
+export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
 }
 declare namespace App.Modules.Inventory.Application.DTOs {
 export type StockLevelData = {
@@ -1323,6 +1323,17 @@ message: string | null;
 }
 declare namespace App.Modules.PlatformIntegration.Domain.Enums {
 export type PlatformLookupStatus = 'found' | 'not_found' | 'error' | 'cached';
+}
+declare namespace App.Modules.Procurement.Domain.Dto {
+export type RfqPayload = {
+groupId: string;
+validityDate: string | null;
+supplierReference: string | null;
+leadTimeDays: number | null;
+responseRecordedAt: string | null;
+sentAt: string | null;
+closedReason: string | null;
+};
 }
 declare namespace App.Modules.Procurement.Domain.Enums {
 export type BillControlMode = 'received' | 'ordered';

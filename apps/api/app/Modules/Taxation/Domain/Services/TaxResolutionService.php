@@ -6,9 +6,10 @@ namespace App\Modules\Taxation\Domain\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\TaxDefaultResolverInterface;
 use Illuminate\Support\Facades\DB;
 
-class TaxResolutionService
+class TaxResolutionService implements TaxDefaultResolverInterface
 {
     /**
      * Resolve the applicable tax rate for a product in context

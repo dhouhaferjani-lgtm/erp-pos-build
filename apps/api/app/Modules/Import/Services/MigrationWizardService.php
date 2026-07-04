@@ -23,6 +23,7 @@ final class MigrationWizardService
     public function getRecommendedImportOrder(): array
     {
         return [
+            ImportType::Parties,
             ImportType::Partners,
             ImportType::Products,
             ImportType::CompositeItems,
@@ -42,6 +43,10 @@ final class MigrationWizardService
         $warnings = [];
 
         switch ($type) {
+            case ImportType::Parties:
+                // No dependencies
+                break;
+
             case ImportType::Partners:
                 // No dependencies
                 break;
@@ -153,12 +158,23 @@ final class MigrationWizardService
     private function getColumnAliases(): array
     {
         return [
-            'name' => ['name', 'customer_name', 'company_name', 'product_name', 'item_name', 'title'],
+            'name' => ['name', 'customer_name', 'company_name', 'product_name', 'item_name', 'title', 'nom'],
             'email' => ['email', 'email_address', 'e_mail', 'mail'],
-            'phone' => ['phone', 'telephone', 'phone_number', 'mobile', 'tel'],
+            'phone' => ['phone', 'telephone', 'phone_number', 'mobile', 'tel', 'téléphone'],
             'type' => ['type', 'partner_type', 'customer_type', 'product_type', 'category'],
             'sku' => ['sku', 'code', 'product_code', 'item_code', 'part_number'],
+            'code' => ['code', 'partner_code', 'customer_code', 'supplier_code'],
             'vat_number' => ['vat', 'vat_number', 'tax_id', 'tax_number'],
+            'tax_id' => ['vat', 'vat_number', 'tax_id', 'tax_number', 'matricule_fiscal'],
+            'address_line1' => ['address', 'address_line1', 'street', 'street_address', 'adresse'],
+            'address_city' => ['city', 'address_city', 'ville'],
+            'address_postal_code' => ['postal_code', 'postcode', 'zip', 'address_postal_code', 'code_postal'],
+            'address_country' => ['country', 'address_country', 'pays'],
+            'opening_balance' => ['opening_balance', 'balance', 'solde'],
+            'opening_balance_customer' => ['opening_balance_customer', 'customer_balance', 'solde_client'],
+            'opening_balance_supplier' => ['opening_balance_supplier', 'supplier_balance', 'solde_fournisseur'],
+            'balance_date' => ['balance_date', 'opening_date', 'date_solde'],
+            'reference' => ['reference', 'ref', 'external_reference'],
             'sale_price' => ['sale_price', 'selling_price', 'price', 'retail_price'],
             'purchase_price' => ['purchase_price', 'cost', 'cost_price', 'buy_price'],
             'quantity' => ['quantity', 'qty', 'stock', 'stock_qty', 'on_hand'],
@@ -198,6 +214,42 @@ final class MigrationWizardService
     private function generateExampleRows(ImportType $type, array $columns): array
     {
         $allExamples = match ($type) {
+            ImportType::Parties => [
+                [
+                    'name' => 'Acme Corporation',
+                    'type' => 'customer',
+                    'code' => 'CUST-001',
+                    'email' => 'contact@acme.com',
+                    'phone' => '+1234567890',
+                    'tax_id' => 'FR12345678901',
+                    'address_line1' => '123 Main Street',
+                    'address_city' => 'Paris',
+                    'address_postal_code' => '75001',
+                    'address_country' => 'France',
+                    'opening_balance' => '100.000',
+                    'opening_balance_customer' => '',
+                    'opening_balance_supplier' => '',
+                    'balance_date' => '2026-01-01',
+                    'reference' => 'OB-CUST-001',
+                ],
+                [
+                    'name' => 'Global Supplies Ltd',
+                    'type' => 'supplier',
+                    'code' => 'SUP-001',
+                    'email' => 'sales@global-supplies.com',
+                    'phone' => '+0987654321',
+                    'tax_id' => 'DE987654321',
+                    'address_line1' => '456 Industrial Ave',
+                    'address_city' => 'Berlin',
+                    'address_postal_code' => '10115',
+                    'address_country' => 'Germany',
+                    'opening_balance' => '-50.000',
+                    'opening_balance_customer' => '',
+                    'opening_balance_supplier' => '',
+                    'balance_date' => '2026-01-01',
+                    'reference' => 'OB-SUP-001',
+                ],
+            ],
             ImportType::Partners => [
                 // Customer example
                 [
@@ -353,6 +405,10 @@ final class MigrationWizardService
         $accountCount = Account::where('tenant_id', $tenantId)->count();
 
         return [
+            'parties' => [
+                'count' => $partnerCount,
+                'has_data' => $partnerCount > 0,
+            ],
             'partners' => [
                 'count' => $partnerCount,
                 'has_data' => $partnerCount > 0,
@@ -384,6 +440,11 @@ final class MigrationWizardService
     public function getImportTypeMetadata(ImportType $type): array
     {
         return match ($type) {
+            ImportType::Parties => [
+                'type' => $type->value,
+                'label' => 'Business Partners',
+                'description' => 'Import customers and suppliers with optional opening balances.',
+            ],
             ImportType::Partners => [
                 'type' => $type->value,
                 'label' => 'Partners (Customers & Suppliers)',

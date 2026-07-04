@@ -17,6 +17,7 @@ enum DocumentType: string
     case SupplierInvoice = 'supplier_invoice';
     case SupplierCreditNote = 'supplier_credit_note';
     case Income = 'income';
+    case PurchaseQuoteRequest = 'purchase_rfq';
 
     /**
      * Get the prefix for document numbering
@@ -35,6 +36,7 @@ enum DocumentType: string
             self::SupplierInvoice => 'SI',
             self::SupplierCreditNote => 'SCN',
             self::Income => 'INC',
+            self::PurchaseQuoteRequest => 'DP',
         };
     }
 
@@ -55,6 +57,7 @@ enum DocumentType: string
             self::SupplierInvoice => 'Supplier Invoice',
             self::SupplierCreditNote => 'Supplier Credit Note',
             self::Income => 'Income',
+            self::PurchaseQuoteRequest => 'Purchase Quote Request',
         };
     }
 

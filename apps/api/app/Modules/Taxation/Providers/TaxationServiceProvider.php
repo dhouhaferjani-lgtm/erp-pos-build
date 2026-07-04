@@ -31,6 +31,7 @@ use App\Modules\Taxation\Infrastructure\Repositories\EloquentVatDataRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentVatPeriodRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingCertificateRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingTaxRuleRepository;
+use App\Shared\Contracts\TaxDefaultResolverInterface;
 use Illuminate\Support\ServiceProvider;
 
 class TaxationServiceProvider extends ServiceProvider
@@ -39,6 +40,7 @@ class TaxationServiceProvider extends ServiceProvider
     {
         // Register taxation services as singletons
         $this->app->singleton(TaxResolutionService::class);
+        $this->app->bind(TaxDefaultResolverInterface::class, fn ($app): TaxResolutionService => $app->make(TaxResolutionService::class));
         $this->app->singleton(TaxCalculationService::class);
 
         // Register withholding tax repositories

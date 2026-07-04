@@ -37,7 +37,7 @@ final class NumericFieldNormalizer
                 continue;
             }
 
-            $data[$field] = $this->normalizeValue($value);
+            $data[$field] = $this->normalizeValue($value, $this->isPercentScaleField($rules[$field] ?? []));
         }
 
         return $data;
@@ -51,12 +51,24 @@ final class NumericFieldNormalizer
         return in_array('numeric', $rules[$field] ?? [], true);
     }
 
-    private function normalizeValue(string $value): string
+    /**
+     * @param  array<int, mixed>  $rules
+     */
+    private function isPercentScaleField(array $rules): bool
+    {
+        return in_array('regex:/^-?\d+(\.\d{1,2})?$/', $rules, true);
+    }
+
+    private function normalizeValue(string $value, bool $percentScaleField = false): string
     {
         $trimmed = trim($value);
 
+        if ($percentScaleField && preg_match('/^-?\d+\.\d+$/', $trimmed) === 1) {
+            return $value;
+        }
+
         // European thousands-dot with decimal comma: 1.234,56
-        if (preg_match('/^-?\d{1,3}(\.\d{3})+(,\d+)?$/', $trimmed) === 1) {
+        if (preg_match('/^-?\d{1,3}(\.\d{3})+,\d+$/', $trimmed) === 1) {
             return str_replace(',', '.', str_replace('.', '', $trimmed));
         }
 

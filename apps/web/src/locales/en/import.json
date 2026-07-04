@@ -18,6 +18,9 @@
     "deleted": "Import job deleted",
     "deleteError": "Failed to delete import job"
   },
+  "results": {
+    "downloadWorkbook": "Download result workbook"
+  },
   "dashboard": {
     "title": "Data Import",
     "description": "Import your data from CSV or Excel files",
@@ -30,12 +33,24 @@
     "step3": "Map your columns to the required fields",
     "step4": "Review and fix any validation errors, then import",
     "importTypes": "Import Types",
+    "primaryTitle": "Primary imports",
+    "advancedTitle": "Advanced imports",
+    "advancedHint": "Use these for detailed migration workflows and legacy import formats.",
+    "orderHint": "Import business partners first, then products.",
+    "accountingOpeningBalances": {
+      "title": "Accounting opening balances",
+      "description": "Open the controlled batch wizard for general-ledger and detailed opening balances"
+    },
     "tips": "Tips for successful imports",
     "tip1": "Ensure your file has headers in the first row",
     "tip2": "Use the provided templates for best results",
     "tip3": "Stock can only be imported during Opening Balances setup. After go-live, use Purchase Orders → Goods Receipt Notes to increase stock."
   },
   "types": {
+    "parties": {
+      "title": "Business partners",
+      "description": "Import customers and suppliers with opening balances"
+    },
     "partners": {
       "title": "Partners",
       "description": "Import customers and suppliers"
@@ -87,6 +102,7 @@
     "steps": {
       "upload": "Upload",
       "mapping": "Map Columns",
+      "options": "Options",
       "validation": "Review",
       "execute": "Import",
       "complete": "Done"
@@ -144,6 +160,15 @@
     "confirmPartialImport": "Import with Errors",
     "partialImportDescription": "{{valid}} rows are valid and will be imported. {{failed}} rows have errors and will be skipped. You can download the failed rows after import.",
     "proceedWithValid": "Import Valid Rows"
+  },
+  "options": {
+    "priceAuthorityTitle": "Which price is authoritative?",
+    "priceAuthority": {
+      "ttc": "Price incl. tax (TTC)",
+      "ht": "Price excl. tax (HT)",
+      "margin": "Margin on cost"
+    },
+    "priceAuthorityHint": "When several price columns disagree, this one wins; others produce warnings."
   },
   "mapping": {
     "sourceColumn": "Source Column",
