@@ -1016,4 +1016,62 @@ final class SupplierInvoiceGlTest extends TestCase
         $this->assertSame('0.000', $this->net408());
         $this->assertBalanced($entry);
     }
+
+    public function test_wave4_interim_override_guard_rejects_multi_receipt_divergent_accrual_bases(): void
+    {
+        $poLine = $this->confirmedPoWithReceipt('50.0000', '5.000', landedUnitCost: '5.200');
+        $poLine->quantity = '100.0000';
+        $poLine->quantity_received = '100.0000';
+        $poLine->landed_unit_cost = '5.000';
+        $poLine->accrual_unit_cost = '5.200';
+        $poLine->line_total = '500.000';
+        $poLine->save();
+
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            '50.0000',
+            '5.400',
+            'TND',
+        );
+
+        $receipt = GoodsReceipt::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'purchase_order_id' => $poLine->document_id,
+            'receipt_number' => 'GRN-W4-'.Str::upper(Str::random(6)),
+            'status' => GoodsReceiptStatus::Posted,
+            'received_at' => now(),
+        ]);
+
+        foreach ([['qty' => '50.0000', 'price' => '5.200'], ['qty' => '50.0000', 'price' => '5.400']] as $receiptLine) {
+            GoodsReceiptLine::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'goods_receipt_id' => $receipt->id,
+                'po_line_id' => $poLine->id,
+                'product_id' => Str::uuid()->toString(),
+                'received_qty' => $receiptLine['qty'],
+                'free_qty' => '0.0000',
+                'received_unit_price' => $receiptLine['price'],
+                'landed_unit_cost' => $receiptLine['price'].'000',
+                'accrual_unit_cost' => $receiptLine['price'].'000',
+                'effective_unit_cost' => $receiptLine['price'].'000',
+                'quantity_invoiced' => '0.0000',
+            ]);
+        }
+
+        $invoice = $this->supplierInvoice(
+            $this->freshLine($poLine),
+            ['qty' => '100.0000', 'unit_price' => '5.300', 'recoverable_vat' => '100.700'],
+            stampDuty: '0.000',
+            subtotal: '530.000',
+            total: '630.700',
+        );
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('INTERIM_408_ACCRUAL_BASIS_DIVERGENCE');
+
+        $this->service()->post($invoice);
+    }
 }

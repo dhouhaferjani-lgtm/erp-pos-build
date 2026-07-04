@@ -12,13 +12,17 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -48,6 +52,10 @@ final class SupplierInvoicePpvGlTest extends TestCase
     private Account $ppvExpenseAccount;
 
     private Account $ppvIncomeAccount;
+
+    private Product $product;
+
+    private Location $warehouse;
 
     protected function setUp(): void
     {
@@ -87,6 +95,37 @@ final class SupplierInvoicePpvGlTest extends TestCase
             'name' => 'PPV GL Supplier',
             'type' => PartnerType::Supplier,
             'tax_status' => PartnerTaxStatus::REGISTERED,
+        ]);
+
+        $this->warehouse = Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'PPV-WH',
+            'name' => 'PPV Warehouse',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => true,
+        ]);
+
+        $this->product = Product::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'PPV-WAC',
+            'name' => 'PPV WAC Product',
+            'type' => ProductType::Part,
+            'is_active' => true,
+            'is_physical' => true,
+            'requires_batch_tracking' => false,
+            'cost_price' => '5.200000',
+            'last_purchase_cost' => '5.200000',
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $this->warehouse->id,
+            'quantity' => '100.0000',
+            'reserved' => '0.0000',
         ]);
     }
 
@@ -138,9 +177,13 @@ final class SupplierInvoicePpvGlTest extends TestCase
     {
         $entry = $this->postCase(billedHt: '500.000', vat: '95.000', total: '600.000', nonRecoverableVat: '5.000');
 
+        $this->assertLeg($entry, $this->grirAccount, debit: '520.000', credit: '0.000');
+        $this->assertLeg($entry, $this->vatAccount, debit: '95.000', credit: '0.000');
         $this->assertLeg($entry, $this->ppvIncomeAccount, debit: '0.000', credit: '20.000');
         $this->assertLeg($entry, $this->inventoryAccount, debit: '5.000', credit: '0.000');
         $this->assertLeg($entry, $this->payableAccount, debit: '0.000', credit: '600.000');
+        $this->assertSame('0.000', $this->netAccount($this->grirAccount));
+        $this->assertInventoryGlExceedsWacBy('5.000');
     }
 
     private function postCase(string $billedHt, string $vat, string $total, string $nonRecoverableVat = '0.000'): JournalEntry
@@ -216,8 +259,27 @@ final class SupplierInvoicePpvGlTest extends TestCase
 
     private function assertWacEqualsInventoryGl(): void
     {
-        $wacInventoryValue = bcmul('100.0000', '5.200', 3);
+        $wacInventoryValue = $this->wacInventoryValueFromDatabase();
 
         $this->assertSame($wacInventoryValue, $this->netAccount($this->inventoryAccount));
+    }
+
+    private function assertInventoryGlExceedsWacBy(string $expectedDelta): void
+    {
+        $delta = bcsub($this->netAccount($this->inventoryAccount), $this->wacInventoryValueFromDatabase(), 3);
+
+        $this->assertSame($expectedDelta, $delta);
+    }
+
+    private function wacInventoryValueFromDatabase(): string
+    {
+        $product = Product::query()->whereKey($this->product->id)->sole();
+        /** @var numeric-string $onHand */
+        $onHand = (string) StockLevel::query()
+            ->where('company_id', $this->company->id)
+            ->where('product_id', $product->id)
+            ->sum('quantity');
+
+        return bcmul($onHand, (string) $product->cost_price, 3);
     }
 }

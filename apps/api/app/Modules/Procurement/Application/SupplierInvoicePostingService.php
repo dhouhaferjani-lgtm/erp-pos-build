@@ -11,6 +11,7 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -132,22 +133,46 @@ final class SupplierInvoicePostingService
                 // after receipt — the 408 accrual and the clearing would diverge,
                 // leaving an irreconcilable residue on account 408.
                 if ($poLine->accrual_unit_cost !== null) {
-                    $landedBasis = $poLine->landed_unit_cost ?? $poLine->unit_price;
-                    $hasReceivedPriceOverride = GoodsReceiptLine::query()
-                        ->where('po_line_id', $poLine->id)
-                        ->whereNotNull('received_unit_price')
-                        ->exists();
+                    $compatAccrualBasis = CurrencyScale::bcformatStrict((string) $poLine->accrual_unit_cost, 6);
+                    $receiptAccrualBases = $this->receiptAccrualBasesForPoLine($supplierInvoice->company_id, $poLine->id);
 
-                    if (! $hasReceivedPriceOverride && bccomp($landedBasis, (string) $poLine->accrual_unit_cost, 6) !== 0) {
-                        throw new \DomainException(sprintf(
-                            'Supplier invoice [%s] cannot be posted: PO line [%s] 408 accrual basis '
-                            .'divergence — clearing at %s but receipt accrued at %s. '
-                            .'landed_unit_cost was reallocated after receipt; resolve before posting.',
-                            $supplierInvoice->id,
-                            $poLine->id,
-                            $landedBasis,
-                            $poLine->accrual_unit_cost,
-                        ));
+                    if (count($receiptAccrualBases) > 0) {
+                        if (count($receiptAccrualBases) > 1) {
+                            throw new \DomainException(sprintf(
+                                'INTERIM_408_ACCRUAL_BASIS_DIVERGENCE: Supplier invoice [%s] cannot be posted: '
+                                .'PO line [%s] has multiple receipt accrual bases (%s). '
+                                .'Wave 4 clearing is PO-line-grain; receipt-line-grain clearing lands in Wave 5.',
+                                $supplierInvoice->id,
+                                $poLine->id,
+                                implode(', ', $receiptAccrualBases),
+                            ));
+                        }
+
+                        $receiptBasis = $receiptAccrualBases[0];
+                        if (bccomp($receiptBasis, $compatAccrualBasis, 6) !== 0) {
+                            throw new \DomainException(sprintf(
+                                'INTERIM_408_ACCRUAL_BASIS_DIVERGENCE: Supplier invoice [%s] cannot be posted: '
+                                .'PO line [%s] receipt accrued at %s but compatibility basis is %s. '
+                                .'Wave 4 clearing is PO-line-grain; receipt-line-grain clearing lands in Wave 5.',
+                                $supplierInvoice->id,
+                                $poLine->id,
+                                $receiptBasis,
+                                $compatAccrualBasis,
+                            ));
+                        }
+                    } else {
+                        $landedBasis = CurrencyScale::bcformatStrict((string) ($poLine->landed_unit_cost ?? $poLine->unit_price), 6);
+                        if (bccomp($landedBasis, $compatAccrualBasis, 6) !== 0) {
+                            throw new \DomainException(sprintf(
+                                'Supplier invoice [%s] cannot be posted: PO line [%s] 408 accrual basis '
+                                .'divergence — clearing at %s but receipt accrued at %s. '
+                                .'landed_unit_cost was reallocated after receipt; resolve before posting.',
+                                $supplierInvoice->id,
+                                $poLine->id,
+                                $landedBasis,
+                                $compatAccrualBasis,
+                            ));
+                        }
                     }
                 }
 
@@ -247,6 +272,25 @@ final class SupplierInvoicePostingService
             $supplierInvoice->match_status = $matchStatus;
             $supplierInvoice->save();
         });
+    }
+
+    /**
+     * @return list<numeric-string>
+     */
+    private function receiptAccrualBasesForPoLine(string $companyId, string $poLineId): array
+    {
+        $bases = [];
+        foreach (GoodsReceiptLine::query()
+            ->where('company_id', $companyId)
+            ->where('po_line_id', $poLineId)
+            ->whereNotNull('accrual_unit_cost')
+            ->where('received_qty', '>', '0')
+            ->pluck('accrual_unit_cost') as $basis) {
+            $normalized = CurrencyScale::bcformatStrict((string) $basis, 6);
+            $bases[$normalized] = $normalized;
+        }
+
+        return array_values($bases);
     }
 
     /**

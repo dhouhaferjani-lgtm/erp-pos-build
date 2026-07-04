@@ -1159,9 +1159,8 @@ final class GeneralLedgerService
      *   Dr/Cr Inventory                   = plug = Cr401 − (Dr408 + DrVAT + DrTimbre)
      *   Cr SupplierPayable (401)          = invoice.total  (partner-tagged)
      *
-     * The Inventory leg is the balancing figure: it absorbs the price variance, the
-     * capitalized non-recoverable VAT, and any per-leg rounding residue so that
-     * debits == credits EXACTLY. Zero legs (VAT, timbre, plug) are omitted.
+     * The Inventory leg carries capitalized non-recoverable VAT after the PPV
+     * split. Zero legs (VAT, timbre, plug) are omitted.
      *
      * Balance invariant (fail loudly): invoice.total must equal
      *   billedHt + recoverableVat + nonRecoverableVat + timbre.
@@ -1224,7 +1223,7 @@ final class GeneralLedgerService
         }
 
         // Plug = Cr401 − (Dr408 + DrVAT + DrTimbre). Split invoice-vs-accrual
-        // price delta to PPV; leave non-recoverable VAT/rounding on Inventory.
+        // price delta to PPV; leave non-recoverable VAT on Inventory.
         $drKnown = bcadd(bcadd($accruedHtR, $recoverableVatR, $scale), $timbreR, $scale);
         /** @var numeric-string $plug */
         $plug = bcsub($totalR, $drKnown, $scale);
@@ -1319,7 +1318,7 @@ final class GeneralLedgerService
             ]);
         }
 
-        // Dr/Cr Inventory — only non-recoverable VAT and sub-minor rounding.
+        // Dr/Cr Inventory — only non-recoverable VAT.
         $inventoryPlugCmp = bccomp($inventoryPlug, '0', $scale);
         if ($inventoryPlugCmp > 0) {
             JournalLine::create([
@@ -1328,7 +1327,7 @@ final class GeneralLedgerService
                 'partner_id' => null,
                 'debit' => $inventoryPlug,
                 'credit' => '0',
-                'description' => 'Inventory non-recoverable VAT / rounding (plug)',
+                'description' => 'Inventory non-recoverable VAT',
                 'line_order' => $lineOrder++,
             ]);
         } elseif ($inventoryPlugCmp < 0) {
@@ -1338,7 +1337,7 @@ final class GeneralLedgerService
                 'partner_id' => null,
                 'debit' => '0',
                 'credit' => bcmul($inventoryPlug, '-1', $scale),
-                'description' => 'Inventory non-recoverable VAT / rounding (plug)',
+                'description' => 'Inventory non-recoverable VAT',
                 'line_order' => $lineOrder++,
             ]);
         }

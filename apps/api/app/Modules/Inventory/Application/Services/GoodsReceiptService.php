@@ -17,6 +17,7 @@ use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 
@@ -41,6 +42,7 @@ final class GoodsReceiptService
         private readonly ProductCostLock $costLock,
         private readonly DocumentNumberingService $numberingService,
         private readonly ReceiptBatchCostAllocator $receiptBatchCostAllocator,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -167,6 +169,8 @@ final class GoodsReceiptService
         Location $location
     ): GoodsReceiptResult {
         $hasReceivedItems = false;
+        $priceScale = $this->scaleResolver->getScale((string) ($purchaseOrder->currency ?? 'TND'));
+        $hasBatchFreightPool = $this->hasPositiveFreightPool($batchFreightShares);
 
         foreach ($purchaseOrder->lines as $line) {
             /** @var numeric-string $qtyToReceive */
@@ -233,12 +237,17 @@ final class GoodsReceiptService
             $batchFreightShare = CurrencyScale::bcround((string) ($batchFreightShares[(string) $line->id] ?? '0'), self::COST_SCALE);
             $hasReceivedPriceOverride = bccomp($qtyToReceive, '0.00', self::QUANTITY_SCALE) > 0
                 && array_key_exists((string) $line->id, $receivedUnitPrices);
-            $receivedUnitPrice = $hasReceivedPriceOverride
-                ? CurrencyScale::bcround((string) $receivedUnitPrices[(string) $line->id], 3)
-                : null;
+            $receivedUnitPrice = null;
+            if ($hasReceivedPriceOverride) {
+                $rawReceivedUnitPrice = (string) $receivedUnitPrices[(string) $line->id];
+                if (! is_numeric($rawReceivedUnitPrice) || bccomp($rawReceivedUnitPrice, '0', $priceScale) <= 0) {
+                    throw new \DomainException("received_unit_price must be greater than zero for line {$line->id}.");
+                }
+                $receivedUnitPrice = CurrencyScale::bcround($rawReceivedUnitPrice, $priceScale);
+            }
             $baseUnitCost = $hasReceivedPriceOverride
                 ? CurrencyScale::bcround((string) $receivedUnitPrice, self::COST_SCALE)
-                : (bccomp($batchFreightShare, '0', self::COST_SCALE) > 0
+                : ($hasBatchFreightPool
                     ? CurrencyScale::bcround((string) $line->unit_price, self::COST_SCALE)
                     : $oldBasis);
             $landedUnitCost = $this->landedUnitCostForReceipt($qtyToReceive, $baseUnitCost, $batchFreightShare);
@@ -438,6 +447,19 @@ final class GoodsReceiptService
         }
 
         return $this->receiveGoods($purchaseOrder, $receivedQuantities, [], $freeQuantities, [], null, $actorId);
+    }
+
+    /**
+     * @param  array<string, string>  $batchFreightShares
+     */
+    private function hasPositiveFreightPool(array $batchFreightShares): bool
+    {
+        $pool = '0.000000';
+        foreach ($batchFreightShares as $share) {
+            $pool = bcadd($pool, CurrencyScale::bcround((string) $share, self::COST_SCALE), self::COST_SCALE);
+        }
+
+        return bccomp($pool, '0', self::COST_SCALE) > 0;
     }
 
     /**

@@ -178,6 +178,37 @@ final class ReceiveGoodsRequestTest extends TestCase
     }
 
     #[Test]
+    public function receive_rejects_negative_received_unit_prices(): void
+    {
+        $this->user->givePermissionTo('goods-receipt.edit-price');
+        $po = $this->purchaseOrder();
+        $line = $po->lines->first();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/purchase-orders/{$po->id}/receive", [
+                'quantities' => [$line->id => '1.0000'],
+                'received_unit_prices' => [$line->id => '-5.200'],
+            ]);
+
+        $this->assertJsonValidationErrors($response, ["received_unit_prices.{$line->id}"]);
+    }
+
+    #[Test]
+    public function receive_rejects_received_unit_prices_without_quantities(): void
+    {
+        $this->user->givePermissionTo('goods-receipt.edit-price');
+        $po = $this->purchaseOrder();
+        $line = $po->lines->first();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/purchase-orders/{$po->id}/receive", [
+                'received_unit_prices' => [$line->id => '5.200'],
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['quantities']);
+    }
+
+    #[Test]
     public function price_edit_permission_is_seeded_to_admin_and_manager_only(): void
     {
         $this->assertTrue(Role::findByName('admin', 'sanctum')->hasPermissionTo('goods-receipt.edit-price', 'sanctum'));

@@ -235,6 +235,57 @@ final class GoodsReceiptPriceOverrideTest extends TestCase
         $this->assertSame('5.200000', (string) $receiptLine->accrual_unit_cost);
     }
 
+    #[Test]
+    public function received_price_override_rounds_by_purchase_order_currency_scale(): void
+    {
+        $product = $this->product('GRP-USD-SCALE', 'USD Scale Override Product');
+        $po = $this->purchaseOrder(
+            $product,
+            paidQty: '10.0000',
+            freeQty: '0.0000',
+            unitPrice: '5.000',
+            landedUnitCost: '5.000000',
+            currency: 'USD',
+        );
+        $line = $po->lines->first();
+
+        app(GoodsReceiptService::class)->receiveGoods(
+            $po,
+            [$line->id => '10.0000'],
+            [],
+            [],
+            [$line->id => '5.205'],
+            'USD delivery note price',
+            $this->user->id,
+        );
+
+        $receiptLine = GoodsReceiptLine::query()->where('po_line_id', $line->id)->sole();
+
+        $this->assertSame('5.210', (string) $receiptLine->received_unit_price);
+        $this->assertSame('5.210000', (string) $receiptLine->landed_unit_cost);
+    }
+
+    #[Test]
+    public function service_rejects_non_positive_received_unit_price_overrides(): void
+    {
+        $product = $this->product('GRP-NON-POSITIVE', 'Non Positive Override Product');
+        $po = $this->purchaseOrder($product, paidQty: '10.0000', freeQty: '0.0000', unitPrice: '5.000', landedUnitCost: '5.000000');
+        $line = $po->lines->first();
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('received_unit_price must be greater than zero');
+
+        app(GoodsReceiptService::class)->receiveGoods(
+            $po,
+            [$line->id => '10.0000'],
+            [],
+            [],
+            [$line->id => '0.000'],
+            'Invalid delivery note price',
+            $this->user->id,
+        );
+    }
+
     private function product(string $sku, string $name): Product
     {
         return Product::create([
@@ -258,6 +309,7 @@ final class GoodsReceiptPriceOverrideTest extends TestCase
         string $unitPrice,
         string $landedUnitCost,
         PriceEntryMode $priceEntryMode = PriceEntryMode::Unit,
+        string $currency = 'TND',
     ): Document {
         $lineTotal = bcmul($paidQty, $unitPrice, 3);
 
@@ -272,7 +324,7 @@ final class GoodsReceiptPriceOverrideTest extends TestCase
             'status' => DocumentStatus::Confirmed,
             'document_number' => 'PO-GRP-'.fake()->unique()->numerify('####'),
             'document_date' => now(),
-            'currency' => 'TND',
+            'currency' => $currency,
             'subtotal' => $lineTotal,
             'tax_amount' => '0.000',
             'total' => $lineTotal,

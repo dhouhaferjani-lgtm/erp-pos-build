@@ -24,7 +24,7 @@ final class ReceiveGoodsRequest extends FormRequest
         $canEditPrice = $user !== null && $user->can('goods-receipt.edit-price');
 
         return [
-            'quantities' => ['sometimes', 'array'],
+            'quantities' => ['required_with:received_unit_prices', 'array'],
             'quantities.*' => ['numeric', 'regex:/^-?\d+(\.\d{1,4})?$/'],
             'free_quantities' => ['sometimes', 'array'],
             'free_quantities.*' => ['numeric', 'regex:/^-?\d+(\.\d{1,4})?$/'],
@@ -33,7 +33,7 @@ final class ReceiveGoodsRequest extends FormRequest
             'batches.*.expiry_date' => ['required_with:batches.*', 'date'],
             'batches.*.manufacturing_date' => ['nullable', 'date'],
             'received_unit_prices' => $canEditPrice ? ['sometimes', 'array'] : ['prohibited'],
-            'received_unit_prices.*' => ['numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
+            'received_unit_prices.*' => ['numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
             'price_override_reason' => ['nullable', 'string', 'max:255'],
         ];
     }

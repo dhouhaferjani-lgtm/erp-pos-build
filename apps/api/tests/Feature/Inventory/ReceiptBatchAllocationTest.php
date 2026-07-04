@@ -164,8 +164,8 @@ final class ReceiptBatchAllocationTest extends TestCase
     public function zero_price_lines_get_zero_share_but_pool_is_absorbed_by_positive_value_lines(): void
     {
         $po = $this->purchaseOrder([
-            ['sku' => 'RBA-ZERO', 'quantity' => '10.0000', 'unit_price' => '0.000', 'allocated_costs' => '9.000000'],
-            ['sku' => 'RBA-POS', 'quantity' => '10.0000', 'unit_price' => '5.000', 'allocated_costs' => '6.000000'],
+            ['sku' => 'RBA-ZERO', 'quantity' => '10.0000', 'unit_price' => '0.000', 'allocated_costs' => '9.000000', 'landed_unit_cost' => '0.900000'],
+            ['sku' => 'RBA-POS', 'quantity' => '10.0000', 'unit_price' => '5.000', 'allocated_costs' => '6.000000', 'landed_unit_cost' => '5.600000'],
         ]);
 
         app(GoodsReceiptService::class)->receiveGoods($po, [
@@ -180,7 +180,7 @@ final class ReceiptBatchAllocationTest extends TestCase
     }
 
     /**
-     * @param  list<array{sku: string, quantity: string, unit_price: string, allocated_costs: string}>  $lines
+     * @param  list<array{sku: string, quantity: string, unit_price: string, allocated_costs: string, landed_unit_cost?: string}>  $lines
      */
     private function purchaseOrder(array $lines): Document
     {
@@ -231,7 +231,7 @@ final class ReceiptBatchAllocationTest extends TestCase
                 'unit_price' => $line['unit_price'],
                 'line_total' => bcmul($line['quantity'], $line['unit_price'], 3),
                 'allocated_costs' => $line['allocated_costs'],
-                'landed_unit_cost' => $line['unit_price'],
+                'landed_unit_cost' => $line['landed_unit_cost'] ?? $line['unit_price'],
                 'price_entry_mode' => 'unit',
             ]);
         }

@@ -36,6 +36,29 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
 
         // First pass: Create all accounts without parent links
         foreach ($accounts as $account) {
+            $existing = DB::table('accounts')
+                ->where('company_id', $companyId)
+                ->where('code', $account['code'])
+                ->first();
+            if ($existing !== null) {
+                $accountIdMap[$account['code']] = (string) $existing->id;
+
+                continue;
+            }
+
+            $purpose = $account['system_purpose'] ?? null;
+            if ($purpose !== null) {
+                $existingPurpose = DB::table('accounts')
+                    ->where('company_id', $companyId)
+                    ->where('system_purpose', $purpose)
+                    ->first();
+                if ($existingPurpose !== null) {
+                    $accountIdMap[$account['code']] = (string) $existingPurpose->id;
+
+                    continue;
+                }
+            }
+
             $id = Str::uuid()->toString();
             $accountIdMap[$account['code']] = $id;
 
