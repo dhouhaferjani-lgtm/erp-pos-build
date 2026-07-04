@@ -45,6 +45,8 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $allocated_costs
  * @property numeric-string|null $landed_unit_cost
  * @property numeric-string|null $accrual_unit_cost Receipt-time 408 accrual basis (immutable after receipt); null for pre-B3 rows.
+ * @property numeric-string|null $price_match_basis Supplier invoice creation-time match basis snapshot.
+ * @property string|null $matched_receipt_line_id First FIFO receipt-line slice used for the match snapshot.
  * @property numeric-string|null $non_recoverable_tax
  * @property string|null $notes
  * @property string|null $designation_default_snapshot
@@ -105,6 +107,8 @@ class DocumentLine extends Model
         'allocated_costs',
         'landed_unit_cost',
         'accrual_unit_cost',
+        'price_match_basis',
+        'matched_receipt_line_id',
         'notes',
         'designation_default_snapshot',
         'source_line_id',
@@ -152,6 +156,7 @@ class DocumentLine extends Model
             'allocated_costs' => 'decimal:6',
             'landed_unit_cost' => 'decimal:6',
             'accrual_unit_cost' => 'decimal:6',
+            'price_match_basis' => 'decimal:6',
             'non_recoverable_tax' => 'decimal:3',
             // Eco-tax columns: cast as strings for bcmath-safe arithmetic (project convention).
             // Phase 1: always null; Phase 2 wires the writer.

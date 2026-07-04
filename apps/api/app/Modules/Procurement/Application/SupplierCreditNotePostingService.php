@@ -11,12 +11,15 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -145,6 +148,15 @@ final class SupplierCreditNotePostingService
                 ->get()
                 ->keyBy('id');
 
+            /** @var Collection<int, GoodsReceiptLine> $lockedReceiptLines */
+            $lockedReceiptLines = GoodsReceiptLine::query()
+                ->where('company_id', $creditNote->company_id)
+                ->whereIn('po_line_id', $poLineIds)
+                ->lockForUpdate()
+                ->orderBy('id')
+                ->get();
+            $receiptLinesByPoLine = $lockedReceiptLines->groupBy('po_line_id');
+
             // 2. Idempotency no-op: a reversing entry already exists for this credit note.
             $alreadyPosted = JournalEntry::query()
                 ->where('source_type', 'supplier_credit_note')
@@ -167,8 +179,8 @@ final class SupplierCreditNotePostingService
 
             // 5. GoodsReturn per-line quantity guard + decrement (PriceAdjustment: no-op).
             if ($reason->decrementsQuantityInvoiced()) {
-                $this->guardAndDecrementGoodsReturn($creditNote, $lockedPoLines);
-                $bonusReturnInventoryValue = $this->guardDecrementAndIssueBonusGoodsReturn($creditNote, $lockedPoLines);
+                $this->guardAndDecrementGoodsReturn($creditNote, $lockedPoLines, $receiptLinesByPoLine);
+                $bonusReturnInventoryValue = $this->guardDecrementAndIssueBonusGoodsReturn($creditNote, $lockedPoLines, $receiptLinesByPoLine);
             }
 
             // Tax components from the credit-note lines.
@@ -353,7 +365,7 @@ final class SupplierCreditNotePostingService
         /** @var numeric-string $currentHt */
         $currentHt = $creditNote->subtotal ?? '0';
 
-        /** @var \Illuminate\Support\Collection<int, numeric-string|null> $priorSubtotals */
+        /** @var SupportCollection<int, numeric-string|null> $priorSubtotals */
         $priorSubtotals = Document::query()
             ->where('type', DocumentType::SupplierCreditNote)
             ->where('source_document_id', $supplierInvoice->id)
@@ -394,8 +406,9 @@ final class SupplierCreditNotePostingService
      * guard on the LOCKED PO row.
      *
      * @param  Collection<int, DocumentLine>  $lockedPoLines
+     * @param  SupportCollection<int|string, Collection<int, GoodsReceiptLine>>  $receiptLinesByPoLine
      */
-    private function guardAndDecrementGoodsReturn(Document $creditNote, Collection $lockedPoLines): void
+    private function guardAndDecrementGoodsReturn(Document $creditNote, Collection $lockedPoLines, SupportCollection $receiptLinesByPoLine): void
     {
         foreach ($this->aggregateReturnedQtyPerPoLine($creditNote, false) as $sourceLineId => $qty) {
             $poLine = $this->resolveLockedPoLine($creditNote, $lockedPoLines, $sourceLineId);
@@ -409,18 +422,28 @@ final class SupplierCreditNotePostingService
                 ));
             }
 
-            /** @var numeric-string $newInvoiced */
-            $newInvoiced = bcsub($poLine->quantity_invoiced, $qty, 4);
+            /** @var Collection<int, GoodsReceiptLine> $receiptLines */
+            $receiptLines = $receiptLinesByPoLine->get($sourceLineId, new Collection);
 
-            if (bccomp($newInvoiced, '0', 4) < 0) {
-                throw new \DomainException(sprintf(
-                    'Supplier credit note [%s] cannot be posted: PO line [%s] over-credit — '
-                    .'returning %s would exceed invoiced %s (quantity_invoiced cannot go negative).',
-                    $creditNote->id,
-                    $poLine->id,
-                    $qty,
-                    $poLine->quantity_invoiced,
-                ));
+            if ($receiptLines->isNotEmpty()) {
+                $this->decrementReceiptLineInvoiced($creditNote, $sourceLineId, $qty, $receiptLines, false);
+
+                /** @var numeric-string $newInvoiced */
+                $newInvoiced = $this->receiptLedgerSum($sourceLineId, 'quantity_invoiced');
+            } else {
+                /** @var numeric-string $newInvoiced */
+                $newInvoiced = bcsub($poLine->quantity_invoiced, $qty, 4);
+
+                if (bccomp($newInvoiced, '0', 4) < 0) {
+                    throw new \DomainException(sprintf(
+                        'Supplier credit note [%s] cannot be posted: PO line [%s] over-credit — '
+                        .'returning %s would exceed invoiced %s (quantity_invoiced cannot go negative).',
+                        $creditNote->id,
+                        $poLine->id,
+                        $qty,
+                        $poLine->quantity_invoiced,
+                    ));
+                }
             }
 
             $poLine->quantity_invoiced = $newInvoiced;
@@ -429,13 +452,81 @@ final class SupplierCreditNotePostingService
     }
 
     /**
+     * @param  Collection<int, GoodsReceiptLine>  $receiptLines
+     */
+    private function decrementReceiptLineInvoiced(
+        Document $creditNote,
+        string $poLineId,
+        string $qtyToReverse,
+        Collection $receiptLines,
+        bool $free,
+    ): void {
+        /** @var numeric-string $remaining */
+        $remaining = CurrencyScale::bcformatStrict($qtyToReverse, 4);
+
+        /** @var GoodsReceiptLine $line */
+        foreach ($receiptLines->sortBy([
+            ['created_at', 'desc'],
+            ['id', 'desc'],
+        ]) as $line) {
+            if (bccomp($remaining, '0', 4) <= 0) {
+                break;
+            }
+
+            /** @var numeric-string $current */
+            $current = $free
+                ? (string) ($line->free_quantity_invoiced ?? '0')
+                : (string) $line->quantity_invoiced;
+            if (bccomp($current, '0', 4) <= 0) {
+                continue;
+            }
+
+            /** @var numeric-string $sliceQty */
+            $sliceQty = bccomp($current, $remaining, 4) > 0 ? $remaining : $current;
+            /** @var numeric-string $newInvoiced */
+            $newInvoiced = bcsub($current, $sliceQty, 4);
+
+            if ($free) {
+                $line->free_quantity_invoiced = $newInvoiced;
+            } else {
+                $line->quantity_invoiced = $newInvoiced;
+            }
+            $line->save();
+
+            $remaining = bcsub($remaining, $sliceQty, 4);
+        }
+
+        if (bccomp($remaining, '0', 4) > 0) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot be posted: PO line [%s] over-credit — '
+                .'returning %s would exceed receipt-line %s quantity.',
+                $creditNote->id,
+                $poLineId,
+                $qtyToReverse,
+                $free ? 'free invoiced' : 'invoiced',
+            ));
+        }
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function receiptLedgerSum(string $poLineId, string $column): string
+    {
+        return CurrencyScale::bcformatStrict((string) GoodsReceiptLine::query()
+            ->where('po_line_id', $poLineId)
+            ->sum($column), 4);
+    }
+
+    /**
      * Bonus GoodsReturn: returned free qty must be > 0 and ≤ free_quantity_invoiced;
      * decrement only the free counter and issue stock at the current diluted WAC.
      *
      * @param  Collection<int, DocumentLine>  $lockedPoLines
+     * @param  SupportCollection<int|string, Collection<int, GoodsReceiptLine>>  $receiptLinesByPoLine
      * @return numeric-string
      */
-    private function guardDecrementAndIssueBonusGoodsReturn(Document $creditNote, Collection $lockedPoLines): string
+    private function guardDecrementAndIssueBonusGoodsReturn(Document $creditNote, Collection $lockedPoLines, SupportCollection $receiptLinesByPoLine): string
     {
         /** @var numeric-string $inventoryValue */
         $inventoryValue = '0.000000';
@@ -452,20 +543,30 @@ final class SupplierCreditNotePostingService
                 ));
             }
 
-            /** @var numeric-string $freeInvoiced */
-            $freeInvoiced = $poLine->free_quantity_invoiced ?? '0.0000';
-            /** @var numeric-string $newFreeInvoiced */
-            $newFreeInvoiced = bcsub($freeInvoiced, $qty, 4);
+            /** @var Collection<int, GoodsReceiptLine> $receiptLines */
+            $receiptLines = $receiptLinesByPoLine->get($sourceLineId, new Collection);
 
-            if (bccomp($newFreeInvoiced, '0', 4) < 0) {
-                throw new \DomainException(sprintf(
-                    'Supplier credit note [%s] cannot be posted: PO line [%s] over-credit — '
-                    .'returning %s bonus units would exceed invoiced free quantity %s.',
-                    $creditNote->id,
-                    $poLine->id,
-                    $qty,
-                    $freeInvoiced,
-                ));
+            if ($receiptLines->isNotEmpty()) {
+                $this->decrementReceiptLineInvoiced($creditNote, $sourceLineId, $qty, $receiptLines, true);
+
+                /** @var numeric-string $newFreeInvoiced */
+                $newFreeInvoiced = $this->receiptLedgerSum($sourceLineId, 'free_quantity_invoiced');
+            } else {
+                /** @var numeric-string $freeInvoiced */
+                $freeInvoiced = $poLine->free_quantity_invoiced ?? '0.0000';
+                /** @var numeric-string $newFreeInvoiced */
+                $newFreeInvoiced = bcsub($freeInvoiced, $qty, 4);
+
+                if (bccomp($newFreeInvoiced, '0', 4) < 0) {
+                    throw new \DomainException(sprintf(
+                        'Supplier credit note [%s] cannot be posted: PO line [%s] over-credit — '
+                        .'returning %s bonus units would exceed invoiced free quantity %s.',
+                        $creditNote->id,
+                        $poLine->id,
+                        $qty,
+                        $freeInvoiced,
+                    ));
+                }
             }
 
             $poLine->free_quantity_invoiced = $newFreeInvoiced;

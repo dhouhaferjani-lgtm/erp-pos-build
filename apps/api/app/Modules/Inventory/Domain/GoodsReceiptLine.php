@@ -32,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $movement_id
  * @property string|null $free_movement_id
  * @property numeric-string $quantity_invoiced
+ * @property numeric-string $free_quantity_invoiced
  * @property string|null $price_override_by
  * @property Carbon|null $price_override_at
  * @property numeric-string|null $price_override_old_basis
@@ -71,6 +72,7 @@ class GoodsReceiptLine extends Model
         'movement_id',
         'free_movement_id',
         'quantity_invoiced',
+        'free_quantity_invoiced',
         'price_override_by',
         'price_override_at',
         'price_override_old_basis',
@@ -90,6 +92,7 @@ class GoodsReceiptLine extends Model
             'accrual_unit_cost' => 'decimal:6',
             'effective_unit_cost' => 'decimal:6',
             'quantity_invoiced' => 'decimal:4',
+            'free_quantity_invoiced' => 'decimal:4',
             'price_override_at' => 'datetime',
             'price_override_old_basis' => 'decimal:6',
         ];

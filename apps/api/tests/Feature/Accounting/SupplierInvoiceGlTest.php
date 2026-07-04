@@ -884,11 +884,11 @@ final class SupplierInvoiceGlTest extends TestCase
     }
 
     // =========================================================================
-    // 13. B3 BLOCKER: landed_unit_cost changed AFTER receipt → post() throws
-    //     divergence DomainException; no JE, status unchanged.
+    // 13. Wave 5: legacy zero-receipt fallback clears at immutable accrual basis
+    //     before mutable landed_unit_cost.
     // =========================================================================
 
-    public function test_landed_cost_changed_after_receipt_post_throws_divergence_exception(): void
+    public function test_legacy_zero_receipt_fallback_uses_accrual_basis_before_mutable_landed_cost(): void
     {
         // Receipt accrued 408 at landed_unit_cost=10.500 (B1 = 5 × 10.500 = 52.500).
         $poLine = $this->confirmedPoWithReceipt('5.0000', '10.000', landedUnitCost: '10.500');
@@ -912,27 +912,16 @@ final class SupplierInvoiceGlTest extends TestCase
             total: '59.500',
         );
 
-        $threw = false;
-        $exceptionMessage = '';
-        try {
-            $this->service()->post($invoice);
-        } catch (\DomainException $e) {
-            $threw = true;
-            $exceptionMessage = $e->getMessage();
-        }
+        $this->service()->post($invoice);
 
-        $this->assertTrue($threw, 'Post must throw when landed_unit_cost diverges from accrual basis');
-        $this->assertStringContainsStringIgnoringCase('accrual', $exceptionMessage,
-            'Exception message must mention "accrual" to be diagnosable');
+        $entry = $this->clearingEntry($invoice);
+        $dr408 = $this->legOn($entry, $this->grirAccount);
 
-        // Rolled back: no JE, no quantity_invoiced increment, invoice still Draft.
-        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_invoice')
-            ->where('source_id', $invoice->id)->count());
-        $this->assertSame('0.0000', $this->freshLine($poLine)->quantity_invoiced);
-        $this->assertSame(DocumentStatus::Draft, $this->freshDoc($invoice)->status);
-
-        // 408 is still at the receipt-accrued credit (not partially cleared).
-        $this->assertSame('52.500', $this->net408(), '408 must not be touched when post throws');
+        $this->assertNotNull($dr408);
+        $this->assertSame('52.500', $dr408->debit);
+        $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame(DocumentStatus::Posted, $this->freshDoc($invoice)->status);
+        $this->assertSame('0.000', $this->net408(), '408 clears at immutable accrual basis, not mutable landed cost');
     }
 
     // =========================================================================
@@ -1017,7 +1006,7 @@ final class SupplierInvoiceGlTest extends TestCase
         $this->assertBalanced($entry);
     }
 
-    public function test_wave4_interim_override_guard_rejects_multi_receipt_divergent_accrual_bases(): void
+    public function test_wave5_multi_receipt_divergent_accrual_bases_clear_fifo_without_interim_guard(): void
     {
         $poLine = $this->confirmedPoWithReceipt('50.0000', '5.000', landedUnitCost: '5.200');
         $poLine->quantity = '100.0000';
@@ -1069,9 +1058,20 @@ final class SupplierInvoiceGlTest extends TestCase
             total: '630.700',
         );
 
-        $this->expectException(\DomainException::class);
-        $this->expectExceptionMessage('INTERIM_408_ACCRUAL_BASIS_DIVERGENCE');
-
         $this->service()->post($invoice);
+
+        $entry = $this->clearingEntry($invoice);
+        $dr408 = $this->legOn($entry, $this->grirAccount);
+
+        $this->assertNotNull($dr408);
+        $this->assertSame('530.000', $dr408->debit);
+        $this->assertSame('0.000', $this->net408());
+        $this->assertSame('100.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $receiptLines = GoodsReceiptLine::query()
+            ->where('po_line_id', $poLine->id)
+            ->orderBy('accrual_unit_cost')
+            ->get();
+        $this->assertSame('50.0000', $receiptLines[0]->quantity_invoiced);
+        $this->assertSame('50.0000', $receiptLines[1]->quantity_invoiced);
     }
 }

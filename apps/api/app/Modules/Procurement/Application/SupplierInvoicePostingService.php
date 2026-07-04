@@ -43,6 +43,7 @@ final class SupplierInvoicePostingService
         private readonly ProcurementPolicyResolver $resolver,
         private readonly GeneralLedgerService $generalLedgerService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly ReceiptLineConsumptionPlanner $receiptPlanner,
     ) {}
 
     /**
@@ -72,9 +73,19 @@ final class SupplierInvoicePostingService
             $lockedPoLines = DocumentLine::query()
                 ->whereIn('id', $poLineIds)
                 ->whereHas('document', fn ($q) => $q->whereRaw('company_id = ?', [$supplierInvoice->company_id]))
+                ->orderBy('id')
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
+
+            /** @var Collection<int, GoodsReceiptLine> $lockedReceiptLines */
+            $lockedReceiptLines = GoodsReceiptLine::query()
+                ->where('company_id', $supplierInvoice->company_id)
+                ->whereIn('po_line_id', $poLineIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            $receiptLinesByPoLine = $lockedReceiptLines->groupBy('po_line_id');
 
             // 3. Idempotency no-op: a clearing entry already exists for this invoice.
             $alreadyPosted = JournalEntry::query()
@@ -127,70 +138,36 @@ final class SupplierInvoicePostingService
                     ));
                 }
 
-                // B3 guard: if the PO line has an immutable receipt-accrual basis
-                // recorded (set by GoodsReceiptService), assert the clearing basis
-                // equals it. A mismatch means LandedCostService reallocated costs
-                // after receipt — the 408 accrual and the clearing would diverge,
-                // leaving an irreconcilable residue on account 408.
-                if ($poLine->accrual_unit_cost !== null) {
-                    $compatAccrualBasis = CurrencyScale::bcformatStrict((string) $poLine->accrual_unit_cost, 6);
-                    $receiptAccrualBases = $this->receiptAccrualBasesForPoLine($supplierInvoice->company_id, $poLine->id);
+                /** @var Collection<int, GoodsReceiptLine> $receiptLines */
+                $receiptLines = $receiptLinesByPoLine->get($sourceLineId, new Collection);
 
-                    if (count($receiptAccrualBases) > 0) {
-                        if (count($receiptAccrualBases) > 1) {
-                            throw new \DomainException(sprintf(
-                                'INTERIM_408_ACCRUAL_BASIS_DIVERGENCE: Supplier invoice [%s] cannot be posted: '
-                                .'PO line [%s] has multiple receipt accrual bases (%s). '
-                                .'Wave 4 clearing is PO-line-grain; receipt-line-grain clearing lands in Wave 5.',
-                                $supplierInvoice->id,
-                                $poLine->id,
-                                implode(', ', $receiptAccrualBases),
-                            ));
-                        }
+                if ($receiptLines->isNotEmpty()) {
+                    /** @var numeric-string $lineAccrual */
+                    $lineAccrual = $this->consumeReceiptLines(
+                        $supplierInvoice,
+                        $sourceLineId,
+                        $qty,
+                        $receiptLines,
+                        $working,
+                    );
+                    $accruedHt = bcadd($accruedHt, $lineAccrual, $working);
 
-                        $receiptBasis = $receiptAccrualBases[0];
-                        if (bccomp($receiptBasis, $compatAccrualBasis, 6) !== 0) {
-                            throw new \DomainException(sprintf(
-                                'INTERIM_408_ACCRUAL_BASIS_DIVERGENCE: Supplier invoice [%s] cannot be posted: '
-                                .'PO line [%s] receipt accrued at %s but compatibility basis is %s. '
-                                .'Wave 4 clearing is PO-line-grain; receipt-line-grain clearing lands in Wave 5.',
-                                $supplierInvoice->id,
-                                $poLine->id,
-                                $receiptBasis,
-                                $compatAccrualBasis,
-                            ));
-                        }
-                    } else {
-                        $landedBasis = CurrencyScale::bcformatStrict((string) ($poLine->landed_unit_cost ?? $poLine->unit_price), 6);
-                        if (bccomp($landedBasis, $compatAccrualBasis, 6) !== 0) {
-                            throw new \DomainException(sprintf(
-                                'Supplier invoice [%s] cannot be posted: PO line [%s] 408 accrual basis '
-                                .'divergence — clearing at %s but receipt accrued at %s. '
-                                .'landed_unit_cost was reallocated after receipt; resolve before posting.',
-                                $supplierInvoice->id,
-                                $poLine->id,
-                                $landedBasis,
-                                $compatAccrualBasis,
-                            ));
-                        }
-                    }
+                    /** @var numeric-string $newInvoiced */
+                    $newInvoiced = CurrencyScale::bcformatStrict((string) GoodsReceiptLine::query()
+                        ->where('po_line_id', $sourceLineId)
+                        ->sum('quantity_invoiced'), 4);
+                } else {
+                    // Backfill-less compatibility path: no receipt lines exist, so clear
+                    // at the legacy PO-line basis exactly as pre-ledger posting did.
+                    /** @var numeric-string $accrualUnitCost */
+                    $accrualUnitCost = $poLine->accrual_unit_cost ?? $poLine->landed_unit_cost ?? $poLine->unit_price;
+                    /** @var numeric-string $lineAccrual */
+                    $lineAccrual = bcmul($qty, $accrualUnitCost, $working);
+                    $accruedHt = bcadd($accruedHt, $lineAccrual, $working);
+                    /** @var numeric-string $newInvoiced */
+                    $newInvoiced = bcadd($poLine->quantity_invoiced, $qty, 4);
                 }
 
-                // Clear 408 at the SAME basis B1 accrued on receipt.
-                // Wave 4 stores override-inclusive receipt basis in accrual_unit_cost;
-                // Wave 5 moves this clearing to immutable receipt-line grain.
-                /** @var numeric-string $accrualUnitCost */
-                $accrualUnitCost = $poLine->accrual_unit_cost ?? $poLine->landed_unit_cost ?? $poLine->unit_price;
-                /** @var numeric-string $lineAccrual */
-                $lineAccrual = bcmul($qty, $accrualUnitCost, $working);
-                $accruedHt = bcadd($accruedHt, $lineAccrual, $working);
-
-                /** @var numeric-string $newInvoiced */
-                $newInvoiced = bcadd($poLine->quantity_invoiced, $qty, 4);
-
-                // Authoritative over-clear guard at the WRITE boundary: the locked
-                // PO row is the source of truth. Holds regardless of match_enforcement
-                // and independent of the matcher's separate read.
                 if (bccomp($newInvoiced, $poLine->quantity_received, 4) > 0) {
                     throw new \DomainException(sprintf(
                         'Supplier invoice [%s] cannot be posted: PO line [%s] over-clear — '
@@ -217,8 +194,20 @@ final class SupplierInvoicePostingService
                     ));
                 }
 
-                /** @var numeric-string $newFreeInvoiced */
-                $newFreeInvoiced = bcadd((string) ($poLine->free_quantity_invoiced ?? '0'), $qty, 4);
+                /** @var Collection<int, GoodsReceiptLine> $receiptLines */
+                $receiptLines = $receiptLinesByPoLine->get($sourceLineId, new Collection);
+
+                if ($receiptLines->isNotEmpty()) {
+                    $this->consumeFreeReceiptLines($supplierInvoice, $sourceLineId, $qty, $receiptLines);
+
+                    /** @var numeric-string $newFreeInvoiced */
+                    $newFreeInvoiced = CurrencyScale::bcformatStrict((string) GoodsReceiptLine::query()
+                        ->where('po_line_id', $sourceLineId)
+                        ->sum('free_quantity_invoiced'), 4);
+                } else {
+                    /** @var numeric-string $newFreeInvoiced */
+                    $newFreeInvoiced = bcadd((string) ($poLine->free_quantity_invoiced ?? '0'), $qty, 4);
+                }
 
                 if (bccomp($newFreeInvoiced, (string) ($poLine->free_quantity_received ?? '0'), 4) > 0) {
                     throw new \DomainException(sprintf(
@@ -275,22 +264,142 @@ final class SupplierInvoicePostingService
     }
 
     /**
-     * @return list<numeric-string>
+     * @param  Collection<int, GoodsReceiptLine>  $receiptLines
+     * @return numeric-string
      */
-    private function receiptAccrualBasesForPoLine(string $companyId, string $poLineId): array
-    {
-        $bases = [];
-        foreach (GoodsReceiptLine::query()
-            ->where('company_id', $companyId)
-            ->where('po_line_id', $poLineId)
-            ->whereNotNull('accrual_unit_cost')
-            ->where('received_qty', '>', '0')
-            ->pluck('accrual_unit_cost') as $basis) {
-            $normalized = CurrencyScale::bcformatStrict((string) $basis, 6);
-            $bases[$normalized] = $normalized;
+    private function consumeReceiptLines(
+        Document $supplierInvoice,
+        string $poLineId,
+        string $qtyToConsume,
+        Collection $receiptLines,
+        int $workingScale,
+    ): string {
+        /** @var numeric-string $remaining */
+        $remaining = CurrencyScale::bcformatStrict($qtyToConsume, 4);
+        /** @var numeric-string $accrued */
+        $accrued = '0';
+
+        /** @var GoodsReceiptLine $line */
+        foreach ($receiptLines->sortBy([
+            ['created_at', 'asc'],
+            ['id', 'asc'],
+        ]) as $line) {
+            if (bccomp($remaining, '0', 4) <= 0) {
+                break;
+            }
+
+            /** @var numeric-string $matchable */
+            $matchable = $this->receiptPlanner->matchableQty($line);
+            if (bccomp($matchable, '0', 4) <= 0) {
+                continue;
+            }
+
+            /** @var numeric-string $sliceQty */
+            $sliceQty = bccomp($matchable, $remaining, 4) > 0 ? $remaining : $matchable;
+
+            $basisRaw = $line->getAttribute('accrual_unit_cost');
+            if ($basisRaw === null) {
+                throw new \DomainException(sprintf(
+                    'Supplier invoice [%s] cannot be posted: receipt line [%s] has no accrual basis.',
+                    $supplierInvoice->id,
+                    $line->id,
+                ));
+            }
+
+            /** @var numeric-string $basis */
+            $basis = CurrencyScale::bcformatStrict((string) $basisRaw, 6);
+            $accrued = bcadd($accrued, bcmul($sliceQty, $basis, $workingScale), $workingScale);
+
+            /** @var numeric-string $newReceiptInvoiced */
+            $newReceiptInvoiced = bcadd((string) $line->quantity_invoiced, $sliceQty, 4);
+            /** @var numeric-string $receiptWindow */
+            $receiptWindow = (string) $line->received_qty;
+            if (bccomp($newReceiptInvoiced, $receiptWindow, 4) > 0) {
+                throw new \DomainException(sprintf(
+                    'Supplier invoice [%s] cannot be posted: receipt line [%s] over-clear — '
+                    .'invoiced %s would exceed received %s.',
+                    $supplierInvoice->id,
+                    $line->id,
+                    $newReceiptInvoiced,
+                    $receiptWindow,
+                ));
+            }
+
+            $line->quantity_invoiced = $newReceiptInvoiced;
+            $line->save();
+
+            $remaining = bcsub($remaining, $sliceQty, 4);
         }
 
-        return array_values($bases);
+        if (bccomp($remaining, '0', 4) > 0) {
+            throw new \DomainException(sprintf(
+                'Supplier invoice [%s] cannot be posted: PO line [%s] has insufficient receipt-line quantity; remaining %s.',
+                $supplierInvoice->id,
+                $poLineId,
+                $remaining,
+            ));
+        }
+
+        return $accrued;
+    }
+
+    /**
+     * @param  Collection<int, GoodsReceiptLine>  $receiptLines
+     */
+    private function consumeFreeReceiptLines(
+        Document $supplierInvoice,
+        string $poLineId,
+        string $qtyToConsume,
+        Collection $receiptLines,
+    ): void {
+        /** @var numeric-string $remaining */
+        $remaining = CurrencyScale::bcformatStrict($qtyToConsume, 4);
+
+        /** @var GoodsReceiptLine $line */
+        foreach ($receiptLines->sortBy([
+            ['created_at', 'asc'],
+            ['id', 'asc'],
+        ]) as $line) {
+            if (bccomp($remaining, '0', 4) <= 0) {
+                break;
+            }
+
+            /** @var numeric-string $matchable */
+            $matchable = $this->receiptPlanner->freeMatchableQty($line);
+            if (bccomp($matchable, '0', 4) <= 0) {
+                continue;
+            }
+
+            /** @var numeric-string $sliceQty */
+            $sliceQty = bccomp($matchable, $remaining, 4) > 0 ? $remaining : $matchable;
+
+            /** @var numeric-string $newFreeInvoiced */
+            $newFreeInvoiced = bcadd((string) ($line->free_quantity_invoiced ?? '0'), $sliceQty, 4);
+            if (bccomp($newFreeInvoiced, (string) $line->free_qty, 4) > 0) {
+                throw new \DomainException(sprintf(
+                    'Supplier invoice [%s] cannot be posted: receipt line [%s] bonus over-clear — '
+                    .'free invoiced %s would exceed free received %s.',
+                    $supplierInvoice->id,
+                    $line->id,
+                    $newFreeInvoiced,
+                    $line->free_qty,
+                ));
+            }
+
+            $line->free_quantity_invoiced = $newFreeInvoiced;
+            $line->save();
+
+            $remaining = bcsub($remaining, $sliceQty, 4);
+        }
+
+        if (bccomp($remaining, '0', 4) > 0) {
+            throw new \DomainException(sprintf(
+                'Supplier invoice [%s] cannot be posted: PO line [%s] has insufficient receipt-line free quantity; remaining %s.',
+                $supplierInvoice->id,
+                $poLineId,
+                $remaining,
+            ));
+        }
     }
 
     /**
