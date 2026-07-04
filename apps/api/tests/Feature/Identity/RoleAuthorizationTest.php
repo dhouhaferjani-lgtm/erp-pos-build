@@ -162,4 +162,36 @@ final class RoleAuthorizationTest extends TestCase
             ])
             ->assertStatus(201);
     }
+
+    public function test_cashier_cannot_delete_role(): void
+    {
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $deletable = Role::create(['name' => 'deletable-role', 'guard_name' => 'sanctum']);
+
+        $this->actingAs($this->cashier, 'sanctum')
+            ->deleteJson('/api/v1/roles/'.$deletable->id)
+            ->assertStatus(403);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $this->assertTrue(
+            Role::where('id', $deletable->id)->exists(),
+            'A cashier must NOT be able to delete a role.',
+        );
+    }
+
+    public function test_admin_can_delete_role(): void
+    {
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $deletable = Role::create(['name' => 'admin-deletable-role', 'guard_name' => 'sanctum']);
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->deleteJson('/api/v1/roles/'.$deletable->id)
+            ->assertStatus(200);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $this->assertFalse(
+            Role::where('id', $deletable->id)->exists(),
+            'An admin with roles.manage must be able to delete a non-system, user-less role.',
+        );
+    }
 }

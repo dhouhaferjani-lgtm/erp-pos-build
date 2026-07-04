@@ -9,6 +9,7 @@ use App\Modules\Identity\Domain\Events\RoleAssigned;
 use App\Modules\Identity\Domain\Events\RoleRemoved;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Requests\AssignRoleRequest;
+use App\Modules\Identity\Presentation\Requests\DeleteRoleRequest;
 use App\Modules\Identity\Presentation\Requests\StoreRoleRequest;
 use App\Modules\Identity\Presentation\Requests\UpdateRoleRequest;
 use App\Modules\Tenant\Domain\Tenant;
@@ -268,7 +269,7 @@ class RoleController extends Controller
      * Delete a role.
      */
     #[CrossTenantRoute(reason: 'Spatie TeamScope auto-scoping: Role::findOrFail($id) is team-scoped via Spatie. System-role guard prevents deleting protected names; users-count guard prevents orphaning role assignments.')]
-    public function destroy(Request $request, int $id): JsonResponse
+    public function destroy(DeleteRoleRequest $request, int $id): JsonResponse
     {
         $role = Role::findOrFail($id);
 
