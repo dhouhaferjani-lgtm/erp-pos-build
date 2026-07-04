@@ -6,6 +6,7 @@ namespace App\Modules\Product\Application\DTOs;
 
 use App\Modules\Catalog\Application\DTOs\MediaAttachmentData;
 use App\Modules\Catalog\Application\DTOs\ProductMediaData;
+use App\Modules\Product\Domain\Enums\PricingMode;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use Spatie\LaravelData\Data;
@@ -62,9 +63,11 @@ class ProductData extends Data
         /** @var array{id: string, status: string}|null */
         public ?array $latest_enrichment_result = null,
         public ?string $stock_quantity = null,
+        public PricingMode $pricing_mode = PricingMode::Manual,
+        public ?EffectiveMargins $effective_margins = null,
     ) {}
 
-    public static function fromModel(Product $product, ?ProductMediaData $media = null, ?OpeningStateData $opening = null): self
+    public static function fromModel(Product $product, ?ProductMediaData $media = null, ?OpeningStateData $opening = null, ?EffectiveMargins $effective = null): self
     {
         return new self(
             id: $product->id,
@@ -121,6 +124,8 @@ class ProductData extends Data
                 ]
                 : null,
             stock_quantity: self::stockQuantity($product),
+            pricing_mode: $product->pricing_mode ?? PricingMode::Manual,
+            effective_margins: $effective,
         );
     }
 

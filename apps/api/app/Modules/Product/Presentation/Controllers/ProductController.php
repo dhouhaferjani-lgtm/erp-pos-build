@@ -24,8 +24,12 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Application\DTOs\OpeningStateData;
 use App\Modules\Product\Application\DTOs\ProductData;
 use App\Modules\Product\Application\Jobs\ApplyCatalogEnrichmentJob;
+use App\Modules\Product\Application\Services\MarginResolver;
+use App\Modules\Product\Application\Services\MarginService;
+use App\Modules\Product\Application\Services\ProductPricingIntentService;
 use App\Modules\Product\Application\Services\ProductTombstoneService;
 use App\Modules\Product\Domain\Enums\BrandSource;
+use App\Modules\Product\Domain\Enums\PricingMode;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Events\ProductCreated;
 use App\Modules\Product\Domain\Events\ProductDeleted;
@@ -45,6 +49,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -64,6 +69,9 @@ class ProductController extends Controller
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly ResetOpeningBalanceService $resetOpening,
         private readonly BatchStockService $batchStockService,
+        private readonly ProductPricingIntentService $pricingIntent,
+        private readonly MarginService $marginService,
+        private readonly MarginResolver $marginResolver,
     ) {}
 
     /**
@@ -331,7 +339,7 @@ class ProductController extends Controller
         $media = $this->catalogMedia->forProduct($productModel->id, $company->tenant_id);
 
         return response()->json([
-            'data' => ProductData::fromModel($productModel, $media),
+            'data' => ProductData::fromModel($productModel, $media, effective: $this->marginResolver->resolve($productModel)),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -422,8 +430,21 @@ class ProductController extends Controller
             $product = Product::create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
-                ...$validated,
+                // Exclude pricing intent fields from the blind create mass-assign;
+                // they are applied authoritatively by the pricing intent seam below.
+                ...Arr::except($validated, ['pricing_mode', 'target_margin_override', 'minimum_margin_override', 'sale_price']),
             ]);
+
+            // Re-evaluate pricing fields through the intent seam so that
+            // Auto mode, override suppression (equal-to-inherited → null), and
+            // minimum_margin_override are applied authoritatively. Runs inside the
+            // transaction so sale_price is settled before the deferred ProductCreated
+            // event snapshots it.
+            $this->pricingIntent->applyIntent($product, $validated);
+            $product->save();
+            if ($product->pricing_mode === PricingMode::Auto) {
+                $this->marginService->updateSalePrice($product);
+            }
 
             // Defer the domain event to after a successful commit so a rolled-back
             // opening balance does not leak ProductCreated to downstream listeners.
@@ -562,7 +583,7 @@ class ProductController extends Controller
         );
 
         return response()->json([
-            'data' => ProductData::fromModel($product, $media, $opening),
+            'data' => ProductData::fromModel($product, $media, $opening, $this->marginResolver->resolve($product)),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -735,8 +756,11 @@ class ProductController extends Controller
             }
         }
 
-        // Update product core fields
-        $productModel->update($validated);
+        // Update product core fields. Exclude pricing intent fields from blind
+        // mass-assign; they are handled authoritatively by ProductPricingIntentService
+        // after the base update.
+        $base = Arr::except($validated, ['pricing_mode', 'target_margin_override', 'minimum_margin_override', 'sale_price']);
+        $productModel->update($base);
 
         if (! $wasBatchTracked && $productModel->requires_batch_tracking) {
             $this->backfillDefaultBatchesForExistingStock($productModel, $company->tenant_id);
@@ -745,7 +769,17 @@ class ProductController extends Controller
         $changes = $productModel->getChanges();
         unset($changes['updated_at']);
 
-        if ($changes !== []) {
+        // Route pricing fields through the intent seam (separate save so that
+        // override suppression and Auto reprice fire after the base update).
+        $this->pricingIntent->applyIntent($productModel, $validated);
+        $productModel->save();
+        $pricingChanged = $productModel->wasChanged();
+        if ($productModel->pricing_mode === PricingMode::Auto) {
+            $pricingChanged = $this->marginService->updateSalePrice($productModel) || $pricingChanged;
+        }
+
+        // Emit once — whether the base fields changed OR the pricing flow changed.
+        if ($changes !== [] || $pricingChanged) {
             event(new ProductUpdated(
                 productId: $productModel->id,
                 tenantId: $productModel->tenant_id,
@@ -831,7 +865,7 @@ class ProductController extends Controller
         $media = $this->catalogMedia->forProduct($freshProduct->id, $company->tenant_id);
 
         return response()->json([
-            'data' => ProductData::fromModel($freshProduct, $media),
+            'data' => ProductData::fromModel($freshProduct, $media, effective: $this->marginResolver->resolve($freshProduct)),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

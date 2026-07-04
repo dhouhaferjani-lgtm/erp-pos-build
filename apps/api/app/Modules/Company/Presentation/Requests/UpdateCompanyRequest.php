@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Company\Presentation\Requests;
 
+use App\Modules\Product\Presentation\Requests\Concerns\ValidatesMarginBand;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateCompanyRequest extends FormRequest
 {
+    use ValidatesMarginBand;
+
     public function authorize(): bool
     {
         return true;
@@ -42,7 +46,16 @@ class UpdateCompanyRequest extends FormRequest
             'default_tax_rate' => ['nullable', 'string', 'max:10'],
             'default_tax_configuration_id' => ['nullable', 'uuid', 'exists:tax_configurations,id'],
             'tax_status' => ['nullable', Rule::enum(CompanyTaxStatus::class)],
+
+            // Margin defaults
+            'default_target_margin' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'default_minimum_margin' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $this->attachMarginBandRule($validator, 'default_minimum_margin', 'default_target_margin');
     }
 
     /**

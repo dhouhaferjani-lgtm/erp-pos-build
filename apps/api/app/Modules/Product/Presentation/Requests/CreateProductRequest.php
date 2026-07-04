@@ -15,8 +15,10 @@ use App\Modules\Product\Domain\Enums\CrossReferenceType;
 use App\Modules\Product\Domain\Enums\DosageForm;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\Enums\PlatformLinkStatus;
+use App\Modules\Product\Domain\Enums\PricingMode;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Enums\VehicleTypeRef;
+use App\Modules\Product\Presentation\Requests\Concerns\ValidatesMarginBand;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -25,6 +27,8 @@ use Illuminate\Validation\Validator;
 
 class CreateProductRequest extends FormRequest
 {
+    use ValidatesMarginBand;
+
     public function __construct(
         private readonly CompanyContext $companyContext,
     ) {
@@ -93,6 +97,7 @@ class CreateProductRequest extends FormRequest
             $cost = $this->input('opening_unit_cost');
             // is_numeric covers int, float AND numeric-string — a JSON-number
             // opening_qty must not silently bypass the cost-required guard.
+            // (is_numeric already excludes null and '', so no separate empty guard needed.)
             $hasPositiveQty = is_numeric($qty) && bccomp((string) $qty, '0', 4) > 0;
 
             if ($hasPositiveQty && ($cost === null || $cost === '')) {
@@ -103,6 +108,8 @@ class CreateProductRequest extends FormRequest
                 $validator->errors()->add('opening_unit_cost', __('validation.opening_cost_without_qty'));
             }
         });
+
+        $this->attachMarginBandRule($validator, 'minimum_margin_override', 'target_margin_override');
     }
 
     /**
@@ -179,6 +186,9 @@ class CreateProductRequest extends FormRequest
             'type' => ['nullable', new Enum(ProductType::class)],
             'is_physical' => ['sometimes', 'boolean'],
             'description' => ['nullable', 'string', 'max:5000'],
+            'pricing_mode' => ['sometimes', new Enum(PricingMode::class)],
+            'target_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'minimum_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'sale_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'purchase_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
@@ -299,6 +309,8 @@ class CreateProductRequest extends FormRequest
             'reorder_quantity.regex' => 'Reorder quantity must have at most 4 decimal places.',
             'opening_qty.regex' => 'Opening quantity must have at most 4 decimal places.',
             'opening_unit_cost.regex' => 'Opening unit cost must have at most 3 decimal places.',
+            'target_margin_override.regex' => 'Target margin override must have at most 2 decimal places.',
+            'minimum_margin_override.regex' => 'Minimum margin override must have at most 2 decimal places.',
         ];
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Product\Application\Services;
 
 use App\Modules\Identity\Domain\User;
+use App\Modules\Product\Domain\Enums\PricingMode;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
@@ -16,11 +17,20 @@ use App\Shared\Domain\CurrencyScale;
  * rounds once at the boundary via CurrencyScale::bcformat(). This eliminates the
  * IEEE-754 float drift that could flip a sell price across a discount-permission
  * threshold (e.g. a price exactly at minimum margin being mis-classified ORANGE).
+ *
+ * Effective margins are resolved via {@see MarginResolver} (3-level hierarchy:
+ * product → category chain → company → hard-coded fallback).
+ *
+ * Scale resolution is currency-aware and queue-safe: every pricing-path method
+ * threads the product through so that {@see CurrencyScaleResolverInterface::getScaleSafe()}
+ * can derive the scale from the product's company currency without relying on a
+ * bound CompanyContext (which is absent in queued jobs / console commands).
  */
 class MarginService
 {
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly MarginResolver $resolver,
     ) {}
 
     /**
@@ -36,21 +46,32 @@ class MarginService
 
     /**
      * Margin-percentage values are compared/returned at 2 decimal places.
+     * Percent is NOT currency-scaled — this constant is never threaded through product.
      */
     private const MARGIN_SCALE = 2;
 
-    private function scale(): int
+    /**
+     * Queue-safe, currency-aware scale resolution.
+     *
+     * When $product is provided the scale is derived from $product->company->currency
+     * via the static ISO 4217 map (no CompanyContext required — safe in queue workers).
+     * When $product is null or its company/currency is unavailable, falls back to 3
+     * (the safe maximum for TND / non-EUR currencies).
+     */
+    private function scale(?Product $product = null): int
     {
-        return $this->scaleResolver->getScale();
+        $currency = $product?->company?->currency;
+
+        return $this->scaleResolver->getScaleSafe($currency, 3);
     }
 
     /**
      * Intermediate bcmath precision: money scale plus headroom so that
      * division/multiplication does not lose precision before the final round.
      */
-    private function intermediateScale(): int
+    private function intermediateScale(?Product $product = null): int
     {
-        return $this->scale() + 2;
+        return $this->scale($product) + 2;
     }
 
     /**
@@ -93,35 +114,23 @@ class MarginService
     }
 
     /**
-     * Get effective margins for a product (with inheritance).
+     * Get effective margins for a product via 3-level hierarchy
+     * (product override → category chain → company default → hard-coded fallback).
      *
-     * Margin percentages are kept as numeric strings to avoid float drift in
-     * downstream bcmath comparisons.
+     * Delegates to {@see MarginResolver::resolve()} and maps the resulting
+     * {@see EffectiveMargins} DTO to the back-compat array shape expected by callers.
      *
-     * @return array{target_margin: numeric-string, minimum_margin: numeric-string, source: string}
+     * @return array{target_margin: string, minimum_margin: string, source: string, minimum_clamped: bool}
      */
     public function getEffectiveMargins(Product $product): array
     {
-        $company = $product->company;
-
-        // For now, skip category since it doesn't exist
-        // Will implement: product → category → company when categories are added
-        $targetMargin = $this->toNumericString(
-            $product->target_margin_override
-            ?? $company->default_target_margin
-            ?? '30',
-        );
-
-        $minimumMargin = $this->toNumericString(
-            $product->minimum_margin_override
-            ?? $company->default_minimum_margin
-            ?? '15',
-        );
+        $effective = $this->resolver->resolve($product);
 
         return [
-            'target_margin' => CurrencyScale::bcformat($targetMargin, self::MARGIN_SCALE),
-            'minimum_margin' => CurrencyScale::bcformat($minimumMargin, self::MARGIN_SCALE),
-            'source' => $this->getMarginSource($product),
+            'target_margin' => $effective->target_margin,
+            'minimum_margin' => $effective->minimum_margin,
+            'source' => $effective->target_source->value,
+            'minimum_clamped' => $effective->minimum_clamped,
         ];
     }
 
@@ -134,15 +143,42 @@ class MarginService
      * @param  numeric-string  $margin
      * @return numeric-string
      */
-    private function priceFromMargin(string $cost, string $margin): string
+    private function priceFromMargin(string $cost, string $margin, ?Product $product = null): string
     {
-        $inter = $this->intermediateScale();
+        $inter = $this->intermediateScale($product);
 
         // factor = 1 + (margin / 100)
         $factor = bcadd('1', bcdiv($margin, '100', $inter), $inter);
         $raw = bcmul($cost, $factor, $inter);
 
-        return $this->bcRoundHalfUp($raw, $this->scale());
+        return $this->bcRoundHalfUp($raw, $this->scale($product));
+    }
+
+    /**
+     * Compute the expected auto sell price for a product as a money-scale string.
+     *
+     * Uses bcmath only — no float. Returns null when cost_price <= 0 (can't compute).
+     * The result is at the product's company-currency money scale, consistent with
+     * what updateSalePrice() would produce for the same cost/margin pair.
+     *
+     * Used by the backfill command to detect products whose sale_price was already
+     * set by the margin formula and can therefore be safely promoted to `auto`.
+     *
+     * @return numeric-string|null
+     */
+    public function computeAutoPrice(Product $product): ?string
+    {
+        $product->loadMissing(['company', 'category']);
+
+        $cost = $this->toNumericString($product->cost_price ?? '0');
+
+        if (bccomp($cost, '0', $this->intermediateScale($product)) <= 0) {
+            return null;
+        }
+
+        $effectiveTarget = $this->resolver->resolve($product)->target_margin;
+
+        return $this->priceFromMargin($cost, $this->toNumericString($effectiveTarget), $product);
     }
 
     /**
@@ -154,39 +190,49 @@ class MarginService
         $margins = $this->getEffectiveMargins($product);
 
         // cost <= 0 → fall back to current sale price
-        if (bccomp($cost, '0', $this->intermediateScale()) <= 0) {
+        if (bccomp($cost, '0', $this->intermediateScale($product)) <= 0) {
             return (float) CurrencyScale::bcformat(
                 $this->toNumericString($product->sale_price ?? '0'),
-                $this->scale(),
+                $this->scale($product),
             );
         }
 
-        return (float) $this->priceFromMargin($cost, $margins['target_margin']);
+        return (float) $this->priceFromMargin($cost, $this->toNumericString($margins['target_margin']), $product);
     }
 
     /**
      * Update product sale price based on current cost and target margin.
      *
      * This method is called automatically after WAC updates.
-     * Only updates if product uses auto-pricing (no manual sale_price override).
+     * Manual-priced products (pricing_mode === Manual) are skipped entirely.
+     * Queue-safe: resolves monetary scale from the product's company currency,
+     * never from CompanyContext (which is absent in queued jobs).
      *
      * @return bool True if sale price was updated
      */
     public function updateSalePrice(Product $product): bool
     {
-        $cost = $this->toNumericString($product->cost_price ?? '0');
-        $scale = $this->scale();
-
-        // Don't update if no cost
-        if (bccomp($cost, '0', $this->intermediateScale()) <= 0) {
+        // Manual products own their price — never auto-reprice them.
+        if ($product->pricing_mode === PricingMode::Manual) {
             return false;
         }
 
-        // Get target margin (product > company)
+        // Ensure company is loaded before scale resolution (queue-safe: no CompanyContext).
+        $product->loadMissing('company');
+
+        $cost = $this->toNumericString($product->cost_price ?? '0');
+        $scale = $this->scale($product);
+
+        // Don't update if no cost
+        if (bccomp($cost, '0', $this->intermediateScale($product)) <= 0) {
+            return false;
+        }
+
+        // Get target margin (product → category chain → company → fallback)
         $margins = $this->getEffectiveMargins($product);
 
         // Calculate new sale price (rounded to money scale)
-        $newSalePrice = $this->priceFromMargin($cost, $margins['target_margin']);
+        $newSalePrice = $this->priceFromMargin($cost, $this->toNumericString($margins['target_margin']), $product);
 
         // Only update if different at the money scale (avoid unnecessary writes)
         $currentSalePrice = CurrencyScale::bcformat(
@@ -240,8 +286,8 @@ class MarginService
         $sell = $this->toNumericString($sellPrice);
         $margins = $this->getEffectiveMargins($product);
         $actualMargin = $this->calculateMargin($cost, $sell);
-        $inter = $this->intermediateScale();
-        $scale = $this->scale();
+        $inter = $this->intermediateScale($product);
+        $scale = $this->scale($product);
 
         if (bccomp($cost, '0', $inter) <= 0) {
             return [
@@ -267,7 +313,7 @@ class MarginService
         $actualMarginStr = CurrencyScale::bcformat((string) $actualMargin, self::MARGIN_SCALE);
 
         // Below minimum margin (actual < minimum)
-        if (bccomp($actualMarginStr, $margins['minimum_margin'], self::MARGIN_SCALE) < 0) {
+        if (bccomp($actualMarginStr, $this->toNumericString($margins['minimum_margin']), self::MARGIN_SCALE) < 0) {
             return [
                 'level' => self::LEVEL_ORANGE,
                 'message' => 'Below minimum margin',
@@ -277,7 +323,7 @@ class MarginService
         }
 
         // Below target margin (actual < target)
-        if (bccomp($actualMarginStr, $margins['target_margin'], self::MARGIN_SCALE) < 0) {
+        if (bccomp($actualMarginStr, $this->toNumericString($margins['target_margin']), self::MARGIN_SCALE) < 0) {
             return [
                 'level' => self::LEVEL_YELLOW,
                 'message' => 'Below target margin',
@@ -352,23 +398,5 @@ class MarginService
             'reason' => null,
             'margin_level' => $marginLevel,
         ];
-    }
-
-    /**
-     * Determine the source of margin configuration
-     */
-    private function getMarginSource(Product $product): string
-    {
-        if ($product->target_margin_override !== null) {
-            return 'product';
-        }
-
-        // Skip category check since it doesn't exist yet
-        // When categories are added:
-        // if ($product->category?->target_margin_override !== null) {
-        //     return 'category';
-        // }
-
-        return 'company';
     }
 }

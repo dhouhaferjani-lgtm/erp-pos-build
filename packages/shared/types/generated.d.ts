@@ -1446,6 +1446,15 @@ description: string | null;
 created_at: string;
 updated_at: string | null;
 };
+export type EffectiveMargins = {
+target_margin: string;
+minimum_margin: string;
+target_source: App.Modules.Product.Domain.Enums.MarginSource;
+target_source_category_id: number | null;
+minimum_source: App.Modules.Product.Domain.Enums.MarginSource;
+minimum_source_category_id: number | null;
+minimum_clamped: boolean;
+};
 export type EnrichedProductData = {
 name: string;
 brand: string | null;
@@ -1599,6 +1608,8 @@ opening: App.Modules.Product.Application.DTOs.OpeningStateData | null;
 enrichment_status: string | null;
 latest_enrichment_result: Array<any> | null;
 stock_quantity: string | null;
+pricing_mode: App.Modules.Product.Domain.Enums.PricingMode;
+effective_margins: App.Modules.Product.Application.DTOs.EffectiveMargins | null;
 };
 export type ProductHealthClaimData = {
 health_claim: App.Modules.Product.Application.DTOs.HealthClaimData;
@@ -1627,8 +1638,10 @@ export type DosageForm = 'capsule' | 'tablet' | 'softgel' | 'liquid' | 'powder' 
 export type EnrichmentResultOrigin = 'initial' | 'curated_update';
 export type EnrichmentReviewStatus = 'pending_review' | 'accepted' | 'rejected';
 export type EquivalenceType = 'generic' | 'therapeutic' | 'brand_alt';
+export type MarginSource = 'product' | 'category' | 'company' | 'default';
 export type ParapharmacyCategory = 'supplement' | 'cosmetic' | 'medical_device' | 'herbal' | 'baby_care' | 'sports_nutrition' | 'other';
 export type PlatformLinkStatus = 'linked' | 'unlinked' | 'pending_match' | 'rejected';
+export type PricingMode = 'auto' | 'manual';
 export type ProductType = 'part' | 'service' | 'consumable';
 export type RestockPolicy = 'never' | 'if_sealed' | 'default_allow';
 export type RestockPolicySource = 'product' | 'category' | 'company' | 'default';

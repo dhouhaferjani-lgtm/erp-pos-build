@@ -8,6 +8,7 @@ use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Enums\BrandSource;
+use App\Modules\Product\Domain\Enums\PricingMode;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
@@ -68,6 +69,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $brand_id
  * @property BrandSource|null $brand_source
  * @property-read Brand|null $brand
+ * @property PricingMode|null $pricing_mode Null only on unsaved instances; DB column is NOT NULL (default 'manual')
  * @property-read Tenant $tenant
  * @property-read Company $company
  * @property-read Unit|null $unitOfMeasure
@@ -123,6 +125,7 @@ class Product extends Model implements SellableContract
         'restock_policy',
         'brand_id',
         'brand_source',
+        'pricing_mode',
     ];
 
     /**
@@ -165,6 +168,7 @@ class Product extends Model implements SellableContract
             'reorder_point' => 'decimal:4',
             'reorder_quantity' => 'decimal:4',
             'restock_policy' => RestockPolicy::class,
+            'pricing_mode' => PricingMode::class,
         ];
     }
 

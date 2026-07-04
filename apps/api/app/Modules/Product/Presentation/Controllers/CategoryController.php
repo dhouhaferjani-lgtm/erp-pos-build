@@ -9,15 +9,17 @@ use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\DTOs\CategoryData;
 use App\Modules\Product\Domain\Category;
+use App\Modules\Product\Presentation\Requests\Concerns\ValidatesMarginBand;
 use App\Shared\Presentation\Validation\ScopedExists;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class CategoryController extends Controller
 {
-    use PaginatesResults;
+    use PaginatesResults, ValidatesMarginBand;
 
     public function __construct(
         private readonly CompanyContext $companyContext
@@ -132,7 +134,15 @@ class CategoryController extends Controller
                 'nullable', 'uuid', 'exists:tax_configurations,id',
                 new TaxConfigurationCountryCoherent($company->country_code),
             ],
+            'target_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'minimum_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
         ]);
+
+        if ($this->marginBandInverts($validated['minimum_margin_override'] ?? null, $validated['target_margin_override'] ?? null)) {
+            throw ValidationException::withMessages([
+                'minimum_margin_override' => [__('The minimum margin override must be less than or equal to the target margin override.')],
+            ]);
+        }
 
         // Verify parent belongs to same company
         // api.unmapped.018 (api.catalog): use Category::query() prefix so the
@@ -162,6 +172,8 @@ class CategoryController extends Controller
             'is_active' => $validated['is_active'] ?? true,
             'default_tax_rate' => $validated['default_tax_rate'] ?? null,
             'default_tax_configuration_id' => $validated['default_tax_configuration_id'] ?? null,
+            'target_margin_override' => $validated['target_margin_override'] ?? null,
+            'minimum_margin_override' => $validated['minimum_margin_override'] ?? null,
         ]);
 
         $category->refresh();
@@ -194,7 +206,15 @@ class CategoryController extends Controller
                 'nullable', 'uuid', 'exists:tax_configurations,id',
                 new TaxConfigurationCountryCoherent($company->country_code),
             ],
+            'target_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'minimum_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
         ]);
+
+        if ($this->marginBandInverts($validated['minimum_margin_override'] ?? null, $validated['target_margin_override'] ?? null)) {
+            throw ValidationException::withMessages([
+                'minimum_margin_override' => [__('The minimum margin override must be less than or equal to the target margin override.')],
+            ]);
+        }
 
         // Prevent circular reference
         if (! empty($validated['parent_id'])) {

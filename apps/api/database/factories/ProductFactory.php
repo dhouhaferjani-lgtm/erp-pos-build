@@ -56,8 +56,8 @@ class ProductFactory extends Factory
 
         return [
             'id' => Str::uuid()->toString(),
-            'tenant_id' => null, // Will be set when creating
-            'company_id' => null, // Will be set by seeder
+            'tenant_id' => Str::uuid()->toString(), // Falls back to a stub UUID; override via ->for($tenant)
+            'company_id' => Str::uuid()->toString(), // Stub UUID — overridden by ->for($company); does not cascade a Company insert
             'sku' => 'PRD-'.strtoupper(Str::random(8)),
             'name' => $item,
             'description' => $this->faker->optional(0.7)->sentence(10),
