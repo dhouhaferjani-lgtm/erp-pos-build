@@ -35,13 +35,13 @@ worktree base (see Stage 3).
 |---|---|---|
 | Full PHPUnit suite | ❌ **FORBIDDEN** — exhausts memory, crashes the machine | ✅ `PREFLIGHT_SCOPE=full` |
 | Scoped PHPUnit (`PREFLIGHT_TEST_PATHS='…'`) | ✅ default (`paths`) | ✅ |
-| Tauri (IziPOS desktop) builds | ❌ heavy; do on VPS | ✅ |
+| Tauri (IziPOS desktop) builds/signing | ✅ macOS-bound — laptop ONLY | ❌ (VPS is Ubuntu; no macOS toolchain) |
 | Playwright smoke | ⚠️ one shared MCP browser only (see rules) | ✅ headless |
 | Owner-only decisions (see gates step) | ✅ owner present | ❌ escalate, don't guess |
 | `git push origin dev` | via dev-push-guard hook | via dev-push-guard hook |
 
 Rule of thumb: the laptop is for authoring + scoped verification; the VPS is for
-full-suite runs, Tauri builds, and unattended smoke.
+full-suite runs and unattended smoke; Tauri builds/signing stay on the laptop (macOS-bound).
 
 ---
 
