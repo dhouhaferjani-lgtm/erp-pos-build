@@ -22,6 +22,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\DTOs\GoodsReceiptData;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Modules\Product\Domain\Product;
@@ -687,20 +688,22 @@ class PurchaseOrderController extends Controller
                     is_array($quantities) ? $quantities : [],
                     is_array($batches) ? $batches : [],
                     is_array($freeQuantities) ? $freeQuantities : [],
+                    $user->id,
                 );
             } else {
                 // Receive all remaining quantities
-                $updatedDocument = $this->goodsReceiptService->receiveAll($documentModel);
+                $updatedDocument = $this->goodsReceiptService->receiveAll($documentModel, $user->id);
             }
 
             // Get receipt status for response
-            $receiptStatus = $this->goodsReceiptService->getReceiptStatus($updatedDocument);
+            $receiptStatus = $this->goodsReceiptService->getReceiptStatus($updatedDocument->purchaseOrder);
 
             return response()->json([
-                'data' => DocumentData::fromModel($updatedDocument, true, $this->scale()),
+                'data' => DocumentData::fromModel($updatedDocument->purchaseOrder, true, $this->scale()),
                 'meta' => [
                     'timestamp' => now()->toIso8601String(),
                     'receipt_status' => $receiptStatus,
+                    'goods_receipt' => GoodsReceiptData::fromModel($updatedDocument->receipt, withLines: false),
                 ],
             ]);
         } catch (\DomainException $e) {
