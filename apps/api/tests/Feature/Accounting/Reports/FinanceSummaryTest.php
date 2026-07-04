@@ -7,6 +7,7 @@ namespace Tests\Feature\Accounting\Reports;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
@@ -33,9 +34,16 @@ use Tests\TestCase;
  * Feature test for GET /api/v1/reports/finance-summary (TD-012).
  *
  * The endpoint aggregates the numbers the Trésorerie FinanceWidget consumes
- * from the canonical report services (balance sheet, P&L, aged receivables /
- * payables). Before this endpoint existed the FE received a 404 and the widget
- * rendered zeros.
+ * from the canonical report services: balance sheet (assets / liabilities /
+ * equity), P&L (net income MTD / YTD), and — for AR / AP — the GL balances of
+ * the accounts tagged with SystemAccountPurpose::CustomerReceivable /
+ * SupplierPayable, extracted from the SAME balance-sheet result. Open
+ * documents (invoices / purchase orders with balance_due) are explicitly NOT
+ * a source: a purchase order is a commitment, not a payable, and using it
+ * would diverge from the GL-derived total_liabilities in the same payload.
+ *
+ * Before this endpoint existed the FE received a 404 and the widget rendered
+ * zeros.
  */
 final class FinanceSummaryTest extends TestCase
 {
@@ -51,7 +59,11 @@ final class FinanceSummaryTest extends TestCase
 
     private Account $equipmentAccount;
 
+    private Account $arAccount;
+
     private Account $apLiabilityAccount;
+
+    private Account $accruedLiabilityAccount;
 
     private Account $capitalAccount;
 
@@ -111,7 +123,23 @@ final class FinanceSummaryTest extends TestCase
 
         $this->cashAccount = $this->makeAccount('1100', 'Cash', AccountType::Asset);
         $this->equipmentAccount = $this->makeAccount('1500', 'Equipment', AccountType::Asset);
-        $this->apLiabilityAccount = $this->makeAccount('2100', 'Accounts Payable', AccountType::Liability);
+        // 411-family customer receivables — the canonical AR source.
+        $this->arAccount = $this->makeAccount(
+            '4110',
+            'Clients',
+            AccountType::Asset,
+            SystemAccountPurpose::CustomerReceivable,
+        );
+        // 401-family supplier payables — the canonical AP source.
+        $this->apLiabilityAccount = $this->makeAccount(
+            '4010',
+            'Fournisseurs',
+            AccountType::Liability,
+            SystemAccountPurpose::SupplierPayable,
+        );
+        // A liability WITHOUT the SupplierPayable purpose: must count into
+        // total_liabilities but NOT into accounts_payable.
+        $this->accruedLiabilityAccount = $this->makeAccount('4280', 'Accrued Expenses', AccountType::Liability);
         $this->capitalAccount = $this->makeAccount('3000', 'Capital Stock', AccountType::Equity);
         $this->revenueAccount = $this->makeAccount('4000', 'Sales Revenue', AccountType::Revenue);
         $this->expenseAccount = $this->makeAccount('6000', 'Rent Expense', AccountType::Expense);
@@ -145,10 +173,16 @@ final class FinanceSummaryTest extends TestCase
             ['account_id' => $this->cashAccount->id, 'debit' => '50000.00', 'credit' => '0.00'],
             ['account_id' => $this->capitalAccount->id, 'debit' => '0.00', 'credit' => '50000.00'],
         ]);
-        // Buy equipment on credit: equipment 10000 / AP 10000
+        // Buy equipment on credit: equipment 10000 / AP(401) 10000
         $this->createPostedEntry('2025-03-01', [
             ['account_id' => $this->equipmentAccount->id, 'debit' => '10000.00', 'credit' => '0.00'],
             ['account_id' => $this->apLiabilityAccount->id, 'debit' => '0.00', 'credit' => '10000.00'],
+        ]);
+        // Accrue a non-supplier liability: equipment 500 / accrued 500.
+        // Counts into total_liabilities but NOT into accounts_payable.
+        $this->createPostedEntry('2025-03-10', [
+            ['account_id' => $this->equipmentAccount->id, 'debit' => '500.00', 'credit' => '0.00'],
+            ['account_id' => $this->accruedLiabilityAccount->id, 'debit' => '0.00', 'credit' => '500.00'],
         ]);
 
         // --- P&L: month-to-date (June) ---------------------------------------
@@ -156,6 +190,13 @@ final class FinanceSummaryTest extends TestCase
         $this->createPostedEntry('2025-06-10', [
             ['account_id' => $this->cashAccount->id, 'debit' => '8000.00', 'credit' => '0.00'],
             ['account_id' => $this->revenueAccount->id, 'debit' => '0.00', 'credit' => '8000.00'],
+        ]);
+        // Credit sale this month: AR(411) 300.505 / revenue 300.505.
+        // The .505 third decimal (below EUR's 2-decimal currency scale) pins the
+        // bcformatStrict round-once boundary: 300.505 → '300.50' (truncation).
+        $this->createPostedEntry('2025-06-11', [
+            ['account_id' => $this->arAccount->id, 'debit' => '300.505', 'credit' => '0.00'],
+            ['account_id' => $this->revenueAccount->id, 'debit' => '0.00', 'credit' => '300.505'],
         ]);
         // Expense this month: expense 3000 / cash 3000
         $this->createPostedEntry('2025-06-12', [
@@ -168,9 +209,12 @@ final class FinanceSummaryTest extends TestCase
             ['account_id' => $this->revenueAccount->id, 'debit' => '0.00', 'credit' => '5000.00'],
         ]);
 
-        // --- Outstanding receivables / payables -------------------------------
-        $this->createOpenDocument(DocumentType::Invoice, $this->customer, '300.00', '2025-05-01');
-        $this->createOpenDocument(DocumentType::PurchaseOrder, $this->supplier, '200.00', '2025-05-01');
+        // --- NEGATIVE fixtures: open documents must NOT leak into AR / AP -----
+        // An open purchase order is a commitment, not a payable; an open invoice
+        // document is not the AR source either — AR / AP derive from the GL
+        // balances of the purpose-tagged accounts (411 / 401 families).
+        $this->createOpenDocument(DocumentType::Invoice, $this->customer, '999.00', '2025-05-01');
+        $this->createOpenDocument(DocumentType::PurchaseOrder, $this->supplier, '777.00', '2025-05-01');
 
         $response = $this->actingAs($this->user, 'sanctum')
             ->withHeader('X-Company-Id', $this->company->id)
@@ -191,21 +235,31 @@ final class FinanceSummaryTest extends TestCase
             ],
         ]);
 
-        // Numbers (EUR → 2-decimal money strings).
-        // Assets = cash(50000+8000-3000+5000=60000) + equipment(10000) = 70000
-        $response->assertJsonPath('data.total_assets', '70000.00');
-        // Liabilities = AP account (10000)
-        $response->assertJsonPath('data.total_liabilities', '10000.00');
-        // Equity = capital(50000) + retained earnings(rev 13000 - exp 3000 = 10000) = 60000
-        $response->assertJsonPath('data.total_equity', '60000.00');
-        // Net income MTD (June) = revenue 8000 - expense 3000 = 5000
-        $response->assertJsonPath('data.net_income_mtd', '5000.00');
-        // Net income YTD = revenue(8000+5000) - expense(3000) = 10000
-        $response->assertJsonPath('data.net_income_ytd', '10000.00');
-        // AR = outstanding customer invoices grand total
-        $response->assertJsonPath('data.accounts_receivable', '300.00');
-        // AP = outstanding purchase orders grand total
-        $response->assertJsonPath('data.accounts_payable', '200.00');
+        // Numbers (EUR → 2-decimal money strings; bcformatStrict truncates once
+        // at the boundary, so 300.505 → '300.50').
+        // Assets = cash(50000+8000-3000+5000=60000) + equipment(10000+500=10500)
+        //        + AR(300.505) = 70800.505 → 70800.50
+        $response->assertJsonPath('data.total_assets', '70800.50');
+        // Liabilities = AP 401 (10000) + accrued non-AP (500) = 10500
+        $response->assertJsonPath('data.total_liabilities', '10500.00');
+        // Equity = capital(50000)
+        //        + retained earnings(rev 13300.505 - exp 3000 = 10300.505)
+        //        = 60300.505 → 60300.50
+        $response->assertJsonPath('data.total_equity', '60300.50');
+        // Net income MTD (June) = revenue(8000 + 300.505) - expense 3000
+        //                       = 5300.505 → 5300.50
+        $response->assertJsonPath('data.net_income_mtd', '5300.50');
+        // Net income YTD = revenue(8000 + 300.505 + 5000) - expense(3000)
+        //                = 10300.505 → 10300.50
+        $response->assertJsonPath('data.net_income_ytd', '10300.50');
+        // AR = GL balance of the CustomerReceivable-purpose account (4110):
+        // 300.505 → 300.50 (round-once truncation pin). NOT the open invoice
+        // document (999.00).
+        $response->assertJsonPath('data.accounts_receivable', '300.50');
+        // AP = GL balance of the SupplierPayable-purpose account (4010): 10000.
+        // NOT the open purchase order (777.00) and NOT total_liabilities
+        // (10500 — the accrued non-AP liability is excluded).
+        $response->assertJsonPath('data.accounts_payable', '10000.00');
     }
 
     public function test_finance_summary_requires_authentication(): void
@@ -235,14 +289,19 @@ final class FinanceSummaryTest extends TestCase
             ->assertForbidden();
     }
 
-    private function makeAccount(string $code, string $name, AccountType $type): Account
-    {
+    private function makeAccount(
+        string $code,
+        string $name,
+        AccountType $type,
+        ?SystemAccountPurpose $purpose = null,
+    ): Account {
         return Account::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => $code,
             'name' => $name,
             'type' => $type,
+            'system_purpose' => $purpose,
         ]);
     }
 

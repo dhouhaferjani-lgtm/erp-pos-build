@@ -16,8 +16,12 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * aggregated from the canonical report services:
  * - total_assets / total_liabilities / total_equity → BalanceSheetService
  * - net_income_mtd / net_income_ytd → ProfitLossService (month-/year-to-date)
- * - accounts_receivable → AgedReceivablesService grand total
- * - accounts_payable → AgedPayablesService grand total
+ * - accounts_receivable → GL balance of the accounts tagged
+ *   SystemAccountPurpose::CustomerReceivable (411 family), summed from the
+ *   same balance-sheet line set as total_assets
+ * - accounts_payable → GL balance of the accounts tagged
+ *   SystemAccountPurpose::SupplierPayable (401 family), summed from the same
+ *   balance-sheet line set as total_liabilities
  */
 #[TypeScript]
 final class FinanceSummaryData extends Data
