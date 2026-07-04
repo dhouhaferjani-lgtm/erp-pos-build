@@ -110,7 +110,8 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
         $this->assertSame('decimal:6', (new GoodsReceiptLine)->getCasts()['effective_unit_cost']);
         $this->assertSame('decimal:4', (new GoodsReceiptLine)->getCasts()['quantity_invoiced']);
 
-        $this->assertIndexExists('goods_receipts_tenant_id_receipt_number_unique', true);
+        $this->assertIndexExists('goods_receipts_company_id_receipt_number_unique', true);
+        $this->assertIndexExists('goods_receipts_tenant_id_index', false);
         $this->assertIndexExists('goods_receipt_lines_tenant_id_po_line_id_index', false);
         $this->assertIndexExists('goods_receipt_lines_tenant_id_goods_receipt_id_index', false);
         $this->assertIndexExists('goods_receipt_lines_movement_id_unique', true);

@@ -138,6 +138,8 @@ final class GoodsReceiptLedgerWriteTest extends TestCase
             ],
             [],
             [],
+            [],
+            null,
             $this->user->id,
         );
 
@@ -170,8 +172,8 @@ final class GoodsReceiptLedgerWriteTest extends TestCase
         ]);
         $line = $po->lines->first();
 
-        $first = app(GoodsReceiptService::class)->receiveGoods($po, [$line->id => '4.0000'], [], [], $this->user->id);
-        $second = app(GoodsReceiptService::class)->receiveGoods($first->purchaseOrder, [$line->id => '6.0000'], [], [], $this->user->id);
+        $first = app(GoodsReceiptService::class)->receiveGoods($po, [$line->id => '4.0000'], [], [], [], null, $this->user->id);
+        $second = app(GoodsReceiptService::class)->receiveGoods($first->purchaseOrder, [$line->id => '6.0000'], [], [], [], null, $this->user->id);
 
         $this->assertCount(2, GoodsReceipt::query()->where('purchase_order_id', $po->id)->orderBy('receipt_number')->get());
         $this->assertNotSame($first->receipt->id, $second->receipt->id);
@@ -188,7 +190,7 @@ final class GoodsReceiptLedgerWriteTest extends TestCase
         ]);
         $line = $po->lines->first();
 
-        $result = app(GoodsReceiptService::class)->receiveGoods($po, [], [], [$line->id => '2.0000'], $this->user->id);
+        $result = app(GoodsReceiptService::class)->receiveGoods($po, [], [], [$line->id => '2.0000'], [], null, $this->user->id);
 
         $receiptLine = GoodsReceiptLine::query()->where('goods_receipt_id', $result->receipt->id)->sole();
         $this->assertSame('0.0000', (string) $receiptLine->received_qty);
@@ -208,7 +210,7 @@ final class GoodsReceiptLedgerWriteTest extends TestCase
         ]);
         $line = $po->lines->first();
 
-        $result = app(GoodsReceiptService::class)->receiveGoods($po, [$line->id => '1.0000'], [], [], $this->user->id);
+        $result = app(GoodsReceiptService::class)->receiveGoods($po, [$line->id => '1.0000'], [], [], [], null, $this->user->id);
 
         $receiptLine = GoodsReceiptLine::query()->where('goods_receipt_id', $result->receipt->id)->sole();
         $this->assertSame('1.123457', (string) $receiptLine->landed_unit_cost);
@@ -256,7 +258,7 @@ final class GoodsReceiptLedgerWriteTest extends TestCase
         $line = $po->lines->first();
 
         try {
-            app(GoodsReceiptService::class)->receiveGoods($po, [$line->id => '4.0000'], [], [], $this->user->id);
+            app(GoodsReceiptService::class)->receiveGoods($po, [$line->id => '4.0000'], [], [], [], null, $this->user->id);
             $this->fail('Expected over-receipt to throw.');
         } catch (\DomainException) {
             $this->assertDatabaseCount('goods_receipts', 0);

@@ -40,6 +40,7 @@ final class GoodsReceiptService
         private readonly BatchStockService $batchStockService,
         private readonly ProductCostLock $costLock,
         private readonly DocumentNumberingService $numberingService,
+        private readonly ReceiptBatchCostAllocator $receiptBatchCostAllocator,
     ) {}
 
     /**
@@ -49,6 +50,7 @@ final class GoodsReceiptService
      * @param  array<string, string>  $receivedQuantities  Map of line_id => paid quantity to receive
      * @param  array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>  $batchData  Optional batch data per line_id
      * @param  array<string, string>  $freeQuantities  Map of line_id => free quantity to receive
+     * @param  array<string, string>  $receivedUnitPrices  Map of line_id => received unit price override
      *
      * @throws \DomainException If PO is not in valid state for receiving
      */
@@ -57,6 +59,8 @@ final class GoodsReceiptService
         array $receivedQuantities,
         array $batchData = [],
         array $freeQuantities = [],
+        array $receivedUnitPrices = [],
+        ?string $priceOverrideReason = null,
         ?string $actorId = null,
     ): GoodsReceiptResult {
         if ($purchaseOrder->type !== DocumentType::PurchaseOrder) {
@@ -67,7 +71,7 @@ final class GoodsReceiptService
             throw new \DomainException('Purchase order must be confirmed before receiving goods');
         }
 
-        return DB::transaction(function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $actorId): GoodsReceiptResult {
+        return DB::transaction(function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId): GoodsReceiptResult {
             // Get the default location for this company
             $location = $purchaseOrder->location ?? $this->getDefaultLocation($purchaseOrder);
 
@@ -98,7 +102,7 @@ final class GoodsReceiptService
                 $purchaseOrder->tenant_id,
                 $purchaseOrder->company_id,
                 $productIds,
-                function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $location, $actorId): GoodsReceiptResult {
+                function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $location, $actorId): GoodsReceiptResult {
                     $receipt = GoodsReceipt::create([
                         'tenant_id' => $purchaseOrder->tenant_id,
                         'company_id' => $purchaseOrder->company_id,
@@ -113,8 +117,24 @@ final class GoodsReceiptService
                         'received_at' => now(),
                         'received_by' => $actorId,
                     ]);
+                    $batchFreightShares = $this->receiptBatchCostAllocator->allocate(
+                        $purchaseOrder,
+                        $receivedQuantities,
+                        $receivedUnitPrices,
+                    );
 
-                    return $this->processReceiptLines($purchaseOrder, $receipt, $receivedQuantities, $batchData, $freeQuantities, $location);
+                    return $this->processReceiptLines(
+                        $purchaseOrder,
+                        $receipt,
+                        $receivedQuantities,
+                        $batchData,
+                        $freeQuantities,
+                        $receivedUnitPrices,
+                        $batchFreightShares,
+                        $priceOverrideReason,
+                        $actorId,
+                        $location,
+                    );
                 }
             );
         });
@@ -129,6 +149,8 @@ final class GoodsReceiptService
      * @param  array<string, string>  $receivedQuantities
      * @param  array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>  $batchData
      * @param  array<string, string>  $freeQuantities
+     * @param  array<string, string>  $receivedUnitPrices
+     * @param  array<string, string>  $batchFreightShares
      *
      * @throws \DomainException
      */
@@ -138,6 +160,10 @@ final class GoodsReceiptService
         array $receivedQuantities,
         array $batchData,
         array $freeQuantities,
+        array $receivedUnitPrices,
+        array $batchFreightShares,
+        ?string $priceOverrideReason,
+        ?string $actorId,
         Location $location
     ): GoodsReceiptResult {
         $hasReceivedItems = false;
@@ -203,7 +229,19 @@ final class GoodsReceiptService
             // Use landed cost from the PO line (includes allocated additional costs).
             // Keep as a numeric string — no float cast (precision contract P0-1).
             $unitCostStr = (string) ($line->landed_unit_cost ?? $line->unit_price);
-            $landedUnitCost = $unitCostStr;
+            $oldBasis = CurrencyScale::bcround($unitCostStr, self::COST_SCALE);
+            $batchFreightShare = CurrencyScale::bcround((string) ($batchFreightShares[(string) $line->id] ?? '0'), self::COST_SCALE);
+            $hasReceivedPriceOverride = bccomp($qtyToReceive, '0.00', self::QUANTITY_SCALE) > 0
+                && array_key_exists((string) $line->id, $receivedUnitPrices);
+            $receivedUnitPrice = $hasReceivedPriceOverride
+                ? CurrencyScale::bcround((string) $receivedUnitPrices[(string) $line->id], 3)
+                : null;
+            $baseUnitCost = $hasReceivedPriceOverride
+                ? CurrencyScale::bcround((string) $receivedUnitPrice, self::COST_SCALE)
+                : (bccomp($batchFreightShare, '0', self::COST_SCALE) > 0
+                    ? CurrencyScale::bcround((string) $line->unit_price, self::COST_SCALE)
+                    : $oldBasis);
+            $landedUnitCost = $this->landedUnitCostForReceipt($qtyToReceive, $baseUnitCost, $batchFreightShare);
             $movementId = null;
             $freeMovementId = null;
 
@@ -284,7 +322,7 @@ final class GoodsReceiptService
                     poLineId: (string) $line->id,
                     movementId: (string) $movement->id,
                     receivedQty: $qtyToReceive,
-                    unitCost: $unitCostStr,
+                    unitCost: $landedUnitCost,
                     currency: (string) ($purchaseOrder->currency ?? 'TND'),
                 ));
                 $movementId = (string) $movement->id;
@@ -303,7 +341,7 @@ final class GoodsReceiptService
                 // SupplierInvoicePostingService::post() asserts against this to detect
                 // post-receipt landed-cost reallocations that would leave a 408 residue.
                 if ($line->accrual_unit_cost === null) {
-                    $line->accrual_unit_cost = $unitCostStr;
+                    $line->accrual_unit_cost = $landedUnitCost;
                 }
 
                 $line->quantity_received = bcadd($alreadyReceived, $qtyToReceive, self::QUANTITY_SCALE);
@@ -324,7 +362,7 @@ final class GoodsReceiptService
                 'variant_id' => $variantId,
                 'received_qty' => $qtyToReceive,
                 'free_qty' => $freeQtyToReceive,
-                'received_unit_price' => null,
+                'received_unit_price' => $receivedUnitPrice,
                 'landed_unit_cost' => CurrencyScale::bcround($landedUnitCost, self::COST_SCALE),
                 'accrual_unit_cost' => CurrencyScale::bcround($landedUnitCost, self::COST_SCALE),
                 'effective_unit_cost' => $this->effectiveUnitCost(
@@ -335,6 +373,10 @@ final class GoodsReceiptService
                 'movement_id' => $movementId,
                 'free_movement_id' => $freeMovementId,
                 'quantity_invoiced' => '0.0000',
+                'price_override_by' => $hasReceivedPriceOverride ? $actorId : null,
+                'price_override_at' => $hasReceivedPriceOverride ? now() : null,
+                'price_override_old_basis' => $hasReceivedPriceOverride ? $oldBasis : null,
+                'price_override_reason' => $hasReceivedPriceOverride ? $priceOverrideReason : null,
             ]);
 
             $hasReceivedItems = true;
@@ -395,7 +437,7 @@ final class GoodsReceiptService
             }
         }
 
-        return $this->receiveGoods($purchaseOrder, $receivedQuantities, [], $freeQuantities, $actorId);
+        return $this->receiveGoods($purchaseOrder, $receivedQuantities, [], $freeQuantities, [], null, $actorId);
     }
 
     /**
@@ -416,6 +458,24 @@ final class GoodsReceiptService
         $effective = bcdiv($paidValue, $totalQty, self::WORKING_SCALE);
 
         return CurrencyScale::bcround($effective, self::COST_SCALE);
+    }
+
+    /**
+     * @param  numeric-string  $receivedQty
+     * @param  numeric-string  $baseUnitCost
+     * @param  numeric-string  $batchFreightShare
+     * @return numeric-string
+     */
+    private function landedUnitCostForReceipt(string $receivedQty, string $baseUnitCost, string $batchFreightShare): string
+    {
+        if (bccomp($receivedQty, '0.0000', self::QUANTITY_SCALE) <= 0) {
+            return CurrencyScale::bcround($baseUnitCost, self::COST_SCALE);
+        }
+
+        $baseValue = bcmul($receivedQty, $baseUnitCost, self::WORKING_SCALE);
+        $totalValue = bcadd($baseValue, $batchFreightShare, self::WORKING_SCALE);
+
+        return CurrencyScale::bcround(bcdiv($totalValue, $receivedQty, self::WORKING_SCALE), self::COST_SCALE);
     }
 
     /**

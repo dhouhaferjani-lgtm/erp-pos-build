@@ -115,6 +115,64 @@ final class GoodsReceiptBackfillTest extends TestCase
     }
 
     #[Test]
+    public function resumed_backfill_does_not_double_count_invoiced_quantity_across_runs(): void
+    {
+        $product = $this->createProduct('GR-BF-RESUME');
+        $po = $this->createPurchaseOrder();
+        $poLine = $this->createPoLine($po, $product, quantity: '10.0000', invoiced: '7.0000', unitCost: '5.000000');
+
+        // First run backfills a receipt of 4 units → apportions 4 of the 7 invoiced units.
+        $this->createMovement($product, $po, '4.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
+        $this->artisan('procurement:backfill-goods-receipts')
+            ->expectsOutputToContain('Created receipts: 1')
+            ->assertExitCode(0);
+
+        // A second eligible receipt movement for the same PO line arrives after the first run.
+        $this->createMovement($product, $po, '6.0000', '5.000000', CarbonImmutable::parse('2026-07-02 11:00:00'));
+        $this->artisan('procurement:backfill-goods-receipts')
+            ->expectsOutputToContain('Created receipts: 1')
+            ->assertExitCode(0);
+
+        $totalInvoiced = GoodsReceiptLine::query()
+            ->where('po_line_id', $poLine->id)
+            ->get()
+            ->reduce(
+                static fn (string $carry, GoodsReceiptLine $line): string => bcadd($carry, (string) $line->quantity_invoiced, 4),
+                '0.0000',
+            );
+
+        // Σ ledger quantity_invoiced must equal the PO line's quantity_invoiced (7), never 10.
+        $this->assertSame('7.0000', $totalInvoiced);
+    }
+
+    #[Test]
+    public function backfill_assigns_per_company_grn_numbers_without_cross_company_collision(): void
+    {
+        $product = $this->createProduct('GR-BF-CO-A');
+        $po = $this->createPurchaseOrder();
+        $this->createPoLine($po, $product, quantity: '2.0000', invoiced: '0.0000', unitCost: '5.000000');
+        $this->createMovement($product, $po, '2.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'));
+
+        $otherProduct = $this->createProduct('GR-BF-CO-B', $this->otherCompany);
+        $otherPo = $this->createPurchaseOrder($this->otherCompany);
+        $this->createPoLine($otherPo, $otherProduct, quantity: '2.0000', invoiced: '0.0000', unitCost: '5.000000');
+        $this->createMovement($otherProduct, $otherPo, '2.0000', '5.000000', CarbonImmutable::parse('2026-07-01 10:00:00'), $this->otherCompany);
+
+        $this->artisan('procurement:backfill-goods-receipts')
+            ->expectsOutputToContain('Created receipts: 2')
+            ->assertExitCode(0);
+
+        $companyReceipt = GoodsReceipt::query()->where('company_id', $this->company->id)->sole();
+        $otherReceipt = GoodsReceipt::query()->where('company_id', $this->otherCompany->id)->sole();
+
+        // Per-company document sequences both mint GRN-YYYY-0001; per-company uniqueness must allow both.
+        $this->assertSame('GRN-'.date('Y').'-0001', $companyReceipt->receipt_number);
+        $this->assertSame('GRN-'.date('Y').'-0001', $otherReceipt->receipt_number);
+        $this->assertSame($this->tenant->id, $companyReceipt->tenant_id);
+        $this->assertSame($this->tenant->id, $otherReceipt->tenant_id);
+    }
+
+    #[Test]
     public function backfill_selects_real_purchase_receipt_movements_with_null_reason_and_ignores_non_po_receipts(): void
     {
         $product = $this->createProduct('GR-BF-REAL');

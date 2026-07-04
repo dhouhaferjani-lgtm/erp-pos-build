@@ -20,6 +20,7 @@ use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
+use App\Modules\Document\Presentation\Requests\ReceiveGoodsRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptData;
@@ -653,7 +654,7 @@ class PurchaseOrderController extends Controller
      *
      * POST /api/v1/purchase-orders/{purchaseOrder}/receive
      */
-    public function receive(Request $request, string $purchaseOrder): JsonResponse
+    public function receive(ReceiveGoodsRequest $request, string $purchaseOrder): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
@@ -668,14 +669,22 @@ class PurchaseOrderController extends Controller
         }
 
         try {
+            $validated = $request->validated();
+
             /** @var array<string, string>|null $quantities */
-            $quantities = $request->input('quantities');
+            $quantities = $validated['quantities'] ?? null;
 
             /** @var array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>|null $batches */
-            $batches = $request->input('batches');
+            $batches = $validated['batches'] ?? null;
 
             /** @var array<string, string>|null $freeQuantities */
-            $freeQuantities = $request->input('free_quantities');
+            $freeQuantities = $validated['free_quantities'] ?? null;
+
+            /** @var array<string, string>|null $receivedUnitPrices */
+            $receivedUnitPrices = $validated['received_unit_prices'] ?? null;
+
+            /** @var string|null $priceOverrideReason */
+            $priceOverrideReason = $validated['price_override_reason'] ?? null;
 
             if (is_array($freeQuantities) && count($freeQuantities) > 0 && ! $this->purchaseBonusGate->enabledFor($this->companyContext->requireCompany())) {
                 return $this->validationErrorResponse('GOODS_RECEIPT_FAILED', 'free_quantities is not enabled for this company.');
@@ -688,6 +697,8 @@ class PurchaseOrderController extends Controller
                     is_array($quantities) ? $quantities : [],
                     is_array($batches) ? $batches : [],
                     is_array($freeQuantities) ? $freeQuantities : [],
+                    is_array($receivedUnitPrices) ? $receivedUnitPrices : [],
+                    $priceOverrideReason,
                     $user->id,
                 );
             } else {

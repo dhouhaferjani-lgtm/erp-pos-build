@@ -137,7 +137,7 @@ final class PurchaseOrderToGoodsReceiptConverter implements DocumentConverterInt
 
         // Use GoodsReceiptService for the actual business logic
         if ($receivedQuantities !== null && count($receivedQuantities) > 0) {
-            $updatedDocument = $this->goodsReceiptService->receiveGoods($source, $receivedQuantities, [], [], $actorUserId)->purchaseOrder;
+            $updatedDocument = $this->goodsReceiptService->receiveGoods($source, $receivedQuantities, [], [], [], null, $actorUserId)->purchaseOrder;
         } else {
             // Receive all remaining quantities
             $updatedDocument = $this->goodsReceiptService->receiveAll($source, $actorUserId)->purchaseOrder;

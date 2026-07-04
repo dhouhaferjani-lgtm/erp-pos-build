@@ -48,6 +48,10 @@ enum SystemAccountPurpose: string
     case PaymentToleranceExpense = 'payment_tolerance_expense';   // 658
     case PaymentToleranceIncome = 'payment_tolerance_income';     // 758
 
+    // Purchase Price Variance
+    case PurchasePriceVarianceExpense = 'purchase_price_variance_expense'; // 6585
+    case PurchasePriceVarianceIncome = 'purchase_price_variance_income';   // 7585
+
     // Sales Returns (for credit notes)
     case SalesReturn = 'sales_return';                            // 709
 
@@ -100,6 +104,8 @@ enum SystemAccountPurpose: string
             self::OpeningBalanceEquity => 'Opening Balance Equity',
             self::PaymentToleranceExpense => 'Payment Tolerance Expense',
             self::PaymentToleranceIncome => 'Payment Tolerance Income',
+            self::PurchasePriceVarianceExpense => 'Purchase Price Variance Expense',
+            self::PurchasePriceVarianceIncome => 'Purchase Price Variance Income',
             self::SalesReturn => 'Sales Return',
             self::RealizedFxGain => 'Realized FX Gain',
             self::RealizedFxLoss => 'Realized FX Loss',
@@ -154,12 +160,12 @@ enum SystemAccountPurpose: string
             self::SalesStampDutyPayable => AccountType::Liability,
 
             self::ProductRevenue, self::ServiceRevenue,
-            self::PaymentToleranceIncome, self::RealizedFxGain,
+            self::PaymentToleranceIncome, self::PurchasePriceVarianceIncome, self::RealizedFxGain,
             self::VoucherBreakageIncome => AccountType::Revenue,
 
             self::CostOfGoodsSold, self::PurchaseExpenses, self::OfficeExpense,
             self::TravelExpense, self::MealsExpense, self::UtilitiesExpense, self::GeneralExpense,
-            self::PaymentToleranceExpense, self::SalesReturn, self::RealizedFxLoss,
+            self::PaymentToleranceExpense, self::PurchasePriceVarianceExpense, self::SalesReturn, self::RealizedFxLoss,
             self::SalesDiscount, self::SalesReturnsClearing,
             self::MarketingGoodwillExpense, self::RoundingLossExpense,
             self::PurchaseStampDuty => AccountType::Expense,

@@ -24,7 +24,11 @@ return new class extends Migration
             $table->jsonb('payload')->nullable();
             $table->timestampsTz();
 
-            $table->unique(['tenant_id', 'receipt_number']);
+            // GRN numbers come from document_sequences scoped per (company_id, type, year),
+            // so uniqueness must be per company — a tenant with 2+ companies would otherwise
+            // collide on each company's first GRN-YYYY-0001. Keep tenant_id indexed for lookups.
+            $table->unique(['company_id', 'receipt_number']);
+            $table->index('tenant_id');
         });
 
         Schema::create('goods_receipt_lines', function (Blueprint $table): void {

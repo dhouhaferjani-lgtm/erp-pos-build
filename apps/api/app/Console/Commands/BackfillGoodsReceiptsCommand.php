@@ -130,14 +130,19 @@ final class BackfillGoodsReceiptsCommand extends Command
 
         $groups = $this->clusterMovementsByReceiptBatch($movements);
 
-        /** @var array<string, string> $invoicedRemaining */
-        $invoicedRemaining = [];
         /** @var array<string, string> $assignedPaidQuantities */
         $assignedPaidQuantities = [];
         /** @var array<string, string> $assignedFreeQuantities */
         $assignedFreeQuantities = [];
 
         foreach ($groups as $groupMovements) {
+            // Reseed the invoiced remainder from the DB per group (inside the txn) rather than
+            // carrying an in-memory tally across groups/runs. A resumed run that backfills new
+            // movements for an already-partially-backfilled po_line must not re-apportion the
+            // full quantity_invoiced; and a rolled-back group leaves no stale carryover.
+            /** @var array<string, string> $invoicedRemaining */
+            $invoicedRemaining = [];
+
             try {
                 [$receiptCreated, $linesCreated, $skipped] = DB::transaction(function () use (
                     $company,
@@ -385,7 +390,20 @@ final class BackfillGoodsReceiptsCommand extends Command
         $basis = $this->decimalString($poLine->accrual_unit_cost ?? $poLine->landed_unit_cost ?? $poLine->unit_price, 6);
 
         if (! array_key_exists($poLineId, $invoicedRemaining)) {
-            $invoicedRemaining[$poLineId] = $this->decimalString($poLine->quantity_invoiced, 4);
+            $alreadyInvoiced = GoodsReceiptLine::query()
+                ->where('po_line_id', $poLine->id)
+                ->selectRaw('COALESCE(SUM(quantity_invoiced), 0) as invoiced')
+                ->first();
+
+            $remainingInvoiced = bcsub(
+                $this->decimalString($poLine->quantity_invoiced, 4),
+                $this->decimalString($alreadyInvoiced->invoiced ?? '0', 4),
+                4,
+            );
+
+            $invoicedRemaining[$poLineId] = bccomp($remainingInvoiced, '0.0000', 4) > 0
+                ? $remainingInvoiced
+                : '0.0000';
         }
 
         $quantityInvoiced = '0.0000';

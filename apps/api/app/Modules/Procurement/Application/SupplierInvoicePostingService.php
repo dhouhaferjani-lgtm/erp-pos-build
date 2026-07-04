@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -125,31 +126,36 @@ final class SupplierInvoicePostingService
                     ));
                 }
 
-                // Clear 408 at the SAME basis B1 accrued on receipt:
-                // landed_unit_cost ?? unit_price (GoodsReceiptService.php:157 →
-                // GeneralLedgerService::createGoodsReceiptGrIrEntry). Using raw
-                // unit_price here would leave a landed-vs-unit_price residue on 408.
-                /** @var numeric-string $accrualUnitCost */
-                $accrualUnitCost = $poLine->landed_unit_cost ?? $poLine->unit_price;
-
                 // B3 guard: if the PO line has an immutable receipt-accrual basis
                 // recorded (set by GoodsReceiptService), assert the clearing basis
                 // equals it. A mismatch means LandedCostService reallocated costs
                 // after receipt — the 408 accrual and the clearing would diverge,
                 // leaving an irreconcilable residue on account 408.
                 if ($poLine->accrual_unit_cost !== null) {
-                    if (bccomp($accrualUnitCost, (string) $poLine->accrual_unit_cost, 6) !== 0) {
+                    $landedBasis = $poLine->landed_unit_cost ?? $poLine->unit_price;
+                    $hasReceivedPriceOverride = GoodsReceiptLine::query()
+                        ->where('po_line_id', $poLine->id)
+                        ->whereNotNull('received_unit_price')
+                        ->exists();
+
+                    if (! $hasReceivedPriceOverride && bccomp($landedBasis, (string) $poLine->accrual_unit_cost, 6) !== 0) {
                         throw new \DomainException(sprintf(
                             'Supplier invoice [%s] cannot be posted: PO line [%s] 408 accrual basis '
                             .'divergence — clearing at %s but receipt accrued at %s. '
                             .'landed_unit_cost was reallocated after receipt; resolve before posting.',
                             $supplierInvoice->id,
                             $poLine->id,
-                            $accrualUnitCost,
+                            $landedBasis,
                             $poLine->accrual_unit_cost,
                         ));
                     }
                 }
+
+                // Clear 408 at the SAME basis B1 accrued on receipt.
+                // Wave 4 stores override-inclusive receipt basis in accrual_unit_cost;
+                // Wave 5 moves this clearing to immutable receipt-line grain.
+                /** @var numeric-string $accrualUnitCost */
+                $accrualUnitCost = $poLine->accrual_unit_cost ?? $poLine->landed_unit_cost ?? $poLine->unit_price;
                 /** @var numeric-string $lineAccrual */
                 $lineAccrual = bcmul($qty, $accrualUnitCost, $working);
                 $accruedHt = bcadd($accruedHt, $lineAccrual, $working);
