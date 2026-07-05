@@ -46,16 +46,18 @@
       "pending": "Pending Receipt",
       "received": "Received"
     },
-    "status": {
-      "pending": "Pending",
-      "partial": "Partial",
-      "received": "Received"
-    },
+  "status": {
+    "draft": "Draft",
+    "pending": "Pending",
+    "partial": "Partial",
+    "received": "Received"
+  },
     "emptyPending": "No pending receipts",
     "emptyPendingHint": "Confirmed purchase orders will appear here for receiving",
     "emptyReceived": "No received orders yet",
     "receiveAll": "Receive All",
     "progress": "{{received}} of {{total}} items received",
+    "draftSaved": "Goods receipt draft saved",
     "successMessage": "Goods received successfully",
     "successMessageWithReceipt": "Goods received successfully under {{receiptNumber}}"
   },

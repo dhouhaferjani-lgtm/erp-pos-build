@@ -46,16 +46,18 @@
       "pending": "En attente de réception",
       "received": "Réceptionnés"
     },
-    "status": {
-      "pending": "En attente",
-      "partial": "Partiel",
-      "received": "Réceptionné"
-    },
+  "status": {
+    "draft": "Brouillon",
+    "pending": "En attente",
+    "partial": "Partiel",
+    "received": "Réceptionné"
+  },
     "emptyPending": "Aucune réception en attente",
     "emptyPendingHint": "Les commandes fournisseurs confirmées apparaîtront ici pour réception",
     "emptyReceived": "Aucune commande réceptionnée",
     "receiveAll": "Tout réceptionner",
     "progress": "{{received}} sur {{total}} articles reçus",
+    "draftSaved": "Brouillon de réception enregistré",
     "successMessage": "Marchandises réceptionnées avec succès",
     "successMessageWithReceipt": "Marchandises réceptionnées avec succès sous {{receiptNumber}}"
   },

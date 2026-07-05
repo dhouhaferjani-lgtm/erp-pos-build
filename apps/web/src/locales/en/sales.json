@@ -361,7 +361,9 @@
       "priceOverrideReason": "Price override reason",
       "batchNumber": "Batch number",
       "expiryDate": "Expiry date",
-      "submit": "Receive"
+      "submit": "Receive",
+      "saveDraft": "Save draft",
+      "saveAndPost": "Save and post"
     },
     "receiptStatus": {
       "not_received": "Not Received",

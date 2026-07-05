@@ -157,7 +157,9 @@
       "priceOverrideReason": "سبب تعديل السعر",
       "batchNumber": "رقم الدفعة",
       "expiryDate": "تاريخ انتهاء الصلاحية",
-      "submit": "استلام"
+      "submit": "استلام",
+      "saveDraft": "حفظ كمسودة",
+      "saveAndPost": "حفظ وترحيل"
     }
   }
 }

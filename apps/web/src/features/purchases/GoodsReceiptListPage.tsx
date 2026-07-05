@@ -76,7 +76,15 @@ interface ReceiveGoodsResponse {
   meta?: {
     goods_receipt?: {
       receipt_number?: string | null
+      status?: string | null
     } | null
+  }
+}
+
+interface GoodsReceiptIndexResponse {
+  data: unknown[]
+  meta?: {
+    total?: number
   }
 }
 
@@ -154,6 +162,17 @@ export function GoodsReceiptListPage() {
     enabled: hasTenantScope,
   })
 
+  const { data: draftReceiptCount = 0 } = useQuery({
+    queryKey: tenantScopedKey(['goods-receipts', 'draft-count']),
+    queryFn: async () => {
+      const response = await api.get<GoodsReceiptIndexResponse>('/goods-receipts', {
+        params: { status: 'draft', per_page: 1 },
+      })
+      return response.data.meta?.total ?? response.data.data.length
+    },
+    enabled: hasTenantScope,
+  })
+
   // Receive goods mutation
   const receiveGoodsMutation = useMutation({
     mutationFn: async ({ poId, request }: { poId: string; request: ReceiveGoodsRequest }) => {
@@ -162,15 +181,21 @@ export function GoodsReceiptListPage() {
     },
     onSuccess: async (response) => {
       const receiptNumber = response.meta?.goods_receipt?.receipt_number
-      toast.success(receiptNumber
-        ? t('inventory:goodsReceipt.successMessageWithReceipt', { receiptNumber })
-        : t('inventory:goodsReceipt.successMessage'))
+      const receiptStatus = response.meta?.goods_receipt?.status
+      toast.success(receiptStatus === 'draft'
+        ? t('inventory:goodsReceipt.draftSaved')
+        : receiptNumber
+          ? t('inventory:goodsReceipt.successMessageWithReceipt', { receiptNumber })
+          : t('inventory:goodsReceipt.successMessage'))
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('purchase-orders', tenantId, companyId),
         }),
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('stock-levels', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('goods-receipts', tenantId, companyId),
         }),
       ])
       setShowReceiveModal(false)
@@ -326,6 +351,11 @@ export function GoodsReceiptListPage() {
             {pendingOrders.length > 0 && (
               <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
                 {pendingOrders.length}
+              </span>
+            )}
+            {draftReceiptCount > 0 && (
+              <span className={`${tokens.badge.base} ${tokens.badge.yellow}`}>
+                {t('inventory:goodsReceipt.status.draft')} {draftReceiptCount}
               </span>
             )}
           </button>

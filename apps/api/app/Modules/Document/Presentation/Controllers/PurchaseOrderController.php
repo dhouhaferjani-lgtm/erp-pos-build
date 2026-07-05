@@ -24,6 +24,7 @@ use App\Modules\Document\Presentation\Requests\ReceiveGoodsRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptData;
+use App\Modules\Inventory\Application\DTOs\GoodsReceiptResult;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
@@ -232,14 +233,15 @@ class PurchaseOrderController extends Controller
             $companyId = $this->companyContext->requireCompanyId();
             $tenantId = $this->companyContext->requireCompany()->tenant_id;
             $query->whereHas('lines', function ($lineQuery) use ($companyId, $tenantId): void {
-                $lineQuery->whereExists(function ($receiptQuery) use ($companyId, $tenantId): void {
-                    $receiptQuery->selectRaw('1')
-                        ->from('goods_receipt_lines')
+                $lineQuery->whereExists(
+                    GoodsReceiptLine::query()
+                        ->selectRaw('1')
+                        ->postedReceipts()
                         ->where('goods_receipt_lines.tenant_id', $tenantId)
                         ->where('goods_receipt_lines.company_id', $companyId)
                         ->whereColumn('goods_receipt_lines.po_line_id', 'document_lines.id')
-                        ->whereColumn('goods_receipt_lines.received_qty', '>', 'goods_receipt_lines.quantity_invoiced');
-                });
+                        ->whereColumn('goods_receipt_lines.received_qty', '>', 'goods_receipt_lines.quantity_invoiced')
+                );
             });
         }
 
@@ -721,12 +723,27 @@ class PurchaseOrderController extends Controller
 
             /** @var string|null $priceOverrideReason */
             $priceOverrideReason = $validated['price_override_reason'] ?? null;
+            $saveAsDraft = (bool) ($validated['save_as_draft'] ?? false);
 
             if (is_array($freeQuantities) && count($freeQuantities) > 0 && ! $this->purchaseBonusGate->enabledFor($this->companyContext->requireCompany())) {
                 return $this->validationErrorResponse('GOODS_RECEIPT_FAILED', 'free_quantities is not enabled for this company.');
             }
 
-            if ((is_array($quantities) && count($quantities) > 0) || (is_array($freeQuantities) && count($freeQuantities) > 0)) {
+            if ($saveAsDraft) {
+                $draftReceipt = $this->goodsReceiptService->createDraft(
+                    $documentModel,
+                    is_array($quantities) ? $quantities : [],
+                    is_array($batches) ? $batches : [],
+                    is_array($freeQuantities) ? $freeQuantities : [],
+                    is_array($receivedUnitPrices) ? $receivedUnitPrices : [],
+                    $priceOverrideReason,
+                    $user->id,
+                );
+                $updatedDocument = new GoodsReceiptResult(
+                    $documentModel->fresh(['lines']) ?? $documentModel,
+                    $draftReceipt,
+                );
+            } elseif ((is_array($quantities) && count($quantities) > 0) || (is_array($freeQuantities) && count($freeQuantities) > 0)) {
                 // Partial receipt with specified quantities (and optional batch data)
                 $updatedDocument = $this->goodsReceiptService->receiveGoods(
                     $documentModel,
@@ -828,6 +845,7 @@ class PurchaseOrderController extends Controller
 
         $query = GoodsReceiptLine::query()
             ->with('goodsReceipt')
+            ->postedReceipts()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->whereIn('goods_receipt_id', $receiptIds);

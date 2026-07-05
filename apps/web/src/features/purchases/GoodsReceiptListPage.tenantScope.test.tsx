@@ -271,7 +271,7 @@ describe('GoodsReceiptListPage tenant scope', () => {
     const quantityInput = await screen.findByLabelText(/purchaseOrders.receive.quantity Part/)
     await userEvent.clear(quantityInput)
     await userEvent.type(quantityInput, '1')
-    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.saveAndPost' }))
 
     await waitFor(() => {
       expect(mockApiGet).toHaveBeenCalledWith('/purchase-orders/po-1')
@@ -287,7 +287,7 @@ describe('GoodsReceiptListPage tenant scope', () => {
     renderWithProviders(<GoodsReceiptListPage />)
 
     await userEvent.click(await screen.findByText('inventory:goodsReceipt.receiveAll'))
-    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.saveAndPost' }))
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('Goods receipt: GRN-2026-0032')
@@ -376,6 +376,10 @@ describe('GoodsReceiptListPage tenant scope', () => {
       if (url === '/purchase-orders/po-1') {
         return { data: { data: pendingPurchaseOrder } }
       }
+      if (url === '/goods-receipts') {
+        // Draft-count workbench badge (W3) — not part of the PO cache counters.
+        return { data: { data: [], meta: { total: 0 } } }
+      }
       if (options?.params?.status === 'received') {
         counters.received += 1
         return { data: { data: [] } }
@@ -405,7 +409,7 @@ describe('GoodsReceiptListPage tenant scope', () => {
     })
 
     fireEvent.click(await screen.findByText('inventory:goodsReceipt.receiveAll'))
-    fireEvent.click(await screen.findByRole('button', { name: 'purchaseOrders.receive.submit' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'purchaseOrders.receive.saveAndPost' }))
 
     await waitFor(() => {
       expect(counters.confirmed).toBe(4)

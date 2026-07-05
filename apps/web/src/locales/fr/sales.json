@@ -361,7 +361,9 @@
       "priceOverrideReason": "Motif de modification du prix",
       "batchNumber": "Numéro de lot",
       "expiryDate": "Date d'expiration",
-      "submit": "Réceptionner"
+      "submit": "Réceptionner",
+      "saveDraft": "Enregistrer brouillon",
+      "saveAndPost": "Enregistrer et valider"
     },
     "receiptStatus": {
       "not_received": "Non réceptionné",

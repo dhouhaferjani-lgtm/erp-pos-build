@@ -20,7 +20,7 @@ final class GoodsReceiptData extends Data
         public string $tenant_id,
         public string $company_id,
         public string $purchase_order_id,
-        public string $receipt_number,
+        public ?string $receipt_number,
         public string $status,
         public string $received_at,
         public ?string $received_by,
