@@ -1,0 +1,28 @@
+# Factory board task template — schema source: board.mjs (spec §1).
+# Required keys (values here are defaults `board.mjs new` overrides via flags):
+id: T-0000            # assigned by board.mjs new — never set by hand
+title: Task title
+type: chore           # bug | feature | chore | sweep | decision
+track: vps            # vps | laptop | mobile
+status: backlog       # backlog | ready | claimed | in-progress | ready-for-review
+                      # | merged | blocked | changes-requested
+priority: P2          # P0 | P1 | P2 | P3
+# Optional keys (uncomment / set via flags as needed):
+# claimed_by:         # set by board.mjs claim — never set by hand
+#   host: vps
+#   session: session-id
+#   at: 2026-07-05T00:00:00.000Z
+# branch: feat/x      # set by board.mjs claim
+# pr: https://github.com/otospexsolutions/erp/pull/123
+# spec: docs/superpowers/specs/...
+# plan: docs/superpowers/plans/...
+# reviewers:
+#   - fiscal-pos-reviewer
+# done_criteria: what "done" looks like, one line
+# depends_on:
+#   - T-0001          # every id must exist on the board; claim requires status merged
+# blocked_on_owner: what decision/input the owner owes (decision tasks)
+# log:                # appended by the CLI; free-form audit trail
+#   - at: 2026-07-05T00:00:00.000Z
+#     host: laptop
+#     note: claimed
