@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Factory board CLI — the ONLY writer of ../erp.board task YAML.
-// Commands: list | new | claim | update | render | reset-stale
-// (sweep arrives in a later task)
+// Commands: list | new | claim | update | render | reset-stale | sweep
 //
 // Concurrency model (plan A1): the board worktree is CLI-only-written and
 // every mutation is commit+push immediately, so recovery is always
@@ -268,6 +267,121 @@ export function resetStale(dir, { hours = 12, host = 'unknown' } = {}, retriesLe
   return { ok: true, reset }
 }
 
+// -------------------------------------------------------------------- sweep
+
+const SWEEP_APPS = ['web', 'pos']
+
+/** Code-repo root (the manifests live on dev, NOT the board — plan Task 8). */
+function codeRepoRoot() {
+  return resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+}
+
+/**
+ * One pending sweep row per manifest route — and, for POS, per phase_screens
+ * entry (A3). Phase screens without a URL get `screen:<name>` as their path.
+ * @param {Record<string, {routes: Array<{path: string}>, phase_screens?: Array<{screen: string, route: string|null}>}>} manifests
+ * @param {string[]} apps
+ */
+export function sweepRows(manifests, apps) {
+  const rows = []
+  for (const app of apps) {
+    const m = manifests[app]
+    for (const r of m.routes ?? []) {
+      rows.push({ path: r.path, app, status: 'pending', notes: null })
+    }
+    for (const s of m.phase_screens ?? []) {
+      rows.push({ path: s.route ?? `screen:${s.screen}`, app, status: 'pending', notes: null })
+    }
+  }
+  return rows
+}
+
+/** Count a sweep file's row statuses: {pending, done, na}. */
+export function sweepStatus(file) {
+  const doc = yamlLoad(readFileSync(file, 'utf8'))
+  const counts = { pending: 0, done: 0, na: 0 }
+  for (const r of doc.routes ?? []) {
+    if (r.status === 'pending') counts.pending += 1
+    else if (r.status === 'done') counts.done += 1
+    else if (r.status === 'n-a') counts.na += 1
+  }
+  return counts
+}
+
+/**
+ * Create sweeps/<date>-<slug>.yaml (one row per manifest route + POS phase
+ * screen) AND a `type: sweep` board task referencing it (spec §4), in a
+ * single commit, pushed. Manifests are read from the CODE repo
+ * (scripts/factory/manifests/), not the board.
+ */
+export function newSweep(dir, description, {
+  apps = ['web'], priority = 'P2', track = 'vps', date, manifestsDir, manifestCommit, host = 'cli',
+} = {}, retriesLeft = 1) {
+  const branch = boardBranch()
+  for (const app of apps) {
+    if (!SWEEP_APPS.includes(app)) return { ok: false, reason: `unknown app: ${app}` }
+  }
+  const mDir = manifestsDir ?? join(codeRepoRoot(), 'scripts', 'factory', 'manifests')
+  const manifests = {}
+  for (const app of apps) {
+    const mFile = join(mDir, `routes-${app}.yaml`)
+    if (!existsSync(mFile)) return { ok: false, reason: `manifest missing: ${mFile}` }
+    manifests[app] = yamlLoad(readFileSync(mFile, 'utf8'))
+  }
+  const commit = manifestCommit
+    ?? git(codeRepoRoot(), 'rev-parse', 'HEAD').trim()
+  const day = date ?? new Date().toISOString().slice(0, 10)
+
+  if (!skipSync()) syncBoard(dir)
+  const sweepsDir = join(dir, 'sweeps')
+  if (!existsSync(sweepsDir)) mkdirSync(sweepsDir, { recursive: true })
+  const sweepName = `${day}-${slugify(description)}.yaml`
+  const sweepFile = join(sweepsDir, sweepName)
+  if (existsSync(sweepFile)) return { ok: false, reason: `sweep exists: sweeps/${sweepName}` }
+  const sweepDoc = {
+    description,
+    created: day,
+    manifest_commit: commit,
+    routes: sweepRows(manifests, apps),
+  }
+
+  const tasksDir = join(dir, 'tasks')
+  if (!existsSync(tasksDir)) mkdirSync(tasksDir, { recursive: true })
+  const task = {
+    ...loadTemplate(),
+    id: nextId(tasksDir),
+    title: `Sweep: ${description}`,
+    type: 'sweep',
+    track,
+    status: 'ready',
+    priority,
+    spec: `sweeps/${sweepName}`,
+    done_criteria: `zero rows pending in sweeps/${sweepName}`,
+    log: [{ at: now(), host, note: `sweep created (${sweepDoc.routes.length} rows)` }],
+  }
+  const errs = validateTask(task)
+  if (errs.length) return { ok: false, reason: errs.join('; ') }
+  const taskFile = join(tasksDir, `${task.id}-${slugify(task.title)}.yaml`)
+
+  writeFileSync(sweepFile, yamlDump(sweepDoc, { lineWidth: 100 }))
+  writeTaskFile(taskFile, task)
+  git(dir, 'add', sweepFile, taskFile)
+  git(dir, 'commit', '-m', `board: new sweep ${sweepName} + ${task.id}`)
+  try {
+    git(dir, 'push', 'origin', branch)
+  } catch {
+    git(dir, 'fetch', 'origin', branch)
+    git(dir, 'reset', '--hard', `origin/${branch}`)
+    if (retriesLeft > 0) {
+      return newSweep(dir, description,
+        { apps, priority, track, date: day, manifestsDir, manifestCommit: commit, host },
+        retriesLeft - 1)
+    }
+    return { ok: false, reason: 'lost-race' }
+  }
+  return { ok: true, id: task.id, sweepFile, taskFile }
+}
+
 // ------------------------------------------------------------------- render
 
 const STATUS_ORDER = ['in-progress', 'claimed', 'ready-for-review', 'changes-requested',
@@ -444,6 +558,51 @@ function cmdResetStale(args) {
   console.log(r.reset.length ? `reset: ${r.reset.join(' ')}` : 'nothing stale')
 }
 
+function cmdSweep(args) {
+  const [sub, ...rest] = args
+  if (sub === 'status') {
+    const file = rest[0]
+    if (!file) {
+      console.error('usage: board.mjs sweep status <sweep-file.yaml>')
+      process.exit(1)
+    }
+    const target = existsSync(file) ? file : join(boardDir(), file)
+    const c = sweepStatus(target)
+    console.log(`pending: ${c.pending}  done: ${c.done}  n-a: ${c.na}`)
+    return
+  }
+  if (sub !== 'new') {
+    console.error('usage: board.mjs sweep <new|status> ...')
+    process.exit(1)
+  }
+  const { values, positionals } = parseArgs({
+    args: rest,
+    allowPositionals: true,
+    options: {
+      apps: { type: 'string' }, priority: { type: 'string' }, track: { type: 'string' },
+      date: { type: 'string' }, host: { type: 'string' },
+    },
+  })
+  const description = positionals[0]
+  if (!description || !values.apps) {
+    console.error('usage: board.mjs sweep new "<description>" --apps web,pos [--priority P2] [--track vps] [--date YYYY-MM-DD]')
+    process.exit(1)
+  }
+  const r = newSweep(boardDir(), description, {
+    apps: listFlag(values.apps),
+    priority: values.priority ?? 'P2',
+    track: values.track ?? 'vps',
+    date: values.date,
+    host: values.host ?? 'cli',
+  })
+  if (!r.ok) {
+    console.error(`sweep new: ${r.reason}`)
+    process.exit(1)
+  }
+  console.log(`${r.id} created: ${r.taskFile}`)
+  console.log(`sweep file: ${r.sweepFile}`)
+}
+
 const isMain = process.argv[1] !== undefined
   && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 
@@ -452,10 +611,11 @@ if (isMain) {
   const commands = {
     list: cmdList, new: cmdNew, claim: cmdClaim,
     update: cmdUpdate, render: cmdRender, 'reset-stale': cmdResetStale,
+    sweep: cmdSweep,
   }
   const fn = commands[cmd]
   if (!fn) {
-    console.error('usage: board.mjs <list|new|claim|update|render|reset-stale> [options]')
+    console.error('usage: board.mjs <list|new|claim|update|render|reset-stale|sweep> [options]')
     process.exit(1)
   }
   fn(rest)

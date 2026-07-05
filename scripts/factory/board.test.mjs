@@ -3,7 +3,7 @@
 // Uses temp git fixtures (bare origin + clones) — no network, no real board.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,7 +14,9 @@ process.env.NODE_ENV = 'test'
 
 const {
   validateTask, nextId, loadTasks, syncBoard, claimTask, updateTask, resetStale, newTask,
+  sweepRows, newSweep, sweepStatus,
 } = await import('./board.mjs')
+const { load: yamlLoad } = await import('js-yaml')
 
 const VALID = {
   id: 'T-0001', title: 'x', type: 'bug', track: 'vps',
@@ -297,4 +299,102 @@ test('newTask refuses an unknown depends_on id (A9)', () => {
   })
   assert.deepEqual(r, { ok: false, reason: 'unknown-dep:T-0099' })
   assert.equal(readdirSync(join(A, 'tasks')).filter((f) => f.endsWith('.yaml')).length, 1)
+})
+
+// --------------------------------------------------------------- Task 10 ---
+
+const WEB_MANIFEST = {
+  app: 'web',
+  routes: [
+    { path: '/a', component: 'A', module_gate: null, permission: null },
+    { path: '/b', component: 'B', module_gate: 'sales', permission: null },
+  ],
+}
+const POS_MANIFEST = {
+  app: 'pos',
+  routes: [
+    { path: '/', component: 'HomePage', module_gate: null, permission: null },
+  ],
+  phase_screens: [
+    { screen: 'pin-entry', route: null },
+    { screen: 'theme-preview', route: '/theme-preview' },
+  ],
+}
+
+test('sweepRows emits one pending row per route AND per POS phase screen (A3)', () => {
+  const rows = sweepRows({ web: WEB_MANIFEST, pos: POS_MANIFEST }, ['web', 'pos'])
+  assert.equal(rows.length, 5) // 2 web + 1 pos route + 2 pos phase screens
+  assert.ok(rows.every((r) => r.status === 'pending' && r.notes === null))
+  assert.deepEqual(rows.filter((r) => r.app === 'web').map((r) => r.path), ['/a', '/b'])
+  const posPaths = rows.filter((r) => r.app === 'pos').map((r) => r.path)
+  assert.deepEqual(posPaths, ['/', 'screen:pin-entry', '/theme-preview'])
+})
+
+test('sweepRows respects the apps filter', () => {
+  const rows = sweepRows({ web: WEB_MANIFEST, pos: POS_MANIFEST }, ['web'])
+  assert.equal(rows.length, 2)
+  assert.ok(rows.every((r) => r.app === 'web'))
+})
+
+function manifestsFixture() {
+  const d = mkdtempSync(join(tmpdir(), 'manifests-'))
+  writeFileSync(join(d, 'routes-web.yaml'),
+    'app: web\nroutes:\n  - path: /a\n    component: A\n    module_gate: null\n    permission: null\n')
+  writeFileSync(join(d, 'routes-pos.yaml'), [
+    'app: pos', 'routes:',
+    '  - path: /', '    component: HomePage', '    module_gate: null', '    permission: null',
+    'phase_screens:', '  - screen: pin-entry', '    route: null', '',
+  ].join('\n'))
+  return d
+}
+
+test('newSweep writes the sweep file + a sweep task, commits and pushes', () => {
+  const { A } = fixture()
+  const manifestsDir = manifestsFixture()
+  const r = newSweep(A, 'design-token audit', {
+    apps: ['web', 'pos'], date: '2026-07-05', manifestsDir, manifestCommit: 'deadbeef',
+  })
+  assert.equal(r.ok, true)
+  assert.equal(r.id, 'T-0002')
+  // sweep file
+  const sweepFile = join(A, 'sweeps', '2026-07-05-design-token-audit.yaml')
+  assert.ok(existsSync(sweepFile))
+  const yaml = yamlLoad(readFileSync(sweepFile, 'utf8'))
+  assert.equal(yaml.description, 'design-token audit')
+  assert.equal(yaml.created, '2026-07-05')
+  assert.equal(yaml.manifest_commit, 'deadbeef')
+  assert.equal(yaml.routes.length, 3) // 1 web route + 1 pos route + 1 phase screen
+  assert.ok(yaml.routes.every((row) => row.status === 'pending'))
+  // task file
+  const { tasks } = loadTasks(join(A, 'tasks'))
+  const task = tasks.find((t) => t.id === 'T-0002')
+  assert.equal(task.type, 'sweep')
+  assert.equal(task.status, 'ready')
+  assert.equal(task.spec, 'sweeps/2026-07-05-design-token-audit.yaml')
+  assert.equal(task.depends_on, undefined) // no deps
+  // committed + pushed, clean worktree
+  assert.equal(gitf(A, 'status', '--porcelain').trim(), '')
+  assert.equal(gitf(A, 'log', 'origin/master..HEAD', '--oneline').trim(), '')
+})
+
+test('newSweep rejects an unknown app', () => {
+  const { A } = fixture()
+  const manifestsDir = manifestsFixture()
+  const r = newSweep(A, 'x', { apps: ['web', 'nope'], date: '2026-07-05', manifestsDir })
+  assert.equal(r.ok, false)
+  assert.match(r.reason, /unknown app/)
+})
+
+test('sweepStatus counts pending/done/na rows', () => {
+  const d = mkdtempSync(join(tmpdir(), 'sweep-'))
+  const f = join(d, 's.yaml')
+  writeFileSync(f, [
+    'description: x', 'created: 2026-07-05', 'manifest_commit: abc',
+    'routes:',
+    '  - {path: /a, app: web, status: pending, notes: null}',
+    '  - {path: /b, app: web, status: done, notes: ok}',
+    '  - {path: /c, app: web, status: n-a, notes: dynamic}',
+    '  - {path: /d, app: web, status: done, notes: null}', '',
+  ].join('\n'))
+  assert.deepEqual(sweepStatus(f), { pending: 1, done: 2, na: 1 })
 })
