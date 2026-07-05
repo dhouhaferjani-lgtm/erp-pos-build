@@ -216,6 +216,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:purchase-orders.view')
         ->name('purchase-orders.show');
 
+    Route::get('/purchase-orders/{purchaseOrder}/receipt-lines', [PurchaseOrderController::class, 'receiptLines'])
+        ->middleware('can:documents.view')
+        ->whereUuid('purchaseOrder')
+        ->name('purchase-orders.receipt-lines');
+
     Route::post('/purchase-orders', [PurchaseOrderController::class, 'store'])
         ->middleware('can:purchase-orders.create')
         ->name('purchase-orders.store');

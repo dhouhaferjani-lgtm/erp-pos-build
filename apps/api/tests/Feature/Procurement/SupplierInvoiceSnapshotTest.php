@@ -122,6 +122,36 @@ final class SupplierInvoiceSnapshotTest extends TestCase
         $this->assertSame(SupplierInvoiceMatchStatus::Matched, $invoice->fresh()->match_status);
     }
 
+    public function test_creation_plans_snapshots_sequentially_for_multiple_payload_lines_on_same_po_line(): void
+    {
+        $poLine = $this->createPoLine(['quantity' => '15.0000', 'quantity_received' => '15.0000']);
+        [$firstReceiptLine, $secondReceiptLine] = $this->createReceiptLines($poLine, [
+            ['qty' => '10.0000', 'basis' => '12.500000'],
+            ['qty' => '5.0000', 'basis' => '12.800000'],
+        ]);
+
+        $payload = $this->supplierInvoicePayload($poLine, '10.0000', '12.500');
+        $payload['lines'][] = [
+            'source_line_id' => $poLine->id,
+            'quantity' => '5.0000',
+            'unit_price' => '12.800',
+            'vat_rate' => '19.00',
+        ];
+
+        $invoice = app(CreateSupplierInvoiceService::class)->create(
+            $payload,
+            $this->tenant->id,
+            $this->company->id,
+        );
+
+        $lines = $invoice->fresh('lines')->lines->sortBy('line_number')->values();
+        $this->assertSame('12.500000', $lines[0]->price_match_basis);
+        $this->assertSame($firstReceiptLine->id, $lines[0]->matched_receipt_line_id);
+        $this->assertSame('12.800000', $lines[1]->price_match_basis);
+        $this->assertSame($secondReceiptLine->id, $lines[1]->matched_receipt_line_id);
+        $this->assertSame(SupplierInvoiceMatchStatus::Matched, $invoice->fresh()->match_status);
+    }
+
     public function test_creation_skips_price_snapshot_for_bonus_lines(): void
     {
         $poLine = $this->createPoLine([

@@ -14,13 +14,15 @@ final class ReceiptLineConsumptionPlanner
      *
      * @return list<array{receipt_line_id: string, qty: numeric-string, basis: numeric-string}>
      */
-    public function plan(string $poLineId, string $qtyToConsume): array
+    public function plan(string $poLineId, string $qtyToConsume, string $qtyAlreadyPlanned = '0.0000'): array
     {
         /** @var numeric-string $remaining */
         $remaining = CurrencyScale::bcformatStrict($qtyToConsume, 4);
         if (bccomp($remaining, '0', 4) <= 0) {
             return [];
         }
+        /** @var numeric-string $skip */
+        $skip = CurrencyScale::bcformatStrict($qtyAlreadyPlanned, 4);
 
         $slices = [];
 
@@ -34,6 +36,19 @@ final class ReceiptLineConsumptionPlanner
             $matchable = $this->matchableQty($line);
             if (bccomp($matchable, '0', 4) <= 0) {
                 continue;
+            }
+
+            if (bccomp($skip, '0', 4) > 0) {
+                if (bccomp($skip, $matchable, 4) >= 0) {
+                    /** @var numeric-string $skip */
+                    $skip = bcsub($skip, $matchable, 4);
+
+                    continue;
+                }
+
+                /** @var numeric-string $matchable */
+                $matchable = bcsub($matchable, $skip, 4);
+                $skip = '0.0000';
             }
 
             /** @var numeric-string $qty */

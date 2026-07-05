@@ -15,7 +15,9 @@ import {
   Send,
   Lock,
   MoreVertical,
+  ReceiptText,
 } from 'lucide-react'
+import { tokens } from '../../../lib/designTokens'
 import type { Document } from '../../../types/document'
 
 export interface DocumentActionBarProps {
@@ -28,6 +30,7 @@ export interface DocumentActionBarProps {
   onConvert?: (() => void) | undefined
   onConvertToDelivery?: (() => void) | undefined
   onReceiveGoods?: (() => void) | undefined
+  onCreateSupplierInvoice?: (() => void) | undefined
   onRecordPayment?: (() => void) | undefined
   onCreateCreditNote?: (() => void) | undefined
   onCreateReturnNote?: (() => void) | undefined
@@ -40,6 +43,7 @@ export interface DocumentActionBarProps {
   isPreviewing?: boolean | undefined
   isPrinting?: boolean | undefined
   isSendingEmail?: boolean | undefined
+  canCreateSupplierInvoice?: boolean | undefined
 }
 
 export function DocumentActionBar({
@@ -51,6 +55,7 @@ export function DocumentActionBar({
   onConvert,
   onConvertToDelivery,
   onReceiveGoods,
+  onCreateSupplierInvoice,
   onRecordPayment,
   onCreateCreditNote,
   onCreateReturnNote,
@@ -62,8 +67,9 @@ export function DocumentActionBar({
   isPreviewing = false,
   isPrinting = false,
   isSendingEmail = false,
+  canCreateSupplierInvoice: hasUninvoicedReceiptLines = false,
 }: DocumentActionBarProps) {
-  const { t } = useTranslation(['sales', 'common'])
+  const { t } = useTranslation(['sales', 'common', 'purchases'])
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -109,6 +115,11 @@ export function DocumentActionBar({
     document.type === 'purchase_order' &&
     document.status === 'confirmed' &&
     !document.goods_received
+
+  const canShowCreateSupplierInvoice =
+    document.type === 'purchase_order' &&
+    ['confirmed', 'received'].includes(document.status) &&
+    onCreateSupplierInvoice !== undefined
 
   const canRecordPayment =
     (document.type === 'invoice' && ['confirmed', 'posted'].includes(document.status) && document.payment_status !== 'paid') ||
@@ -196,6 +207,19 @@ export function DocumentActionBar({
         >
           <Package className="h-4 w-4" />
           {t('purchaseOrders.receiveGoods')}
+        </button>
+      )}
+
+      {canShowCreateSupplierInvoice && (
+        <button
+          type="button"
+          disabled={isActionPending || !hasUninvoicedReceiptLines}
+          onClick={onCreateSupplierInvoice}
+          title={!hasUninvoicedReceiptLines ? t('purchases:supplierInvoices.create.noReceiptLines') : undefined}
+          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
+        >
+          <ReceiptText className="h-4 w-4" />
+          {t('purchases:supplierInvoices.actions.createFromPurchaseOrder')}
         </button>
       )}
 

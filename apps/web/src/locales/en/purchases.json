@@ -57,6 +57,7 @@
       "subtotal": "Subtotal"
     },
     "actions": {
+      "createFromPurchaseOrder": "Create supplier invoice",
       "post": "Post Invoice",
       "postDisabled": "Cannot post: {{reason}}",
       "postBlocked": "Posting blocked: quantity over-invoice vs received",
@@ -90,6 +91,45 @@
       "paymentRecorded": "Payment recorded successfully",
       "attachmentUploaded": "Attachment uploaded",
       "attachmentDeleted": "Attachment deleted"
+    },
+    "create": {
+      "title": "New Supplier Invoice",
+      "description": "Create a draft invoice from uninvoiced receipt lines.",
+      "supplier": "Supplier",
+      "supplierPlaceholder": "Search supplier",
+      "purchaseOrder": "Purchase order",
+      "purchaseOrderPlaceholder": "Select a received purchase order",
+      "issueDate": "Invoice date",
+      "dueDate": "Due date",
+      "supplierReference": "Supplier reference",
+      "notes": "Notes",
+      "linesTitle": "Receipt lines",
+      "saveDraft": "Save draft",
+      "pickSupplierAndPo": "Pick a supplier and purchase order to load receipt lines.",
+      "noReceiptLines": "No uninvoiced receipt lines",
+      "duplicateWarning": "Reference already used on {{number}}",
+      "attachments": "Attachments",
+      "attachmentCount": "{{count}} selected",
+      "attachmentsUploaded": "{{count}} attachment(s) uploaded to this draft",
+      "attachmentUploadFailed": "Invoice created, attachment failed — retry from the invoice detail.",
+      "invoiceReceipts": "Invoice receipts",
+      "multiPoBlocked": "Multi-PO invoicing arrives with the final wave.",
+      "singlePoOnlyTooltip": "Select receipt rows from one purchase order; this draft is created at purchase-order level.",
+      "selectReceiptPo": "Select receipts from {{number}}",
+      "columns": {
+        "product": "Product",
+        "received": "Received",
+        "invoiced": "Already invoiced",
+        "quantity": "To invoice",
+        "unitPrice": "Unit price",
+        "vatRate": "VAT",
+        "match": "Match"
+      },
+      "match": {
+        "matched": "Matched",
+        "priceVariance": "Price variance",
+        "quantityVariance": "Quantity variance"
+      }
     }
   },
   "quoteRequests": {

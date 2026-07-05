@@ -78,7 +78,7 @@ function setTenant(tenantId: string, companyId: string) {
       name: 'Test User',
       email: 'test@example.com',
       tenant_id: tenantId,
-      roles: [],
+      roles: ['admin'],
       email_verified_at: null,
     },
     token: 'test-token',
@@ -283,6 +283,37 @@ describe('GoodsReceiptListPage tenant scope', () => {
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('Goods receipt: GRN-2026-0032')
     })
+  })
+
+  it('blocks invoice creation when received purchase-order selection spans multiple POs', async () => {
+    const receivedPoA = {
+      ...fullyReceivedPurchaseOrder,
+      id: 'po-received-a',
+      document_number: 'PO-RECEIVED-A',
+    }
+    const receivedPoB = {
+      ...fullyReceivedPurchaseOrder,
+      id: 'po-received-b',
+      document_number: 'PO-RECEIVED-B',
+    }
+    mockApiGet.mockImplementation(async (_url: string, options?: { params?: { status?: string } }) => {
+      if (options?.params?.status === 'received') {
+        return { data: { data: [receivedPoA, receivedPoB] } }
+      }
+      return { data: { data: [] } }
+    })
+
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'inventory:goodsReceipt.tabs.received' }))
+    const checkboxes = await screen.findAllByLabelText('purchases:supplierInvoices.create.selectReceiptPo')
+    await userEvent.click(checkboxes[0])
+    await userEvent.click(checkboxes[1])
+
+    const action = screen.getByTestId('invoice-receipts')
+    expect(action).toBeDisabled()
+    expect(action).toHaveAttribute('title', 'purchases:supplierInvoices.create.singlePoOnlyTooltip')
+    expect(screen.getByText('purchases:supplierInvoices.create.singlePoOnlyTooltip')).toBeInTheDocument()
   })
 
   it('refetches current-tenant purchase and stock caches and preserves tenant-B cache (.584-.585)', async () => {

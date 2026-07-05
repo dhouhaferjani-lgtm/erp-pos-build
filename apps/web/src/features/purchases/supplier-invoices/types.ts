@@ -141,6 +141,7 @@ export interface CreateSupplierInvoicePayload {
   issue_date: string
   due_date?: string
   supplier_reference?: string
+  notes?: string
   lines: CreateSupplierInvoiceLinePayload[]
 }
 
@@ -160,6 +161,52 @@ export interface RecordPaymentPayload {
   payment_method_id: string
   payment_date: string
   reference?: string
+}
+
+// ── Create prefill reads ──────────────────────────────────────────────────
+
+export interface PurchaseOrderReceiptLine {
+  id: string
+  receipt_number: string
+  product_id: string
+  variant_id: string | null
+  received_qty: string
+  free_qty: string
+  quantity_invoiced: string
+  free_quantity_invoiced: string
+  accrual_unit_cost: string
+  received_unit_price: string | null
+  po_line_id: string
+}
+
+export interface PurchaseOrderInvoiceLine {
+  id: string
+  description: string
+  product_id: string | null
+  product_name: string | null
+  unit_price: string
+  tax_rate: string | null
+}
+
+export interface PurchaseOrderForSupplierInvoice {
+  id: string
+  document_number: string
+  partner_id: string
+  partner_name: string
+  currency: string
+  lines: PurchaseOrderInvoiceLine[]
+}
+
+export interface OpenPurchaseOrderForSupplierInvoice {
+  id: string
+  document_number: string
+  currency: string
+  total: string
+}
+
+export interface DuplicateSupplierInvoiceReferenceResult {
+  exists: boolean
+  invoice_number?: string
 }
 
 // ── List filter params ─────────────────────────────────────────────────────

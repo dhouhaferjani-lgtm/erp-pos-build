@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   FileText,
+  Plus,
   AlertCircle,
   CheckCircle2,
   XCircle,
@@ -125,6 +126,13 @@ export function SupplierInvoiceListPage() {
             {t('purchases:supplierInvoices.description')}
           </p>
         </div>
+        <Link
+          to="/purchases/supplier-invoices/new"
+          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+        >
+          <Plus className="me-2 h-4 w-4" />
+          {t('purchases:supplierInvoices.new')}
+        </Link>
       </div>
 
       {/* Filters */}

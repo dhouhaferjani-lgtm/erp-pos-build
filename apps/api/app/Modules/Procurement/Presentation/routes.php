@@ -72,9 +72,15 @@ Route::prefix('api/v1')->middleware([
         ->middleware('can:documents.view')
         ->name('supplier-invoices.index');
 
+    // Check duplicate supplier reference (can:documents.view)
+    Route::get('/supplier-invoices/duplicate-reference', [SupplierInvoiceController::class, 'duplicateReference'])
+        ->middleware('can:documents.view')
+        ->name('supplier-invoices.duplicate-reference');
+
     // Show single supplier invoice (can:documents.view)
     Route::get('/supplier-invoices/{id}', [SupplierInvoiceController::class, 'show'])
         ->middleware('can:documents.view')
+        ->whereUuid('id')
         ->name('supplier-invoices.show');
 
     // Create supplier invoice + auto-match (can:documents.update)
@@ -85,10 +91,12 @@ Route::prefix('api/v1')->middleware([
     // Re-run matcher (can:documents.update)
     Route::post('/supplier-invoices/{id}/match', [SupplierInvoiceController::class, 'match'])
         ->middleware('can:documents.update')
+        ->whereUuid('id')
         ->name('supplier-invoices.match');
 
     // Post supplier invoice (can:documents.update)
     Route::post('/supplier-invoices/{id}/post', [SupplierInvoiceController::class, 'post'])
         ->middleware('can:documents.update')
+        ->whereUuid('id')
         ->name('supplier-invoices.post');
 });
