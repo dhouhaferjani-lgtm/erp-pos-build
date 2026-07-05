@@ -1,0 +1,42 @@
+VERDICT: DO-NOT-SHIP - B1 is still open because the payment guard accepts any matching supplier_invoice journal header, not a posted Cr-401 journal entry.
+
+## Findings
+
+### BLOCKER
+
+1. `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:238` - The B1 guard only checks that a `journal_entries` row exists for `(source_type='supplier_invoice', source_id, company_id)`; it does not require `journal_entries.status = posted`, and it does not verify a supplier-payable 401 credit line exists. Impact: a Posted supplier invoice with an orphan/draft/malformed supplier_invoice JE header still passes the guard, then the transaction creates the payment, allocation, cash decrement, and supplier-payment Dr-401 JE at `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:341`, `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:459`, `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:519`, and `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:555`. Partner AP balance calculations count only posted entries (`apps/api/app/Modules/Accounting/Application/Services/PartnerBalanceService.php:46`), so this can recreate the negative-payable class the blocker was meant to close. Fix: replace the `exists()` predicate with a posted, line-backed predicate: `JournalEntry` status `JournalEntryStatus::Posted`, same company/source, and `whereHas('lines')` for the company supplier-payable account with `partner_id = $document->partner_id` and `credit > 0` (ideally `credit == rounded invoice total` or at least positive). Add a regression test for a Posted invoice with a draft/malformed supplier_invoice JE header and no posted Cr-401 line.
+
+### HIGH
+
+None.
+
+### MEDIUM
+
+None.
+
+### LOW
+
+None.
+
+## Blocker Status
+
+- B1: OPEN. The status guard is before side effects and rejects Draft invoices, but the "real posted Cr-401" half of the requirement is not enforced. The guard sits before the write transaction (`apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:218`, `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:225`, `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:238`, `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:341`) and is company-scoped (`apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:238`), so the no-side-effect Draft/no-JE rejection path is correctly positioned. However, the existing-JE check is weaker than the stated fix and can be satisfied without a posted payable credit.
+- B3: CLOSED. The immutable receipt basis is persisted on first receipt from the exact string sent to the GR-IR event (`apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php:157`, `apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php:180`, `apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php:187`, `apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php:218`), stored as `decimal(15,6)` with a `decimal:6` cast (`apps/api/database/migrations/tenant/2026_06_27_100000_add_accrual_unit_cost_to_document_lines.php:21`, `apps/api/app/Modules/Document/Domain/DocumentLine.php:138`), and compared under the PO-line lock at scale 6 before any clearing JE is created (`apps/api/app/Modules/Procurement/Application/SupplierInvoicePostingService.php:70`, `apps/api/app/Modules/Procurement/Application/SupplierInvoicePostingService.php:132`, `apps/api/app/Modules/Procurement/Application/SupplierInvoicePostingService.php:139`, `apps/api/app/Modules/Procurement/Application/SupplierInvoicePostingService.php:197`). A mismatch throws inside the transaction before GL/status writes, and the added test asserts no JE, unchanged Draft status, unchanged invoiced quantity, and unchanged 408 balance (`apps/api/tests/Feature/Accounting/SupplierInvoiceGlTest.php:841`, `apps/api/tests/Feature/Accounting/SupplierInvoiceGlTest.php:846`, `apps/api/tests/Feature/Accounting/SupplierInvoiceGlTest.php:848`, `apps/api/tests/Feature/Accounting/SupplierInvoiceGlTest.php:849`, `apps/api/tests/Feature/Accounting/SupplierInvoiceGlTest.php:852`).
+
+## Verification Notes
+
+- B1 no-side-effect placement: observed. All payment writes are inside the transaction starting at `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:341`; the new status/JE checks return before that at `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:225` and `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:238`.
+- B1 successful payment path: observed by test. `tests/Feature/Treasury/SupplierPaymentGuardTest.php::test_paying_posted_supplier_invoice_with_journal_entry_succeeds` passed and asserts 201 for a Posted invoice with a supplier_invoice JE (`apps/api/tests/Feature/Treasury/SupplierPaymentGuardTest.php:235`, `apps/api/tests/Feature/Treasury/SupplierPaymentGuardTest.php:285`).
+- B1 `balance_due`: observed. Posting sets `balance_due = total` in the same Draft-to-Posted save (`apps/api/app/Modules/Procurement/Application/SupplierInvoicePostingService.php:206`, `apps/api/app/Modules/Procurement/Application/SupplierInvoicePostingService.php:209`), and the payment branch reads `balance_due ?? total` before checking and later decrements the locked row (`apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:215`, `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:433`, `apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentController.php:466`). The focused test passed (`apps/api/tests/Feature/Treasury/SupplierPaymentGuardTest.php:294`, `apps/api/tests/Feature/Treasury/SupplierPaymentGuardTest.php:388`, `apps/api/tests/Feature/Treasury/SupplierPaymentGuardTest.php:393`).
+- B3 rounding/money: observed. The accrual-unit equality check uses `bccomp(..., 6)` against cost-scale values, while GL-feeding amounts are bcmath strings and rounded once at currency scale inside `GeneralLedgerService` (`apps/api/app/Modules/Procurement/Application/SupplierInvoicePostingService.php:140`, `apps/api/app/Modules/Procurement/Application/SupplierInvoicePostingService.php:153`, `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1202`, `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1204`). This is the right separation: cost-basis drift is detected at 6 dp; money legs round at the posting boundary.
+- B3 partial receipts: INFERRED sound for Phase-1 domestic if landed costs are not reallocated after first receipt. Only the first receipt sets `accrual_unit_cost` (`apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php:218`); if a later post-receipt landed-cost reallocation changes `landed_unit_cost`, posting throws rather than silently leaving 408 residue. That is fail-closed, but it means a legitimate mixed-basis partial receipt model is not represented by this single column.
+- Migration/backfill: observed. The migration is reversible and nullable (`apps/api/database/migrations/tenant/2026_06_27_100000_add_accrual_unit_cost_to_document_lines.php:21`, `apps/api/database/migrations/tenant/2026_06_27_100000_add_accrual_unit_cost_to_document_lines.php:27`); `RefreshDatabase` gets the column, and pre-B3 null rows skip the guard at `apps/api/app/Modules/Procurement/Application/SupplierInvoicePostingService.php:139`.
+- Previously reported failures: not reproduced here. `php artisan test tests/Feature/Procurement/SupplierInvoiceMatcherTest.php` passed 17 tests, and `php artisan test tests/Feature/Accounting/SupplierCreditNoteGlTest.php` passed 20 tests. Neither file is in `git diff --name-only b0d474cbc..84b4481d6`, so there is no evidence this commit introduced those failures.
+
+## Commands Run
+
+- `git diff --stat b0d474cbc..84b4481d6`
+- `git diff --find-renames --find-copies b0d474cbc..84b4481d6`
+- `cd apps/api && php artisan test tests/Feature/Treasury/SupplierPaymentGuardTest.php tests/Feature/Accounting/SupplierInvoiceGlTest.php --filter='paying_|balance_due|landed_cost_changed|accrual_unit_cost'`
+- `cd apps/api && php artisan test tests/Feature/Procurement/SupplierInvoiceMatcherTest.php`
+- `cd apps/api && php artisan test tests/Feature/Accounting/SupplierCreditNoteGlTest.php`
