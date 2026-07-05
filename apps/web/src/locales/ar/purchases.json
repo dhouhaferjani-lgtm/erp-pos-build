@@ -132,6 +132,26 @@
       }
     }
   },
+  "settings": {
+    "procurement": {
+      "entryPoints": {
+        "allowReceiptFirst": "السماح بالاستلام أولاً",
+        "allowReceiptFirstHelp": "يمكن للفرق استلام البضائع قبل تسجيل فاتورة المورد.",
+        "allowInvoiceFirst": "السماح بالفاتورة أولاً",
+        "allowInvoiceFirstHelp": "يمكن للفرق إنشاء فاتورة مورد معلقة قبل استلام البضائع.",
+        "invoiceFirstRequiresApproval": "طلب موافقة الفاتورة أولاً",
+        "invoiceFirstRequiresApprovalHelp": "يتطلب ترحيل فاتورة بنمط الفاتورة أولاً صلاحية الموافقة.",
+        "receiptFirst": {
+          "on": "الاستلام أولاً مفعل",
+          "off": "الاستلام أولاً غير مفعل"
+        },
+        "invoiceFirst": {
+          "on": "الفاتورة أولاً مفعلة",
+          "off": "الفاتورة أولاً غير مفعلة"
+        }
+      }
+    }
+  },
   "quoteRequests": {
     "title": "طلبات الأسعار",
     "description": "قارن ردود الموردين قبل إنشاء أمر شراء",

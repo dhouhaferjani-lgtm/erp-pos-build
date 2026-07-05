@@ -132,6 +132,26 @@
       }
     }
   },
+  "settings": {
+    "procurement": {
+      "entryPoints": {
+        "allowReceiptFirst": "Autoriser réception d'abord",
+        "allowReceiptFirstHelp": "Les équipes peuvent réceptionner les marchandises avant la facture fournisseur.",
+        "allowInvoiceFirst": "Autoriser facture d'abord",
+        "allowInvoiceFirstHelp": "Les équipes peuvent créer une facture fournisseur en attente avant réception.",
+        "invoiceFirstRequiresApproval": "Exiger l'approbation facture d'abord",
+        "invoiceFirstRequiresApprovalHelp": "La comptabilisation d'une facture d'abord exige la permission d'approbation.",
+        "receiptFirst": {
+          "on": "Réception d'abord active",
+          "off": "Réception d'abord inactive"
+        },
+        "invoiceFirst": {
+          "on": "Facture d'abord active",
+          "off": "Facture d'abord inactive"
+        }
+      }
+    }
+  },
   "quoteRequests": {
     "title": "Demandes de prix",
     "description": "Comparer les réponses fournisseurs avant de créer un bon de commande",

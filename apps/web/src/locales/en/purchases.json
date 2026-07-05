@@ -132,6 +132,26 @@
       }
     }
   },
+  "settings": {
+    "procurement": {
+      "entryPoints": {
+        "allowReceiptFirst": "Allow receipt-first",
+        "allowReceiptFirstHelp": "Teams can receive goods before a supplier invoice is recorded.",
+        "allowInvoiceFirst": "Allow invoice-first",
+        "allowInvoiceFirstHelp": "Teams can create a pending supplier invoice before goods are received.",
+        "invoiceFirstRequiresApproval": "Require invoice-first approval",
+        "invoiceFirstRequiresApprovalHelp": "Posting an invoice-first bill requires the approval permission.",
+        "receiptFirst": {
+          "on": "Receipt-first on",
+          "off": "Receipt-first off"
+        },
+        "invoiceFirst": {
+          "on": "Invoice-first on",
+          "off": "Invoice-first off"
+        }
+      }
+    }
+  },
   "quoteRequests": {
     "title": "Quote Requests",
     "description": "Compare supplier responses before creating a purchase order",
