@@ -12,7 +12,7 @@ import {
   Truck
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, apiPost } from '../../lib/api'
+import { api } from '../../lib/api'
 import { formatDate as formatLocaleDate } from '../../lib/format'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompany } from '../../hooks/useCompany'
@@ -65,6 +65,15 @@ interface ApiResponse {
 
 interface DetailApiResponse {
   data: PurchaseOrder
+}
+
+interface ReceiveGoodsResponse {
+  data: PurchaseOrder
+  meta?: {
+    goods_receipt?: {
+      receipt_number?: string | null
+    } | null
+  }
 }
 
 type TabType = 'pending' | 'received'
@@ -140,10 +149,15 @@ export function GoodsReceiptListPage() {
 
   // Receive goods mutation
   const receiveGoodsMutation = useMutation({
-    mutationFn: ({ poId, request }: { poId: string; request: ReceiveGoodsRequest }) =>
-      apiPost<{ message: string }>(`/purchase-orders/${poId}/receive`, request),
-    onSuccess: async () => {
-      toast.success(t('inventory:goodsReceipt.successMessage'))
+    mutationFn: async ({ poId, request }: { poId: string; request: ReceiveGoodsRequest }) => {
+      const response = await api.post<ReceiveGoodsResponse>(`/purchase-orders/${poId}/receive`, request)
+      return response.data
+    },
+    onSuccess: async (response) => {
+      const receiptNumber = response.meta?.goods_receipt?.receipt_number
+      toast.success(receiptNumber
+        ? t('inventory:goodsReceipt.successMessageWithReceipt', { receiptNumber })
+        : t('inventory:goodsReceipt.successMessage'))
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('purchase-orders', tenantId, companyId),

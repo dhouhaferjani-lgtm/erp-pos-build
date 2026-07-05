@@ -50,6 +50,15 @@ interface ReceiptStatusResponse {
   lines: ReceiptStatusLine[]
 }
 
+interface ReceiveGoodsResponse {
+  data: Document
+  meta?: {
+    goods_receipt?: {
+      receipt_number?: string | null
+    } | null
+  }
+}
+
 const receiptStatusColors: Record<ReceiptStatusValue, string> = {
   not_received: 'bg-gray-100 text-gray-800',
   partially_received: 'bg-yellow-100 text-yellow-800',
@@ -140,9 +149,11 @@ export function PurchaseOrderDetailPage() {
 
   // Receive goods mutation
   const receiveGoodsMutation = useMutation({
-    mutationFn: (request: ReceiveGoodsRequest) =>
-      apiPost<{ message: string }>(`/purchase-orders/${id}/receive`, request),
-    onSuccess: async () => {
+    mutationFn: async (request: ReceiveGoodsRequest) => {
+      const response = await api.post<ReceiveGoodsResponse>(`/purchase-orders/${id}/receive`, request)
+      return response.data
+    },
+    onSuccess: async (response) => {
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
@@ -154,7 +165,10 @@ export function PurchaseOrderDetailPage() {
         }),
       ])
       setShowReceiveDialog(false)
-      toast.success(t('documents.messages.goodsReceived'))
+      const receiptNumber = response.meta?.goods_receipt?.receipt_number
+      toast.success(receiptNumber
+        ? t('documents.messages.goodsReceivedWithReceipt', { receiptNumber })
+        : t('documents.messages.goodsReceived'))
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))

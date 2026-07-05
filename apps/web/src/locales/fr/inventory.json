@@ -56,7 +56,8 @@
     "emptyReceived": "Aucune commande réceptionnée",
     "receiveAll": "Tout réceptionner",
     "progress": "{{received}} sur {{total}} articles reçus",
-    "successMessage": "Marchandises réceptionnées avec succès"
+    "successMessage": "Marchandises réceptionnées avec succès",
+    "successMessageWithReceipt": "Marchandises réceptionnées avec succès sous {{receiptNumber}}"
   },
   "products": {
     "title": "Produits",
