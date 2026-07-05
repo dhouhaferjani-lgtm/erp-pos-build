@@ -11,6 +11,9 @@ importers:
       js-yaml:
         specifier: ^5.2.1
         version: 5.2.1
+      playwright-core:
+        specifier: ^1.61.1
+        version: 1.61.1
 
   apps/api:
     devDependencies:
@@ -2373,6 +2376,11 @@ packages:
 
   playwright-core@1.57.0:
     resolution: {integrity: sha512-agTcKlMw/mjBWOnD6kFZttAAGHgi/Nw0CZ2o6JqWSbMlI219lAFLZZCyqByTsvVAJq5XA5H8cA6PrvBRpBWEuQ==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  playwright-core@1.61.1:
+    resolution: {integrity: sha512-h7Qlt6m4REp25qvIdvbDtVmD4LqVXfpRxhORv9L0jzETM05p4fuPJ3dKyuSXQxDSbXnmS79HAgi9589lGSpLkg==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -4860,6 +4868,8 @@ snapshots:
   picomatch@4.0.4: {}
 
   playwright-core@1.57.0: {}
+
+  playwright-core@1.61.1: {}
 
   playwright@1.57.0:
     dependencies:
