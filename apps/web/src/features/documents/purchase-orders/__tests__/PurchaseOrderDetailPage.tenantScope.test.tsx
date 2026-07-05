@@ -15,6 +15,7 @@ const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
 const mockAxiosPost = vi.hoisted(() => vi.fn())
 const mockRouteId = vi.hoisted(() => ({ current: 'po-1' }))
+const mockNavigate = vi.hoisted(() => vi.fn())
 const mockTranslate = vi.hoisted(() => vi.fn((key: string, options?: Record<string, string>) => {
   if (key === 'purchaseOrders.receivedOfTotal') {
     return `${options?.['received'] ?? '?'} of ${options?.['total'] ?? '?'}`
@@ -42,6 +43,7 @@ vi.mock('react-router-dom', async () => {
     ...actual,
     Link: ({ children }: { children: ReactNode }) => <a href="/test">{children}</a>,
     useParams: () => ({ id: mockRouteId.current }),
+    useNavigate: () => mockNavigate,
   }
 })
 

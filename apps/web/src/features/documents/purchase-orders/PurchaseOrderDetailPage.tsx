@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -24,9 +24,11 @@ import { ProductCell } from '../../../components/molecules/line-items'
 import { tokens } from '../../../lib/designTokens'
 import { entityRoutes } from '../../../lib/entityRoutes'
 import { useCompany } from '../../../hooks/useCompany'
+import { usePermissions } from '../../../hooks/usePermissions'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from '@/features/purchases/components/ReceiveGoodsDialog'
+import { usePurchaseOrderReceiptLines } from '@/features/purchases/supplier-invoices/api'
 import type { Document } from '../../../types/document'
 
 type ConfirmAction = 'confirm' | null
@@ -88,6 +90,8 @@ function scopedNamespacePredicate(
 export function PurchaseOrderDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { id = '' } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const { hasPermission } = usePermissions()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
@@ -123,6 +127,9 @@ export function PurchaseOrderDetailPage() {
     },
     enabled: id.length > 0 && tenantId !== null && companyId !== null,
   })
+
+  const { data: uninvoicedReceiptLines } = usePurchaseOrderReceiptLines(id, id.length > 0)
+  const canCreateSupplierInvoice = hasPermission('purchases.create') && (uninvoicedReceiptLines?.length ?? 0) > 0
 
   // PDF mutations
   const downloadPdfMutation = useDownloadPdf()
@@ -346,6 +353,8 @@ export function PurchaseOrderDetailPage() {
             isActionPending={isActionPending}
             onConfirm={() => { setConfirmAction('confirm'); }}
             onReceiveGoods={() => { setShowReceiveDialog(true); }}
+            onCreateSupplierInvoice={hasPermission('purchases.create') ? () => { void navigate(`/purchases/supplier-invoices/new?po=${id}`) } : undefined}
+            canCreateSupplierInvoice={canCreateSupplierInvoice}
             onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
             onDownloadPdf={handleDownloadPdf}
             onPreviewPdf={handlePreviewPdf}

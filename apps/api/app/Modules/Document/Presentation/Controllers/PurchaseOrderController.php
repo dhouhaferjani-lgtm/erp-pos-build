@@ -25,6 +25,8 @@ use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptData;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
+use App\Modules\Inventory\Domain\GoodsReceipt;
+use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
@@ -224,6 +226,22 @@ class PurchaseOrderController extends Controller
 
         // Apply common filters from the trait
         $query = $this->applyFilters($query, $request);
+
+        $hasUninvoiced = $request->query('has_uninvoiced');
+        if ($hasUninvoiced === '1' || $hasUninvoiced === 'true') {
+            $companyId = $this->companyContext->requireCompanyId();
+            $tenantId = $this->companyContext->requireCompany()->tenant_id;
+            $query->whereHas('lines', function ($lineQuery) use ($companyId, $tenantId): void {
+                $lineQuery->whereExists(function ($receiptQuery) use ($companyId, $tenantId): void {
+                    $receiptQuery->selectRaw('1')
+                        ->from('goods_receipt_lines')
+                        ->where('goods_receipt_lines.tenant_id', $tenantId)
+                        ->where('goods_receipt_lines.company_id', $companyId)
+                        ->whereColumn('goods_receipt_lines.po_line_id', 'document_lines.id')
+                        ->whereColumn('goods_receipt_lines.received_qty', '>', 'goods_receipt_lines.quantity_invoiced');
+                });
+            });
+        }
 
         // Order by created_at desc and id for consistent cursor pagination (in case created_at is the same)
         $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
@@ -759,6 +777,70 @@ class PurchaseOrderController extends Controller
 
         return response()->json([
             'data' => $status,
+            'meta' => [
+                'timestamp' => now()->toIso8601String(),
+            ],
+        ]);
+    }
+
+    /**
+     * Return receipt-ledger lines for supplier-invoice prefill.
+     *
+     * GET /api/v1/purchase-orders/{purchaseOrder}/receipt-lines?uninvoiced=1
+     */
+    public function receiptLines(Request $request, string $purchaseOrder): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+        $tenantId = $company->tenant_id;
+        $companyId = $company->id;
+
+        $documentModel = $this->baseQuery()
+            ->ofType(DocumentType::PurchaseOrder)
+            ->find($purchaseOrder);
+
+        if ($documentModel === null) {
+            return $this->notFoundResponse('Purchase order');
+        }
+
+        $receiptIds = GoodsReceipt::query()
+            ->select('id')
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('purchase_order_id', $purchaseOrder);
+
+        $query = GoodsReceiptLine::query()
+            ->with('goodsReceipt')
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereIn('goods_receipt_id', $receiptIds);
+
+        $uninvoiced = $request->query('uninvoiced');
+        if ($uninvoiced === '1' || $uninvoiced === 'true') {
+            $query->whereColumn('received_qty', '>', 'quantity_invoiced');
+        }
+
+        $lines = $query
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (GoodsReceiptLine $line): array => [
+                'id' => $line->id,
+                'receipt_number' => $line->goodsReceipt->receipt_number,
+                'product_id' => $line->product_id,
+                'variant_id' => $line->variant_id,
+                'received_qty' => $line->received_qty,
+                'free_qty' => $line->free_qty,
+                'quantity_invoiced' => $line->quantity_invoiced,
+                'free_quantity_invoiced' => $line->free_quantity_invoiced,
+                'accrual_unit_cost' => $line->accrual_unit_cost,
+                'received_unit_price' => $line->received_unit_price,
+                'po_line_id' => $line->po_line_id,
+            ])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'data' => $lines,
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
             ],

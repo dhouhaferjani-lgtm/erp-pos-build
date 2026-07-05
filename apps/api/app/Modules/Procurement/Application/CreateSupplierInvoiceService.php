@@ -62,7 +62,7 @@ final class CreateSupplierInvoiceService
             $subtotal = '0';
             $lineTaxTotal = '0';
 
-            /** @var array<int, array{qty: string, unitPrice: string, vatRate: string, lineSubtotal: string, lineTax: string, sourceLineId: string, isBonusLine: bool}> $lineData */
+            /** @var array<int, array{qty: numeric-string, unitPrice: numeric-string, vatRate: numeric-string, lineSubtotal: numeric-string, lineTax: numeric-string, sourceLineId: string, isBonusLine: bool}> $lineData */
             $lineData = [];
 
             foreach ($lines as $lineInput) {
@@ -128,10 +128,20 @@ final class CreateSupplierInvoiceService
             ]);
 
             // ── Create lines so TaxCalculationService can group by tax_rate ──────
+            /** @var array<string, numeric-string> $plannedBySourceLine */
+            $plannedBySourceLine = [];
             foreach ($lineData as $idx => $ld) {
                 /** @var DocumentLine|null $poLine */
                 $poLine = DocumentLine::find($ld['sourceLineId']);
                 $description = $poLine !== null ? $poLine->description : '';
+                $snapshotAttributes = ['price_match_basis' => null, 'matched_receipt_line_id' => null];
+                if (! $ld['isBonusLine']) {
+                    $alreadyPlanned = $plannedBySourceLine[$ld['sourceLineId']] ?? '0.0000';
+                    $snapshotAttributes = $this->matchSnapshotAttributes($ld['sourceLineId'], $ld['qty'], $alreadyPlanned);
+                    /** @var numeric-string $nextPlanned */
+                    $nextPlanned = bcadd($alreadyPlanned, $ld['qty'], 4);
+                    $plannedBySourceLine[$ld['sourceLineId']] = CurrencyScale::bcformatStrict($nextPlanned, 4);
+                }
 
                 DocumentLine::create([
                     'document_id' => $document->id,
@@ -151,9 +161,7 @@ final class CreateSupplierInvoiceService
                     'allocated_costs' => '0.0000',
                     'source_line_id' => $ld['sourceLineId'],
                     'is_bonus_line' => $ld['isBonusLine'],
-                    ...($ld['isBonusLine']
-                        ? ['price_match_basis' => null, 'matched_receipt_line_id' => null]
-                        : $this->matchSnapshotAttributes($ld['sourceLineId'], $ld['qty'])),
+                    ...$snapshotAttributes,
                 ]);
             }
 
@@ -196,7 +204,7 @@ final class CreateSupplierInvoiceService
     /**
      * @return array{price_match_basis: numeric-string|null, matched_receipt_line_id: string|null}
      */
-    private function matchSnapshotAttributes(string $sourceLineId, string $qty): array
+    private function matchSnapshotAttributes(string $sourceLineId, string $qty, string $qtyAlreadyPlanned = '0.0000'): array
     {
         /** @var DocumentLine|null $poLine */
         $poLine = DocumentLine::query()->find($sourceLineId);
@@ -204,7 +212,7 @@ final class CreateSupplierInvoiceService
             return ['price_match_basis' => null, 'matched_receipt_line_id' => null];
         }
 
-        $slices = $this->receiptPlanner->plan($sourceLineId, $qty);
+        $slices = $this->receiptPlanner->plan($sourceLineId, $qty, $qtyAlreadyPlanned);
         if ($slices === []) {
             return [
                 'price_match_basis' => CurrencyScale::bcformatStrict((string) ($poLine->accrual_unit_cost ?? $poLine->landed_unit_cost ?? $poLine->unit_price), 6),
