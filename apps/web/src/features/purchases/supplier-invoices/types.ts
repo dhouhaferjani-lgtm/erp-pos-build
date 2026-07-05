@@ -137,6 +137,7 @@ export interface CreateSupplierInvoiceLinePayload {
 export interface CreateSupplierInvoicePayload {
   partner_id: string
   source_document_id: string
+  source_document_ids?: string[]
   currency: string
   issue_date: string
   due_date?: string

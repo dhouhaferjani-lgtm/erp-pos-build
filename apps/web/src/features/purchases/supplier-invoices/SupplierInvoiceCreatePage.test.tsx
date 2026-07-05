@@ -60,6 +60,8 @@ vi.mock('./api', () => ({
   useUploadAttachment: () => ({ mutateAsync: uploadAttachmentMutateAsync, isPending: false }),
   usePurchaseOrderForSupplierInvoice: () => ({ data: purchaseOrder, isLoading: false }),
   usePurchaseOrderReceiptLines: () => ({ data: receiptLines, isLoading: false }),
+  usePurchaseOrdersForSupplierInvoice: () => ({ data: [purchaseOrder], isLoading: false }),
+  usePurchaseOrderReceiptLinesForSupplierInvoice: () => ({ data: receiptLines, isLoading: false }),
   useOpenPurchaseOrdersForSupplier: () => ({
     data: [
       {
@@ -171,6 +173,7 @@ describe('SupplierInvoiceCreatePage', () => {
       expect(mutateAsync).toHaveBeenCalledWith({
         partner_id: 'supplier-1',
         source_document_id: 'po-1',
+        source_document_ids: ['po-1'],
         currency: 'TND',
         issue_date: new Date().toISOString().slice(0, 10),
         supplier_reference: 'FA-8842',
@@ -185,6 +188,72 @@ describe('SupplierInvoiceCreatePage', () => {
       })
     })
     expect(navigate).toHaveBeenCalledWith('/purchases/supplier-invoices/invoice-1')
+  })
+
+  it('submits source_document_ids for receipt-prefilled invoices spanning multiple POs', async () => {
+    receiptLines.splice(0, receiptLines.length,
+      {
+        id: 'receipt-line-1',
+        receipt_number: 'GRN-2026-0031',
+        product_id: 'product-1',
+        variant_id: null,
+        received_qty: '10.0000',
+        free_qty: '0.0000',
+        quantity_invoiced: '4.0000',
+        free_quantity_invoiced: '0.0000',
+        accrual_unit_cost: '5.200000',
+        received_unit_price: '5.200',
+        po_line_id: 'po-line-1',
+      },
+      {
+        id: 'receipt-line-2',
+        receipt_number: 'GRN-2026-0032',
+        product_id: 'product-2',
+        variant_id: null,
+        received_qty: '3.0000',
+        free_qty: '0.0000',
+        quantity_invoiced: '0.0000',
+        free_quantity_invoiced: '0.0000',
+        accrual_unit_cost: '7.000000',
+        received_unit_price: '7.000',
+        po_line_id: 'po-line-2',
+      },
+    )
+    Object.assign(purchaseOrder, {
+      ...purchaseOrder,
+      lines: [
+        ...purchaseOrder.lines,
+        {
+          id: 'po-line-2',
+          description: 'Gel lavant',
+          product_id: 'product-2',
+          product_name: 'Gel lavant',
+          unit_price: '7.000',
+          tax_rate: '19.00',
+        },
+      ],
+    } satisfies PurchaseOrderForSupplierInvoice)
+
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new?po=po-1&po=po-2&entry=receipts',
+    })
+
+    expect(await screen.findByDisplayValue('6.0000')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('3.0000')).toBeInTheDocument()
+    expect(screen.getByText('purchases:supplierInvoices.create.linkedPOs:{"numbers":"BC-2026-0042"}')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+        source_document_id: 'po-1',
+        source_document_ids: ['po-1', 'po-2'],
+        lines: [
+          expect.objectContaining({ source_line_id: 'po-line-1', quantity: '6.0000' }),
+          expect.objectContaining({ source_line_id: 'po-line-2', quantity: '3.0000' }),
+        ],
+      }))
+    })
   })
 
   it('uploads selected attachments after creating the draft', async () => {

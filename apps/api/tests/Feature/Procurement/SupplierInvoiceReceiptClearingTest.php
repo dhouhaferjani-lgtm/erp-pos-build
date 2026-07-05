@@ -381,6 +381,112 @@ final class SupplierInvoiceReceiptClearingTest extends TestCase
         $this->assertSame(SupplierInvoiceMatchStatus::PriceVariance, Document::findOrFail($invoice->id)->match_status);
     }
 
+    public function test_multi_po_invoice_clears_each_receipt_line_basis_and_routes_delta_to_ppv(): void
+    {
+        $firstPoLine = $this->createPoLine('10.0000', '10.000', '10.0000');
+        $secondPoLine = $this->createPoLine('5.0000', '20.000', '5.0000');
+        [$firstReceipt] = $this->createReceiptLines($firstPoLine, [
+            ['qty' => '10.0000', 'basis' => '10.000000'],
+        ]);
+        [$secondReceipt] = $this->createReceiptLines($secondPoLine, [
+            ['qty' => '5.0000', 'basis' => '22.000000'],
+        ]);
+        $this->accrueReceipt('10.0000', '10.000');
+        $this->accrueReceipt('5.0000', '22.000');
+
+        $invoice = $this->createInvoice(
+            $firstPoLine,
+            qty: '10.0000',
+            unitPrice: '10.000',
+            subtotal: '100.000',
+            recoverableVat: '0.000',
+            total: '205.000',
+            snapshotBasis: '10.000000',
+            matchedReceiptLineId: $firstReceipt->id,
+        );
+        $invoice->forceFill([
+            'source_document_id' => $firstPoLine->document_id,
+            'subtotal' => '205.000',
+            'tax_amount' => '0.000',
+            'total' => '205.000',
+            'payload' => [
+                'supplier_invoice' => [
+                    'source_document_ids' => [$firstPoLine->document_id, $secondPoLine->document_id],
+                ],
+            ],
+        ])->save();
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 2,
+            'description' => 'Second PO invoice line',
+            'quantity' => '5.0000',
+            'quantity_received' => '0.0000',
+            'quantity_invoiced' => '0.0000',
+            'unit_price' => '21.000',
+            'line_total' => '105.000',
+            'tax_amount' => '0.000',
+            'tax_recoverable' => true,
+            'recoverable_tax_amount' => '0.000',
+            'non_recoverable_tax_amount' => '0.000',
+            'allocated_costs' => '0.0000',
+            'source_line_id' => $secondPoLine->id,
+            'price_match_basis' => '22.000000',
+            'matched_receipt_line_id' => $secondReceipt->id,
+        ]);
+        $invoice->load('lines');
+
+        app(SupplierInvoicePostingService::class)->post($invoice);
+
+        $entry = $this->clearingEntry($invoice);
+        $this->assertLeg($entry, $this->grirAccount, debit: '210.000', credit: '0.000');
+        $this->assertLeg($entry, $this->ppvIncomeAccount, debit: '0.000', credit: '5.000');
+        $this->assertSame('0.000', $this->net408());
+        $this->assertSame('10.0000', GoodsReceiptLine::findOrFail($firstReceipt->id)->quantity_invoiced);
+        $this->assertSame('5.0000', GoodsReceiptLine::findOrFail($secondReceipt->id)->quantity_invoiced);
+        $this->assertSame('10.0000', DocumentLine::findOrFail($firstPoLine->id)->quantity_invoiced);
+        $this->assertSame('5.0000', DocumentLine::findOrFail($secondPoLine->id)->quantity_invoiced);
+        $this->assertSame(SupplierInvoiceMatchStatus::PriceVariance, Document::findOrFail($invoice->id)->match_status);
+    }
+
+    public function test_posting_rejects_invoice_line_parent_with_different_partner(): void
+    {
+        $otherSupplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Other Receipt Clearing Supplier',
+            'type' => PartnerType::Supplier,
+            'tax_status' => PartnerTaxStatus::REGISTERED,
+        ]);
+        $poLine = $this->createPoLine('5.0000', '10.000', '5.0000');
+        Document::findOrFail($poLine->document_id)->forceFill(['partner_id' => $otherSupplier->id])->save();
+        [$receiptLine] = $this->createReceiptLines($poLine, [
+            ['qty' => '5.0000', 'basis' => '10.000000'],
+        ]);
+        $this->accrueReceipt('5.0000', '10.000');
+        $invoice = $this->createInvoice(
+            $poLine,
+            qty: '5.0000',
+            unitPrice: '10.000',
+            subtotal: '50.000',
+            recoverableVat: '0.000',
+            total: '50.000',
+            snapshotBasis: '10.000000',
+            matchedReceiptLineId: $receiptLine->id,
+        );
+
+        $threw = false;
+        try {
+            app(SupplierInvoicePostingService::class)->post($invoice);
+        } catch (\DomainException) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'Posting must reject PO parents that do not share the invoice partner.');
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_invoice')->where('source_id', $invoice->id)->count());
+        $this->assertSame('0.0000', GoodsReceiptLine::findOrFail($receiptLine->id)->quantity_invoiced);
+        $this->assertSame(DocumentStatus::Draft, Document::findOrFail($invoice->id)->status);
+    }
+
     public function test_zero_receipt_line_po_uses_legacy_po_line_basis(): void
     {
         $poLine = $this->createPoLine('10.0000', '5.000', '10.0000', accrualUnitCost: '5.000000');
@@ -423,6 +529,43 @@ final class SupplierInvoiceReceiptClearingTest extends TestCase
 
         $service = app(SupplierInvoicePostingService::class);
         $service->post($invoice);
+        $service->post(Document::findOrFail($invoice->id));
+
+        $this->assertSame(1, JournalEntry::where('source_type', 'supplier_invoice')->where('source_id', $invoice->id)->count());
+        $this->assertSame('10.0000', GoodsReceiptLine::findOrFail($receiptLine->id)->quantity_invoiced);
+        $this->assertSame('10.0000', DocumentLine::findOrFail($poLine->id)->quantity_invoiced);
+    }
+
+    public function test_idempotent_repost_is_noop_after_purchase_order_partner_drift(): void
+    {
+        $poLine = $this->createPoLine('10.0000', '5.000', '10.0000');
+        [$receiptLine] = $this->createReceiptLines($poLine, [
+            ['qty' => '10.0000', 'basis' => '5.000000'],
+        ]);
+        $this->accrueReceipt('10.0000', '5.000');
+        $invoice = $this->createInvoice(
+            $poLine,
+            qty: '10.0000',
+            unitPrice: '5.000',
+            subtotal: '50.000',
+            recoverableVat: '9.500',
+            total: '59.500',
+            snapshotBasis: '5.000000',
+            matchedReceiptLineId: $receiptLine->id,
+        );
+
+        $service = app(SupplierInvoicePostingService::class);
+        $service->post($invoice);
+
+        $otherSupplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Drifted Receipt Clearing Supplier',
+            'type' => PartnerType::Supplier,
+            'tax_status' => PartnerTaxStatus::REGISTERED,
+        ]);
+        Document::findOrFail($poLine->document_id)->forceFill(['partner_id' => $otherSupplier->id])->save();
+
         $service->post(Document::findOrFail($invoice->id));
 
         $this->assertSame(1, JournalEntry::where('source_type', 'supplier_invoice')->where('source_id', $invoice->id)->count());

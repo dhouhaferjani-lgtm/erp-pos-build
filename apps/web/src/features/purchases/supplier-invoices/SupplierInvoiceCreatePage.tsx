@@ -14,8 +14,8 @@ import {
   useCreateSupplierInvoice,
   useDuplicateSupplierInvoiceReference,
   useOpenPurchaseOrdersForSupplier,
-  usePurchaseOrderForSupplierInvoice,
-  usePurchaseOrderReceiptLines,
+  usePurchaseOrderReceiptLinesForSupplierInvoice,
+  usePurchaseOrdersForSupplierInvoice,
   useUploadAttachment,
 } from './api'
 import type { CreateSupplierInvoicePayload, SupplierInvoiceDetail } from './types'
@@ -29,6 +29,7 @@ interface InvoiceLineFormState {
   alreadyInvoiced: string
   matchableQty: string
   basisPrice: string
+  poNumber: string
   quantity: string
   unitPrice: string
   vatRate: string
@@ -72,9 +73,15 @@ export function SupplierInvoiceCreatePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const createInvoice = useCreateSupplierInvoice()
+  const initialPurchaseOrderIds = useMemo(() => {
+    const all = searchParams.getAll('po')
+    const first = searchParams.get('po')
+    return all.length > 0 ? all : first !== null ? [first] : []
+  }, [searchParams])
+  const lockedFromEntryPoint = initialPurchaseOrderIds.length > 0
 
   const [selectedSupplier, setSelectedSupplier] = useState<PartnerPickerValue | null>(null)
-  const [selectedPurchaseOrderId, setSelectedPurchaseOrderId] = useState(searchParams.get('po') ?? '')
+  const [selectedPurchaseOrderIds, setSelectedPurchaseOrderIds] = useState<string[]>(initialPurchaseOrderIds)
   const [supplierReference, setSupplierReference] = useState('')
   const [duplicateCheckReference, setDuplicateCheckReference] = useState('')
   const [issueDate, setIssueDate] = useState(todayIso())
@@ -84,10 +91,11 @@ export function SupplierInvoiceCreatePage() {
   const [attachments, setAttachments] = useState<File[]>([])
   const uploadAttachment = useUploadAttachment('')
 
-  const purchaseOrderQuery = usePurchaseOrderForSupplierInvoice(selectedPurchaseOrderId)
-  const receiptLinesQuery = usePurchaseOrderReceiptLines(selectedPurchaseOrderId, selectedPurchaseOrderId !== '')
-  const purchaseOrder = purchaseOrderQuery.data
-  const supplierId = purchaseOrder?.partner_id ?? selectedSupplier?.id ?? ''
+  const purchaseOrdersQuery = usePurchaseOrdersForSupplierInvoice(selectedPurchaseOrderIds)
+  const receiptLinesQuery = usePurchaseOrderReceiptLinesForSupplierInvoice(selectedPurchaseOrderIds, selectedPurchaseOrderIds.length > 0)
+  const purchaseOrders = purchaseOrdersQuery.data
+  const primaryPurchaseOrder = purchaseOrders[0]
+  const supplierId = primaryPurchaseOrder?.partner_id ?? selectedSupplier?.id ?? ''
   const openPurchaseOrdersQuery = useOpenPurchaseOrdersForSupplier(selectedSupplier?.id ?? '')
   const duplicateReferenceQuery = useDuplicateSupplierInvoiceReference(
     supplierId,
@@ -103,13 +111,14 @@ export function SupplierInvoiceCreatePage() {
 
   const prefilledLines = useMemo((): InvoiceLineFormState[] => {
     const receiptLines = receiptLinesQuery.data ?? []
-    if (purchaseOrder === undefined || receiptLines.length === 0) {
+    if (purchaseOrders.length === 0 || receiptLines.length === 0) {
       return []
     }
 
-    const poLinesById = new Map(purchaseOrder.lines.map((line) => [line.id, line]))
+    const poLinesById = new Map(purchaseOrders.flatMap((po) => po.lines.map((line) => [line.id, { line, po }] as const)))
     return receiptLines.map((receiptLine): InvoiceLineFormState => {
-      const poLine = poLinesById.get(receiptLine.po_line_id)
+      const poLineEntry = poLinesById.get(receiptLine.po_line_id)
+      const poLine = poLineEntry?.line
       const matchableQty = positiveSub(receiptLine.received_qty, receiptLine.quantity_invoiced, 4)
       const unitPrice = receiptLine.received_unit_price ?? poLine?.unit_price ?? '0.000'
       const edits = lineEdits[receiptLine.id] ?? {}
@@ -122,18 +131,21 @@ export function SupplierInvoiceCreatePage() {
         alreadyInvoiced: receiptLine.quantity_invoiced,
         matchableQty,
         basisPrice: receiptLine.accrual_unit_cost,
+        poNumber: poLineEntry?.po.document_number ?? '',
         quantity: edits.quantity ?? matchableQty,
         unitPrice: edits.unitPrice ?? unitPrice,
         vatRate: edits.vatRate ?? poLine?.tax_rate ?? '0.00',
       }
     }).filter((line) => bccomp(line.matchableQty, '0') > 0)
-  }, [lineEdits, purchaseOrder, receiptLinesQuery.data])
+  }, [lineEdits, purchaseOrders, receiptLinesQuery.data])
 
   const lines = prefilledLines
   const invoiceableLines = lines.filter((line) => bccomp(line.quantity, '0') > 0)
 
-  const currency = purchaseOrder?.currency ?? openPurchaseOrdersQuery.data?.[0]?.currency ?? 'TND'
-  const selectedPoNumber = purchaseOrder?.document_number ?? selectedPurchaseOrderId
+  const currency = primaryPurchaseOrder?.currency ?? openPurchaseOrdersQuery.data?.[0]?.currency ?? 'TND'
+  const selectedPoNumbers = purchaseOrders.map((po) => po.document_number)
+  const selectedPoNumber = selectedPoNumbers.join(', ') || selectedPurchaseOrderIds.join(', ')
+  const loadedPurchaseOrderIds = useMemo(() => new Set(purchaseOrders.map((po) => po.id)), [purchaseOrders])
   const receiptNumbers = useMemo(
     () => Array.from(new Set(lines.map((line) => line.receiptNumber))).join(', '),
     [lines],
@@ -175,7 +187,8 @@ export function SupplierInvoiceCreatePage() {
   function buildPayload(): CreateSupplierInvoicePayload {
     const payload: CreateSupplierInvoicePayload = {
       partner_id: supplierId,
-      source_document_id: selectedPurchaseOrderId,
+      source_document_id: selectedPurchaseOrderIds[0] ?? '',
+      source_document_ids: selectedPurchaseOrderIds,
       currency,
       issue_date: issueDate,
       lines: invoiceableLines.map((line) => ({
@@ -234,7 +247,7 @@ export function SupplierInvoiceCreatePage() {
         <button
           type="submit"
           data-testid="save-supplier-invoice"
-          disabled={createInvoice.isPending || uploadAttachment.isPending || supplierId === '' || selectedPurchaseOrderId === '' || invoiceableLines.length === 0}
+          disabled={createInvoice.isPending || uploadAttachment.isPending || supplierId === '' || selectedPurchaseOrderIds.length === 0 || invoiceableLines.length === 0}
           className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
         >
           <Save className="me-2 h-4 w-4" />
@@ -245,16 +258,16 @@ export function SupplierInvoiceCreatePage() {
       <section className={`${tokens.card.base} grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_0.8fr_0.8fr]`}>
         <div>
           <PartnerPicker
-            value={purchaseOrder ? { id: purchaseOrder.partner_id, name: purchaseOrder.partner_name, type: 'supplier' } : selectedSupplier}
+            value={primaryPurchaseOrder ? { id: primaryPurchaseOrder.partner_id, name: primaryPurchaseOrder.partner_name, type: 'supplier' } : selectedSupplier}
             onChange={(next) => {
               setSelectedSupplier(next)
-              setSelectedPurchaseOrderId('')
+              setSelectedPurchaseOrderIds([])
               setLineEdits({})
             }}
             partnerType="supplier"
             label={t('purchases:supplierInvoices.create.supplier')}
             placeholder={t('purchases:supplierInvoices.create.supplierPlaceholder')}
-            disabled={selectedPurchaseOrderId !== '' && purchaseOrder !== undefined}
+            disabled={selectedPurchaseOrderIds.length > 0 && primaryPurchaseOrder !== undefined}
           />
         </div>
 
@@ -266,18 +279,21 @@ export function SupplierInvoiceCreatePage() {
             id="source-po"
             data-testid="source-purchase-order"
             className={tokens.select.base}
-            value={selectedPurchaseOrderId}
-            disabled={purchaseOrder !== undefined && searchParams.get('po') !== null}
+            multiple
+            value={selectedPurchaseOrderIds}
+            disabled={lockedFromEntryPoint}
             onChange={(event) => {
-              setSelectedPurchaseOrderId(event.target.value)
+              setSelectedPurchaseOrderIds(Array.from(event.target.selectedOptions).map((option) => option.value))
               setLineEdits({})
             }}
           >
-            <option value="">{t('purchases:supplierInvoices.create.purchaseOrderPlaceholder')}</option>
-            {purchaseOrder !== undefined ? (
-              <option value={purchaseOrder.id}>{purchaseOrder.document_number}</option>
+            {selectedPurchaseOrderIds.length === 0 ? (
+              <option value="">{t('purchases:supplierInvoices.create.purchaseOrderPlaceholder')}</option>
             ) : null}
-            {(openPurchaseOrdersQuery.data ?? []).map((po) => (
+            {purchaseOrders.map((po) => (
+              <option key={po.id} value={po.id}>{po.document_number}</option>
+            ))}
+            {(openPurchaseOrdersQuery.data ?? []).filter((po) => !loadedPurchaseOrderIds.has(po.id)).map((po) => (
               <option key={po.id} value={po.id}>
                 {po.document_number}
               </option>
@@ -353,11 +369,13 @@ export function SupplierInvoiceCreatePage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className={tokens.heading.section}>{t('purchases:supplierInvoices.create.linesTitle')}</h2>
-            {selectedPurchaseOrderId !== '' ? (
+            {selectedPurchaseOrderIds.length > 0 ? (
               <p className={`mt-1 flex flex-wrap items-center gap-2 text-sm ${textColors.tertiary}`}>
                 <span className={`${tokens.badge.base} ${tokens.badge.blue}`}>
                   <ReceiptText className="me-1 h-3 w-3" />
-                  {selectedPoNumber}
+                  {selectedPurchaseOrderIds.length > 1
+                    ? t('purchases:supplierInvoices.create.linkedPOs', { numbers: selectedPoNumber })
+                    : selectedPoNumber}
                 </span>
                 {receiptNumbers !== '' ? <span>{receiptNumbers}</span> : null}
               </p>
@@ -368,13 +386,13 @@ export function SupplierInvoiceCreatePage() {
           </div>
         </div>
 
-        {receiptLinesQuery.isLoading || purchaseOrderQuery.isLoading ? (
+        {receiptLinesQuery.isLoading || purchaseOrdersQuery.isLoading ? (
           <div className={`py-8 text-center text-sm ${textColors.tertiary}`}>
             {t('common:status.loading')}
           </div>
         ) : lines.length === 0 ? (
           <div className={`rounded-md border ${borderColors.light} p-8 text-center text-sm ${textColors.tertiary}`}>
-            {selectedPurchaseOrderId === ''
+            {selectedPurchaseOrderIds.length === 0
               ? t('purchases:supplierInvoices.create.pickSupplierAndPo')
               : t('purchases:supplierInvoices.create.noReceiptLines')}
           </div>
@@ -413,7 +431,9 @@ export function SupplierInvoiceCreatePage() {
                     <tr key={line.receiptLineId}>
                       <td className={`px-4 py-3 text-sm ${textColors.primary}`}>
                         <div className="font-medium">{line.description}</div>
-                        <div className={`text-xs ${textColors.tertiary}`}>{line.receiptNumber}</div>
+                        <div className={`text-xs ${textColors.tertiary}`}>
+                          {[line.poNumber, line.receiptNumber].filter(Boolean).join(' · ')}
+                        </div>
                       </td>
                       <td className={`px-4 py-3 text-end text-sm ${textColors.secondary}`}>
                         {line.receivedQty}

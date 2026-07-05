@@ -203,7 +203,7 @@ class DocumentController extends Controller
         $companyId = $this->companyContext->requireCompanyId();
 
         $documentModel = Document::forCompany($companyId)
-            ->with(['sourceDocument', 'childDocuments'])
+            ->with(['sourceDocument'])
             ->find($document);
 
         if ($documentModel === null) {

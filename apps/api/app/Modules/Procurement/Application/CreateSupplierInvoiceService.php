@@ -54,8 +54,10 @@ final class CreateSupplierInvoiceService
 
         /** @var array<int, array<string, mixed>> $lines */
         $lines = $validated['lines'];
+        /** @var list<string> $sourceDocumentIds */
+        $sourceDocumentIds = array_values(array_map('strval', $validated['source_document_ids'] ?? [$validated['source_document_id']]));
 
-        return DB::transaction(function () use ($tenantId, $companyId, $validated, $lines, $currency, $scale): Document {
+        return DB::transaction(function () use ($tenantId, $companyId, $validated, $lines, $currency, $scale, $sourceDocumentIds): Document {
             $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::SupplierInvoice);
 
             // ── Pass 1: compute per-line amounts at scale+1 before rounding ─────
@@ -108,7 +110,7 @@ final class CreateSupplierInvoiceService
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
                 'partner_id' => $validated['partner_id'],
-                'source_document_id' => $validated['source_document_id'],
+                'source_document_id' => $sourceDocumentIds[0],
                 'type' => DocumentType::SupplierInvoice,
                 'fiscal_category' => FiscalCategory::NonFiscal,
                 'fiscal_status' => FiscalStatus::Draft,
@@ -124,6 +126,11 @@ final class CreateSupplierInvoiceService
                 'total' => bcadd($subtotal, $lineTaxTotal, $scale),
                 'external_document_number' => $validated['supplier_reference'] ?? null,
                 'notes' => $validated['notes'] ?? null,
+                'payload' => [
+                    'supplier_invoice' => [
+                        'source_document_ids' => $sourceDocumentIds,
+                    ],
+                ],
                 'match_status' => SupplierInvoiceMatchStatus::Unmatched,
             ]);
 

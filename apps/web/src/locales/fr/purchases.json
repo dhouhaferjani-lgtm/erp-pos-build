@@ -113,8 +113,8 @@
       "attachmentsUploaded": "{{count}} pièce(s) jointe(s) téléversée(s) dans ce brouillon",
       "attachmentUploadFailed": "Facture créée, pièce jointe échouée — réessayez depuis la fiche.",
       "invoiceReceipts": "Facturer les réceptions",
-      "multiPoBlocked": "Multi-BC arrive avec la dernière vague.",
-      "singlePoOnlyTooltip": "Sélectionnez des réceptions d'un seul BC ; le brouillon est créé au niveau du BC.",
+      "linkedPOs": "BC liés : {{numbers}}",
+      "crossSupplierTooltip": "Sélectionnez des réceptions d'un seul fournisseur.",
       "selectReceiptPo": "Sélectionner les réceptions de {{number}}",
       "columns": {
         "product": "Produit",

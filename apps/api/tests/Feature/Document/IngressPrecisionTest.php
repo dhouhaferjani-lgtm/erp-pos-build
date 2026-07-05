@@ -8,7 +8,9 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Services\CompanyConfigService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
 use Tests\TestCase;
@@ -283,7 +285,11 @@ final class IngressPrecisionTest extends TestCase
 
         // CreateDocumentRequest::rules() reads $this->user()->tenant_id, so the
         // request needs a resolvable authenticated user.
-        $request = new CreateDocumentRequest($context);
+        $request = new CreateDocumentRequest(
+            $context,
+            app(CompanyConfigService::class),
+            app(PurchaseBonusGate::class),
+        );
         $request->setUserResolver(fn () => $user);
 
         $rules = $request->rules();

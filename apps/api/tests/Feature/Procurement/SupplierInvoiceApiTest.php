@@ -45,6 +45,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -231,6 +232,296 @@ final class SupplierInvoiceApiTest extends TestCase
         $this->assertNotNull($si);
         $this->assertSame(SupplierInvoiceMatchStatus::Matched, $si->match_status);
         $this->assertSame(DocumentStatus::Draft, $si->status);
+    }
+
+    public function test_store_accepts_multiple_purchase_orders_and_persists_full_source_list(): void
+    {
+        [$firstPo, $firstLine] = $this->createPoWithReceipt('4.0000', '50.000');
+        [$secondPo, $secondLine] = $this->createPoWithReceipt('6.0000', '60.000');
+
+        $payload = [
+            'partner_id' => $this->supplier->id,
+            'source_document_ids' => [$secondPo->id, $firstPo->id],
+            'currency' => 'TND',
+            'issue_date' => now()->toDateString(),
+            'lines' => [
+                [
+                    'source_line_id' => $firstLine->id,
+                    'quantity' => '4.0000',
+                    'unit_price' => '50.000',
+                    'vat_rate' => '0.00',
+                ],
+                [
+                    'source_line_id' => $secondLine->id,
+                    'quantity' => '6.0000',
+                    'unit_price' => '60.000',
+                    'vat_rate' => '0.00',
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $payload);
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.source_document_id', $secondPo->id);
+
+        /** @var Document $invoice */
+        $invoice = Document::query()
+            ->where('type', DocumentType::SupplierInvoice)
+            ->where('company_id', $this->company->id)
+            ->firstOrFail();
+
+        $this->assertSame($secondPo->id, $invoice->source_document_id);
+        $this->assertSame(
+            [$secondPo->id, $firstPo->id],
+            $invoice->payload['supplier_invoice']['source_document_ids'] ?? null,
+        );
+        $this->assertSame(2, $invoice->lines()->count());
+    }
+
+    public function test_related_documents_include_multi_po_invoice_from_secondary_purchase_order(): void
+    {
+        [$firstPo, $firstLine] = $this->createPoWithReceipt('4.0000', '50.000');
+        [$secondPo, $secondLine] = $this->createPoWithReceipt('6.0000', '60.000');
+
+        /** @var Document $invoice */
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'source_document_id' => $firstPo->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SI-MULTI-RELATED',
+            'document_date' => now()->toDateString(),
+            'currency' => 'TND',
+            'subtotal' => '560.000',
+            'tax_amount' => '0.000',
+            'total' => '560.000',
+            'payload' => [
+                'supplier_invoice' => [
+                    'source_document_ids' => [$firstPo->id, $secondPo->id],
+                ],
+            ],
+            'match_status' => SupplierInvoiceMatchStatus::Matched,
+        ]);
+        foreach ([$firstLine, $secondLine] as $idx => $line) {
+            DocumentLine::create([
+                'document_id' => $invoice->id,
+                'line_number' => $idx + 1,
+                'description' => 'Multi PO invoice line',
+                'quantity' => $line->quantity_received,
+                'quantity_received' => '0.0000',
+                'quantity_invoiced' => '0.0000',
+                'unit_price' => $line->unit_price,
+                'line_total' => bcmul($line->quantity_received, $line->unit_price, 3),
+                'tax_amount' => '0.000',
+                'tax_recoverable' => true,
+                'recoverable_tax_amount' => '0.000',
+                'non_recoverable_tax_amount' => '0.000',
+                'allocated_costs' => '0.0000',
+                'source_line_id' => $line->id,
+            ]);
+        }
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/documents/{$secondPo->id}/related");
+
+        $response->assertOk();
+        $descendantIds = collect($response->json('data.descendants'))->pluck('id')->all();
+        $this->assertContains($invoice->id, $descendantIds);
+    }
+
+    public function test_related_documents_for_multi_po_invoice_include_all_source_purchase_orders_once(): void
+    {
+        [$firstPo, $firstLine] = $this->createPoWithReceipt('4.0000', '50.000');
+        [$secondPo, $secondLine] = $this->createPoWithReceipt('6.0000', '60.000');
+
+        /** @var Document $invoice */
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'source_document_id' => $firstPo->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SI-MULTI-ANCESTORS',
+            'document_date' => now()->toDateString(),
+            'currency' => 'TND',
+            'subtotal' => '560.000',
+            'tax_amount' => '0.000',
+            'total' => '560.000',
+            'payload' => [
+                'supplier_invoice' => [
+                    'source_document_ids' => [$firstPo->id, $secondPo->id, $firstPo->id],
+                ],
+            ],
+            'match_status' => SupplierInvoiceMatchStatus::Matched,
+        ]);
+        foreach ([$firstLine, $secondLine] as $idx => $line) {
+            DocumentLine::create([
+                'document_id' => $invoice->id,
+                'line_number' => $idx + 1,
+                'description' => 'Multi PO invoice line',
+                'quantity' => $line->quantity_received,
+                'quantity_received' => '0.0000',
+                'quantity_invoiced' => '0.0000',
+                'unit_price' => $line->unit_price,
+                'line_total' => bcmul($line->quantity_received, $line->unit_price, 3),
+                'tax_amount' => '0.000',
+                'tax_recoverable' => true,
+                'recoverable_tax_amount' => '0.000',
+                'non_recoverable_tax_amount' => '0.000',
+                'allocated_costs' => '0.0000',
+                'source_line_id' => $line->id,
+            ]);
+        }
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/documents/{$invoice->id}/related");
+
+        $response->assertOk();
+        $ancestorIds = collect($response->json('data.ancestors'))->pluck('id')->all();
+        $sourceAncestorIds = array_values(array_filter(
+            $ancestorIds,
+            fn (string $id): bool => in_array($id, [$firstPo->id, $secondPo->id], true),
+        ));
+        $this->assertSame([$firstPo->id, $secondPo->id], $sourceAncestorIds);
+    }
+
+    public function test_related_documents_cycle_guard_does_not_return_the_starting_document_as_descendant(): void
+    {
+        [$firstPo] = $this->createPoWithReceipt('4.0000', '50.000');
+        [$secondPo] = $this->createPoWithReceipt('6.0000', '60.000');
+
+        $firstPo->forceFill(['source_document_id' => $secondPo->id])->save();
+        $secondPo->forceFill(['source_document_id' => $firstPo->id])->save();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/documents/{$firstPo->id}/related");
+
+        $response->assertOk();
+        $descendantIds = collect($response->json('data.descendants'))->pluck('id')->all();
+        $this->assertContains($secondPo->id, $descendantIds);
+        $this->assertNotContains($firstPo->id, $descendantIds);
+    }
+
+    public function test_store_rejects_source_document_ids_with_cross_supplier_purchase_orders(): void
+    {
+        [$firstPo, $firstLine] = $this->createPoWithReceipt('4.0000', '50.000');
+        [$secondPo] = $this->createPoWithReceipt('6.0000', '60.000');
+        $otherSupplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Other Multi PO Supplier',
+            'type' => PartnerType::Supplier,
+        ]);
+        $secondPo->forceFill(['partner_id' => $otherSupplier->id])->save();
+
+        $payload = $this->siPayload($firstPo, $firstLine, '4.0000', '50.000', '0.00');
+        unset($payload['source_document_id']);
+        $payload['source_document_ids'] = [$firstPo->id, $secondPo->id];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $payload);
+
+        $this->assertApiValidationEnvelope($response);
+        $this->assertJsonValidationErrors($response, ['partner_id']);
+    }
+
+    public function test_store_rejects_source_document_ids_with_cross_currency_purchase_orders(): void
+    {
+        [$firstPo, $firstLine] = $this->createPoWithReceipt('4.0000', '50.000');
+        [$secondPo] = $this->createPoWithReceipt('6.0000', '60.000');
+        $secondPo->forceFill(['currency' => 'EUR'])->save();
+
+        $payload = $this->siPayload($firstPo, $firstLine, '4.0000', '50.000', '0.00');
+        unset($payload['source_document_id']);
+        $payload['source_document_ids'] = [$firstPo->id, $secondPo->id];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $payload);
+
+        $this->assertApiValidationEnvelope($response);
+        $this->assertJsonValidationErrors($response, ['currency']);
+    }
+
+    public function test_store_rejects_empty_source_document_ids(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('4.0000', '50.000');
+        $payload = $this->siPayload($po, $poLine, '4.0000', '50.000', '0.00');
+        unset($payload['source_document_id']);
+        $payload['source_document_ids'] = [];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $payload);
+
+        $this->assertApiValidationEnvelope($response);
+        $this->assertJsonValidationErrors($response, ['source_document_ids']);
+    }
+
+    public function test_store_rejects_duplicate_source_document_ids(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('4.0000', '50.000');
+        $payload = $this->siPayload($po, $poLine, '4.0000', '50.000', '0.00');
+        unset($payload['source_document_id']);
+        $payload['source_document_ids'] = [$po->id, $po->id];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $payload);
+
+        $this->assertApiValidationEnvelope($response);
+    }
+
+    public function test_store_rejects_non_purchase_order_source_document_id(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('4.0000', '50.000');
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::Invoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'INV-NON-PO-'.Str::upper(Str::random(6)),
+            'document_date' => now()->toDateString(),
+            'currency' => 'TND',
+            'subtotal' => '50.000',
+            'tax_amount' => '0.000',
+            'total' => '50.000',
+        ]);
+
+        $payload = $this->siPayload($po, $poLine, '4.0000', '50.000', '0.00');
+        unset($payload['source_document_id']);
+        $payload['source_document_ids'] = [$invoice->id];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $payload);
+
+        $this->assertApiValidationEnvelope($response);
+        $this->assertJsonValidationErrors($response, ['source_document_ids.0']);
+    }
+
+    public function test_store_rejects_cancelled_purchase_order_source_document_id(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('4.0000', '50.000');
+        $po->forceFill(['status' => DocumentStatus::Cancelled])->save();
+
+        $payload = $this->siPayload($po, $poLine, '4.0000', '50.000', '0.00');
+        unset($payload['source_document_id']);
+        $payload['source_document_ids'] = [$po->id];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $payload);
+
+        $this->assertApiValidationEnvelope($response);
+        $this->assertJsonValidationErrors($response, ['source_document_ids.0']);
     }
 
     // -------------------------------------------------------------------------
@@ -1232,5 +1523,15 @@ final class SupplierInvoiceApiTest extends TestCase
         // PO line quantity_invoiced incremented exactly once.
         $poLine->refresh();
         $this->assertSame('5.0000', $poLine->quantity_invoiced, 'quantity_invoiced must be incremented exactly once');
+    }
+
+    private function assertApiValidationEnvelope(TestResponse $response): void
+    {
+        $response->assertUnprocessable()
+            ->assertJsonStructure([
+                'error' => [
+                    'errors',
+                ],
+            ]);
     }
 }
