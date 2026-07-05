@@ -83,6 +83,35 @@ export async function ensureCsrfCookie(): Promise<void> {
   })
 }
 
+const PUBLIC_PATHS = ['/login', '/register', '/verify-email', '/forgot-password',
+  '/reset-password', '/privacy', '/terms', '/admin/login']
+let redirectedToLogin = false
+// jsdom makes window.location.assign non-configurable (vi.spyOn cannot patch it),
+// so the redirect is injectable for tests via __setRedirectForTests.
+let redirect: (path: string) => void = (path) => {
+  window.location.assign(path)
+}
+export function __resetRedirectGuard(): void { redirectedToLogin = false }
+export function __setRedirectForTests(fn: (path: string) => void): void { redirect = fn }
+
+export function handleUnauthorized(url: string, sentToken: string | null): void {
+  const store = useAuthStore.getState()
+  if (url.includes('/auth/me')) {
+    // A 401 on /auth/me proves the token we SENT is bad. Only clear if it is
+    // still the current token — protects the registration race (AuthProvider
+    // wasAuthenticated guard) where a fresh token landed while we were in flight.
+    if (sentToken !== null && sentToken === store.token) store.logout()
+    return
+  }
+  console.warn('Unauthorized request:', url)
+  store.logout()
+  const path = window.location.pathname
+  if (!redirectedToLogin && !PUBLIC_PATHS.some((p) => path === p || path.startsWith(`${p}/`))) {
+    redirectedToLogin = true
+    redirect('/login')
+  }
+}
+
 /**
  * Create the base API client with cookie-based auth handling
  *
@@ -140,18 +169,17 @@ function createApiClient(): AxiosInstance {
         }
 
         // Handle 401 Unauthorized
-        // Don't redirect for /auth/me - that's expected when not logged in
-        // The AuthProvider handles the redirect via React Router
+        // Don't call queryClient.clear() here — it destroys the auth query
+        // cache, triggering a refetch of /auth/me which re-sets isAuthenticated,
+        // re-enabling the failing query in an infinite 401 loop.
         if (response.status === 401) {
           const url = error.config?.url ?? ''
-          if (!url.includes('/auth/me')) {
-            // For other endpoints, log out to disable protected queries.
-            // Don't call queryClient.clear() here — it destroys the auth query
-            // cache, triggering a refetch of /auth/me which re-sets isAuthenticated,
-            // re-enabling the failing query in an infinite 401 loop.
-            console.warn('Unauthorized request:', url)
-            useAuthStore.getState().logout()
-          }
+          const authHeader = error.config?.headers.Authorization
+          const sentToken =
+            typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+              ? authHeader.slice('Bearer '.length)
+              : null
+          handleUnauthorized(url, sentToken)
         }
 
         // Handle 403 Forbidden
