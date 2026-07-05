@@ -735,10 +735,14 @@ class ProductController extends Controller
             }
         }
 
+        $requiresBatchTracking = array_key_exists('requires_batch_tracking', $validated)
+            ? (bool) $validated['requires_batch_tracking']
+            : (bool) $wasBatchTracked;
+
         // Update product core fields
         $productModel->update($validated);
 
-        if (! $wasBatchTracked && $productModel->requires_batch_tracking) {
+        if (! $wasBatchTracked && $requiresBatchTracking) {
             $this->backfillDefaultBatchesForExistingStock($productModel, $company->tenant_id);
         }
 
