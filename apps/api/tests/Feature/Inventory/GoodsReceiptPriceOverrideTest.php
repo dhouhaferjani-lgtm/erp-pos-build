@@ -84,6 +84,7 @@ final class GoodsReceiptPriceOverrideTest extends TestCase
             'password' => bcrypt('password'),
             'status' => UserStatus::Active,
         ]);
+        $this->user->givePermissionTo('goods-receipt.edit-price');
 
         UserCompanyMembership::create([
             'user_id' => $this->user->id,

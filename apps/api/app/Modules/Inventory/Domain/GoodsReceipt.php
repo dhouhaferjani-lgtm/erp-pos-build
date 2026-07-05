@@ -21,7 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string $tenant_id
  * @property string $company_id
  * @property string $purchase_order_id
- * @property string $receipt_number
+ * @property string|null $receipt_number
  * @property GoodsReceiptStatus $status
  * @property Carbon $received_at
  * @property string|null $received_by

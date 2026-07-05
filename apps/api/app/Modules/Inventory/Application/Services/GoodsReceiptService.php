@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptResult;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\Events\GoodsReceived;
@@ -43,6 +46,7 @@ final class GoodsReceiptService
         private readonly DocumentNumberingService $numberingService,
         private readonly ReceiptBatchCostAllocator $receiptBatchCostAllocator,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly GeneralLedgerService $generalLedgerService,
     ) {}
 
     /**
@@ -65,32 +69,155 @@ final class GoodsReceiptService
         ?string $priceOverrideReason = null,
         ?string $actorId = null,
     ): GoodsReceiptResult {
-        if ($purchaseOrder->type !== DocumentType::PurchaseOrder) {
-            throw new \DomainException('Only purchase orders can receive goods');
-        }
-
-        if ($purchaseOrder->status !== DocumentStatus::Confirmed) {
-            throw new \DomainException('Purchase order must be confirmed before receiving goods');
-        }
-
         return DB::transaction(function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId): GoodsReceiptResult {
+            $draft = $this->createDraft(
+                $purchaseOrder,
+                $receivedQuantities,
+                $batchData,
+                $freeQuantities,
+                $receivedUnitPrices,
+                $priceOverrideReason,
+                (string) ($actorId ?? ''),
+            );
+
+            $posted = $this->post($draft, (string) ($actorId ?? ''));
+
+            /** @var Document $freshOrder */
+            $freshOrder = $posted->purchaseOrder->fresh(['lines']);
+
+            /** @var GoodsReceipt $freshReceipt */
+            $freshReceipt = $posted->fresh(['lines']);
+
+            return new GoodsReceiptResult($freshOrder, $freshReceipt);
+        });
+    }
+
+    /**
+     * @param  array<string, string>  $receivedQuantities
+     * @param  array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>  $batchData
+     * @param  array<string, string>  $freeQuantities
+     * @param  array<string, string>  $receivedUnitPrices
+     */
+    public function createDraft(
+        Document $po,
+        array $receivedQuantities,
+        array $batchData,
+        array $freeQuantities,
+        array $receivedUnitPrices,
+        ?string $priceOverrideReason,
+        string $actorId,
+        ?string $externalReference = null,
+        ?string $externalDate = null,
+    ): GoodsReceipt {
+        $this->assertReceivablePurchaseOrder($po);
+
+        return DB::transaction(function () use ($po, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $actorId, $externalReference, $externalDate): GoodsReceipt {
+            $priceScale = $this->scaleResolver->getScale((string) ($po->currency ?? 'TND'));
+            $hasDraftLines = false;
+
+            $receipt = GoodsReceipt::create([
+                'tenant_id' => $po->tenant_id,
+                'company_id' => $po->company_id,
+                'purchase_order_id' => $po->id,
+                'receipt_number' => null,
+                'status' => GoodsReceiptStatus::Draft,
+                'received_at' => now(),
+                'received_by' => $actorId !== '' ? $actorId : null,
+                'payload' => [
+                    'batch_data' => $batchData,
+                    'external_reference' => $externalReference,
+                    'external_date' => $externalDate,
+                ],
+            ]);
+
+            foreach ($po->lines as $line) {
+                /** @var numeric-string $qtyToReceive */
+                $qtyToReceive = $receivedQuantities[$line->id] ?? '0.00';
+                /** @var numeric-string $freeQtyToReceive */
+                $freeQtyToReceive = $freeQuantities[$line->id] ?? '0.00';
+
+                if (bccomp($qtyToReceive, '0.00', self::QUANTITY_SCALE) <= 0 && bccomp($freeQtyToReceive, '0.00', self::QUANTITY_SCALE) <= 0) {
+                    continue;
+                }
+
+                if ($line->product_id === null) {
+                    continue;
+                }
+
+                $this->assertQuantitiesWithinRemaining($line, $qtyToReceive, $freeQtyToReceive);
+
+                $receivedUnitPrice = null;
+                if (array_key_exists((string) $line->id, $receivedUnitPrices) && bccomp($qtyToReceive, '0.00', self::QUANTITY_SCALE) > 0) {
+                    $rawReceivedUnitPrice = (string) $receivedUnitPrices[(string) $line->id];
+                    if (! is_numeric($rawReceivedUnitPrice) || bccomp($rawReceivedUnitPrice, '0', $priceScale) <= 0) {
+                        throw new \DomainException("received_unit_price must be greater than zero for line {$line->id}.");
+                    }
+                    $receivedUnitPrice = CurrencyScale::bcround($rawReceivedUnitPrice, $priceScale);
+                }
+
+                GoodsReceiptLine::create([
+                    'tenant_id' => $po->tenant_id,
+                    'company_id' => $po->company_id,
+                    'goods_receipt_id' => $receipt->id,
+                    'po_line_id' => $line->id,
+                    'product_id' => (string) $line->product_id,
+                    'variant_id' => $line->variant_id ?? null,
+                    'received_qty' => $qtyToReceive,
+                    'free_qty' => $freeQtyToReceive,
+                    'received_unit_price' => $receivedUnitPrice,
+                    'landed_unit_cost' => null,
+                    'accrual_unit_cost' => null,
+                    'effective_unit_cost' => null,
+                    'movement_id' => null,
+                    'free_movement_id' => null,
+                    'quantity_invoiced' => '0.0000',
+                    'price_override_by' => null,
+                    'price_override_at' => null,
+                    'price_override_old_basis' => null,
+                    'price_override_reason' => $receivedUnitPrice !== null ? $priceOverrideReason : null,
+                ]);
+                $hasDraftLines = true;
+            }
+
+            if (! $hasDraftLines) {
+                throw new \DomainException('No items to receive. Please specify quantities to receive.');
+            }
+
+            /** @var GoodsReceipt $fresh */
+            $fresh = $receipt->fresh(['lines', 'purchaseOrder.lines']);
+
+            return $fresh;
+        });
+    }
+
+    public function post(GoodsReceipt $receipt, string $actorId, bool $failClosedGrir = false): GoodsReceipt
+    {
+        return DB::transaction(function () use ($receipt, $actorId, $failClosedGrir): GoodsReceipt {
+            /** @var GoodsReceipt $lockedReceipt */
+            $lockedReceipt = GoodsReceipt::query()
+                ->whereKey($receipt->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($lockedReceipt->status !== GoodsReceiptStatus::Draft) {
+                throw new \DomainException("Goods receipt {$lockedReceipt->id} must be Draft before posting.");
+            }
+
+            $lockedReceipt->load(['lines', 'purchaseOrder.lines']);
+            $purchaseOrder = $lockedReceipt->purchaseOrder;
+            $this->assertReceivablePurchaseOrder($purchaseOrder);
+            $this->assertCanApplyDraftPriceOverrides($lockedReceipt, $actorId);
+
             // Get the default location for this company
             $location = $purchaseOrder->location ?? $this->getDefaultLocation($purchaseOrder);
 
             // Re-allocate costs if they were modified after initial confirmation
             if ($this->landedCostService->hasAllocatedCosts($purchaseOrder)) {
                 $this->landedCostService->reallocateCosts($purchaseOrder);
+                /** @var Document $purchaseOrder */
+                $purchaseOrder = $purchaseOrder->fresh(['lines']);
             }
 
-            // Canonical lock order: advisory lock(s) -> stock_level row(s) -> product row.
-            // Each per-line recordPurchase() below acquires its product's advisory lock
-            // internally, but accumulating those unsorted inside this single outer
-            // transaction risks an AB-BA deadlock between two concurrent receipts of
-            // overlapping products received in different line orders. Acquire ALL the
-            // PO's product advisory locks UP FRONT in sorted order (R2-1 pattern) so the
-            // nested per-line acquires are re-entrant on already-held xact locks.
-            // Over-acquiring for non-physical/short lines is harmless — sorted acquisition
-            // is what breaks the cycle.
             /** @var list<string> $productIds */
             $productIds = $purchaseOrder->lines
                 ->pluck('product_id')
@@ -104,11 +231,15 @@ final class GoodsReceiptService
                 $purchaseOrder->tenant_id,
                 $purchaseOrder->company_id,
                 $productIds,
-                function () use ($purchaseOrder, $receivedQuantities, $batchData, $freeQuantities, $receivedUnitPrices, $priceOverrideReason, $location, $actorId): GoodsReceiptResult {
-                    $receipt = GoodsReceipt::create([
-                        'tenant_id' => $purchaseOrder->tenant_id,
-                        'company_id' => $purchaseOrder->company_id,
-                        'purchase_order_id' => $purchaseOrder->id,
+                function () use ($purchaseOrder, $lockedReceipt, $actorId, $location, $failClosedGrir): GoodsReceipt {
+                    // Re-read PO lines INSIDE the cost lock: they were loaded before
+                    // acquisition, and a concurrent post() for the same PO may have
+                    // advanced quantity_received meanwhile — the over-receive
+                    // re-validation must see post-serialization counters or the
+                    // bcadd counter write becomes a lost update.
+                    $purchaseOrder->load('lines');
+                    $input = $this->draftInput($lockedReceipt);
+                    $lockedReceipt->forceFill([
                         'receipt_number' => $this->numberingService->generateForKey(
                             $purchaseOrder->tenant_id,
                             $purchaseOrder->company_id,
@@ -116,30 +247,156 @@ final class GoodsReceiptService
                             'GRN',
                         ),
                         'status' => GoodsReceiptStatus::Posted,
-                        'received_at' => now(),
-                        'received_by' => $actorId,
-                    ]);
+                        'received_by' => $actorId !== '' ? $actorId : $lockedReceipt->received_by,
+                    ])->save();
+
                     $batchFreightShares = $this->receiptBatchCostAllocator->allocate(
                         $purchaseOrder,
-                        $receivedQuantities,
-                        $receivedUnitPrices,
+                        $input['receivedQuantities'],
+                        $input['receivedUnitPrices'],
                     );
 
-                    return $this->processReceiptLines(
+                    $this->processReceiptLines(
                         $purchaseOrder,
-                        $receipt,
-                        $receivedQuantities,
-                        $batchData,
-                        $freeQuantities,
-                        $receivedUnitPrices,
+                        $lockedReceipt,
+                        $input['receivedQuantities'],
+                        $input['batchData'],
+                        $input['freeQuantities'],
+                        $input['receivedUnitPrices'],
                         $batchFreightShares,
-                        $priceOverrideReason,
+                        $input['priceOverrideReason'],
                         $actorId,
                         $location,
+                        $failClosedGrir,
                     );
+
+                    /** @var GoodsReceipt $freshReceipt */
+                    $freshReceipt = $lockedReceipt->fresh(['lines', 'purchaseOrder.lines']);
+
+                    return $freshReceipt;
                 }
             );
         });
+    }
+
+    private function assertReceivablePurchaseOrder(Document $purchaseOrder): void
+    {
+        if ($purchaseOrder->type !== DocumentType::PurchaseOrder) {
+            throw new \DomainException('Only purchase orders can receive goods');
+        }
+
+        if ($purchaseOrder->status !== DocumentStatus::Confirmed) {
+            throw new \DomainException('Purchase order must be confirmed before receiving goods');
+        }
+    }
+
+    /**
+     * @param  numeric-string  $qtyToReceive
+     * @param  numeric-string  $freeQtyToReceive
+     */
+    private function assertQuantitiesWithinRemaining(DocumentLine $line, string $qtyToReceive, string $freeQtyToReceive): void
+    {
+        /** @var numeric-string $alreadyReceived */
+        $alreadyReceived = (string) ($line->quantity_received ?? '0.00');
+        $remaining = bcsub((string) $line->quantity, $alreadyReceived, self::QUANTITY_SCALE);
+
+        if (bccomp($qtyToReceive, '0.00', self::QUANTITY_SCALE) > 0 && bccomp($qtyToReceive, $remaining, self::QUANTITY_SCALE) > 0) {
+            throw new \DomainException(
+                "Cannot receive more than ordered for line {$line->id}. ".
+                "Ordered: {$line->quantity}, Already received: {$alreadyReceived}, Requested: {$qtyToReceive}"
+            );
+        }
+
+        /** @var numeric-string $alreadyFreeReceived */
+        $alreadyFreeReceived = (string) ($line->free_quantity_received ?? '0.00');
+        $freeRemaining = bcsub((string) ($line->free_quantity ?? '0.00'), $alreadyFreeReceived, self::QUANTITY_SCALE);
+
+        if (bccomp($freeQtyToReceive, '0.00', self::QUANTITY_SCALE) > 0 && bccomp($freeQtyToReceive, $freeRemaining, self::QUANTITY_SCALE) > 0) {
+            throw new \DomainException(
+                "Cannot receive more free quantity than ordered for line {$line->id}. ".
+                "Free ordered: {$line->free_quantity}, Already received: {$alreadyFreeReceived}, Requested: {$freeQtyToReceive}"
+            );
+        }
+    }
+
+    private function assertCanApplyDraftPriceOverrides(GoodsReceipt $receipt, string $actorId): void
+    {
+        $hasPriceOverride = $receipt->lines->contains(
+            static fn (GoodsReceiptLine $line): bool => $line->received_unit_price !== null,
+        );
+
+        if (! $hasPriceOverride) {
+            return;
+        }
+
+        /** @var User|null $actor */
+        $actor = $actorId !== '' ? User::find($actorId) : null;
+        if ($actor === null || ! $actor->can('goods-receipt.edit-price')) {
+            throw new \DomainException('User is not allowed to apply goods receipt price overrides.');
+        }
+    }
+
+    /**
+     * @return array{
+     *   receivedQuantities: array<string, string>,
+     *   freeQuantities: array<string, string>,
+     *   receivedUnitPrices: array<string, string>,
+     *   batchData: array<string, array{batch_number: string, expiry_date: string, manufacturing_date?: string}>,
+     *   priceOverrideReason: ?string
+     * }
+     */
+    private function draftInput(GoodsReceipt $receipt): array
+    {
+        $receivedQuantities = [];
+        $freeQuantities = [];
+        $receivedUnitPrices = [];
+        $priceOverrideReason = null;
+
+        /** @var GoodsReceiptLine $line */
+        foreach ($receipt->lines as $line) {
+            $receivedQuantities[$line->po_line_id] = (string) $line->received_qty;
+            $freeQuantities[$line->po_line_id] = (string) $line->free_qty;
+            if ($line->received_unit_price !== null) {
+                $receivedUnitPrices[$line->po_line_id] = (string) $line->received_unit_price;
+                $priceOverrideReason ??= $line->price_override_reason;
+            }
+        }
+
+        $payload = $receipt->payload ?? [];
+        $batchData = is_array($payload['batch_data'] ?? null) ? $payload['batch_data'] : [];
+
+        return [
+            'receivedQuantities' => $receivedQuantities,
+            'freeQuantities' => $freeQuantities,
+            'receivedUnitPrices' => $receivedUnitPrices,
+            'batchData' => $batchData,
+            'priceOverrideReason' => $priceOverrideReason,
+        ];
+    }
+
+    /**
+     * @param  numeric-string  $receivedQty
+     * @param  numeric-string  $unitCost
+     */
+    private function postFailClosedGrirIfRequested(
+        bool $failClosedGrir,
+        string $companyId,
+        string $movementId,
+        string $receivedQty,
+        string $unitCost,
+        string $currency,
+    ): void {
+        if (! $failClosedGrir) {
+            return;
+        }
+
+        $this->generalLedgerService->createGoodsReceiptGrIrEntry(
+            $companyId,
+            $movementId,
+            $receivedQty,
+            $unitCost,
+            $currency,
+        );
     }
 
     /**
@@ -166,11 +423,14 @@ final class GoodsReceiptService
         array $batchFreightShares,
         ?string $priceOverrideReason,
         ?string $actorId,
-        Location $location
+        Location $location,
+        bool $failClosedGrir = false,
     ): GoodsReceiptResult {
         $hasReceivedItems = false;
         $priceScale = $this->scaleResolver->getScale((string) ($purchaseOrder->currency ?? 'TND'));
         $hasBatchFreightPool = $this->hasPositiveFreightPool($batchFreightShares);
+        $receipt->loadMissing('lines');
+        $receiptLinesByPoLine = $receipt->lines->keyBy('po_line_id');
 
         foreach ($purchaseOrder->lines as $line) {
             /** @var numeric-string $qtyToReceive */
@@ -182,28 +442,12 @@ final class GoodsReceiptService
                 continue;
             }
 
-            // Validate not over-receiving paid units.
+            // Validate not over-receiving paid/free units.
+            $this->assertQuantitiesWithinRemaining($line, $qtyToReceive, $freeQtyToReceive);
             /** @var numeric-string $alreadyReceived */
             $alreadyReceived = (string) ($line->quantity_received ?? '0.00');
-            $remaining = bcsub((string) $line->quantity, $alreadyReceived, self::QUANTITY_SCALE);
-
-            if (bccomp($qtyToReceive, '0.00', self::QUANTITY_SCALE) > 0 && bccomp($qtyToReceive, $remaining, self::QUANTITY_SCALE) > 0) {
-                throw new \DomainException(
-                    "Cannot receive more than ordered for line {$line->id}. ".
-                    "Ordered: {$line->quantity}, Already received: {$alreadyReceived}, Requested: {$qtyToReceive}"
-                );
-            }
-
             /** @var numeric-string $alreadyFreeReceived */
             $alreadyFreeReceived = (string) ($line->free_quantity_received ?? '0.00');
-            $freeRemaining = bcsub((string) ($line->free_quantity ?? '0.00'), $alreadyFreeReceived, self::QUANTITY_SCALE);
-
-            if (bccomp($freeQtyToReceive, '0.00', self::QUANTITY_SCALE) > 0 && bccomp($freeQtyToReceive, $freeRemaining, self::QUANTITY_SCALE) > 0) {
-                throw new \DomainException(
-                    "Cannot receive more free quantity than ordered for line {$line->id}. ".
-                    "Free ordered: {$line->free_quantity}, Already received: {$alreadyFreeReceived}, Requested: {$freeQtyToReceive}"
-                );
-            }
 
             // Skip non-physical products (services)
             if ($line->product_id === null) {
@@ -295,6 +539,14 @@ final class GoodsReceiptService
                     unitCost: '0',
                     currency: (string) ($purchaseOrder->currency ?? 'TND'),
                 ));
+                $this->postFailClosedGrirIfRequested(
+                    $failClosedGrir,
+                    $purchaseOrder->company_id,
+                    (string) $freeMovement->id,
+                    $freeQtyToReceive,
+                    '0',
+                    (string) ($purchaseOrder->currency ?? 'TND'),
+                );
                 $freeMovementId = (string) $freeMovement->id;
 
                 if ($batch !== null) {
@@ -334,6 +586,14 @@ final class GoodsReceiptService
                     unitCost: $landedUnitCost,
                     currency: (string) ($purchaseOrder->currency ?? 'TND'),
                 ));
+                $this->postFailClosedGrirIfRequested(
+                    $failClosedGrir,
+                    $purchaseOrder->company_id,
+                    (string) $movement->id,
+                    $qtyToReceive,
+                    $landedUnitCost,
+                    (string) ($purchaseOrder->currency ?? 'TND'),
+                );
                 $movementId = (string) $movement->id;
 
                 if ($batch !== null) {
@@ -362,7 +622,9 @@ final class GoodsReceiptService
 
             $line->save();
 
-            GoodsReceiptLine::create([
+            /** @var GoodsReceiptLine|null $receiptLine */
+            $receiptLine = $receiptLinesByPoLine->get((string) $line->id);
+            $receiptLinePayload = [
                 'tenant_id' => $purchaseOrder->tenant_id,
                 'company_id' => $purchaseOrder->company_id,
                 'goods_receipt_id' => $receipt->id,
@@ -386,7 +648,13 @@ final class GoodsReceiptService
                 'price_override_at' => $hasReceivedPriceOverride ? now() : null,
                 'price_override_old_basis' => $hasReceivedPriceOverride ? $oldBasis : null,
                 'price_override_reason' => $hasReceivedPriceOverride ? $priceOverrideReason : null,
-            ]);
+            ];
+
+            if ($receiptLine === null) {
+                GoodsReceiptLine::create($receiptLinePayload);
+            } else {
+                $receiptLine->forceFill($receiptLinePayload)->save();
+            }
 
             $hasReceivedItems = true;
         }

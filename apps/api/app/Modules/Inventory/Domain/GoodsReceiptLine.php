@@ -8,8 +8,10 @@ use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -26,9 +28,9 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $received_qty
  * @property numeric-string $free_qty
  * @property numeric-string|null $received_unit_price
- * @property numeric-string $landed_unit_cost
- * @property numeric-string $accrual_unit_cost
- * @property numeric-string $effective_unit_cost
+ * @property numeric-string|null $landed_unit_cost
+ * @property numeric-string|null $accrual_unit_cost
+ * @property numeric-string|null $effective_unit_cost
  * @property string|null $movement_id
  * @property string|null $free_movement_id
  * @property numeric-string $quantity_invoiced
@@ -96,6 +98,20 @@ class GoodsReceiptLine extends Model
             'price_override_at' => 'datetime',
             'price_override_old_basis' => 'decimal:6',
         ];
+    }
+
+    /**
+     * @param  Builder<GoodsReceiptLine>  $query
+     * @return Builder<GoodsReceiptLine>
+     */
+    public function scopePostedReceipts(Builder $query): Builder
+    {
+        return $query->whereIn(
+            'goods_receipt_id',
+            GoodsReceipt::query()
+                ->select('id')
+                ->where('status', GoodsReceiptStatus::Posted->value)
+        );
     }
 
     /**

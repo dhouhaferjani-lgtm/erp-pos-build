@@ -81,6 +81,7 @@ final class SupplierInvoicePostingService
 
             /** @var Collection<int, GoodsReceiptLine> $lockedReceiptLines */
             $lockedReceiptLines = GoodsReceiptLine::query()
+                ->postedReceipts()
                 ->where('company_id', $supplierInvoice->company_id)
                 ->whereIn('po_line_id', $poLineIds)
                 ->orderBy('id')
@@ -172,6 +173,7 @@ final class SupplierInvoicePostingService
 
                     /** @var numeric-string $newInvoiced */
                     $newInvoiced = CurrencyScale::bcformatStrict((string) GoodsReceiptLine::query()
+                        ->postedReceipts()
                         ->where('po_line_id', $sourceLineId)
                         ->sum('quantity_invoiced'), 4);
                 } else {
@@ -220,6 +222,7 @@ final class SupplierInvoicePostingService
 
                     /** @var numeric-string $newFreeInvoiced */
                     $newFreeInvoiced = CurrencyScale::bcformatStrict((string) GoodsReceiptLine::query()
+                        ->postedReceipts()
                         ->where('po_line_id', $sourceLineId)
                         ->sum('free_quantity_invoiced'), 4);
                 } else {

@@ -438,6 +438,7 @@ final class BackfillGoodsReceiptsCommand extends Command
     {
         foreach ($po->lines as $poLine) {
             $received = GoodsReceiptLine::query()
+                ->postedReceipts()
                 ->where('po_line_id', $poLine->id)
                 ->selectRaw('COALESCE(SUM(received_qty), 0) as received_qty, COALESCE(SUM(free_qty), 0) as free_qty')
                 ->first();

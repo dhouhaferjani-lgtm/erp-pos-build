@@ -211,6 +211,36 @@ final class SupplierInvoiceMatcherReceiptBasisTest extends TestCase
         $this->assertSame(SupplierInvoiceMatchStatus::Matched, $this->matcher->match($invoice));
     }
 
+    public function test_draft_receipt_lines_create_no_paid_or_bonus_match_window(): void
+    {
+        $poLine = $this->createPoLine([
+            'quantity' => '10.0000',
+            'quantity_received' => '0.0000',
+            'free_quantity' => '2.0000',
+            'free_quantity_received' => '0.0000',
+            'free_quantity_invoiced' => '0.0000',
+            'unit_price' => '5.000',
+        ]);
+        [$draftLine] = $this->createReceiptLines($poLine, [
+            [
+                'qty' => '10.0000',
+                'free_qty' => '2.0000',
+                'basis' => null,
+            ],
+        ], GoodsReceiptStatus::Draft);
+
+        $planner = app(ReceiptLineConsumptionPlanner::class);
+        $this->assertSame('10.0000', $planner->matchableQty($draftLine));
+        $this->assertSame([], $planner->plan($poLine->id, '1.0000'));
+        $this->assertSame('0.0000', $this->matcher->matchableQty($poLine));
+
+        $paidInvoice = $this->createInvoice($poLine, '1.0000', '5.000');
+        $bonusInvoice = $this->createInvoice($poLine, '1.0000', '0.000', isBonusLine: true);
+
+        $this->assertSame(SupplierInvoiceMatchStatus::Exception, $this->matcher->match($paidInvoice));
+        $this->assertSame(SupplierInvoiceMatchStatus::Exception, $this->matcher->match($bonusInvoice));
+    }
+
     /**
      * @param  array<string, string>  $attrs
      */
@@ -243,17 +273,17 @@ final class SupplierInvoiceMatcherReceiptBasisTest extends TestCase
     }
 
     /**
-     * @param  list<array{qty: numeric-string, basis: numeric-string, invoiced?: numeric-string, free_qty?: numeric-string, free_invoiced?: numeric-string}>  $lines
+     * @param  list<array{qty: numeric-string, basis: numeric-string|null, invoiced?: numeric-string, free_qty?: numeric-string, free_invoiced?: numeric-string}>  $lines
      * @return list<GoodsReceiptLine>
      */
-    private function createReceiptLines(DocumentLine $poLine, array $lines): array
+    private function createReceiptLines(DocumentLine $poLine, array $lines, GoodsReceiptStatus $status = GoodsReceiptStatus::Posted): array
     {
         $receipt = GoodsReceipt::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'purchase_order_id' => $poLine->document_id,
-            'receipt_number' => 'GRN-RB-'.Str::upper(Str::random(6)),
-            'status' => GoodsReceiptStatus::Posted,
+            'receipt_number' => $status === GoodsReceiptStatus::Posted ? 'GRN-RB-'.Str::upper(Str::random(6)) : null,
+            'status' => $status,
             'received_at' => now(),
         ]);
 

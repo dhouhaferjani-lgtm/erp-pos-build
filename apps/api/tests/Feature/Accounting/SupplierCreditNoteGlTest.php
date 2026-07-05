@@ -292,13 +292,14 @@ final class SupplierCreditNoteGlTest extends TestCase
         string $invoicedQty,
         string $freeQty = '0.0000',
         string $freeInvoicedQty = '0.0000',
+        GoodsReceiptStatus $status = GoodsReceiptStatus::Posted,
     ): GoodsReceiptLine {
         $receipt = GoodsReceipt::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'purchase_order_id' => $poLine->document_id,
-            'receipt_number' => 'GRN-D1-'.Str::upper(Str::random(6)),
-            'status' => GoodsReceiptStatus::Posted,
+            'receipt_number' => $status === GoodsReceiptStatus::Posted ? 'GRN-D1-'.Str::upper(Str::random(6)) : null,
+            'status' => $status,
             'received_at' => now(),
         ]);
 
@@ -533,6 +534,30 @@ final class SupplierCreditNoteGlTest extends TestCase
         $this->assertSame(1, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count());
         $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
         $this->assertSame('5.0000', GoodsReceiptLine::findOrFail($receiptLine->id)->quantity_invoiced);
+    }
+
+    public function test_goods_return_ignores_draft_receipt_lines_and_uses_legacy_po_line_path(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+        $draftLine = $this->receiptLineForPoLine(
+            $poLine,
+            receivedQty: '5.0000',
+            invoicedQty: '0.0000',
+            status: GoodsReceiptStatus::Draft,
+        );
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '0.000'],
+            subtotal: '20.000',
+            total: '20.000',
+        );
+
+        $this->service()->post($creditNote);
+
+        $this->assertSame('3.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame('0.0000', GoodsReceiptLine::findOrFail($draftLine->id)->quantity_invoiced);
     }
 
     public function test_bonus_goods_return_decrements_free_counter_issues_stock_at_wac_and_avoids_supplier_payable(): void
