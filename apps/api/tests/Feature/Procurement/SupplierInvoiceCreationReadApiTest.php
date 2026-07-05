@@ -98,7 +98,10 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
     public function test_purchase_order_receipt_lines_return_only_uninvoiced_prefill_rows(): void
     {
         [$po, $poLine] = $this->createReceivedPurchaseOrder('PO-READ-001', '10.0000', '5.100');
-        $receipt = $this->createReceipt($po, 'GRN-READ-001');
+        $receipt = $this->createReceipt($po, 'GRN-READ-001', GoodsReceiptStatus::Posted, [
+            'external_reference' => 'BL-2026-8842',
+            'external_date' => '2026-07-05',
+        ]);
 
         $uninvoiced = $this->createReceiptLine($receipt, $poLine, [
             'received_qty' => '10.0000',
@@ -124,6 +127,8 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.id', $uninvoiced->id);
         $response->assertJsonPath('data.0.receipt_number', 'GRN-READ-001');
+        $response->assertJsonPath('data.0.external_reference', 'BL-2026-8842');
+        $response->assertJsonPath('data.0.external_date', '2026-07-05');
         $response->assertJsonPath('data.0.product_id', $uninvoiced->product_id);
         $response->assertJsonPath('data.0.variant_id', null);
         $response->assertJsonPath('data.0.received_qty', '10.0000');
@@ -329,7 +334,15 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
         return [$po, $line];
     }
 
-    private function createReceipt(Document $po, ?string $number, GoodsReceiptStatus $status = GoodsReceiptStatus::Posted): GoodsReceipt
+    /**
+     * @param  array<string, string|null>  $overrides
+     */
+    private function createReceipt(
+        Document $po,
+        ?string $number,
+        GoodsReceiptStatus $status = GoodsReceiptStatus::Posted,
+        array $overrides = [],
+    ): GoodsReceipt
     {
         return GoodsReceipt::create([
             'tenant_id' => $this->tenant->id,
@@ -339,7 +352,7 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
             'status' => $status,
             'received_at' => now(),
             'received_by' => $this->user->id,
-        ]);
+        ] + $overrides);
     }
 
     /**
