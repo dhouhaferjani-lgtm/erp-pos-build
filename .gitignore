@@ -62,3 +62,10 @@ docs/sessions/
 
 # Agent worktrees created inside .claude/
 .claude/worktrees/
+
+# session artifacts (dark-factory cleanup 2026-07-05)
+/*.png
+apps/api/storage/tenant*/
+.codex-*.md
+/anchor
+apps/api/phpunit-pgsql-triage.xml
