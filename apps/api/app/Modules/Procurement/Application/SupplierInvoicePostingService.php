@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
@@ -87,6 +88,21 @@ final class SupplierInvoicePostingService
                 ->get();
             $receiptLinesByPoLine = $lockedReceiptLines->groupBy('po_line_id');
 
+            $poDocumentIds = $lockedPoLines
+                ->pluck('document_id')
+                ->unique()
+                ->values()
+                ->all();
+
+            /** @var Collection<int, Document> $lockedPoDocuments */
+            $lockedPoDocuments = Document::query()
+                ->whereIn('id', $poDocumentIds)
+                ->where('company_id', $supplierInvoice->company_id)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
             // 3. Idempotency no-op: a clearing entry already exists for this invoice.
             $alreadyPosted = JournalEntry::query()
                 ->where('source_type', 'supplier_invoice')
@@ -96,6 +112,8 @@ final class SupplierInvoicePostingService
             if ($alreadyPosted) {
                 return;
             }
+
+            $this->assertLineParentsShareInvoiceHeader($supplierInvoice, $lockedPoLines, $lockedPoDocuments);
 
             // 4. Recheck the matcher invariant on the LOCKED state. Hard violations
             //    (quantity over-clear / exception) throw regardless of enforcement.
@@ -426,6 +444,35 @@ final class SupplierInvoicePostingService
         }
 
         return $agg;
+    }
+
+    /**
+     * @param  Collection<int, DocumentLine>  $lockedPoLines
+     * @param  Collection<int, Document>  $lockedPoDocuments
+     */
+    private function assertLineParentsShareInvoiceHeader(
+        Document $supplierInvoice,
+        Collection $lockedPoLines,
+        Collection $lockedPoDocuments,
+    ): void {
+        /** @var DocumentLine $poLine */
+        foreach ($lockedPoLines as $poLine) {
+            /** @var Document|null $parent */
+            $parent = $lockedPoDocuments->get($poLine->document_id);
+            if (
+                $parent === null
+                || $parent->type !== DocumentType::PurchaseOrder
+                || $parent->company_id !== $supplierInvoice->company_id
+                || $parent->partner_id !== $supplierInvoice->partner_id
+                || $parent->currency !== $supplierInvoice->currency
+            ) {
+                throw new \DomainException(sprintf(
+                    'Supplier invoice [%s] cannot be posted: PO line [%s] parent does not share company, partner, and currency.',
+                    $supplierInvoice->id,
+                    $poLine->id,
+                ));
+            }
+        }
     }
 
     /**

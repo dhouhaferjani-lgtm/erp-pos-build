@@ -8,7 +8,7 @@
  * - Payment: reuse POST /payments (gated on C4 re-review — see contract).
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query'
 import { api, apiGet, apiPost, apiDelete, authenticatedDownload } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
@@ -199,6 +199,46 @@ export function usePurchaseOrderForSupplierInvoice(id: string) {
   })
 }
 
+export function usePurchaseOrdersForSupplierInvoice(ids: string[]): { data: PurchaseOrderForSupplierInvoice[]; isLoading: boolean } {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const enabled = tenantId !== null && companyId !== null
+  const uniqueIds = Array.from(new Set(ids.filter((id) => id !== '')))
+
+  const queries = useQueries({
+    queries: uniqueIds.map((id) => ({
+      queryKey: tenantScopedKey([...supplierInvoiceKeys.purchaseOrder(id)]),
+      queryFn: async (): Promise<PurchaseOrderForSupplierInvoice> => {
+        const response = await api.get<{ data: Document }>(`/purchase-orders/${id}`)
+        const document = response.data.data
+        return {
+          id: document.id,
+          document_number: document.document_number ?? document.id,
+          partner_id: document.partner_id ?? '',
+          partner_name: document.partner_name ?? '',
+          currency: document.currency,
+          lines: (document.lines ?? []).map((line) => ({
+            id: line.id,
+            description: line.description,
+            product_id: line.product_id,
+            product_name: line.product_name,
+            unit_price: line.unit_price,
+            tax_rate: line.tax_rate,
+          })),
+        }
+      },
+      enabled,
+    })),
+  })
+
+  return {
+    data: queries
+      .map((query) => query.data)
+      .filter((document): document is PurchaseOrderForSupplierInvoice => document !== undefined),
+    isLoading: queries.some((query) => query.isLoading),
+  }
+}
+
 export function usePurchaseOrderReceiptLines(purchaseOrderId: string, enabled = true) {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -213,6 +253,30 @@ export function usePurchaseOrderReceiptLines(purchaseOrderId: string, enabled = 
       ),
     enabled: queryEnabled,
   })
+}
+
+export function usePurchaseOrderReceiptLinesForSupplierInvoice(purchaseOrderIds: string[], enabled = true) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const queryEnabled = tenantId !== null && companyId !== null && enabled
+  const uniqueIds = Array.from(new Set(purchaseOrderIds.filter((id) => id !== '')))
+
+  const queries = useQueries({
+    queries: uniqueIds.map((purchaseOrderId) => ({
+      queryKey: tenantScopedKey([...supplierInvoiceKeys.receiptLines(purchaseOrderId)]),
+      queryFn: () =>
+        apiGet<PurchaseOrderReceiptLine[]>(
+          `/purchase-orders/${purchaseOrderId}/receipt-lines`,
+          { uninvoiced: '1' },
+        ),
+      enabled: queryEnabled,
+    })),
+  })
+
+  return {
+    data: queries.flatMap((query) => query.data ?? []),
+    isLoading: queries.some((query) => query.isLoading),
+  }
 }
 
 export function useOpenPurchaseOrdersForSupplier(partnerId: string) {

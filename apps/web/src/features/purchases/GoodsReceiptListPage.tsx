@@ -249,8 +249,11 @@ export function GoodsReceiptListPage() {
 
   const orders = activeTab === 'pending' ? pendingOrders : receivedOrders
   const canCreateSupplierInvoice = hasPermission('purchases.create')
-  const canInvoiceSelectedReceipts = activeTab === 'received' && selectedInvoicePoIds.length === 1
-  const invoiceSelectionBlocked = activeTab === 'received' && selectedInvoicePoIds.length > 1
+  const selectedInvoicePurchaseOrders = receivedOrders.filter((po) => selectedInvoicePoIds.includes(po.id))
+  const selectedInvoiceSupplierIds = Array.from(new Set(selectedInvoicePurchaseOrders.map((po) => po.partner_id)))
+  const crossSupplierInvoiceSelection = selectedInvoiceSupplierIds.length > 1
+  const canInvoiceSelectedReceipts = activeTab === 'received' && selectedInvoicePoIds.length > 0 && !crossSupplierInvoiceSelection
+  const invoiceSelectionBlocked = activeTab === 'received' && selectedInvoicePoIds.length > 0 && crossSupplierInvoiceSelection
 
   function toggleInvoiceSelection(poId: string) {
     setSelectedInvoicePoIds((current) =>
@@ -261,9 +264,11 @@ export function GoodsReceiptListPage() {
   }
 
   function handleInvoiceReceipts() {
-    const poId = selectedInvoicePoIds[0]
-    if (poId !== undefined) {
-      void navigate(`/purchases/supplier-invoices/new?po=${poId}&entry=receipts`)
+    if (selectedInvoicePoIds.length > 0 && !crossSupplierInvoiceSelection) {
+      const query = new URLSearchParams()
+      selectedInvoicePoIds.forEach((poId) => { query.append('po', poId) })
+      query.set('entry', 'receipts')
+      void navigate(`/purchases/supplier-invoices/new?${query.toString()}`)
     }
   }
 
@@ -285,7 +290,7 @@ export function GoodsReceiptListPage() {
               type="button"
               data-testid="invoice-receipts"
               disabled={!canInvoiceSelectedReceipts}
-              title={invoiceSelectionBlocked ? t('purchases:supplierInvoices.create.singlePoOnlyTooltip') : undefined}
+              title={invoiceSelectionBlocked ? t('purchases:supplierInvoices.create.crossSupplierTooltip') : undefined}
               onClick={handleInvoiceReceipts}
               className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
             >
@@ -294,7 +299,7 @@ export function GoodsReceiptListPage() {
             </button>
             {invoiceSelectionBlocked && (
               <span className={`text-xs ${textColors.warning}`}>
-                {t('purchases:supplierInvoices.create.singlePoOnlyTooltip')}
+                {t('purchases:supplierInvoices.create.crossSupplierTooltip')}
               </span>
             )}
           </div>

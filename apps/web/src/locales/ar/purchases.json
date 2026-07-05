@@ -113,8 +113,8 @@
       "attachmentsUploaded": "تم رفع {{count}} مرفق إلى هذه المسودة",
       "attachmentUploadFailed": "تم إنشاء الفاتورة، وفشل رفع المرفق — أعد المحاولة من صفحة الفاتورة.",
       "invoiceReceipts": "فوترة الاستلامات",
-      "multiPoBlocked": "فوترة عدة أوامر شراء تصل في الموجة الأخيرة.",
-      "singlePoOnlyTooltip": "اختر بنود استلام من أمر شراء واحد؛ تُنشأ المسودة على مستوى أمر الشراء.",
+      "linkedPOs": "أوامر الشراء المرتبطة: {{numbers}}",
+      "crossSupplierTooltip": "اختر بنود استلام من مورد واحد.",
       "selectReceiptPo": "اختيار استلامات {{number}}",
       "columns": {
         "product": "المنتج",

@@ -113,8 +113,8 @@
       "attachmentsUploaded": "{{count}} attachment(s) uploaded to this draft",
       "attachmentUploadFailed": "Invoice created, attachment failed — retry from the invoice detail.",
       "invoiceReceipts": "Invoice receipts",
-      "multiPoBlocked": "Multi-PO invoicing arrives with the final wave.",
-      "singlePoOnlyTooltip": "Select receipt rows from one purchase order; this draft is created at purchase-order level.",
+      "linkedPOs": "Linked POs: {{numbers}}",
+      "crossSupplierTooltip": "Select receipt rows from one supplier.",
       "selectReceiptPo": "Select receipts from {{number}}",
       "columns": {
         "product": "Product",
