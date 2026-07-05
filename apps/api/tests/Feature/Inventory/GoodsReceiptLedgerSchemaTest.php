@@ -33,6 +33,8 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
             'status',
             'received_at',
             'received_by',
+            'external_reference',
+            'external_date',
             'notes',
             'payload',
             'created_at',
@@ -69,6 +71,8 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
         $this->assertColumn('goods_receipts', 'status', 'varchar', false);
         $this->assertColumn('goods_receipts', 'purchase_order_id', 'varchar', false);
         $this->assertColumn('goods_receipts', 'received_by', 'varchar', true);
+        $this->assertColumn('goods_receipts', 'external_reference', 'varchar', true);
+        $this->assertColumn('goods_receipts', 'external_date', 'date', true);
         $this->assertColumn('goods_receipts', 'payload', 'text', true);
 
         $this->assertColumn('goods_receipt_lines', 'received_qty', 'numeric', false);
@@ -107,6 +111,7 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
 
         $this->assertSame(GoodsReceiptStatus::class, (new GoodsReceipt)->getCasts()['status']);
         $this->assertSame('array', (new GoodsReceipt)->getCasts()['payload']);
+        $this->assertSame('date', (new GoodsReceipt)->getCasts()['external_date']);
         $this->assertSame('decimal:4', (new GoodsReceiptLine)->getCasts()['received_qty']);
         $this->assertSame('decimal:4', (new GoodsReceiptLine)->getCasts()['free_qty']);
         $this->assertSame('decimal:3', (new GoodsReceiptLine)->getCasts()['received_unit_price']);

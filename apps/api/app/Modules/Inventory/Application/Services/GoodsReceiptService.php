@@ -123,6 +123,8 @@ final class GoodsReceiptService
                 'status' => GoodsReceiptStatus::Draft,
                 'received_at' => now(),
                 'received_by' => $actorId !== '' ? $actorId : null,
+                'external_reference' => $externalReference,
+                'external_date' => $externalDate,
                 'payload' => [
                     'batch_data' => $batchData,
                     'external_reference' => $externalReference,

@@ -25,6 +25,8 @@ use Illuminate\Support\Carbon;
  * @property GoodsReceiptStatus $status
  * @property Carbon $received_at
  * @property string|null $received_by
+ * @property string|null $external_reference
+ * @property Carbon|null $external_date
  * @property string|null $notes
  * @property array<string, mixed>|null $payload
  * @property Carbon|null $created_at
@@ -52,6 +54,8 @@ class GoodsReceipt extends Model
         'status',
         'received_at',
         'received_by',
+        'external_reference',
+        'external_date',
         'notes',
         'payload',
     ];
@@ -64,6 +68,7 @@ class GoodsReceipt extends Model
         return [
             'status' => GoodsReceiptStatus::class,
             'received_at' => 'datetime',
+            'external_date' => 'date',
             'payload' => 'array',
         ];
     }
