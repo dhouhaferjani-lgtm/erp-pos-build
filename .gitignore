@@ -69,3 +69,4 @@ apps/api/storage/tenant*/
 .codex-*.md
 /anchor
 apps/api/phpunit-pgsql-triage.xml
+docs/superpowers/audits/*/screens/
