@@ -108,6 +108,9 @@ final class ProcurementPolicyApiTest extends TestCase
             'match_enforcement' => MatchEnforcement::Warn,
             'variance_tolerance_percent' => '2.00',
             'variance_tolerance_max_amount' => '1.000',
+            'allow_receipt_first' => true,
+            'allow_invoice_first' => false,
+            'invoice_first_requires_approval' => false,
         ]);
 
         $response = $this->actingAs($this->viewer, 'sanctum')
@@ -118,7 +121,10 @@ final class ProcurementPolicyApiTest extends TestCase
             ->assertJsonPath('data.company_id', $this->company->id)
             ->assertJsonPath('data.preset', 'standard')
             ->assertJsonPath('data.match_mode', 'three_way')
-            ->assertJsonPath('data.match_enforcement', 'warn');
+            ->assertJsonPath('data.match_enforcement', 'warn')
+            ->assertJsonPath('data.allow_receipt_first', true)
+            ->assertJsonPath('data.allow_invoice_first', false)
+            ->assertJsonPath('data.invoice_first_requires_approval', false);
     }
 
     public function test_put_preset_applies_bundle_and_scopes_to_current_company(): void
@@ -153,11 +159,15 @@ final class ProcurementPolicyApiTest extends TestCase
             'preset' => 'leger',
             'match_mode' => 'two_way',
             'match_enforcement' => 'warn',
+            'allow_receipt_first' => true,
+            'allow_invoice_first' => true,
         ]);
         $this->assertDatabaseHas('procurement_policies', [
             'company_id' => $this->otherCompany->id,
             'preset' => 'complet',
             'match_enforcement' => 'block',
+            'allow_receipt_first' => false,
+            'allow_invoice_first' => false,
         ]);
     }
 
@@ -182,18 +192,27 @@ final class ProcurementPolicyApiTest extends TestCase
                 'match_enforcement' => 'block',
                 'variance_tolerance_percent' => '3.50',
                 'variance_tolerance_max_amount' => '4.250',
+                'allow_receipt_first' => true,
+                'allow_invoice_first' => true,
+                'invoice_first_requires_approval' => false,
             ]);
 
         $response->assertOk()
             ->assertJsonPath('data.preset', null)
             ->assertJsonPath('data.match_enforcement', 'block')
             ->assertJsonPath('data.variance_tolerance_percent', '3.50')
-            ->assertJsonPath('data.variance_tolerance_max_amount', '4.250');
+            ->assertJsonPath('data.variance_tolerance_max_amount', '4.250')
+            ->assertJsonPath('data.allow_receipt_first', true)
+            ->assertJsonPath('data.allow_invoice_first', true)
+            ->assertJsonPath('data.invoice_first_requires_approval', false);
 
         $this->assertDatabaseHas('procurement_policies', [
             'company_id' => $this->company->id,
             'preset' => null,
             'match_enforcement' => 'block',
+            'allow_receipt_first' => true,
+            'allow_invoice_first' => true,
+            'invoice_first_requires_approval' => false,
         ]);
     }
 
@@ -263,6 +282,9 @@ final class ProcurementPolicyApiTest extends TestCase
             'match_enforcement' => MatchEnforcement::Warn,
             'variance_tolerance_percent' => '7.50',
             'variance_tolerance_max_amount' => '9.999',
+            'allow_receipt_first' => true,
+            'allow_invoice_first' => false,
+            'invoice_first_requires_approval' => false,
         ]);
 
         $policy->applyPreset(\App\Modules\Procurement\Domain\Enums\ProcurementPreset::Leger)->save();
@@ -271,6 +293,9 @@ final class ProcurementPolicyApiTest extends TestCase
         $this->assertSame(0, bccomp('7.50', $policy->variance_tolerance_percent, 2));
         $this->assertSame(0, bccomp('9.999', $policy->variance_tolerance_max_amount, 3));
         $this->assertSame(\App\Modules\Procurement\Domain\Enums\MatchMode::TwoWay, $policy->match_mode);
+        $this->assertTrue($policy->allowsReceiptFirst());
+        $this->assertTrue($policy->allowsInvoiceFirst());
+        $this->assertFalse($policy->requiresInvoiceFirstApproval());
         $this->assertSame(\App\Modules\Procurement\Domain\Enums\ProcurementPreset::Leger, $policy->preset);
     }
 }

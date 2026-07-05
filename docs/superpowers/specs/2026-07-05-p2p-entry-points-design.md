@@ -103,7 +103,7 @@ suggested preset in the settings/onboarding UI (Tunisia → Léger suggestion ch
 silent country-based behavior.
 
 ### 3.4 Permissions & routes
-New permissions (seeder + per-tenant sync note): `goods-receipts.create-standalone`,
+New permissions (seeder + per-tenant sync note): `goods-receipt.create-standalone`,
 `supplier-invoices.create-pending`, `supplier-invoices.link-receipts`,
 `supplier-invoices.approve-invoice-first` (used when `invoice_first_requires_approval`).
 Existing `goods-receipt.edit-price` unchanged. Routes: standard
@@ -316,7 +316,7 @@ lacking a GR-IR journal entry (source-type-scoped lookup — journal_entries
 ## 11. API surface (new/changed)
 
 ```
-POST   /api/v1/goods-receipts/standalone          (policy allow_receipt_first; perm goods-receipts.create-standalone)
+POST   /api/v1/goods-receipts/standalone          (policy allow_receipt_first; perm goods-receipt.create-standalone)
 POST   /api/v1/goods-receipts                     (draft create — PO-backed draft path)
 POST   /api/v1/goods-receipts/{id}/post
 PATCH  /api/v1/goods-receipts/{id}                (draft only)
