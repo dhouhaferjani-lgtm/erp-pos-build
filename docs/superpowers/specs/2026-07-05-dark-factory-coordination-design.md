@@ -25,11 +25,19 @@
 
 ```
 tasks/T-0001-<slug>.yaml      # one file per task → near-zero merge conflicts
-manifests/routes-web.yaml     # generated route inventory (apps/web)
-manifests/routes-pos.yaml     # generated route inventory (apps/pos)
 sweeps/<date>-<topic>.yaml    # per-route sweep checklists
 BOARD.md                      # generated human-readable summary (never hand-edited)
 ```
+
+> **Deviation (2026-07-05, implementation):** the generated route manifests
+> (`routes-web.yaml`, `routes-pos.yaml`) live in the CODE repo at
+> `scripts/factory/manifests/`, NOT on the board branch as originally drafted
+> above. Rationale: commit atomicity — the preflight drift check regenerates
+> and diffs the manifests against the same commit that changes the routes, so
+> a PR that adds a route without regenerating fails in that PR itself. A
+> board-branch copy could never be updated atomically with the code change.
+> The board keeps only the sweep checklists, which reference the manifests by
+> the dev commit sha they were generated from (`manifest_commit`).
 
 Both hosts: `git worktree add ../erp.board factory/board` (laptop) / clone-side
 equivalent (VPS). The branch is created with `git checkout --orphan factory/board`.
@@ -62,8 +70,8 @@ log:                        # append-only breadcrumbs; heartbeat for stall detec
   - {at: 2026-07-05T14:05Z, host: vps, note: "worktree created off 6b356be6d"}
 ```
 
-**Board CLI** — `scripts/factory/board.sh` (thin, dependency-free bash + `yq` or a
-small Node script; lives on `dev` so it ships with the code, operates on the
+**Board CLI** — `scripts/factory/board.mjs` (dependency-light Node CLI,
+`js-yaml` only; lives on `dev` so it ships with the code, operates on the
 `../erp.board` worktree):
 
 - `board list [--track vps --status ready]` — filtered table
@@ -126,11 +134,13 @@ per the standing owner-pending item if the owner confirms in review.
 ## 4. Page-coverage system
 
 - **Route manifest generator** — `scripts/factory/gen-route-manifest.mjs` parses
-  `apps/web/src/routes/index.tsx` (route registry) and the `apps/pos` router into
-  `manifests/routes-*.yaml`: `{path, name, module_gate, permission, component}`.
+  `apps/web/src/routes/index.tsx` (route registry) and the `apps/pos` router
+  (App.tsx + AppShell.tsx) into `scripts/factory/manifests/routes-*.yaml` (code
+  repo — see the §1 deviation note): `{path, component, module_gate, permission}`,
+  plus a `phase_screens` list for the POS's non-Route boot screens.
   A preflight/CI **drift check** regenerates and diffs — a new page that isn't in
   the committed manifest fails the check, so the inventory can never silently rot.
-- **Sweep generator** — `board.sh sweep new "<check/fix description>"` creates
+- **Sweep generator** — `board.mjs sweep new "<check/fix description>"` creates
   `sweeps/<date>-<slug>.yaml`: the description + one row per manifest route
   (`route / status: pending|done|n-a / notes`). "Fix X on every page" is now an
   enumerable artifact; the sweep is `done` only when zero rows are `pending`.
