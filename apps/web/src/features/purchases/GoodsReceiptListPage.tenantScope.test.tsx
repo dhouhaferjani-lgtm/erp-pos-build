@@ -1,6 +1,7 @@
 import { QueryClient, useQuery } from '@tanstack/react-query'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -11,7 +12,14 @@ import { createTestQueryClient, renderWithProviders } from '../../test/renderWit
 import { GoodsReceiptListPage } from './GoodsReceiptListPage'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
-const mockApiPost = vi.hoisted(() => vi.fn())
+const mockAxiosPost = vi.hoisted(() => vi.fn())
+const mockTranslate = vi.hoisted(() => vi.fn((key: string, options?: Record<string, string>) => {
+  if (key === 'inventory:goodsReceipt.successMessageWithReceipt') {
+    return `Goods receipt: ${options?.['receiptNumber'] ?? '?'}`
+  }
+
+  return key
+}))
 
 vi.mock('../../lib/api', async () => {
   const actual = await vi.importActual<typeof import('../../lib/api')>('../../lib/api')
@@ -20,8 +28,8 @@ vi.mock('../../lib/api', async () => {
     api: {
       ...actual.api,
       get: mockApiGet,
+      post: mockAxiosPost,
     },
-    apiPost: mockApiPost,
   }
 })
 
@@ -52,7 +60,7 @@ vi.mock('../../components/ui/ConfirmDialog', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: mockTranslate,
   }),
 }))
 
@@ -164,7 +172,17 @@ beforeEach(() => {
     }
     return { data: { data: [pendingPurchaseOrder, fullyReceivedPurchaseOrder] } }
   })
-  mockApiPost.mockResolvedValue({ message: 'received' })
+  mockAxiosPost.mockResolvedValue({
+    data: {
+      data: pendingPurchaseOrder,
+      meta: {
+        goods_receipt: {
+          id: 'gr-1',
+          receipt_number: 'GRN-2026-0032',
+        },
+      },
+    },
+  })
 })
 
 afterEach(() => {
@@ -226,7 +244,7 @@ describe('GoodsReceiptListPage tenant scope', () => {
 
     expect(await screen.findByText('PO-DOC-DATE')).toBeInTheDocument()
     expect(screen.queryByText('Invalid Date')).not.toBeInTheDocument()
-    expect(screen.getByText(new Date('2026-06-28').toLocaleDateString())).toBeInTheDocument()
+    expect(screen.getByText(/6\/28\/2026|06\/28\/2026/)).toBeInTheDocument()
   })
 
   it('links purchase orders, suppliers, and product previews from receipt rows', async () => {
@@ -248,11 +266,22 @@ describe('GoodsReceiptListPage tenant scope', () => {
 
     await waitFor(() => {
       expect(mockApiGet).toHaveBeenCalledWith('/purchase-orders/po-1')
-      expect(mockApiPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
+      expect(mockAxiosPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
         quantities: {
           'line-1': '1',
         },
       })
+    })
+  })
+
+  it('surfaces the created GRN number after receiving goods from the receipt list', async () => {
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    await userEvent.click(await screen.findByText('inventory:goodsReceipt.receiveAll'))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('Goods receipt: GRN-2026-0032')
     })
   })
 

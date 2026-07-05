@@ -1,11 +1,12 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, Input, QuantityInput } from '@/components/atoms'
+import { Button, Input, MoneyInput, QuantityInput, Textarea } from '@/components/atoms'
 import { ProductCell } from '@/components/molecules/line-items'
 import { Modal } from '@/components/organisms/Modal'
-import { bccomp, bcsub } from '@/lib/decimal'
-import { tokens } from '@/lib/designTokens'
+import { bccomp, bcdiv, bcmul, bcsub, formatQuantity } from '@/lib/decimal'
+import { tokens, textColors } from '@/lib/designTokens'
+import { usePermissions } from '@/hooks/usePermissions'
 
 export interface ReceiveBatchPayload {
   batch_number: string
@@ -15,6 +16,8 @@ export interface ReceiveBatchPayload {
 export interface ReceiveGoodsRequest {
   quantities: Record<string, string>
   free_quantities?: Record<string, string>
+  received_unit_prices?: Record<string, string>
+  price_override_reason?: string
   batches?: Record<string, ReceiveBatchPayload>
 }
 
@@ -31,15 +34,18 @@ export interface ReceivableLine {
   free_quantity_received?: string | number | null
   quantity_decimals?: number
   requires_batch_tracking?: boolean
+  unit_price?: string | number
 }
 
 export interface ReceivablePurchaseOrder {
+  currency?: string | null
   lines?: ReceivableLine[]
 }
 
 interface ReceiveLineState {
   quantity: string
   freeQuantity: string
+  deliveredUnitPrice: string
   batchNumber: string
   expiryDate: string
 }
@@ -75,6 +81,7 @@ function initialReceiveState(lines: ReceivableLine[]): Record<string, ReceiveLin
       {
         quantity: remainingQuantity(line),
         freeQuantity: remainingFreeQuantity(line),
+        deliveredUnitPrice: '',
         batchNumber: '',
         expiryDate: '',
       },
@@ -96,6 +103,9 @@ export function ReceiveGoodsDialog({
   onConfirm: (request: ReceiveGoodsRequest) => void
 }) {
   const { t } = useTranslation(['sales', 'common'])
+  const { hasPermission } = usePermissions()
+  const canEditReceiptPrice = hasPermission('goods-receipt.edit-price')
+  const currency = purchaseOrder.currency ?? 'TND'
   const receivableLines = useMemo(
     () => (purchaseOrder.lines ?? []).filter((line) =>
       bccomp(remainingQuantity(line), '0') === 1 ||
@@ -105,6 +115,11 @@ export function ReceiveGoodsDialog({
   )
   const [lineState, setLineState] = useState<Partial<Record<string, ReceiveLineState>>>(() =>
     initialReceiveState(receivableLines),
+  )
+  const [priceOverrideReason, setPriceOverrideReason] = useState('')
+
+  const hasEditedUnitPrice = receivableLines.some((line) =>
+    (lineState[line.id]?.deliveredUnitPrice.trim() ?? '') !== ''
   )
 
   const hasPositiveQuantity = receivableLines.some((line) => {
@@ -151,6 +166,7 @@ export function ReceiveGoodsDialog({
         ...(current[lineId] ?? {
           quantity: '0',
           freeQuantity: '0',
+          deliveredUnitPrice: '',
           batchNumber: '',
           expiryDate: '',
         }),
@@ -167,6 +183,7 @@ export function ReceiveGoodsDialog({
 
     const quantities: Record<string, string> = {}
     const freeQuantities: Record<string, string> = {}
+    const receivedUnitPrices: Record<string, string> = {}
     const batches: Record<string, ReceiveBatchPayload> = {}
 
     receivableLines.forEach((line) => {
@@ -178,6 +195,10 @@ export function ReceiveGoodsDialog({
 
       if (hasPaidQuantity) {
         quantities[line.id] = quantity
+        const deliveredUnitPrice = state?.deliveredUnitPrice.trim() ?? ''
+        if (deliveredUnitPrice !== '') {
+          receivedUnitPrices[line.id] = deliveredUnitPrice
+        }
       }
       if (hasFreeQuantity) {
         freeQuantities[line.id] = freeQuantity
@@ -194,8 +215,35 @@ export function ReceiveGoodsDialog({
     onConfirm({
       quantities,
       ...(Object.keys(freeQuantities).length > 0 ? { free_quantities: freeQuantities } : {}),
+      ...(Object.keys(receivedUnitPrices).length > 0 ? { received_unit_prices: receivedUnitPrices } : {}),
+      ...(Object.keys(receivedUnitPrices).length > 0 && priceOverrideReason.trim() !== ''
+        ? { price_override_reason: priceOverrideReason.trim() }
+        : {}),
       ...(Object.keys(batches).length > 0 ? { batches } : {}),
     })
+  }
+
+  function unitPrice(line: ReceivableLine): string {
+    return decimalString(line.unit_price)
+  }
+
+  function variancePercent(orderedUnitPrice: string, deliveredUnitPrice: string): string | null {
+    const delivered = deliveredUnitPrice.trim()
+    if (delivered === '' || bccomp(orderedUnitPrice, '0') === 0 || bccomp(delivered, orderedUnitPrice) === 0) {
+      return null
+    }
+
+    const delta = bcsub(delivered, orderedUnitPrice, 6)
+    return bcmul(bcdiv(delta, orderedUnitPrice, 6), '100', 1)
+  }
+
+  function signedPercent(percent: string | null): string {
+    if (percent === null) {
+      return t('purchaseOrders.receive.noVariance')
+    }
+
+    const formatted = formatQuantity(percent, 1)
+    return `${bccomp(formatted, '0') === 1 ? '+' : ''}${formatted}%`
   }
 
   return (
@@ -208,15 +256,21 @@ export function ReceiveGoodsDialog({
           const state = lineState[line.id] ?? {
             quantity: remaining,
             freeQuantity: remainingFree,
+            deliveredUnitPrice: '',
             batchNumber: '',
             expiryDate: '',
           }
           const canReceivePaid = bccomp(remaining, '0') === 1
           const canReceiveFree = bccomp(remainingFree, '0') === 1
+          const orderedUnitPrice = unitPrice(line)
+          const percent = variancePercent(orderedUnitPrice, state.deliveredUnitPrice)
+          const varianceClass = percent === null
+            ? tokens.badge.gray
+            : bccomp(percent, '0') === 1 ? tokens.badge.yellow : tokens.badge.green
 
           return (
             <div key={line.id} className={tokens.card.base}>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
                 <div>
                   <ProductCell
                     product={{
@@ -265,8 +319,39 @@ export function ReceiveGoodsDialog({
                     />
                   </label>
                 )}
+                <div>
+                  <div className={tokens.label.base}>{t('purchaseOrders.receive.orderedUnitPrice')}</div>
+                  <div className={`mt-1 text-sm font-medium ${textColors.primary}`}>{orderedUnitPrice}</div>
+                </div>
+                <div>
+                  {canEditReceiptPrice ? (
+                    <label className={tokens.label.base}>
+                      {t('purchaseOrders.receive.deliveredUnitPrice')}
+                      <MoneyInput
+                        value={state.deliveredUnitPrice}
+                        onChange={(value) => { updateLine(line.id, { deliveredUnitPrice: value }); }}
+                        currency={currency}
+                        min="0"
+                        placeholder={orderedUnitPrice}
+                        aria-label={`${t('purchaseOrders.receive.deliveredUnitPrice')} ${label}`}
+                      />
+                    </label>
+                  ) : (
+                    <>
+                      <div className={tokens.label.base}>{t('purchaseOrders.receive.deliveredUnitPrice')}</div>
+                      <div className={`mt-1 text-sm font-medium ${textColors.primary}`}>{orderedUnitPrice}</div>
+                      <div className={tokens.helperText.base}>{t('purchaseOrders.receive.priceEditReadOnly')}</div>
+                    </>
+                  )}
+                </div>
+                <div>
+                  <div className={tokens.label.base}>{t('purchaseOrders.receive.variance')}</div>
+                  <span className={`${tokens.badge.base} ${varianceClass} mt-1`}>
+                    {signedPercent(percent)}
+                  </span>
+                </div>
                 {isBatchTracked(line) && (
-                  <div className="grid grid-cols-1 gap-4 md:col-span-3 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 md:col-span-6 md:grid-cols-2">
                     <label className={tokens.label.base}>
                       {t('purchaseOrders.receive.batchNumber')}
                       <Input
@@ -290,6 +375,18 @@ export function ReceiveGoodsDialog({
             </div>
           )
         })}
+
+        {hasEditedUnitPrice && (
+          <label className={tokens.label.base}>
+            {t('purchaseOrders.receive.priceOverrideReason')}
+            <Textarea
+              value={priceOverrideReason}
+              onChange={(event) => { setPriceOverrideReason(event.target.value); }}
+              rows={3}
+              aria-label={t('purchaseOrders.receive.priceOverrideReason')}
+            />
+          </label>
+        )}
 
         <div className={tokens.modal.footer}>
           <Button type="button" variant="secondary" onClick={onClose}>

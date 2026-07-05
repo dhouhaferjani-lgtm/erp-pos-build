@@ -1,4 +1,8 @@
 {
+  "goodsReceipt": {
+    "successMessage": "تم استلام البضائع بنجاح",
+    "successMessageWithReceipt": "تم استلام البضائع بنجاح ضمن {{receiptNumber}}"
+  },
   "barcodeLookup": {
     "placeholder": "امسح الرمز الشريطي أو اكتبه…",
     "searching": "جار البحث…",

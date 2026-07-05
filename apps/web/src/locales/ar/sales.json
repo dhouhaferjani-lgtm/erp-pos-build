@@ -130,6 +130,9 @@
       "paid": "مدفوع",
       "received": "مُستلَم",
       "cancelled": "مُلغى"
+    },
+    "messages": {
+      "goodsReceivedWithReceipt": "تم استلام البضائع ضمن {{receiptNumber}}"
     }
   },
   "purchaseOrders": {
@@ -146,6 +149,12 @@
       "quantity": "الكمية المستلمة المدفوعة",
       "freeQuantity": "الكمية المجانية المستلمة",
       "freeOrderedSummary": "المجاني المطلوب: {{ordered}} · المستلم: {{received}}",
+      "orderedUnitPrice": "سعر أمر الشراء",
+      "deliveredUnitPrice": "السعر المستلم",
+      "variance": "الفارق",
+      "noVariance": "—",
+      "priceEditReadOnly": "يمكن للمستخدمين المخولين فقط تعديل السعر المستلم.",
+      "priceOverrideReason": "سبب تعديل السعر",
       "batchNumber": "رقم الدفعة",
       "expiryDate": "تاريخ انتهاء الصلاحية",
       "submit": "استلام"

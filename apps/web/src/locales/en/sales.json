@@ -237,7 +237,8 @@
       "confirmed": "Document confirmed",
       "cancelled": "Document cancelled",
       "posted": "Document posted",
-      "goodsReceived": "Goods received"
+      "goodsReceived": "Goods received",
+      "goodsReceivedWithReceipt": "Goods received under {{receiptNumber}}"
     },
     "taxExemptionMention": "Tax exemption applies to {{partner}} - {{reason}}",
     "vehicle": "Vehicle",
@@ -352,6 +353,12 @@
       "quantity": "Quantity to receive",
       "freeQuantity": "Free quantity to receive",
       "freeOrderedSummary": "Free ordered: {{ordered}} · received: {{received}}",
+      "orderedUnitPrice": "PO unit price",
+      "deliveredUnitPrice": "Delivered unit price",
+      "variance": "Variance",
+      "noVariance": "—",
+      "priceEditReadOnly": "Delivered price can only be changed by authorized users.",
+      "priceOverrideReason": "Price override reason",
       "batchNumber": "Batch number",
       "expiryDate": "Expiry date",
       "submit": "Receive"
