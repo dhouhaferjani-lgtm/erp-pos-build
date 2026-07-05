@@ -17,6 +17,7 @@ export const PERMISSIONS = {
   'purchases.create': ['admin', 'purchases', 'manager'],
   'purchases.edit': ['admin', 'purchases', 'manager'],
   'goods-receipt.edit-price': ['admin', 'manager'],
+  'goods-receipt.create-standalone': ['admin', 'purchases', 'manager'],
 
   // Inventory
   'inventory.view': ['admin', 'inventory', 'manager'],

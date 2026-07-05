@@ -152,6 +152,41 @@
       }
     }
   },
+  "standaloneReceipt": {
+    "title": "New Goods Receipt",
+    "description": "Receive supplier goods before a purchase order exists.",
+    "actions": {
+      "saveDraft": "Save draft",
+      "postNow": "Post now",
+      "addLine": "Add line",
+      "removeLine": "Remove line",
+      "newReceipt": "New receipt"
+    },
+    "fields": {
+      "supplier": "Supplier",
+      "location": "Location",
+      "blNumber": "BL number",
+      "blDate": "BL date",
+      "product": "Product",
+      "quantity": "Quantity",
+      "freeQuantity": "Free quantity",
+      "unitPrice": "Unit price"
+    },
+    "placeholders": {
+      "supplier": "Select supplier",
+      "location": "Select location",
+      "product": "Select product"
+    },
+    "lines": {
+      "title": "Receipt lines"
+    },
+    "toast": {
+      "draftCreated": "Goods receipt draft created",
+      "posted": "Goods receipt posted"
+    },
+    "policyDisabled": "Receipt-first procurement is disabled for this company.",
+    "footerHint": "A linked auto-generated purchase order is created for traceability."
+  },
   "quoteRequests": {
     "title": "Quote Requests",
     "description": "Compare supplier responses before creating a purchase order",

@@ -10,8 +10,9 @@ import {
   ChevronRight,
   Building2,
   Calendar,
+  Plus,
   Truck,
-  ReceiptText
+  ReceiptText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../../lib/api'
@@ -309,26 +310,38 @@ export function GoodsReceiptListPage() {
             {t('inventory:goodsReceipt.description')}
           </p>
         </div>
-        {activeTab === 'received' && canCreateSupplierInvoice && (
-          <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          {hasPermission('goods-receipt.create-standalone') && (
             <button
               type="button"
-              data-testid="invoice-receipts"
-              disabled={!canInvoiceSelectedReceipts}
-              title={invoiceSelectionBlocked ? t('purchases:supplierInvoices.create.crossSupplierTooltip') : undefined}
-              onClick={handleInvoiceReceipts}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
+              onClick={() => { void navigate('/purchases/receipts/new') }}
+              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
             >
-              <ReceiptText className="h-4 w-4" />
-              {t('purchases:supplierInvoices.create.invoiceReceipts')}
+              <Plus className="h-4 w-4" />
+              {t('purchases:standaloneReceipt.actions.newReceipt')}
             </button>
-            {invoiceSelectionBlocked && (
-              <span className={`text-xs ${textColors.warning}`}>
-                {t('purchases:supplierInvoices.create.crossSupplierTooltip')}
-              </span>
-            )}
-          </div>
-        )}
+          )}
+          {activeTab === 'received' && canCreateSupplierInvoice && (
+            <div className="flex flex-col items-end gap-1">
+              <button
+                type="button"
+                data-testid="invoice-receipts"
+                disabled={!canInvoiceSelectedReceipts}
+                title={invoiceSelectionBlocked ? t('purchases:supplierInvoices.create.crossSupplierTooltip') : undefined}
+                onClick={handleInvoiceReceipts}
+                className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
+              >
+                <ReceiptText className="h-4 w-4" />
+                {t('purchases:supplierInvoices.create.invoiceReceipts')}
+              </button>
+              {invoiceSelectionBlocked && (
+                <span className={`text-xs ${textColors.warning}`}>
+                  {t('purchases:supplierInvoices.create.crossSupplierTooltip')}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

@@ -152,6 +152,41 @@
       }
     }
   },
+  "standaloneReceipt": {
+    "title": "استلام بضائع جديد",
+    "description": "استلم بضائع المورد قبل وجود أمر شراء.",
+    "actions": {
+      "saveDraft": "حفظ كمسودة",
+      "postNow": "ترحيل الآن",
+      "addLine": "إضافة بند",
+      "removeLine": "حذف البند",
+      "newReceipt": "استلام جديد"
+    },
+    "fields": {
+      "supplier": "المورد",
+      "location": "الموقع",
+      "blNumber": "رقم BL",
+      "blDate": "تاريخ BL",
+      "product": "المنتج",
+      "quantity": "الكمية",
+      "freeQuantity": "الكمية المجانية",
+      "unitPrice": "سعر الوحدة"
+    },
+    "placeholders": {
+      "supplier": "اختر المورد",
+      "location": "اختر الموقع",
+      "product": "اختر المنتج"
+    },
+    "lines": {
+      "title": "بنود الاستلام"
+    },
+    "toast": {
+      "draftCreated": "تم إنشاء مسودة استلام البضائع",
+      "posted": "تم ترحيل استلام البضائع"
+    },
+    "policyDisabled": "تم تعطيل الاستلام قبل أمر الشراء لهذه الشركة.",
+    "footerHint": "يتم إنشاء أمر شراء مرتبط تلقائيا للتتبع."
+  },
   "quoteRequests": {
     "title": "طلبات الأسعار",
     "description": "قارن ردود الموردين قبل إنشاء أمر شراء",

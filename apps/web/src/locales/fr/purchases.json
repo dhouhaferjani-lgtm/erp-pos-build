@@ -152,6 +152,41 @@
       }
     }
   },
+  "standaloneReceipt": {
+    "title": "Nouveau bon de réception",
+    "description": "Réceptionner des marchandises fournisseur avant la création d'un bon de commande.",
+    "actions": {
+      "saveDraft": "Enregistrer brouillon",
+      "postNow": "Valider maintenant",
+      "addLine": "Ajouter une ligne",
+      "removeLine": "Retirer la ligne",
+      "newReceipt": "Nouvelle réception"
+    },
+    "fields": {
+      "supplier": "Fournisseur",
+      "location": "Emplacement",
+      "blNumber": "N° BL",
+      "blDate": "Date BL",
+      "product": "Produit",
+      "quantity": "Quantité",
+      "freeQuantity": "Quantité gratuite",
+      "unitPrice": "Prix unitaire"
+    },
+    "placeholders": {
+      "supplier": "Choisir un fournisseur",
+      "location": "Choisir un emplacement",
+      "product": "Choisir un produit"
+    },
+    "lines": {
+      "title": "Lignes de réception"
+    },
+    "toast": {
+      "draftCreated": "Brouillon de réception créé",
+      "posted": "Bon de réception validé"
+    },
+    "policyDisabled": "La réception avant commande est désactivée pour cette société.",
+    "footerHint": "Un bon de commande généré automatiquement est lié pour la traçabilité."
+  },
   "quoteRequests": {
     "title": "Demandes de prix",
     "description": "Comparer les réponses fournisseurs avant de créer un bon de commande",
