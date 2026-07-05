@@ -541,6 +541,60 @@ Interceptor call site (inside the existing `if (response.status === 401)`): extr
 
 ---
 
+## AMENDMENTS after adversarial review (2026-07-06, verdict BLOCKERS-FOUND — all findings addressed below; these OVERRIDE the task text above where they conflict)
+
+**A1 (Blocker 1) — claim lock: NO rebase, fetch+reset protocol.** Replace `mutateAndPush`'s sync strategy entirely. The board worktree is CLI-only-written and every mutation is commit+push immediately, so recovery is always "discard local, take origin". New contract:
+
+```js
+function syncBoard(dir) {
+  const branch = process.env.FACTORY_BOARD_BRANCH ?? 'factory/board'
+  if (git(dir, 'rev-parse', '--abbrev-ref', 'HEAD').trim() !== branch)
+    throw new Error(`board worktree not on ${branch}`)
+  if (git(dir, 'status', '--porcelain').trim() !== '')
+    throw new Error('board worktree dirty — CLI is the only writer; resolve manually')
+  git(dir, 'fetch', 'origin', branch)
+  git(dir, 'reset', '--hard', `origin/${branch}`)   // never rebase, never conflict
+}
+function mutateAndPush(dir, id, mutate, retriesLeft) {
+  syncBoard(dir)
+  /* read → guard → mutate → validate → write → add → commit ... as before, then: */
+  try { git(dir, 'push', 'origin', branch) } catch {
+    git(dir, 'reset', '--hard', `origin/${branch}`)  // discard OUR commit; worktree stays clean
+    if (retriesLeft > 0) return mutateAndPush(dir, id, mutate, retriesLeft - 1)
+    return { ok: false, reason: 'lost-race' }
+  }
+  return { ok: true }
+}
+```
+`claimTask` passes `retriesLeft: 1` — the retry re-reads post-reset state, so a stolen task fails the `status !== 'ready'` guard with `not-claimable` (a genuine transient push failure retries once). `updateTask` passes `retriesLeft: 2`. There is NO rebase anywhere in board.mjs. Note the `fetch` must tolerate a first-ever clone where the remote branch exists (Task 1 pushes it before any CLI use).
+
+**A2 (Blocker 2) — poisoned-file isolation.** `loadTasks(tasksDir)` returns `{ tasks, invalid }` where `invalid = [{file, errors}]`; it never throws on per-file problems. All commands operate on `tasks`, print a `⚠ skipped N invalid file(s)` warning listing them, and only `claim`/`update` on a task that is ITSELF invalid fail (that op only). Update Task 2/3 tests: add a test seeding one valid + one garbage YAML → `loadTasks` returns 1 task + 1 invalid entry; `list` still works.
+
+**A3 (Blocker 3) — POS route sources.** `gen-route-manifest.mjs` parses for POS: `apps/pos/src/App.tsx` AND `apps/pos/src/components/AppShell.tsx` (the real screens: `/`, `/customers`, `/settings`, `/sales`, `/reports`, `/shift`, `/reports/z` at AppShell.tsx:211-230). Additionally `routes-pos.yaml` gets a `phase_screens:` section emitted from a static list IN the generator (with a comment naming its source): `auth-loading, login, company-select, terminal-setup, pin-setup, pin-entry, bootstrap-error, customer-display (/display), theme-preview (/theme-preview)` — phase-gated non-Route screens (App.tsx:66-253). The sweep generator (Task 10) emits one row per `routes` entry AND per `phase_screens` entry for POS.
+
+**A4 (Major 4) — moduleKey capture.** The visitor treats `<RequirePermission moduleKey="X">` as `module_gate: X` (in addition to `<ModuleGuard module=…>`; if both wrap a route, ModuleGuard wins, else moduleKey). Add fixture case with `moduleKey="inventory"` asserting `module_gate: 'inventory'`.
+
+**A5 (Major 5) — typescript resolution.** In gen-route-manifest.mjs:
+```js
+import { createRequire } from 'node:module'
+const ts = createRequire(join(repoRoot, 'apps/web/package.json'))('typescript')
+```
+(typescript is NOT in root node_modules — verified; do not bare-import it.)
+
+**A6 (Major 6) — real race test.** Add to Task 3 tests: seed base in both clones; monkey-patch nothing — instead create the race by having clone B `git commit` its claim locally via a low-level helper (`writeFileSync` + add + commit using the same code path but with push stubbed), then A claims+pushes successfully, then B's `mutateAndPush` push fails → assert B returns `{ok:false, reason:'not-claimable'}` (post-reset re-read sees A's claim) and `git status --porcelain` in B is empty and `git log origin/master..HEAD` is empty (no stranded commit, no in-progress state). Simplest concrete construction: temporarily set B's remote URL to an invalid path to force push failure? NO — the reset then re-reads stale state. Correct construction: A claims first but B does NOT pull; B's `syncBoard` would fetch A's claim… so to exercise the push-rejection path, stub `syncBoard`'s fetch: export `mutateAndPush` internals are not test-visible — instead make the fixture push a competing commit to the bare remote AFTER B's syncBoard ran, via a third clone C: sequence = B syncs (manually call exported `syncBoard(B)`), C claims+pushes, then B claims (skipping its internal sync via env `FACTORY_SKIP_SYNC=1` honored ONLY when `NODE_ENV==='test'`) → push rejected → reset → retry path sees C's claim → `not-claimable`. Assert both clones converge to C's claim.
+
+**A7 (Major 7) — stall recovery command.** Add `board.mjs reset-stale [--hours 12]`: for each task in `claimed`/`in-progress` whose newest `log[].at` is older than N hours, set `status: ready`, clear `claimed_by`/`branch`, append log note `reset-stale (was: <host>/<session>)`. One commit for all resets, normal push protocol. Test: seed a claimed task with old log timestamp → reset; a fresh one → untouched.
+
+**A8 (Minor 8):** covered by `syncBoard`'s branch assertion (env `FACTORY_BOARD_BRANCH=master` in tests).
+
+**A9 (Minor 9):** `validateTask` cannot see other files, so: `new` and `claim` verify every `depends_on` id exists among loaded tasks → else `{ok:false, reason:'unknown-dep:<id>'}`; `list` flags them.
+
+**A10 (Minor 10):** Task 5 Step 1 becomes: READ `.gitignore` first; append only missing lines (`docs/sessions/` and `.claude/worktrees/` are already present — verified).
+
+**A11 (Minor 11):** Task 12 spec edit ALSO renames `board.sh`→`board.mjs` throughout the spec and drops the "bash + yq" wording.
+
+**A12 (Minor 12):** Task 13 PR body notes the known trade-off: hard redirect drops `state.from` return-path (soft `<Navigate>` keeps it) — accepted for loop-breaking robustness.
+
 ## Self-Review (done at write time)
 
 - **Spec coverage:** §1 board→Tasks 1-4; §2 VPS loop→Task 12 artifact (installs are Phase 3, out of scope tonight by design); §3 laptop loop→process (no code) + Task 4 seeds; §4 page-coverage→Tasks 8-11; §5 cleanup→Tasks 5-7; B2→Task 13; LAUNCH-PLAN→Task 14. CI widening/branch protection = Phase 4, deliberately not planned tonight (owner-visible change).
