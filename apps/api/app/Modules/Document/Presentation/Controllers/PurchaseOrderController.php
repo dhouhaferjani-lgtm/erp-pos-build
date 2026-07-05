@@ -470,6 +470,24 @@ class PurchaseOrderController extends Controller
 
         $company = $this->companyContext->requireCompany();
 
+        // Receipt-lock check MUST precede the transaction: a rejection returned from
+        // inside the closure would still COMMIT the header update executed before it.
+        if ($lines !== null) {
+            /** @var list<string> $existingLineIds */
+            $existingLineIds = $documentModel->lines()
+                ->pluck('id')
+                ->map(static fn (mixed $id): string => (string) $id)
+                ->values()
+                ->all();
+
+            if ($this->goodsReceiptService->poLineIdsWithReceipts($existingLineIds) !== []) {
+                return $this->validationErrorResponse(
+                    'PO_LINES_LOCKED_BY_RECEIPTS',
+                    'Purchase order lines with goods receipts cannot be modified.'
+                );
+            }
+        }
+
         return DB::transaction(function () use ($documentModel, $validated, $lines, $vehicleContext, $hasVehicleContext, $company): JsonResponse {
             // Update document fields (excluding lines)
             $documentModel->update($validated);

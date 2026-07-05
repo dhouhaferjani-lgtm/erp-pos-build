@@ -450,6 +450,28 @@ final class GoodsReceiptService
     }
 
     /**
+     * @param  list<string>  $poLineIds
+     * @return list<string>
+     */
+    public function poLineIdsWithReceipts(array $poLineIds): array
+    {
+        if ($poLineIds === []) {
+            return [];
+        }
+
+        /** @var list<string> $lockedIds */
+        $lockedIds = GoodsReceiptLine::query()
+            ->whereIn('po_line_id', $poLineIds)
+            ->distinct()
+            ->pluck('po_line_id')
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->values()
+            ->all();
+
+        return $lockedIds;
+    }
+
+    /**
      * @param  array<string, string>  $batchFreightShares
      */
     private function hasPositiveFreightPool(array $batchFreightShares): bool
