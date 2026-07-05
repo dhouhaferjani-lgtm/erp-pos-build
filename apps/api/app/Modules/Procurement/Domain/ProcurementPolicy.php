@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Procurement\Domain\Enums\BillControlMode;
 use App\Modules\Procurement\Domain\Enums\MatchEnforcement;
 use App\Modules\Procurement\Domain\Enums\MatchMode;
+use App\Modules\Procurement\Domain\Enums\ProcurementPreset;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property string $id
  * @property string $tenant_id
  * @property string $company_id
+ * @property ProcurementPreset|null $preset
  * @property BillControlMode $bill_control_mode
  * @property MatchMode $match_mode
  * @property MatchEnforcement $match_enforcement
@@ -52,6 +54,7 @@ final class ProcurementPolicy extends Model
     protected $fillable = [
         'tenant_id',
         'company_id',
+        'preset',
         'bill_control_mode',
         'match_mode',
         'match_enforcement',
@@ -65,6 +68,7 @@ final class ProcurementPolicy extends Model
     protected function casts(): array
     {
         return [
+            'preset' => ProcurementPreset::class,
             'bill_control_mode' => BillControlMode::class,
             'match_mode' => MatchMode::class,
             'match_enforcement' => MatchEnforcement::class,
@@ -87,6 +91,7 @@ final class ProcurementPolicy extends Model
     {
         $policy = new self;
 
+        $policy->preset = ProcurementPreset::Standard;
         $policy->bill_control_mode = BillControlMode::Received;
         $policy->match_mode = MatchMode::ThreeWay;
         $policy->match_enforcement = MatchEnforcement::Warn;
@@ -94,6 +99,32 @@ final class ProcurementPolicy extends Model
         $policy->variance_tolerance_max_amount = '1.000';
 
         return $policy;
+    }
+
+    public static function firstOrCreateForCompany(Company $company): self
+    {
+        $defaultPolicy = self::defaultForVertical($company->tenant->vertical);
+
+        return self::firstOrCreate(
+            ['company_id' => $company->id],
+            [
+                'tenant_id' => $company->tenant_id,
+                'preset' => $defaultPolicy->preset?->value,
+                'bill_control_mode' => $defaultPolicy->bill_control_mode->value,
+                'match_mode' => $defaultPolicy->match_mode->value,
+                'match_enforcement' => $defaultPolicy->match_enforcement->value,
+                'variance_tolerance_percent' => $defaultPolicy->variance_tolerance_percent,
+                'variance_tolerance_max_amount' => $defaultPolicy->variance_tolerance_max_amount,
+            ]
+        );
+    }
+
+    public function applyPreset(ProcurementPreset $preset): self
+    {
+        return $this->forceFill(array_merge(
+            ['preset' => $preset->value],
+            $preset->fields(),
+        ));
     }
 
     /** @return BelongsTo<Tenant, $this> */

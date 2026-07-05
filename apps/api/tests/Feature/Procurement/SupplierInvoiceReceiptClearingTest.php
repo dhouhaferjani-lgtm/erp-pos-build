@@ -342,6 +342,44 @@ final class SupplierInvoiceReceiptClearingTest extends TestCase
         $this->assertSame(SupplierInvoiceMatchStatus::Matched, Document::findOrFail($invoice->id)->match_status);
     }
 
+    public function test_two_way_match_uses_po_price_but_posting_clears_receipt_accrual_basis(): void
+    {
+        ProcurementPolicy::where('company_id', $this->company->id)->update([
+            'match_mode' => MatchMode::TwoWay->value,
+            'variance_tolerance_percent' => '0.00',
+            'variance_tolerance_max_amount' => '0.000',
+        ]);
+
+        $poLine = $this->createPoLine('10.0000', '5.000', '10.0000');
+        [$receiptLine] = $this->createReceiptLines($poLine, [
+            ['qty' => '10.0000', 'basis' => '5.400000'],
+        ]);
+        $this->accrueReceipt('10.0000', '5.400');
+
+        $invoice = $this->createInvoice(
+            $poLine,
+            qty: '10.0000',
+            unitPrice: '5.000',
+            subtotal: '50.000',
+            recoverableVat: '9.500',
+            total: '59.500',
+            snapshotBasis: '5.000000',
+            matchedReceiptLineId: $receiptLine->id,
+        );
+
+        $this->assertSame(SupplierInvoiceMatchStatus::Matched, app(SupplierInvoiceMatcher::class)->match($invoice));
+
+        app(SupplierInvoicePostingService::class)->post($invoice);
+
+        $entry = $this->clearingEntry($invoice);
+        $this->assertLeg($entry, $this->grirAccount, debit: '54.000', credit: '0.000');
+        $this->assertLeg($entry, $this->ppvIncomeAccount, debit: '0.000', credit: '4.000');
+        $this->assertSame('0.000', $this->net408());
+        $this->assertSame('10.0000', GoodsReceiptLine::findOrFail($receiptLine->id)->quantity_invoiced);
+        $this->assertSame('10.0000', DocumentLine::findOrFail($poLine->id)->quantity_invoiced);
+        $this->assertSame(SupplierInvoiceMatchStatus::Matched, Document::findOrFail($invoice->id)->match_status);
+    }
+
     public function test_receipt_line_lock_contention_requires_postgresql(): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {

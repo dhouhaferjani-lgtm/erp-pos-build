@@ -18,6 +18,8 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Procurement\Domain\Enums\ProcurementPreset;
+use App\Modules\Procurement\Domain\ProcurementPolicy;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Payment;
@@ -63,6 +65,23 @@ final class DemoPharmacySeederTest extends TestCase
             $this->assertSame('PharmaBio Tunisie SARL', $company->name);
             $this->assertSame('TN', $company->country_code);
             $this->assertSame('TND', $company->currency);
+        });
+    }
+
+    public function test_procurement_policy_is_standard_preset_and_idempotent(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+        $this->seed(DemoPharmacySeeder::class);
+
+        Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail()->run(function () {
+            $company = Company::firstOrFail();
+
+            $this->assertSame(1, ProcurementPolicy::where('company_id', $company->id)->count());
+
+            $policy = ProcurementPolicy::where('company_id', $company->id)->firstOrFail();
+            $this->assertSame(ProcurementPreset::Standard, $policy->preset);
+            $this->assertSame('three_way', $policy->match_mode->value);
+            $this->assertSame('warn', $policy->match_enforcement->value);
         });
     }
 

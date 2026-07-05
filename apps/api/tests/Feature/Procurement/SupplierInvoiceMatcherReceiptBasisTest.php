@@ -153,6 +153,50 @@ final class SupplierInvoiceMatcherReceiptBasisTest extends TestCase
         $this->assertSame(SupplierInvoiceMatchStatus::PriceVariance, $this->matcher->match($variance));
     }
 
+    public function test_two_way_matcher_compares_price_against_po_unit_price_not_receipt_basis(): void
+    {
+        ProcurementPolicy::where('company_id', $this->company->id)->update([
+            'match_mode' => MatchMode::TwoWay->value,
+            'variance_tolerance_percent' => '0.00',
+            'variance_tolerance_max_amount' => '0.000',
+        ]);
+
+        $poLine = $this->createPoLine([
+            'quantity' => '10.0000',
+            'quantity_received' => '10.0000',
+            'unit_price' => '5.000',
+        ]);
+        $this->createReceiptLines($poLine, [
+            ['qty' => '10.0000', 'basis' => '5.400000'],
+        ]);
+
+        $contractPriceInvoice = $this->createInvoice($poLine, '10.0000', '5.000');
+        $receiptPriceInvoice = $this->createInvoice($poLine, '10.0000', '5.400');
+
+        $this->assertSame(SupplierInvoiceMatchStatus::Matched, $this->matcher->match($contractPriceInvoice));
+        $this->assertSame(SupplierInvoiceMatchStatus::PriceVariance, $this->matcher->match($receiptPriceInvoice));
+    }
+
+    public function test_two_way_still_rejects_invoiced_quantity_beyond_received_quantity(): void
+    {
+        ProcurementPolicy::where('company_id', $this->company->id)->update([
+            'match_mode' => MatchMode::TwoWay->value,
+        ]);
+
+        $poLine = $this->createPoLine([
+            'quantity' => '10.0000',
+            'quantity_received' => '6.0000',
+            'unit_price' => '5.000',
+        ]);
+        $this->createReceiptLines($poLine, [
+            ['qty' => '6.0000', 'basis' => '5.000000'],
+        ]);
+
+        $invoice = $this->createInvoice($poLine, '7.0000', '5.000');
+
+        $this->assertSame(SupplierInvoiceMatchStatus::QuantityVariance, $this->matcher->match($invoice));
+    }
+
     public function test_zero_receipt_line_po_uses_legacy_po_line_basis_fallback(): void
     {
         $poLine = $this->createPoLine([

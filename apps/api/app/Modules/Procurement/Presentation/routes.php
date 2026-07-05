@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\Procurement\Presentation\Controllers\ProcurementPolicyController;
 use App\Modules\Procurement\Presentation\Controllers\PurchaseQuoteRequestController;
 use App\Modules\Procurement\Presentation\Controllers\SupplierInvoiceController;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +29,13 @@ Route::prefix('api/v1')->middleware([
     SetPermissionsTeam::class,
     EnforceTokenTenantClaim::class,
 ])->group(function (): void {
+    Route::get('/procurement-policies', [ProcurementPolicyController::class, 'show'])
+        ->middleware('can:settings.view')
+        ->name('procurement-policies.show');
+    Route::put('/procurement-policies', [ProcurementPolicyController::class, 'update'])
+        ->middleware('can:settings.update')
+        ->name('procurement-policies.update');
+
     Route::get('/purchase-quote-requests', [PurchaseQuoteRequestController::class, 'index'])
         ->middleware('can:purchase-quote-requests.view')
         ->name('purchase-quote-requests.index');
