@@ -14,7 +14,9 @@ enum ProcurementPreset: string
      * @return array<string, array{
      *     bill_control_mode: string,
      *     match_mode: string,
-     *     match_enforcement: string
+     *     match_enforcement: string,
+     *     allow_receipt_first: bool,
+     *     allow_invoice_first: bool
      * }>
      */
     public static function values(): array
@@ -24,16 +26,22 @@ enum ProcurementPreset: string
                 'bill_control_mode' => BillControlMode::Received->value,
                 'match_mode' => MatchMode::ThreeWay->value,
                 'match_enforcement' => MatchEnforcement::Block->value,
+                'allow_receipt_first' => false,
+                'allow_invoice_first' => false,
             ],
             self::Standard->value => [
                 'bill_control_mode' => BillControlMode::Received->value,
                 'match_mode' => MatchMode::ThreeWay->value,
                 'match_enforcement' => MatchEnforcement::Warn->value,
+                'allow_receipt_first' => true,
+                'allow_invoice_first' => false,
             ],
             self::Leger->value => [
                 'bill_control_mode' => BillControlMode::Received->value,
                 'match_mode' => MatchMode::TwoWay->value,
                 'match_enforcement' => MatchEnforcement::Warn->value,
+                'allow_receipt_first' => true,
+                'allow_invoice_first' => true,
             ],
         ];
     }
@@ -42,7 +50,9 @@ enum ProcurementPreset: string
      * @return array{
      *     bill_control_mode: string,
      *     match_mode: string,
-     *     match_enforcement: string
+     *     match_enforcement: string,
+     *     allow_receipt_first: bool,
+     *     allow_invoice_first: bool
      * }
      */
     public function fields(): array
