@@ -56,6 +56,7 @@
     "scopeBanner": "Ces paramètres s'appliquent à toute l'entreprise {{company}}. Les détails des succursales (adresse, identifiant fiscal) se modifient dans <locationsLink>Sites & succursales</locationsLink>.",
     "tabs": {
       "general": "Général",
+      "procurement": "Achats",
       "receipt": "Ticket"
     },
     "sections": {
@@ -165,6 +166,52 @@
       "unsavedChanges": "Vous avez des modifications non enregistrées",
       "uploadLogo": "Cliquez pour télécharger le logo",
       "logoFormats": "PNG, JPG, SVG jusqu'à 2 Mo"
+    },
+    "procurement": {
+      "custom": "Personnalisé",
+      "actions": {
+        "saveAdvanced": "Enregistrer les paramètres avancés"
+      },
+      "advanced": {
+        "title": "Contrôles avancés",
+        "description": "Modifier ces champs supprime le preset sélectionné et enregistre une politique personnalisée."
+      },
+      "billControl": {
+        "received": "Quantités reçues uniquement"
+      },
+      "enforcement": {
+        "block": "Bloquer",
+        "warn": "Avertir"
+      },
+      "fields": {
+        "billControlMode": "Contrôle facture",
+        "matchEnforcement": "Application des écarts",
+        "matchMode": "Mode de rapprochement",
+        "toleranceAmount": "Écart montant max",
+        "tolerancePercent": "Tolérance écart %"
+      },
+      "messages": {
+        "loadError": "Erreur lors du chargement de la politique achats. Veuillez réessayer.",
+        "saved": "Politique achats enregistrée avec succès."
+      },
+      "modes": {
+        "three_way": "Trois pièces",
+        "two_way": "Deux pièces"
+      },
+      "presets": {
+        "complet": {
+          "title": "Complet",
+          "description": "Contrôle strict de la demande de prix à la facture, avec écarts bloquants."
+        },
+        "standard": {
+          "title": "Standard",
+          "description": "Rapprochement basé sur les réceptions avec avertissements de tolérance."
+        },
+        "leger": {
+          "title": "Léger",
+          "description": "Rapprochement léger au prix de commande, avec quantités toujours contrôlées par les réceptions."
+        }
+      }
     }
   },
   "locations": {

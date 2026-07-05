@@ -6,7 +6,56 @@
     }
   },
   "company": {
-    "scopeBanner": "هذه إعدادات عامة للشركة {{company}}. تُعدَّل بيانات الفروع (العنوان، المعرّف الجبائي) في <locationsLink>المواقع والفروع</locationsLink>."
+    "scopeBanner": "هذه إعدادات عامة للشركة {{company}}. تُعدَّل بيانات الفروع (العنوان، المعرّف الجبائي) في <locationsLink>المواقع والفروع</locationsLink>.",
+    "tabs": {
+      "procurement": "المشتريات"
+    },
+    "procurement": {
+      "custom": "مخصص",
+      "actions": {
+        "saveAdvanced": "حفظ الإعدادات المتقدمة"
+      },
+      "advanced": {
+        "title": "ضوابط متقدمة",
+        "description": "تعديل هذه الحقول يلغي القالب المختار ويحفظ سياسة مخصصة."
+      },
+      "billControl": {
+        "received": "الكميات المستلمة فقط"
+      },
+      "enforcement": {
+        "block": "منع",
+        "warn": "تنبيه"
+      },
+      "fields": {
+        "billControlMode": "ضبط الفاتورة",
+        "matchEnforcement": "تطبيق فروقات المطابقة",
+        "matchMode": "وضع المطابقة",
+        "toleranceAmount": "أقصى مبلغ للفارق",
+        "tolerancePercent": "نسبة سماح الفارق"
+      },
+      "messages": {
+        "loadError": "تعذر تحميل سياسة المشتريات. حاول مرة أخرى.",
+        "saved": "تم حفظ سياسة المشتريات."
+      },
+      "modes": {
+        "three_way": "مطابقة ثلاثية",
+        "two_way": "مطابقة ثنائية"
+      },
+      "presets": {
+        "complet": {
+          "title": "كامل",
+          "description": "رقابة صارمة من طلب السعر إلى الفاتورة مع منع الفروقات."
+        },
+        "standard": {
+          "title": "قياسي",
+          "description": "مطابقة حسب الاستلام مع تنبيهات عند تجاوز السماحات."
+        },
+        "leger": {
+          "title": "خفيف",
+          "description": "مطابقة خفيفة حسب سعر الطلب مع بقاء الكميات محكومة بالاستلام."
+        }
+      }
+    }
   },
   "locations": {
     "scopeHint": "بيانات خاصة بكل فرع. الحقول الجبائية الفارغة ترث قيم الشركة."

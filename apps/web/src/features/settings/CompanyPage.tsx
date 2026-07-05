@@ -11,6 +11,7 @@ import {
   XCircle,
   Loader2,
   Receipt,
+  ShieldCheck,
 } from 'lucide-react'
 import { api, getErrorMessage } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -58,7 +59,35 @@ interface CompanySettingsResponse {
   data: CompanySettings
 }
 
-type CompanyTab = 'general' | 'receipt'
+type ProcurementPreset = 'complet' | 'standard' | 'leger'
+
+interface ProcurementPolicy {
+  company_id: string
+  preset: ProcurementPreset | null
+  bill_control_mode: 'received'
+  match_mode: 'two_way' | 'three_way'
+  match_enforcement: 'warn' | 'block'
+  variance_tolerance_percent: string
+  variance_tolerance_max_amount: string
+}
+
+interface ProcurementPolicyResponse {
+  data: ProcurementPolicy
+}
+
+type ProcurementPolicyPayload =
+  | { preset: ProcurementPreset }
+  | {
+      bill_control_mode: 'received'
+      match_mode: 'two_way' | 'three_way'
+      match_enforcement: 'warn' | 'block'
+      variance_tolerance_percent: string
+      variance_tolerance_max_amount: string
+    }
+
+type CompanyTab = 'general' | 'procurement' | 'receipt'
+
+const procurementPresets: ProcurementPreset[] = ['complet', 'standard', 'leger']
 
 export function CompanyPage() {
   const { t } = useTranslation(['settings', 'common'])
@@ -83,9 +112,23 @@ export function CompanyPage() {
     enabled: tenantId !== null && companyId !== null,
   })
 
+  const {
+    data: procurementPolicy,
+    isLoading: isProcurementLoading,
+    error: procurementError,
+  } = useQuery({
+    queryKey: tenantScopedKey(['procurement-policy']),
+    queryFn: async () => {
+      const response = await api.get<ProcurementPolicyResponse>('/procurement-policies')
+      return response.data.data
+    },
+    enabled: tenantId !== null && companyId !== null,
+  })
+
   // Form state
   const [formData, setFormData] = useState<Partial<CompanySettings>>({})
   const [isDirty, setIsDirty] = useState(false)
+  const [procurementForm, setProcurementForm] = useState<Partial<ProcurementPolicy>>({})
 
   // Initialize form data when settings load
   const settings = data
@@ -108,6 +151,16 @@ export function CompanyPage() {
     })
   }
 
+  if (procurementPolicy && Object.keys(procurementForm).length === 0) {
+    setProcurementForm({
+      bill_control_mode: procurementPolicy.bill_control_mode,
+      match_mode: procurementPolicy.match_mode,
+      match_enforcement: procurementPolicy.match_enforcement,
+      variance_tolerance_percent: procurementPolicy.variance_tolerance_percent,
+      variance_tolerance_max_amount: procurementPolicy.variance_tolerance_max_amount,
+    })
+  }
+
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async (data: Partial<CompanySettings>): Promise<void> => {
@@ -117,6 +170,27 @@ export function CompanyPage() {
       await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) })
       setIsDirty(false)
       showNotification('success', t('settings:company.messages.saved'))
+    },
+    onError: (error) => {
+      showNotification('error', getErrorMessage(error))
+    },
+  })
+
+  const updateProcurementMutation = useMutation({
+    mutationFn: async (payload: ProcurementPolicyPayload): Promise<ProcurementPolicy> => {
+      const response = await api.put<ProcurementPolicyResponse>('/procurement-policies', payload)
+      return response.data.data
+    },
+    onSuccess: async (policy) => {
+      setProcurementForm({
+        bill_control_mode: policy.bill_control_mode,
+        match_mode: policy.match_mode,
+        match_enforcement: policy.match_enforcement,
+        variance_tolerance_percent: policy.variance_tolerance_percent,
+        variance_tolerance_max_amount: policy.variance_tolerance_max_amount,
+      })
+      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['procurement-policy']) })
+      showNotification('success', t('settings:company.procurement.messages.saved'))
     },
     onError: (error) => {
       showNotification('error', getErrorMessage(error))
@@ -182,6 +256,25 @@ export function CompanyPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     updateMutation.mutate(formData)
+  }
+
+  const handlePresetSelect = (preset: ProcurementPreset) => {
+    updateProcurementMutation.mutate({ preset })
+  }
+
+  const handleProcurementFieldChange = (field: keyof ProcurementPolicy, value: string) => {
+    setProcurementForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleProcurementSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    updateProcurementMutation.mutate({
+      bill_control_mode: 'received',
+      match_mode: (procurementForm.match_mode ?? 'three_way') as 'two_way' | 'three_way',
+      match_enforcement: (procurementForm.match_enforcement ?? 'warn') as 'warn' | 'block',
+      variance_tolerance_percent: procurementForm.variance_tolerance_percent ?? '2.00',
+      variance_tolerance_max_amount: procurementForm.variance_tolerance_max_amount ?? '1.000',
+    })
   }
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -305,12 +398,159 @@ export function CompanyPage() {
             <Receipt className="h-4 w-4" />
             {t('settings:company.tabs.receipt')}
           </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('procurement') }}
+            className={cn(
+              'flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium transition-colors',
+              activeTab === 'procurement'
+                ? cn(borderColors.primary, textColors.brand)
+                : cn('border-transparent', textColors.tertiary, textColors.hoverSecondary, borderColors.hover),
+            )}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            {t('settings:company.tabs.procurement')}
+          </button>
         </nav>
       </div>
 
       {/* Tab Content */}
       {activeTab === 'receipt' ? (
         <ReceiptSettingsTab />
+      ) : activeTab === 'procurement' ? (
+        <div className="space-y-6">
+          {isProcurementLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className={cn('h-6 w-6 animate-spin', textColors.brand)} />
+            </div>
+          ) : procurementError ? (
+            <div className={cn(tokens.alert.base, tokens.alert.error)}>
+              {t('settings:company.procurement.messages.loadError')}
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 lg:grid-cols-3">
+                {procurementPresets.map((preset) => {
+                  const isActive = procurementPolicy?.preset === preset
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => { handlePresetSelect(preset) }}
+                      disabled={updateProcurementMutation.isPending}
+                      aria-pressed={isActive}
+                      className={cn(
+                        'min-h-40 rounded-lg border bg-white p-5 text-left shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60',
+                        isActive ? 'border-blue-500 ring-1 ring-blue-500' : cn(borderColors.light, 'hover:border-blue-300'),
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <h2 className={cn(tokens.heading.section, 'text-base')}>
+                          {t(`settings:company.procurement.presets.${preset}.title`)}
+                        </h2>
+                        {isActive && <CheckCircle className={cn('h-5 w-5 shrink-0', textColors.brand)} />}
+                      </div>
+                      <p className={cn('mt-2 text-sm', textColors.secondary)}>
+                        {t(`settings:company.procurement.presets.${preset}.description`)}
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <StatusBadge tone="info" className="text-xs">
+                          {t(`settings:company.procurement.modes.${preset === 'leger' ? 'two_way' : 'three_way'}`)}
+                        </StatusBadge>
+                        <StatusBadge tone={preset === 'complet' ? 'danger' : 'warning'} className="text-xs">
+                          {t(`settings:company.procurement.enforcement.${preset === 'complet' ? 'block' : 'warn'}`)}
+                        </StatusBadge>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <form onSubmit={handleProcurementSubmit} className={tokens.card.base}>
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className={cn(tokens.heading.section, 'mb-1')}>
+                      {t('settings:company.procurement.advanced.title')}
+                    </h2>
+                    <p className={cn('text-sm', textColors.secondary)}>
+                      {t('settings:company.procurement.advanced.description')}
+                    </p>
+                  </div>
+                  {procurementPolicy?.preset === null && (
+                    <StatusBadge tone="neutral" className="shrink-0 text-xs">
+                      {t('settings:company.procurement.custom')}
+                    </StatusBadge>
+                  )}
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <FormField label={t('settings:company.procurement.fields.billControlMode')} htmlFor="bill_control_mode">
+                    <Select id="bill_control_mode" value="received" disabled>
+                      <option value="received">{t('settings:company.procurement.billControl.received')}</option>
+                    </Select>
+                  </FormField>
+                  <FormField label={t('settings:company.procurement.fields.matchMode')} htmlFor="match_mode">
+                    <Select
+                      id="match_mode"
+                      value={procurementForm.match_mode ?? 'three_way'}
+                      onChange={(e) => { handleProcurementFieldChange('match_mode', e.target.value) }}
+                    >
+                      <option value="three_way">{t('settings:company.procurement.modes.three_way')}</option>
+                      <option value="two_way">{t('settings:company.procurement.modes.two_way')}</option>
+                    </Select>
+                  </FormField>
+                  <FormField label={t('settings:company.procurement.fields.matchEnforcement')} htmlFor="match_enforcement">
+                    <Select
+                      id="match_enforcement"
+                      value={procurementForm.match_enforcement ?? 'warn'}
+                      onChange={(e) => { handleProcurementFieldChange('match_enforcement', e.target.value) }}
+                    >
+                      <option value="warn">{t('settings:company.procurement.enforcement.warn')}</option>
+                      <option value="block">{t('settings:company.procurement.enforcement.block')}</option>
+                    </Select>
+                  </FormField>
+                  <FormField label={t('settings:company.procurement.fields.tolerancePercent')} htmlFor="variance_tolerance_percent">
+                    <Input
+                      id="variance_tolerance_percent"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={procurementForm.variance_tolerance_percent ?? '2.00'}
+                      onChange={(e) => { handleProcurementFieldChange('variance_tolerance_percent', e.target.value) }}
+                    />
+                  </FormField>
+                  <FormField label={t('settings:company.procurement.fields.toleranceAmount')} htmlFor="variance_tolerance_max_amount">
+                    <Input
+                      id="variance_tolerance_max_amount"
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      value={procurementForm.variance_tolerance_max_amount ?? '1.000'}
+                      onChange={(e) => { handleProcurementFieldChange('variance_tolerance_max_amount', e.target.value) }}
+                    />
+                  </FormField>
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                  <Button
+                    type="submit"
+                    disabled={updateProcurementMutation.isPending}
+                    className="gap-2"
+                  >
+                    {updateProcurementMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {t('common:status.saving')}
+                      </>
+                    ) : (
+                      t('settings:company.procurement.actions.saveAdvanced')
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </>
+          )}
+        </div>
       ) : (
       <form onSubmit={handleSubmit}>
         <div className="grid gap-6 lg:grid-cols-2">

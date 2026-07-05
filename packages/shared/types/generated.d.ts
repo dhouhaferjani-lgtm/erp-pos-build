@@ -1363,6 +1363,21 @@ message: string | null;
 declare namespace App.Modules.PlatformIntegration.Domain.Enums {
 export type PlatformLookupStatus = 'found' | 'not_found' | 'error' | 'cached';
 }
+declare namespace App.Modules.Procurement.Application.DTOs {
+export type ProcurementPolicyData = {
+id: string | null;
+tenant_id: string;
+company_id: string;
+preset: string | null;
+bill_control_mode: string;
+match_mode: string;
+match_enforcement: string;
+variance_tolerance_percent: string;
+variance_tolerance_max_amount: string;
+created_at: string | null;
+updated_at: string | null;
+};
+}
 declare namespace App.Modules.Procurement.Domain.Dto {
 export type RfqPayload = {
 groupId: string;
@@ -1378,6 +1393,7 @@ declare namespace App.Modules.Procurement.Domain.Enums {
 export type BillControlMode = 'received' | 'ordered';
 export type MatchEnforcement = 'warn' | 'block';
 export type MatchMode = 'two_way' | 'three_way';
+export type ProcurementPreset = 'complet' | 'standard' | 'leger';
 export type SupplierCreditNoteReason = 'price_adjustment' | 'goods_return';
 }
 declare namespace App.Modules.Product.Application.DTOs {

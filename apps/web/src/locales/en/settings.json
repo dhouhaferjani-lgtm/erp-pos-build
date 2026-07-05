@@ -56,6 +56,7 @@
     "scopeBanner": "These are company-wide settings for {{company}}. Branch details (address, tax ID) are edited in <locationsLink>Locations & Branches</locationsLink>.",
     "tabs": {
       "general": "General",
+      "procurement": "Procurement",
       "receipt": "Receipt"
     },
     "sections": {
@@ -165,6 +166,52 @@
       "unsavedChanges": "You have unsaved changes",
       "uploadLogo": "Click to upload company logo",
       "logoFormats": "PNG, JPG, SVG up to 2MB"
+    },
+    "procurement": {
+      "custom": "Custom",
+      "actions": {
+        "saveAdvanced": "Save advanced settings"
+      },
+      "advanced": {
+        "title": "Advanced controls",
+        "description": "Editing these fields clears the selected preset and stores a custom policy."
+      },
+      "billControl": {
+        "received": "Received quantities only"
+      },
+      "enforcement": {
+        "block": "Block",
+        "warn": "Warn"
+      },
+      "fields": {
+        "billControlMode": "Bill control",
+        "matchEnforcement": "Variance enforcement",
+        "matchMode": "Match mode",
+        "toleranceAmount": "Max variance amount",
+        "tolerancePercent": "Variance tolerance %"
+      },
+      "messages": {
+        "loadError": "Error loading procurement policy. Please try again.",
+        "saved": "Procurement policy saved successfully."
+      },
+      "modes": {
+        "three_way": "Three-way",
+        "two_way": "Two-way"
+      },
+      "presets": {
+        "complet": {
+          "title": "Complet",
+          "description": "Strict RFQ-to-invoice control with blocking variances."
+        },
+        "standard": {
+          "title": "Standard",
+          "description": "Receipt-based matching with warnings for tolerances."
+        },
+        "leger": {
+          "title": "Léger",
+          "description": "Light PO-price matching while receipts still control quantities."
+        }
+      }
     }
   },
   "locations": {

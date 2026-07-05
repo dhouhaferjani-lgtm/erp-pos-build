@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Procurement\Domain\Enums\MatchEnforcement;
+use App\Modules\Procurement\Domain\Enums\MatchMode;
 use App\Modules\Procurement\Domain\ProcurementPolicy;
 use App\Shared\Domain\CurrencyScale;
 
@@ -494,7 +495,7 @@ final class SupplierInvoiceMatcher
         ProcurementPolicy $policy,
     ): SupplierInvoiceMatchStatus {
         $invoiceUnitPrice = $invoiceLine->unit_price;
-        $basisUnitPrice = $this->priceBasisForInvoiceLine($invoiceLine, $poLine);
+        $basisUnitPrice = $this->priceBasisForInvoiceLine($invoiceLine, $poLine, $policy);
         $invoicedQty = $invoiceLine->quantity;
 
         // |invoice_unit_price − basis_unit_price|  (money scale 3)
@@ -535,8 +536,15 @@ final class SupplierInvoiceMatcher
     /**
      * @return numeric-string
      */
-    private function priceBasisForInvoiceLine(DocumentLine $invoiceLine, DocumentLine $poLine): string
-    {
+    private function priceBasisForInvoiceLine(
+        DocumentLine $invoiceLine,
+        DocumentLine $poLine,
+        ProcurementPolicy $policy,
+    ): string {
+        if ($policy->match_mode === MatchMode::TwoWay) {
+            return CurrencyScale::bcformatStrict((string) $poLine->unit_price, 6);
+        }
+
         if ($invoiceLine->price_match_basis !== null) {
             return CurrencyScale::bcformatStrict((string) $invoiceLine->price_match_basis, 6);
         }

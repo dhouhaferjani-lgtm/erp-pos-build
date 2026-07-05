@@ -7,8 +7,9 @@ namespace App\Modules\Procurement\Domain\Enums;
 /**
  * Three-way vs two-way AP matching mode for procurement policies.
  *
- * Three-way: PO ↔ GR ↔ Supplier Bill must all align before payment.
- * Two-way:   PO ↔ Supplier Bill (no GR requirement). Used for service POs.
+ * Three-way: price matching uses receipt-line accrual basis (PO ↔ GR ↔ bill).
+ * Two-way:   price matching uses the PO line's contractual unit_price, while
+ *            receipt quantity, GR-IR accrual, and FIFO 408 clearing still apply.
  */
 enum MatchMode: string
 {
