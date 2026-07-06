@@ -397,7 +397,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             // parent::run() (and therefore ParapharmacySeeder's own loyalty
             // bootstrap step) — 2026-07-06 loyalty launch roadmap LB-1,
             // adversarial review MAJOR-2. Idempotent, so safe on first run too.
-            $this->loyaltyBootstrap->ensureActiveProgram(
+            $this->loyaltyBootstrap()->ensureActiveProgram(
                 $this->tenant->id,
                 $this->localeCurrency(),
                 'Programme fidélité',

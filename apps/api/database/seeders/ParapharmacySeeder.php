@@ -103,8 +103,13 @@ class ParapharmacySeeder extends Seeder
      * branch — which skips {@see run()} — can also call it.
      */
     public function __construct(
-        protected readonly ProgramBootstrapService $loyaltyBootstrap,
+        private readonly ProgramBootstrapService $loyaltyBootstrap,
     ) {}
+
+    protected function loyaltyBootstrap(): ProgramBootstrapService
+    {
+        return $this->loyaltyBootstrap;
+    }
 
     /**
      * Units of measure keyed by code, resolved once after UomSeeder runs so
@@ -413,7 +418,7 @@ class ParapharmacySeeder extends Seeder
         //     nothing seeds a program, so every earn/balance call silently no-ops —
         //     2026-07-06 loyalty launch roadmap LB-1).
         $this->command->info('🎁 Seeding loyalty program...');
-        $this->loyaltyBootstrap->ensureActiveProgram(
+        $this->loyaltyBootstrap()->ensureActiveProgram(
             $this->tenant->id,
             $this->localeCurrency(),
             'Programme fidélité',
