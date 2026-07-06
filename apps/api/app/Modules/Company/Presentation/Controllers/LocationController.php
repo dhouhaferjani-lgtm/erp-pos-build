@@ -109,6 +109,8 @@ class LocationController extends Controller
             'is_default' => false,
             'is_active' => true,
             'pos_enabled' => $validated['pos_enabled'] ?? false,
+            'onboarding_mode' => $validated['onboarding_mode'] ?? false,
+            'pos_stock_policy_override' => $validated['pos_stock_policy_override'] ?? null,
         ]);
 
         return response()->json([

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Presentation\Resources;
 
+use App\Modules\Company\Application\Services\LocationStockPolicyResolver;
 use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\POS\Domain\Terminal;
 use Illuminate\Http\Request;
@@ -26,11 +27,29 @@ final class TerminalResource extends JsonResource
             'name' => $this->name,
             'description' => $this->description,
             'location_id' => $this->location_id,
-            'pos_stock_policy' => $this->whenLoaded(
-                'company',
-                fn () => $this->company->pos_stock_policy->value,
-                PosStockPolicy::Block->value,
-            ),
+            // Live inventory counting task A4: the resolved PER-LOCATION policy
+            // (onboarding mode forces Off; else the location's override, else the
+            // company's policy) — same payload key, old POS builds keep working.
+            // Requires BOTH `location` and `company` eager-loaded (every real
+            // controller call site loads both together via ->with(['location',
+            // 'company'])); if either is missing we deliberately fall back to
+            // Block rather than triggering a lazy per-terminal DB round trip.
+            'pos_stock_policy' => $this->whenLoaded('location', function () {
+                $location = $this->location;
+
+                if ($this->relationLoaded('company') && ! $location->relationLoaded('company')) {
+                    $location->setRelation('company', $this->company);
+                }
+
+                $needsCompany = ! $location->onboarding_mode
+                    && ! (is_string($location->pos_stock_policy_override) && $location->pos_stock_policy_override !== '');
+
+                if ($needsCompany && ! $location->relationLoaded('company')) {
+                    return PosStockPolicy::Block->value;
+                }
+
+                return (new LocationStockPolicyResolver)->resolve($location)->value;
+            }, PosStockPolicy::Block->value),
             'location' => $this->whenLoaded('location', function () {
                 return [
                     'id' => $this->location->id,

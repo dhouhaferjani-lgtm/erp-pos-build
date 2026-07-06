@@ -38,6 +38,8 @@ class LocationResource extends JsonResource
             'is_default' => $this->is_default,
             'is_active' => $this->is_active,
             'pos_enabled' => $this->pos_enabled,
+            'onboarding_mode' => $this->onboarding_mode,
+            'pos_stock_policy_override' => $this->pos_stock_policy_override,
             'created_at' => $this->created_at->toIso8601String(),
             'updated_at' => $this->updated_at->toIso8601String(),
         ];
