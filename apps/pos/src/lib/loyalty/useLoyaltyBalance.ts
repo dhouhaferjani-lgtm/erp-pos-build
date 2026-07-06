@@ -3,10 +3,19 @@ import { useHasModule } from '@/stores/productStore'
 import type { AttachedCheckoutCustomer } from '@/stores/paymentStore'
 import { fetchLoyaltyBalance, type LoyaltyBalance } from './loyaltyApi'
 
-/** Online-only: returns null unless module on + customer server-synced + the call succeeds. */
-export function useLoyaltyBalance(customer: AttachedCheckoutCustomer | null): LoyaltyBalance | null {
+export interface UseLoyaltyBalanceResult {
+  balance: LoyaltyBalance | null
+  /** Re-fetches the balance (e.g. after `enrollLoyalty` resolves — the member
+   * now resolves by partner id, so a fresh fetch reports `enrolled: true`
+   * without needing the phone). */
+  refresh: () => void
+}
+
+/** Online-only: balance is null unless module on + customer server-synced + the call succeeds. */
+export function useLoyaltyBalance(customer: AttachedCheckoutCustomer | null): UseLoyaltyBalanceResult {
   const hasLoyalty = useHasModule('Loyalty')
   const [balance, setBalance] = useState<LoyaltyBalance | null>(null)
+  const [nonce, setNonce] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -17,7 +26,7 @@ export function useLoyaltyBalance(customer: AttachedCheckoutCustomer | null): Lo
       .then((b) => { if (active) setBalance(b) })
       .catch(() => { if (active) setBalance(null) }) // offline/network ⇒ no chrome
     return () => { active = false }
-  }, [hasLoyalty, customer])
+  }, [hasLoyalty, customer, nonce])
 
-  return balance
+  return { balance, refresh: () => setNonce((n) => n + 1) }
 }

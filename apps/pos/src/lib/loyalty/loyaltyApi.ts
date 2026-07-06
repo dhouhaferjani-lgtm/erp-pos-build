@@ -15,3 +15,15 @@ export async function fetchLoyaltyBalance(customer: AttachedCheckoutCustomer): P
     phone: customer.phone,
   })
 }
+
+/**
+ * Same find-or-create + enroll endpoint as `fetchLoyaltyBalance`, but posts an
+ * explicit phone the cashier typed rather than the (possibly null) attached
+ * customer's phone — this is how a phone-less customer gets enrolled.
+ */
+export async function enrollLoyalty(customerId: string, phone: string): Promise<LoyaltyBalance> {
+  return apiPost<LoyaltyBalance>('/loyalty/pos/balance', {
+    partner_id: customerId,
+    phone,
+  })
+}

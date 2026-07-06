@@ -1086,6 +1086,11 @@
   "loyalty": {
     "points": "{{amount}} pts",
     "earnEstimate": "+{{points}} pts this sale",
-    "joinsOnPurchase": "Joins on purchase"
+    "joinsOnPurchase": "Joins on purchase",
+    "enroll": "Enroll",
+    "enrollTitle": "Enroll in loyalty",
+    "enrollPhoneLabel": "Phone number",
+    "enrollSubmit": "Enroll",
+    "enrollFailed": "Enrollment failed. Please try again."
   }
 }
