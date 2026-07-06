@@ -11,6 +11,7 @@ enum CountingScopeType: string
     case Location = 'location';
     case Category = 'category';
     case FullInventory = 'full_inventory';
+    case Zone = 'zone';
 
     public function allowsUnexpectedItems(): bool
     {
@@ -25,6 +26,7 @@ enum CountingScopeType: string
             self::Location => 'Location',
             self::Category => 'Category',
             self::FullInventory => 'Full Inventory',
+            self::Zone => 'Zone / Shelf',
         };
     }
 }

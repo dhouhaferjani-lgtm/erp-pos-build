@@ -36,6 +36,10 @@ use Illuminate\Support\Carbon;
  * @property bool $requires_count_3
  * @property bool $allow_unexpected_items
  * @property string|null $instructions
+ * @property bool $block_sales
+ * @property int $ambiguity_window_minutes
+ * @property array<int, array{receipt_id: string, occurred_at: string}>|null $late_sales_flags
+ * @property bool $includes_zero_stock
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $activated_at
@@ -75,6 +79,10 @@ class InventoryCounting extends Model
         'requires_count_3',
         'allow_unexpected_items',
         'instructions',
+        'block_sales',
+        'ambiguity_window_minutes',
+        'late_sales_flags',
+        'includes_zero_stock',
         'activated_at',
         'finalized_at',
         'cancelled_at',
@@ -99,6 +107,10 @@ class InventoryCounting extends Model
             'requires_count_2' => 'boolean',
             'requires_count_3' => 'boolean',
             'allow_unexpected_items' => 'boolean',
+            'block_sales' => 'boolean',
+            'ambiguity_window_minutes' => 'integer',
+            'late_sales_flags' => 'array',
+            'includes_zero_stock' => 'boolean',
         ];
     }
 

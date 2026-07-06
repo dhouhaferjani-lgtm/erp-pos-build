@@ -23,14 +23,25 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $theoretical_qty
  * @property numeric-string|null $count_1_qty
  * @property Carbon|null $count_1_at
+ * @property Carbon|null $count_1_device_at
+ * @property Carbon|null $count_1_at_estimate
  * @property string|null $count_1_notes
  * @property numeric-string|null $count_2_qty
  * @property Carbon|null $count_2_at
+ * @property Carbon|null $count_2_device_at
+ * @property Carbon|null $count_2_at_estimate
  * @property string|null $count_2_notes
  * @property numeric-string|null $count_3_qty
  * @property Carbon|null $count_3_at
+ * @property Carbon|null $count_3_device_at
+ * @property Carbon|null $count_3_at_estimate
  * @property string|null $count_3_notes
  * @property numeric-string|null $final_qty
+ * @property Carbon|null $final_qty_as_of
+ * @property numeric-string|null $expected_qty_at_apply
+ * @property numeric-string|null $opening_unit_cost
+ * @property array<string, mixed>|null $replay_audit
+ * @property array<int, string>|null $flag_reasons
  * @property ItemResolutionMethod $resolution_method
  * @property string|null $resolution_notes
  * @property string|null $resolved_by_user_id
@@ -59,14 +70,25 @@ class InventoryCountingItem extends Model
         'theoretical_qty',
         'count_1_qty',
         'count_1_at',
+        'count_1_device_at',
+        'count_1_at_estimate',
         'count_1_notes',
         'count_2_qty',
         'count_2_at',
+        'count_2_device_at',
+        'count_2_at_estimate',
         'count_2_notes',
         'count_3_qty',
         'count_3_at',
+        'count_3_device_at',
+        'count_3_at_estimate',
         'count_3_notes',
         'final_qty',
+        'final_qty_as_of',
+        'expected_qty_at_apply',
+        'opening_unit_cost',
+        'replay_audit',
+        'flag_reasons',
         'resolution_method',
         'resolution_notes',
         'resolved_by_user_id',
@@ -88,12 +110,23 @@ class InventoryCountingItem extends Model
             'count_2_qty' => 'decimal:4',
             'count_3_qty' => 'decimal:4',
             'final_qty' => 'decimal:4',
+            'expected_qty_at_apply' => 'decimal:4',
+            'opening_unit_cost' => 'decimal:6',
             'count_1_at' => 'datetime',
+            'count_1_device_at' => 'datetime',
+            'count_1_at_estimate' => 'datetime',
             'count_2_at' => 'datetime',
+            'count_2_device_at' => 'datetime',
+            'count_2_at_estimate' => 'datetime',
             'count_3_at' => 'datetime',
+            'count_3_device_at' => 'datetime',
+            'count_3_at_estimate' => 'datetime',
+            'final_qty_as_of' => 'datetime',
             'resolved_at' => 'datetime',
             'is_flagged' => 'boolean',
             'is_unexpected_item' => 'boolean',
+            'replay_audit' => 'array',
+            'flag_reasons' => 'array',
         ];
     }
 
