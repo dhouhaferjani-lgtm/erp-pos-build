@@ -178,6 +178,22 @@ partner record; LB-3 captures it at the POS. Relaxing to phone-or-email is PL-7.
 - **PL-5 — Tauri POS RBAC layer** (permission checks, not just module flags).
 - **PL-6 — Program config/onboarding UX** (nudge tenant admins without a program).
 - **PL-7 — Phone-or-email membership identity** (schema + resolver change).
+- **PL-8 — Category earning rules are uncreatable via the UI** (found by the
+  Task-9 reviewer, pre-existing): `CreateEarningRuleRequest` validates
+  `conditions.category_ids.*` as `uuid` while `categories` uses a bigint PK,
+  and `EarningRuleFormModal.tsx` has no category selector — only direct-API/
+  seeded category rules work. Fix the validation + add the selector.
+- **PL-9 — Earn under-credit gaps documented on `SaleEarnContext`** (accepted
+  for launch): variant-keyed Item rules never match device sales (canonical
+  line items carry the PARENT product id); fractional quantities truncate via
+  the rules' int cast (`"2.500"` → 2). Real under-credit for fractional-unit
+  retailers.
+- **PL-10 — Small hygiene sweep** (from the PR #198/#199 review trails):
+  projection-earn test `CompanyContext` clear() before `apply()` (rule-20
+  convention); orphaned `joinsOnPurchase` pos locale key; POS enroll phone
+  input `type="tel"` + format validation; LB-1 seeder-wiring test (bootstrap
+  service is tested, the seeder call line is not); optional `lockForUpdate`
+  hardening of the partner-enroll 409 guard.
 
 ### Memory staleness (close-out chore, this session)
 
