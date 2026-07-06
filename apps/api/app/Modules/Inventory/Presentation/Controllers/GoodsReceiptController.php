@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptData;
+use App\Modules\Inventory\Application\Services\GoodsReceiptPdfService;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\GoodsReceipt;
@@ -21,6 +22,7 @@ final class GoodsReceiptController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly GoodsReceiptService $goodsReceiptService,
+        private readonly GoodsReceiptPdfService $goodsReceiptPdfService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -68,6 +70,24 @@ final class GoodsReceiptController extends Controller
         return response()->json([
             'data' => GoodsReceiptData::fromModel($this->receiptForCurrentCompany($receipt)),
         ]);
+    }
+
+    public function pdf(string $receipt): Response|JsonResponse
+    {
+        $model = $this->receiptForCurrentCompany($receipt);
+
+        if ($model->status !== GoodsReceiptStatus::Posted) {
+            return response()->json([
+                'error' => [
+                    'code' => 'GOODS_RECEIPT_PDF_NOT_POSTED',
+                    'message' => 'Only posted goods receipts can be printed.',
+                ],
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return $this->goodsReceiptPdfService
+            ->generate($model)
+            ->download($this->goodsReceiptPdfService->getFilename($model));
     }
 
     /**

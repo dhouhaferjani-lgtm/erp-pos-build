@@ -13,9 +13,10 @@ import {
   Plus,
   Truck,
   ReceiptText,
+  Printer,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { api } from '../../lib/api'
+import { api, getErrorMessage } from '../../lib/api'
 import { formatDate as formatLocaleDate } from '../../lib/format'
 import { textColors, tokens } from '../../lib/designTokens'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -83,10 +84,17 @@ interface ReceiveGoodsResponse {
 }
 
 interface GoodsReceiptIndexResponse {
-  data: unknown[]
+  data: GoodsReceiptSummary[]
   meta?: {
     total?: number
   }
+}
+
+interface GoodsReceiptSummary {
+  id: string
+  purchase_order_id: string
+  receipt_number?: string | null
+  status?: string | null
 }
 
 type TabType = 'pending' | 'received'
@@ -174,6 +182,17 @@ export function GoodsReceiptListPage() {
     enabled: hasTenantScope,
   })
 
+  const { data: postedReceipts = [] } = useQuery({
+    queryKey: tenantScopedKey(['goods-receipts', 'posted-pdf-links']),
+    queryFn: async () => {
+      const response = await api.get<GoodsReceiptIndexResponse>('/goods-receipts', {
+        params: { status: 'posted', per_page: 100 },
+      })
+      return response.data.data
+    },
+    enabled: hasTenantScope,
+  })
+
   // Receive goods mutation
   const receiveGoodsMutation = useMutation({
     mutationFn: async ({ poId, request }: { poId: string; request: ReceiveGoodsRequest }) => {
@@ -207,6 +226,32 @@ export function GoodsReceiptListPage() {
         ?? error.response?.data?.message
         ?? error.message
       toast.error(message)
+    },
+  })
+
+  const downloadGoodsReceiptPdfMutation = useMutation({
+    mutationFn: async (receipt: GoodsReceiptSummary) => {
+      const response = await api.get(`/goods-receipts/${receipt.id}/pdf`, {
+        responseType: 'blob',
+      })
+      const contentDisposition = response.headers?.['content-disposition']
+      const filenameMatch = typeof contentDisposition === 'string'
+        ? contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
+        : null
+      const filename = filenameMatch?.[1]?.replace(/['"]/g, '')
+        ?? `${receipt.receipt_number ?? receipt.id}.pdf`
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
     },
   })
 
@@ -280,6 +325,7 @@ export function GoodsReceiptListPage() {
   const crossSupplierInvoiceSelection = selectedInvoiceSupplierIds.length > 1
   const canInvoiceSelectedReceipts = activeTab === 'received' && selectedInvoicePoIds.length > 0 && !crossSupplierInvoiceSelection
   const invoiceSelectionBlocked = activeTab === 'received' && selectedInvoicePoIds.length > 0 && crossSupplierInvoiceSelection
+  const postedReceiptByPurchaseOrder = new Map(postedReceipts.map((receipt) => [receipt.purchase_order_id, receipt]))
 
   function toggleInvoiceSelection(poId: string) {
     setSelectedInvoicePoIds((current) =>
@@ -530,6 +576,26 @@ export function GoodsReceiptListPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2">
+                    {activeTab === 'received' && postedReceiptByPurchaseOrder.has(po.id) && (() => {
+                      const receipt = postedReceiptByPurchaseOrder.get(po.id)
+                      if (!receipt) return null
+                      const receiptNumber = receipt.receipt_number ?? ''
+                      return (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            downloadGoodsReceiptPdfMutation.mutate(receipt)
+                          }}
+                          disabled={downloadGoodsReceiptPdfMutation.isPending}
+                          aria-label={`${t('inventory:goodsReceipt.printGrn')} ${receiptNumber}`.trim()}
+                          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm} gap-1`}
+                        >
+                          <Printer className="h-4 w-4" />
+                          {t('inventory:goodsReceipt.printGrn')}
+                        </button>
+                      )
+                    })()}
                     {activeTab === 'pending' && !isFullyReceived && (
                       <button
                         type="button"

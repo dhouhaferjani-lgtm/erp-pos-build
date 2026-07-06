@@ -171,6 +171,8 @@ const fullyReceivedPurchaseOrder = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  URL.createObjectURL = vi.fn(() => 'blob:grn-pdf')
+  URL.revokeObjectURL = vi.fn()
   setTenant('tenant-A', 'company-1')
   mockApiGet.mockImplementation(async (url: string, options?: { params?: { status?: string } }) => {
     if (url === '/purchase-orders/po-1') {
@@ -328,6 +330,55 @@ describe('GoodsReceiptListPage tenant scope', () => {
     await userEvent.click(action)
 
     expect(mockNavigate).toHaveBeenCalledWith('/purchases/supplier-invoices/new?po=po-received-a&po=po-received-b&entry=receipts')
+  })
+
+  it('downloads posted GRN PDFs through the authenticated api client', async () => {
+    mockApiGet.mockImplementation(async (url: string, options?: { params?: { status?: string } }) => {
+      if (url === '/goods-receipts' && options?.params?.status === 'posted') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'grn-1',
+                purchase_order_id: fullyReceivedPurchaseOrder.id,
+                receipt_number: 'GRN-2026-0001',
+                status: 'posted',
+              },
+            ],
+          },
+        }
+      }
+      if (url === '/goods-receipts/grn-1/pdf') {
+        return {
+          data: new Blob(['pdf'], { type: 'application/pdf' }),
+          headers: {
+            'content-disposition': 'attachment; filename=GRN-2026-0001.pdf',
+          },
+        }
+      }
+      if (url === '/goods-receipts') {
+        return { data: { data: [], meta: { total: 0 } } }
+      }
+      if (options?.params?.status === 'received') {
+        return { data: { data: [fullyReceivedPurchaseOrder] } }
+      }
+      return { data: { data: [] } }
+    })
+
+    renderWithProviders(<GoodsReceiptListPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'inventory:goodsReceipt.tabs.received' }))
+
+    const printButton = await screen.findByRole('button', { name: 'inventory:goodsReceipt.printGrn GRN-2026-0001' })
+    await userEvent.click(printButton)
+
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/goods-receipts/grn-1/pdf', {
+        responseType: 'blob',
+      })
+    })
+    expect(screen.queryByRole('link', { name: 'inventory:goodsReceipt.printGrn GRN-2026-0001' })).not.toBeInTheDocument()
+    expect(URL.createObjectURL).toHaveBeenCalled()
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:grn-pdf')
   })
 
   it('blocks invoice creation when received purchase-order selection spans multiple suppliers', async () => {

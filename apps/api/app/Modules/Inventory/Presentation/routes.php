@@ -6,6 +6,7 @@ use App\Modules\Company\Presentation\Controllers\LocationController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Inventory\Presentation\Controllers\CountingItemController;
+use App\Modules\Inventory\Presentation\Controllers\EntryExitNoteController;
 use App\Modules\Inventory\Presentation\Controllers\GoodsReceiptController;
 use App\Modules\Inventory\Presentation\Controllers\InventoryCountingController;
 use App\Modules\Inventory\Presentation\Controllers\StockLevelController;
@@ -63,6 +64,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:inventory.view')
         ->name('stock-movements.index');
 
+    Route::get('/entry-exit-notes', [EntryExitNoteController::class, 'index'])
+        ->middleware('can:inventory.view')
+        ->name('entry-exit-notes.index');
+
     Route::post('/stock-movements/receive', [StockMovementController::class, 'receive'])
         ->middleware('can:inventory.receive')
         ->name('stock-movements.receive');
@@ -108,6 +113,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->whereUuid('receipt')
         ->middleware('can:inventory.view')
         ->name('goods-receipts.show');
+
+    Route::get('/goods-receipts/{receipt}/pdf', [GoodsReceiptController::class, 'pdf'])
+        ->whereUuid('receipt')
+        ->middleware('can:inventory.view')
+        ->name('goods-receipts.pdf');
 
     Route::post('/goods-receipts/{receipt}/post', [GoodsReceiptController::class, 'post'])
         ->whereUuid('receipt')
