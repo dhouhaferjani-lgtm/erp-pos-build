@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Presentation\Requests;
 
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Carbon;
 
 class SubmitCountRequest extends FormRequest
 {
@@ -26,6 +28,11 @@ class SubmitCountRequest extends FormRequest
         return [
             'quantity' => ['required', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:500'],
+            // Device-authored claims for skew correction (mobile offline queue).
+            // Both are optional; older mobile builds omit them and submissions
+            // fall back to pure server-stamped timestamps (no skew correction).
+            'counted_at_device' => ['nullable', 'date'],
+            'device_now' => ['nullable', 'date'],
         ];
     }
 
@@ -41,5 +48,27 @@ class SubmitCountRequest extends FormRequest
         $raw = (string) $this->input('quantity');
 
         return bcadd($raw, '0', 4);
+    }
+
+    /**
+     * The device-clock instant the item was physically counted, if the
+     * device supplied one (raw claim — not corrected for skew).
+     */
+    public function countedAtDevice(): ?CarbonInterface
+    {
+        $raw = $this->input('counted_at_device');
+
+        return $raw !== null ? Carbon::parse($raw) : null;
+    }
+
+    /**
+     * The device clock's own reading of "now" at submission time, used to
+     * derive the clock skew for correcting `countedAtDevice()`.
+     */
+    public function deviceNow(): ?CarbonInterface
+    {
+        $raw = $this->input('device_now');
+
+        return $raw !== null ? Carbon::parse($raw) : null;
     }
 }

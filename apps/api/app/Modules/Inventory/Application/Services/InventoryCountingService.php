@@ -14,6 +14,7 @@ use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingEvent;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\StockLevel;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -298,13 +299,17 @@ class InventoryCountingService
      * CRITICAL: This is the only method that should modify count values.
      *
      * @param  numeric-string  $quantity  Canonical numeric string (quantity scale 4, e.g. '1.2345')
+     * @param  CarbonInterface|null  $countedAtDevice  Raw device-clock instant of the count, if supplied
+     * @param  CarbonInterface|null  $deviceNow  Device clock's own "now" reading at submission, used to derive skew
      */
     public function submitCount(
         InventoryCountingItem $item,
         int $countNumber,
         string $quantity,
         ?string $notes,
-        User $user
+        User $user,
+        ?CarbonInterface $countedAtDevice = null,
+        ?CarbonInterface $deviceNow = null,
     ): void {
         $counting = $item->counting;
 
@@ -337,9 +342,9 @@ class InventoryCountingService
 
         $userId = (string) $user->id;
 
-        DB::transaction(function () use ($item, $countNumber, $quantity, $notes, $userId, $counting): void {
+        DB::transaction(function () use ($item, $countNumber, $quantity, $notes, $userId, $counting, $countedAtDevice, $deviceNow): void {
             // Submit the count
-            $item->submitCount($countNumber, $quantity, $notes);
+            $item->submitCount($countNumber, $quantity, $notes, $countedAtDevice, $deviceNow);
 
             // Record event
             InventoryCountingEvent::recordCountSubmitted(

@@ -100,7 +100,9 @@ class CountingItemController extends Controller
             $countNumber,
             $request->quantity(),
             $request->input('notes'),
-            $user
+            $user,
+            $request->countedAtDevice(),
+            $request->deviceNow(),
         );
 
         return response()->json([

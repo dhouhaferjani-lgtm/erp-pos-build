@@ -6,8 +6,10 @@ namespace App\Modules\Inventory\Domain;
 
 use App\Models\User;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Product\Domain\Product;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -59,6 +61,14 @@ use Illuminate\Support\Carbon;
 class InventoryCountingItem extends Model
 {
     use HasUuids;
+
+    /**
+     * Clock-skew tolerance for count-submission timestamps. Beyond this, the
+     * device/server disagreement is treated as a fault worth flagging for
+     * recount rather than silently trusted for replay (B3/B4 consume
+     * `count_N_at_estimate` as the replay boundary).
+     */
+    private const CLOCK_SKEW_TOLERANCE_SECONDS = 300;
 
     protected $table = 'inventory_counting_items';
 
@@ -239,20 +249,74 @@ class InventoryCountingItem extends Model
 
     /**
      * Submit a count for this item.
-     */
-    /**
+     *
+     * Stamps three timestamps per phase: `count_N_at` is always the server
+     * receive instant (authoritative, unchanged); `count_N_device_at` is the
+     * raw device claim (if any); `count_N_at_estimate` is the skew-corrected
+     * instant B3/B4 replay uses as the boundary. When both device fields are
+     * present, the estimate is `count_N_device_at + (server_now − device_now)`
+     * — this corrects for a device clock offset while still trusting the
+     * device's own instant of when the count was physically taken. A skew
+     * (`|server_now − device_now|`) beyond the tolerance, or a device claim
+     * with no `device_now` to correct against, is treated as evidence, not
+     * proof, and flags the item for recount rather than silently replaying it.
+     *
      * @param  numeric-string  $quantity  Canonical numeric string (quantity scale 4, e.g. '1.2345')
      */
-    public function submitCount(int $phase, string $quantity, ?string $notes = null): void
-    {
+    public function submitCount(
+        int $phase,
+        string $quantity,
+        ?string $notes = null,
+        ?CarbonInterface $countedAtDevice = null,
+        ?CarbonInterface $deviceNow = null,
+    ): void {
         $qtyColumn = "count_{$phase}_qty";
         $atColumn = "count_{$phase}_at";
+        $deviceAtColumn = "count_{$phase}_device_at";
+        $estimateColumn = "count_{$phase}_at_estimate";
         $notesColumn = "count_{$phase}_notes";
 
+        $serverNow = Carbon::now();
+
         $this->$qtyColumn = $quantity;
-        $this->$atColumn = now();
+        $this->$atColumn = $serverNow;
         $this->$notesColumn = $notes;
+        $this->$deviceAtColumn = $countedAtDevice;
+
+        if ($countedAtDevice !== null && $deviceNow !== null) {
+            $skewSeconds = $serverNow->getTimestamp() - $deviceNow->getTimestamp();
+            $this->$estimateColumn = $countedAtDevice->copy()->addSeconds($skewSeconds);
+
+            if (abs($skewSeconds) > self::CLOCK_SKEW_TOLERANCE_SECONDS) {
+                $this->flagClockSkew();
+            }
+        } elseif ($countedAtDevice !== null) {
+            // Device claims an instant but supplied no clock reference to
+            // correct it against — cannot verify, so fall back to the server
+            // receive time and flag for review.
+            $this->$estimateColumn = $serverNow;
+            $this->flagClockSkew();
+        } else {
+            $this->$estimateColumn = $serverNow;
+        }
+
         $this->save();
+    }
+
+    /**
+     * Append the blocking `clock_skew` flag reason and mark the item flagged,
+     * without clobbering any reasons already recorded (idempotent).
+     */
+    private function flagClockSkew(): void
+    {
+        $reasons = $this->flag_reasons ?? [];
+
+        if (! in_array(CountingItemFlagReason::ClockSkew->value, $reasons, true)) {
+            $reasons[] = CountingItemFlagReason::ClockSkew->value;
+        }
+
+        $this->flag_reasons = $reasons;
+        $this->is_flagged = true;
     }
 
     /**
