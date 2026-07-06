@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
@@ -15,7 +16,9 @@ use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingEvent;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\InventoryScale;
+use App\Modules\Inventory\Domain\ProductZoneAssignment;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Product\Domain\Product;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -48,6 +51,7 @@ class InventoryCountingService
 
     public function __construct(
         private readonly CountingReconciliationService $reconciliationService,
+        private readonly ZoneService $zoneService,
     ) {}
 
     /**
@@ -81,7 +85,7 @@ class InventoryCountingService
             ]);
 
             // Generate items based on scope
-            $this->generateCountingItems($counting, $companyId);
+            $this->generateCountingItems($counting, $companyId, $this->readIncludeZeroStockFlag($data));
 
             // Create assignments
             $this->createAssignments($counting);
@@ -104,27 +108,283 @@ class InventoryCountingService
 
     /**
      * Generate counting items based on scope.
+     *
+     * Resolves — and persists on the counting — whether the item set includes
+     * zero/negative/no-stock-row active products (`includes_zero_stock`), then
+     * seeds one item per resolved (product, location[, variant]) grain.
+     *
+     * @param  bool|null  $explicitIncludeZeroStock  Caller-supplied opt-in
+     *                                               (from CreateCountingRequest). When null the flag defaults to the
+     *                                               onboarding state of the target location(s).
      */
-    public function generateCountingItems(InventoryCounting $counting, string $companyId): void
-    {
-        $stockLevels = $this->getStockLevelsForScope(
-            $companyId,
+    public function generateCountingItems(
+        InventoryCounting $counting,
+        string $companyId,
+        ?bool $explicitIncludeZeroStock = null,
+    ): void {
+        $includesZeroStock = $this->resolveIncludesZeroStock(
             $counting->scope_type,
-            $counting->scope_filters
+            $counting->scope_filters,
+            $explicitIncludeZeroStock,
+            $companyId,
         );
 
-        foreach ($stockLevels as $stock) {
+        if ($counting->includes_zero_stock !== $includesZeroStock) {
+            $counting->includes_zero_stock = $includesZeroStock;
+            $counting->save();
+        }
+
+        $seeds = $this->resolveCountingItemSeeds(
+            $companyId,
+            $counting->scope_type,
+            $counting->scope_filters,
+            $includesZeroStock,
+        );
+
+        foreach ($seeds as $seed) {
             // variant_id is propagated from the StockLevel row (Task 20).
             // For product-level stock rows (variant_id IS NULL) this remains
             // null — preserving backward compat with non-variant products.
             InventoryCountingItem::create([
                 'counting_id' => $counting->id,
+                'product_id' => $seed['product_id'],
+                'variant_id' => $seed['variant_id'],
+                'location_id' => $seed['location_id'],
+                'theoretical_qty' => $seed['theoretical_qty'],
+            ]);
+        }
+    }
+
+    /**
+     * Coerce the request-supplied `include_zero_stock` flag to a nullable bool.
+     * Absent → null (defer to onboarding-based default).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function readIncludeZeroStockFlag(array $data): ?bool
+    {
+        if (! array_key_exists('include_zero_stock', $data)) {
+            return null;
+        }
+
+        return filter_var($data['include_zero_stock'], FILTER_VALIDATE_BOOL);
+    }
+
+    /**
+     * Whether this counting's item set is sourced from the full active catalog
+     * (zero/negative/no-stock-row products included) rather than the legacy
+     * `quantity > 0` filter. Only `full_inventory` / `location` counts qualify —
+     * they are the whole-location scopes C3's onboarding auto-exit gates on. An
+     * explicit opt-in wins; otherwise it defaults to true when a target
+     * location is in onboarding mode. Zone scope is partial-by-shelf and never
+     * sets this flag (its own item generation still includes zero-qty products).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function resolveIncludesZeroStock(
+        CountingScopeType $scopeType,
+        array $filters,
+        ?bool $explicit,
+        string $companyId,
+    ): bool {
+        if (! in_array($scopeType, [CountingScopeType::FullInventory, CountingScopeType::Location], true)) {
+            return false;
+        }
+
+        if ($explicit !== null) {
+            return $explicit;
+        }
+
+        return $this->anyLocationOnboarding($scopeType, $filters, $companyId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function anyLocationOnboarding(
+        CountingScopeType $scopeType,
+        array $filters,
+        string $companyId,
+    ): bool {
+        $locationIds = $this->resolveLocationIds($scopeType, $filters, $companyId);
+
+        if ($locationIds === []) {
+            return false;
+        }
+
+        return Location::query()
+            ->whereIn('id', $locationIds)
+            ->where('company_id', $companyId)
+            ->where('onboarding_mode', true)
+            ->exists();
+    }
+
+    /**
+     * The concrete location ids a whole-location scope targets.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return list<string>
+     */
+    private function resolveLocationIds(
+        CountingScopeType $scopeType,
+        array $filters,
+        string $companyId,
+    ): array {
+        if ($scopeType === CountingScopeType::Location) {
+            /** @var list<string> $ids */
+            $ids = array_values(array_filter((array) ($filters['location_ids'] ?? [])));
+
+            return $ids;
+        }
+
+        if ($scopeType === CountingScopeType::FullInventory) {
+            /** @var list<string> $ids */
+            $ids = Location::query()
+                ->where('company_id', $companyId)
+                ->where('is_active', true)
+                ->pluck('id')
+                ->all();
+
+            return $ids;
+        }
+
+        return [];
+    }
+
+    /**
+     * Resolve the (product, location, variant, theoretical_qty) seeds for a
+     * scope. Zone scope reads `product_zone_assignments`; onboarding/opt-in
+     * whole-location scopes read the full active catalog LEFT JOIN stock
+     * (theoretical `'0.0000'` when no stock row); every other case keeps the
+     * legacy `quantity > 0` stock-level query.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return list<array{product_id: string, variant_id: string|null, location_id: string, theoretical_qty: numeric-string}>
+     */
+    private function resolveCountingItemSeeds(
+        string $companyId,
+        CountingScopeType $scopeType,
+        array $filters,
+        bool $includesZeroStock,
+    ): array {
+        if ($scopeType === CountingScopeType::Zone) {
+            return $this->zoneItemSeeds($companyId, $filters);
+        }
+
+        if ($includesZeroStock) {
+            return $this->catalogItemSeeds($companyId, $scopeType, $filters);
+        }
+
+        $seeds = [];
+        foreach ($this->getStockLevelsForScope($companyId, $scopeType, $filters) as $stock) {
+            $seeds[] = [
                 'product_id' => $stock->product_id,
                 'variant_id' => $stock->variant_id,
                 'location_id' => $stock->location_id,
                 'theoretical_qty' => $stock->quantity,
-            ]);
+            ];
         }
+
+        return $seeds;
+    }
+
+    /**
+     * Seeds for a zone scope: every product placed in the requested zones, at
+     * the zone's location, with its current product-grain on-hand (or
+     * `'0.0000'` when there is no stock row).
+     *
+     * @param  array<string, mixed>  $filters
+     * @return list<array{product_id: string, variant_id: string|null, location_id: string, theoretical_qty: numeric-string}>
+     */
+    private function zoneItemSeeds(string $companyId, array $filters): array
+    {
+        /** @var list<string> $zoneIds */
+        $zoneIds = array_values(array_filter((array) ($filters['zone_ids'] ?? [])));
+
+        if ($zoneIds === []) {
+            return [];
+        }
+
+        $seeds = [];
+
+        $assignments = ProductZoneAssignment::query()
+            ->whereIn('zone_id', $zoneIds)
+            ->get();
+
+        foreach ($assignments as $assignment) {
+            /** @var StockLevel|null $stock */
+            $stock = StockLevel::query()
+                ->forCompany($companyId)
+                ->where('product_id', $assignment->product_id)
+                ->where('location_id', $assignment->location_id)
+                ->whereNull('variant_id')
+                ->first();
+
+            $seeds[] = [
+                'product_id' => $assignment->product_id,
+                'variant_id' => null,
+                'location_id' => $assignment->location_id,
+                'theoretical_qty' => $stock !== null ? $stock->quantity : '0.0000',
+            ];
+        }
+
+        return $seeds;
+    }
+
+    /**
+     * Seeds for an onboarding/opt-in whole-location scope: the cartesian of
+     * every active company product with each target location, LEFT JOIN stock
+     * (theoretical `'0.0000'` when absent). Never-received and already-sold
+     * (negative) products — exactly the ones the legacy `quantity > 0` filter
+     * drops — are included.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return list<array{product_id: string, variant_id: string|null, location_id: string, theoretical_qty: numeric-string}>
+     */
+    private function catalogItemSeeds(string $companyId, CountingScopeType $scopeType, array $filters): array
+    {
+        $locationIds = $this->resolveLocationIds($scopeType, $filters, $companyId);
+
+        if ($locationIds === []) {
+            return [];
+        }
+
+        /** @var list<string> $productIds */
+        $productIds = Product::query()
+            ->where('company_id', $companyId)
+            ->active()
+            ->pluck('id')
+            ->all();
+
+        if ($productIds === []) {
+            return [];
+        }
+
+        // Product-grain on-hand keyed by "product|location".
+        /** @var array<string, numeric-string> $stockByKey */
+        $stockByKey = [];
+        StockLevel::query()
+            ->forCompany($companyId)
+            ->whereIn('location_id', $locationIds)
+            ->whereNull('variant_id')
+            ->get(['product_id', 'location_id', 'quantity'])
+            ->each(function (StockLevel $stock) use (&$stockByKey): void {
+                $stockByKey[$stock->product_id.'|'.$stock->location_id] = $stock->quantity;
+            });
+
+        $seeds = [];
+        foreach ($locationIds as $locationId) {
+            foreach ($productIds as $productId) {
+                $seeds[] = [
+                    'product_id' => $productId,
+                    'variant_id' => null,
+                    'location_id' => $locationId,
+                    'theoretical_qty' => $stockByKey[$productId.'|'.$locationId] ?? '0.0000',
+                ];
+            }
+        }
+
+        return $seeds;
     }
 
     /**
@@ -373,6 +633,12 @@ class InventoryCountingService
             // Submit the count
             $item->submitCount($countNumber, $quantity, $notes, $countedAtDevice, $deviceNow);
 
+            // Assign-as-you-count: the first count of an item in a single-zone
+            // zone-scoped session upserts that product into the zone (labels the
+            // shelf the moment it is physically counted — including scanned-in
+            // unexpected items). Multiple zones in scope are ambiguous → skipped.
+            $this->assignCountedItemToZone($item, $counting, $countNumber);
+
             // Record event
             InventoryCountingEvent::recordCountSubmitted(
                 $item,
@@ -391,6 +657,31 @@ class InventoryCountingService
             // Check if this phase is complete
             $this->checkPhaseCompletion($counting, $countNumber);
         });
+    }
+
+    /**
+     * Upsert the just-counted product into the session's zone when the session
+     * is zone-scoped with exactly one zone. No-op for every other scope, for
+     * multi-zone sessions (ambiguous target), and for counts after the first
+     * (a later count must not overwrite a deliberate mid-count reassignment).
+     */
+    private function assignCountedItemToZone(
+        InventoryCountingItem $item,
+        InventoryCounting $counting,
+        int $countNumber,
+    ): void {
+        if ($countNumber !== 1 || $counting->scope_type !== CountingScopeType::Zone) {
+            return;
+        }
+
+        /** @var list<string> $zoneIds */
+        $zoneIds = array_values(array_filter((array) ($counting->scope_filters['zone_ids'] ?? [])));
+
+        if (count($zoneIds) !== 1) {
+            return;
+        }
+
+        $this->zoneService->assignProduct($item->product_id, $item->location_id, $zoneIds[0]);
     }
 
     /**

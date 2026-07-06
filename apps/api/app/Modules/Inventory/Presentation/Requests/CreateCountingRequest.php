@@ -48,6 +48,15 @@ class CreateCountingRequest extends FormRequest
             'scope_filters.location_ids' => ['sometimes', 'array'],
             'scope_filters.location_ids.*' => ['string', ScopedExists::company('locations', $company->id)],
             'scope_filters.location_id' => ['sometimes', 'string', ScopedExists::company('locations', $company->id)],
+            'scope_filters.zone_ids' => ['sometimes', 'array'],
+            'scope_filters.zone_ids.*' => ['string', 'uuid', ScopedExists::tenant('location_zones', $company->tenant_id)],
+
+            // Include zero/negative/no-stock-row active products (opt-in; defaults
+            // to true when the target location is in onboarding mode). Set on the
+            // counting as `includes_zero_stock` at item generation.
+            'include_zero_stock' => ['sometimes', 'boolean'],
+            // Soft sales-advisory flag; rejected for zone scope (see below).
+            'block_sales' => ['sometimes', 'boolean'],
 
             'execution_mode' => ['sometimes', Rule::enum(CountingExecutionMode::class)],
 
@@ -110,6 +119,20 @@ class CreateCountingRequest extends FormRequest
             case 'category':
                 if (empty($filters['category_ids'])) {
                     $validator->errors()->add('scope_filters.category_ids', 'Categories are required for this scope');
+                }
+                break;
+
+            case 'zone':
+                if (empty($filters['zone_ids'])) {
+                    $validator->errors()->add('scope_filters.zone_ids', 'At least one zone is required for this scope');
+                }
+                if (empty($filters['location_id'])) {
+                    $validator->errors()->add('scope_filters.location_id', 'A location is required for this scope');
+                }
+                // Zone counts are a soft advisory over live shelves; hard sales
+                // blocking is never supported for them (spec §3).
+                if ($this->boolean('block_sales')) {
+                    $validator->errors()->add('block_sales', 'Sales blocking is not supported for zone-scoped counts');
                 }
                 break;
         }
