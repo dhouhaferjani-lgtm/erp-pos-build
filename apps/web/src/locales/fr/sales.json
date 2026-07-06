@@ -197,6 +197,9 @@
     "attachments": "Pièces jointes",
     "confirmTitle": "Confirmer le document",
     "confirmMessage": "Êtes-vous sûr de vouloir confirmer ce document ? Une fois confirmé, il ne pourra plus être modifié.",
+    "revertToDraft": "Repasser en brouillon",
+    "revertToDraftTitle": "Repasser en brouillon",
+    "revertToDraftMessage": "Êtes-vous sûr de vouloir repasser ce document en brouillon ?",
     "types": {
       "quote": "Devis",
       "quotation": "Devis",
@@ -237,6 +240,7 @@
       "confirmed": "Document confirmé",
       "cancelled": "Document annulé",
       "posted": "Document comptabilisé",
+      "revertedToDraft": "Document repassé en brouillon",
       "goodsReceived": "Marchandises réceptionnées",
       "goodsReceivedWithReceipt": "Marchandises réceptionnées sous {{receiptNumber}}"
     },

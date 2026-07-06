@@ -58,6 +58,7 @@
     "receiveAll": "Receive All",
     "progress": "{{received}} of {{total}} items received",
     "draftSaved": "Goods receipt draft saved",
+    "printGrn": "Print GRN",
     "successMessage": "Goods received successfully",
     "successMessageWithReceipt": "Goods received successfully under {{receiptNumber}}"
   },
@@ -348,6 +349,38 @@
       "reverseSuccess": "Write-off reversed successfully.",
       "reverseAlreadyReversed": "This write-off has already been reversed.",
       "reverseFailed": "Failed to reverse the write-off."
+    }
+  },
+  "entryExitNotes": {
+    "title": "Entry/Exit Notes",
+    "subtitle": "{{count}} note recorded",
+    "subtitle_plural": "{{count}} notes recorded",
+    "filters": {
+      "in": "Entries",
+      "out": "Exits"
+    },
+    "direction": {
+      "in": "Entry",
+      "out": "Exit",
+      "flat": "No stock change"
+    },
+    "columns": {
+      "direction": "Direction",
+      "source": "Source",
+      "location": "Location",
+      "lines": "Lines",
+      "actor": "Actor",
+      "date": "Date"
+    },
+    "sourceTypes": {
+      "goods_receipt": "Goods receipt",
+      "delivery_note": "Delivery note",
+      "stock_transfer": "Stock transfer",
+      "adjustment_batch": "Adjustment"
+    },
+    "empty": {
+      "title": "No entry/exit notes",
+      "description": "Notes will appear here when stock movements are recorded."
     }
   },
   "margin": {
@@ -860,6 +893,10 @@
       "stockMovements": {
         "title": "Stock Movements",
         "description": "Track stock ins, outs, transfers, and adjustments"
+      },
+      "entryExitNotes": {
+        "title": "Entry/Exit Notes",
+        "description": "Review grouped stock movement notes"
       },
       "inventoryCounting": {
         "title": "Inventory Counting",

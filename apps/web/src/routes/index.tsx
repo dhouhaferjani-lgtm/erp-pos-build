@@ -95,6 +95,7 @@ const ProductDetailPage = lazy(() => import('../features/inventory/ProductDetail
 const ProductForm = lazy(() => import('../features/inventory/ProductForm').then((m) => ({ default: m.ProductForm })))
 const StockLevelsPage = lazy(() => import('../features/inventory/StockLevelsPage').then((m) => ({ default: m.StockLevelsPage })))
 const StockMovementsPage = lazy(() => import('../features/inventory/StockMovementsPage').then((m) => ({ default: m.StockMovementsPage })))
+const EntryExitNotesPage = lazy(() => import('../features/inventory/EntryExitNotesPage').then((m) => ({ default: m.EntryExitNotesPage })))
 const CategoriesPage = lazy(() => import('../features/categories/CategoriesPage').then((m) => ({ default: m.CategoriesPage })))
 
 // Batch & Expiry Tracking
@@ -992,6 +993,17 @@ export function AppRoutes() {
               <RequirePermission moduleKey="inventory">
                 <SuspenseWrapper>
                   <StockMovementsPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          <Route
+            path="entry-exit-notes"
+            element={
+              <RequirePermission moduleKey="inventory">
+                <SuspenseWrapper>
+                  <EntryExitNotesPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

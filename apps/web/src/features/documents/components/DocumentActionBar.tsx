@@ -16,8 +16,10 @@ import {
   Lock,
   MoreVertical,
   ReceiptText,
+  RotateCcw,
 } from 'lucide-react'
 import { tokens } from '../../../lib/designTokens'
+import { usePermissions } from '../../../hooks/usePermissions'
 import type { Document } from '../../../types/document'
 
 export interface DocumentActionBarProps {
@@ -34,6 +36,7 @@ export interface DocumentActionBarProps {
   onRecordPayment?: (() => void) | undefined
   onCreateCreditNote?: (() => void) | undefined
   onCreateReturnNote?: (() => void) | undefined
+  onRevert?: (() => void) | undefined
   onSendEmail?: (() => void) | undefined
   onDownloadPdf?: (() => void) | undefined
   onPreviewPdf?: (() => void) | undefined
@@ -59,6 +62,7 @@ export function DocumentActionBar({
   onRecordPayment,
   onCreateCreditNote,
   onCreateReturnNote,
+  onRevert,
   onSendEmail,
   onDownloadPdf,
   onPreviewPdf,
@@ -70,6 +74,7 @@ export function DocumentActionBar({
   canCreateSupplierInvoice: hasUninvoicedReceiptLines = false,
 }: DocumentActionBarProps) {
   const { t } = useTranslation(['sales', 'common', 'purchases'])
+  const { hasPermission } = usePermissions()
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -130,6 +135,10 @@ export function DocumentActionBar({
   const canCreateReturnNote =
     (document.type === 'invoice' && document.status === 'posted') ||
     (document.type === 'delivery_note' && document.status === 'confirmed')
+  const canRevert =
+    document.status === 'confirmed' &&
+    ['quote', 'sales_order', 'purchase_order'].includes(document.type) &&
+    hasPermission('documents.update')
 
   // Check if there are any dropdown items
   const hasDropdownItems = canEdit || onDownloadPdf || onPreviewPdf || onPrintPdf || onSendEmail
@@ -255,6 +264,18 @@ export function DocumentActionBar({
           {document.type === 'invoice'
             ? t('returnNotes.createFromInvoice', 'Create Return Note')
             : t('returnNotes.createFromDelivery', 'Create Return Note')}
+        </button>
+      )}
+
+      {canRevert && onRevert && (
+        <button
+          type="button"
+          disabled={isActionPending}
+          onClick={onRevert}
+          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
+        >
+          <RotateCcw className="h-4 w-4" />
+          {t('documents.revertToDraft')}
         </button>
       )}
 

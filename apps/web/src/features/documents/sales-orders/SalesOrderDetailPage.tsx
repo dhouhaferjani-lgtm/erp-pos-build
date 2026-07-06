@@ -15,7 +15,7 @@ import { DocumentHeader } from '../components/DocumentHeader'
 import { DocumentOutstandingCallout } from '../components/DocumentOutstandingCallout'
 import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
 import { PaymentHistorySection, OutstandingAmountSection } from '../components'
-import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
+import { useDownloadPdf, usePreviewPdf, usePrintPdf, useRevertDocument, useSendDocumentEmail } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal'
@@ -28,7 +28,7 @@ import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
 import type { PaymentStatus } from '../components/PaymentStatusBadge'
 
-type ConfirmAction = 'confirm' | 'convertToInvoice' | 'convertToDelivery' | null
+type ConfirmAction = 'confirm' | 'convertToInvoice' | 'convertToDelivery' | 'revert' | null
 type ActiveTab = 'related' | 'attachments' | 'payments'
 
 const deliveryStatusColors = {
@@ -88,6 +88,7 @@ export function SalesOrderDetailPage() {
   const previewPdfMutation = usePreviewPdf()
   const printPdfMutation = usePrintPdf()
   const sendEmailMutation = useSendDocumentEmail()
+  const revertMutation = useRevertDocument(id, 'sales_order')
 
   // Confirm order mutation
   const confirmMutation = useMutation({
@@ -146,7 +147,7 @@ export function SalesOrderDetailPage() {
     },
   })
 
-  const isActionPending = confirmMutation.isPending || convertToInvoiceMutation.isPending || convertToDeliveryMutation.isPending
+  const isActionPending = confirmMutation.isPending || convertToInvoiceMutation.isPending || convertToDeliveryMutation.isPending || revertMutation.isPending
 
   // Action handlers
   const handleConfirm = () => {
@@ -161,6 +162,18 @@ export function SalesOrderDetailPage() {
 
   const handleConvertToDelivery = () => {
     convertToDeliveryMutation.mutate()
+    setConfirmAction(null)
+  }
+
+  const handleRevert = () => {
+    revertMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast.success(t('documents.messages.revertedToDraft'))
+      },
+      onError: (error) => {
+        toast.error(getErrorMessage(error))
+      },
+    })
     setConfirmAction(null)
   }
 
@@ -259,6 +272,7 @@ export function SalesOrderDetailPage() {
               onConfirm={() => { setConfirmAction('confirm'); }}
               onConvert={() => { setConfirmAction('convertToInvoice'); }}
               onConvertToDelivery={() => { setConfirmAction('convertToDelivery'); }}
+              onRevert={() => { setConfirmAction('revert'); }}
               onDownloadPdf={handleDownloadPdf}
               onPreviewPdf={handlePreviewPdf}
               onPrintPdf={handlePrintPdf}
@@ -515,6 +529,16 @@ export function SalesOrderDetailPage() {
         message={t('orders.convertToDeliveryMessage')}
         confirmText={t('common:convert')}
         isLoading={convertToDeliveryMutation.isPending}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'revert'}
+        onClose={() => { setConfirmAction(null); }}
+        onConfirm={handleRevert}
+        title={t('documents.revertToDraftTitle')}
+        message={t('documents.revertToDraftMessage')}
+        confirmText={t('documents.revertToDraft')}
+        isLoading={revertMutation.isPending}
       />
 
       {/* Record Payment Modal */}

@@ -6,6 +6,7 @@ namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Services\FiscalHashService;
+use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -13,7 +14,13 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Modules\Document\Domain\Events\SalesOrderCancelled;
+use App\Modules\Inventory\Application\Services\GoodsReceiptService;
+use App\Modules\Inventory\Application\Services\StockReservationService;
+use App\Modules\Inventory\Domain\Enums\ReleaseReason;
+use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Treasury\Domain\PaymentAllocation;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -39,6 +46,8 @@ final class DocumentPostingService
 
     public function __construct(
         private readonly FiscalHashService $hashService,
+        private readonly StockReservationService $stockReservationService,
+        private readonly GoodsReceiptService $goodsReceiptService,
     ) {}
 
     /**
@@ -90,19 +99,23 @@ final class DocumentPostingService
     }
 
     /**
-     * Cancel a posted document, recording the cancellation in the fiscal chain.
+     * Cancel a document, recording posted fiscal cancellations in the fiscal chain.
      *
      * This method is idempotent: calling it on an already-cancelled document
      * will return the document without error.
      *
      * @throws \DomainException If document cannot be cancelled (wrong status)
      */
-    public function cancel(Document $document): Document
+    public function cancel(Document $document, ?string $reason = null, ?string $actorId = null): Document
     {
         // Idempotent: if already cancelled, return success
         if ($document->status === DocumentStatus::Cancelled) {
             /** @var Document */
             return $document->fresh(['lines']);
+        }
+
+        if ($document->type === DocumentType::SalesOrder) {
+            return $this->cancelSalesOrder($document, $reason, $actorId);
         }
 
         if (! $document->isPosted()) {
@@ -111,9 +124,13 @@ final class DocumentPostingService
             );
         }
 
+        if ($this->requiresFiscalChain($document->type) && $this->hasBlockingAllocations($document)) {
+            throw new \DomainException('DOCUMENT_HAS_PAYMENTS');
+        }
+
         $requiresFiscalChain = $this->requiresFiscalChain($document->type);
 
-        return DB::transaction(function () use ($document, $requiresFiscalChain): Document {
+        return DB::transaction(function () use ($document, $requiresFiscalChain, $reason, $actorId): Document {
             // Double-check inside transaction (another request may have cancelled it)
             $document->refresh();
             if ($document->status === DocumentStatus::Cancelled) {
@@ -121,8 +138,17 @@ final class DocumentPostingService
                 return $document->fresh(['lines']);
             }
 
+            if ($requiresFiscalChain && $this->hasBlockingAllocations($document)) {
+                throw new \DomainException('DOCUMENT_HAS_PAYMENTS');
+            }
+
             // Update status and fiscal_status if it's a fiscal document
-            $updateData = ['status' => DocumentStatus::Cancelled];
+            $updateData = [
+                'status' => DocumentStatus::Cancelled,
+                'cancelled_at' => now(),
+                'cancelled_by' => $actorId,
+                'cancellation_reason' => $reason,
+            ];
 
             if ($requiresFiscalChain) {
                 $updateData['fiscal_status'] = FiscalStatus::Voided;
@@ -136,6 +162,209 @@ final class DocumentPostingService
 
             /** @var Document */
             return $document->fresh(['lines']);
+        });
+    }
+
+    private function cancelSalesOrder(Document $salesOrder, ?string $reason, ?string $actorId): Document
+    {
+        // v1 scope: deposit/payment allocation guards apply only to fiscal documents.
+        if ($salesOrder->isPosted()) {
+            throw new \DomainException('Posted sales orders cannot be cancelled. Use credit notes instead.');
+        }
+
+        return DB::transaction(function () use ($salesOrder, $reason, $actorId): Document {
+            $salesOrder->refresh();
+            if ($salesOrder->status === DocumentStatus::Cancelled) {
+                /** @var Document */
+                return $salesOrder->fresh(['lines']);
+            }
+
+            $cancelledAt = now();
+            $cancelledBy = $actorId ?? (auth()->id() !== null ? (string) auth()->id() : null);
+
+            $this->stockReservationService->releaseBySource(
+                sourceType: ReservationSource::SalesOrder,
+                sourceId: $salesOrder->id,
+                reason: ReleaseReason::Cancelled,
+                releasedBy: $cancelledBy,
+                expectedTenantId: $salesOrder->tenant_id,
+                expectedCompanyId: $salesOrder->company_id,
+            );
+
+            $salesOrder->update([
+                'status' => DocumentStatus::Cancelled,
+                'cancelled_at' => $cancelledAt,
+                'cancelled_by' => $cancelledBy,
+                'cancellation_reason' => $reason,
+            ]);
+
+            DB::afterCommit(function () use ($salesOrder, $reason, $cancelledAt): void {
+                $this->dispatchSalesOrderCancelledEvent(
+                    $salesOrder,
+                    $reason ?? '',
+                    $salesOrder->cancelled_by ?? '',
+                    $cancelledAt->toIso8601String(),
+                );
+            });
+
+            /** @var Document */
+            return $salesOrder->fresh(['lines']);
+        });
+    }
+
+    public function hasBlockingAllocations(Document $document): bool
+    {
+        $hasPaymentAllocations = PaymentAllocation::query()
+            ->where('document_id', $document->id)
+            ->where('amount', '>', 0)
+            ->exists();
+
+        if ($hasPaymentAllocations) {
+            return true;
+        }
+
+        return CreditNoteAllocation::query()
+            ->where('invoice_id', $document->id)
+            ->where('amount', '>', 0)
+            ->exists();
+    }
+
+    /**
+     * Revert a v1-supported confirmed document back to draft.
+     *
+     * Revert is a status transition only, plus release of auto-created sales-order
+     * reservations where applicable. Past fiscal/domain events are immutable: this
+     * method emits no compensating event mutations and does not alter prior events.
+     *
+     * @throws \DomainException If document cannot be reverted
+     */
+    public function revert(Document $document, ?string $actorId = null): Document
+    {
+        if ($document->status === DocumentStatus::Draft) {
+            /** @var Document */
+            return $document->fresh(['lines']);
+        }
+
+        if (! $document->isConfirmed()) {
+            throw new \DomainException(
+                'Only confirmed documents can be reverted. Current status: '.$document->status->value
+            );
+        }
+
+        return match ($document->type) {
+            DocumentType::Quote => $this->revertStatusOnly($document),
+            DocumentType::SalesOrder => $this->revertSalesOrder($document, $actorId),
+            DocumentType::PurchaseOrder => $this->revertPurchaseOrder($document),
+            default => throw new \DomainException('DOCUMENT_REVERT_NOT_SUPPORTED'),
+        };
+    }
+
+    private function revertStatusOnly(Document $document): Document
+    {
+        return DB::transaction(function () use ($document): Document {
+            $document->refresh();
+            if (! $document->isConfirmed()) {
+                throw new \DomainException(
+                    'Only confirmed documents can be reverted. Current status: '.$document->status->value
+                );
+            }
+
+            $document->update([
+                'status' => DocumentStatus::Draft,
+                'confirmed_at' => null,
+                'confirmed_by' => null,
+            ]);
+
+            /** @var Document */
+            return $document->fresh(['lines']);
+        });
+    }
+
+    private function revertSalesOrder(Document $salesOrder, ?string $actorId): Document
+    {
+        return DB::transaction(function () use ($salesOrder, $actorId): Document {
+            $salesOrder->refresh();
+            if (! $salesOrder->isConfirmed()) {
+                throw new \DomainException(
+                    'Only confirmed documents can be reverted. Current status: '.$salesOrder->status->value
+                );
+            }
+
+            $this->stockReservationService->releaseBySource(
+                sourceType: ReservationSource::SalesOrder,
+                sourceId: $salesOrder->id,
+                reason: ReleaseReason::OrderModified,
+                releasedBy: $actorId,
+                expectedTenantId: $salesOrder->tenant_id,
+                expectedCompanyId: $salesOrder->company_id,
+            );
+
+            $salesOrder->update([
+                'status' => DocumentStatus::Draft,
+                'confirmed_at' => null,
+                'confirmed_by' => null,
+            ]);
+
+            /** @var Document */
+            return $salesOrder->fresh(['lines']);
+        });
+    }
+
+    private function revertPurchaseOrder(Document $purchaseOrder): Document
+    {
+        return DB::transaction(function () use ($purchaseOrder): Document {
+            $purchaseOrder->refresh();
+            if (! $purchaseOrder->isConfirmed()) {
+                throw new \DomainException(
+                    'Only confirmed documents can be reverted. Current status: '.$purchaseOrder->status->value
+                );
+            }
+
+            $poLineIds = [];
+            foreach ($purchaseOrder->lines()->pluck('id') as $lineId) {
+                if (is_string($lineId)) {
+                    $poLineIds[] = $lineId;
+                }
+            }
+
+            if ($this->goodsReceiptService->poLineIdsWithReceipts($poLineIds) !== []) {
+                throw new \DomainException('PURCHASE_ORDER_HAS_RECEIPTS');
+            }
+
+            if ($purchaseOrder->source_document_id !== null) {
+                $source = Document::query()
+                    ->where('tenant_id', $purchaseOrder->tenant_id)
+                    ->where('company_id', $purchaseOrder->company_id)
+                    ->find($purchaseOrder->source_document_id);
+
+                if ($source?->type === DocumentType::PurchaseQuoteRequest) {
+                    throw new \DomainException('PURCHASE_ORDER_FROM_RFQ');
+                }
+            }
+
+            $hasSupplierInvoices = Document::query()
+                ->where('tenant_id', $purchaseOrder->tenant_id)
+                ->where('company_id', $purchaseOrder->company_id)
+                ->where('type', DocumentType::SupplierInvoice)
+                ->where(function ($query) use ($purchaseOrder): void {
+                    $query
+                        ->where('source_document_id', $purchaseOrder->id)
+                        ->orWhereJsonContains('payload->supplier_invoice->source_document_ids', $purchaseOrder->id);
+                })
+                ->exists();
+
+            if ($hasSupplierInvoices) {
+                throw new \DomainException('PURCHASE_ORDER_HAS_SUPPLIER_INVOICES');
+            }
+
+            $purchaseOrder->update([
+                'status' => DocumentStatus::Draft,
+                'confirmed_at' => null,
+                'confirmed_by' => null,
+            ]);
+
+            /** @var Document */
+            return $purchaseOrder->fresh(['lines']);
         });
     }
 
@@ -228,6 +457,20 @@ final class DocumentPostingService
             documentType: $document->type->value,
             originalFiscalHash: $document->fiscal_hash ?? '',
             cancelledAt: now()->toIso8601String(),
+        ));
+    }
+
+    private function dispatchSalesOrderCancelledEvent(Document $salesOrder, string $reason, string $cancelledBy, string $cancelledAt): void
+    {
+        event(new SalesOrderCancelled(
+            salesOrderId: $salesOrder->id,
+            tenantId: $salesOrder->tenant_id,
+            companyId: $salesOrder->company_id,
+            documentNumber: $salesOrder->document_number ?? '',
+            partnerId: $salesOrder->partner_id,
+            cancellationReason: $reason,
+            cancelledBy: $cancelledBy,
+            cancelledAt: $cancelledAt,
         ));
     }
 

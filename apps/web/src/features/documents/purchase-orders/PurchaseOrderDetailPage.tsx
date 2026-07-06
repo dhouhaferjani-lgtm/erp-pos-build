@@ -14,7 +14,7 @@ import { DocumentAttachments } from '../components/DocumentAttachments'
 import { PurchaseOrderLandedCostBreakdown } from '../components/PurchaseOrderLandedCostBreakdown'
 import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
 import { PaymentHistorySection, OutstandingAmountSection } from '../components'
-import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
+import { useDownloadPdf, usePreviewPdf, usePrintPdf, useRevertDocument, useSendDocumentEmail } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal'
@@ -31,7 +31,7 @@ import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from '@/features/purchas
 import { usePurchaseOrderReceiptLines } from '@/features/purchases/supplier-invoices/api'
 import type { Document } from '../../../types/document'
 
-type ConfirmAction = 'confirm' | null
+type ConfirmAction = 'confirm' | 'revert' | null
 type ActiveTab = 'related' | 'attachments' | 'landedCosts' | 'payments'
 type ReceiptStatusValue = 'not_received' | 'partially_received' | 'fully_received'
 
@@ -136,6 +136,7 @@ export function PurchaseOrderDetailPage() {
   const previewPdfMutation = usePreviewPdf()
   const printPdfMutation = usePrintPdf()
   const sendEmailMutation = useSendDocumentEmail()
+  const revertMutation = useRevertDocument(id, 'purchase_order')
 
   // Confirm PO mutation
   const confirmMutation = useMutation({
@@ -182,7 +183,7 @@ export function PurchaseOrderDetailPage() {
     },
   })
 
-  const isActionPending = confirmMutation.isPending || receiveGoodsMutation.isPending
+  const isActionPending = confirmMutation.isPending || receiveGoodsMutation.isPending || revertMutation.isPending
 
   // Action handlers
   const handleConfirm = () => {
@@ -192,6 +193,18 @@ export function PurchaseOrderDetailPage() {
 
   const handleReceiveGoods = (request: ReceiveGoodsRequest) => {
     receiveGoodsMutation.mutate(request)
+  }
+
+  const handleRevert = () => {
+    revertMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast.success(t('documents.messages.revertedToDraft'))
+      },
+      onError: (error) => {
+        toast.error(getErrorMessage(error))
+      },
+    })
+    setConfirmAction(null)
   }
 
   const handleDownloadPdf = () => {
@@ -353,6 +366,7 @@ export function PurchaseOrderDetailPage() {
             isActionPending={isActionPending}
             onConfirm={() => { setConfirmAction('confirm'); }}
             onReceiveGoods={() => { setShowReceiveDialog(true); }}
+            onRevert={() => { setConfirmAction('revert'); }}
             onCreateSupplierInvoice={hasPermission('purchases.create') ? () => { void navigate(`/purchases/supplier-invoices/new?po=${id}`) } : undefined}
             canCreateSupplierInvoice={canCreateSupplierInvoice}
             onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
@@ -621,6 +635,16 @@ export function PurchaseOrderDetailPage() {
         message={t('documents.confirmMessage')}
         confirmText={t('common:confirm')}
         isLoading={confirmMutation.isPending}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'revert'}
+        onClose={() => { setConfirmAction(null); }}
+        onConfirm={handleRevert}
+        title={t('documents.revertToDraftTitle')}
+        message={t('documents.revertToDraftMessage')}
+        confirmText={t('documents.revertToDraft')}
+        isLoading={revertMutation.isPending}
       />
 
       <ReceiveGoodsDialog

@@ -123,6 +123,9 @@
   },
   "documents": {
     "draftNumberPlaceholder": "مسودة (بلا رقم)",
+    "revertToDraft": "إرجاع إلى المسودة",
+    "revertToDraftTitle": "إرجاع إلى المسودة",
+    "revertToDraftMessage": "هل تريد إرجاع هذا المستند إلى حالة المسودة؟",
     "statuses": {
       "draft": "مسودة",
       "confirmed": "مؤكَّد",
@@ -132,6 +135,7 @@
       "cancelled": "مُلغى"
     },
     "messages": {
+      "revertedToDraft": "تم إرجاع المستند إلى المسودة",
       "goodsReceivedWithReceipt": "تم استلام البضائع ضمن {{receiptNumber}}"
     }
   },

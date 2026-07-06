@@ -115,6 +115,7 @@ vi.mock('../../hooks', () => ({
   useDownloadPdf: () => ({ isPending: false, mutate: vi.fn() }),
   usePreviewPdf: () => ({ isPending: false, mutate: vi.fn() }),
   usePrintPdf: () => ({ isPending: false, mutate: vi.fn() }),
+  useRevertDocument: () => ({ isPending: false, mutate: vi.fn() }),
   useSendDocumentEmail: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 
