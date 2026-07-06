@@ -2,6 +2,14 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { DocumentForm, computeLinesDirty } from './DocumentForm'
 
+const draftAutoSaveState = vi.hoisted(() => ({
+  draftId: undefined as string | undefined,
+  isSaving: false,
+  lastSavedAt: null as Date | null,
+  autosavePending: false,
+  autosaveFailed: false,
+}))
+
 // i18n → return the key so assertions are deterministic
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }),
@@ -34,12 +42,19 @@ vi.mock('../../hooks/useCompany', () => ({
 }))
 
 vi.mock('../../hooks/useDraftAutoSave', () => ({
-  useDraftAutoSave: () => ({ draftId: undefined, isSaving: false, lastSavedAt: null, autosavePending: false, autosaveFailed: false }),
+  useDraftAutoSave: () => draftAutoSaveState,
 }))
 
 // child components that fetch / render heavy trees — stub them out
 vi.mock('../../components/documents/DocumentLineEditor', () => ({
   DocumentLineEditor: () => <div data-testid="line-editor" />,
+}))
+vi.mock('./components/PurchaseOrderAdditionalCosts', () => ({
+  PurchaseOrderAdditionalCosts: ({ documentId }: { documentId: string }) => (
+    <section aria-label="Additional costs">
+      <div>Cost row for {documentId}</div>
+    </section>
+  ),
 }))
 vi.mock('../../components/ui/PartnerSearchSelect', () => ({
   PartnerSearchSelect: () => <div data-testid="partner-select" />,
@@ -78,6 +93,14 @@ describe('computeLinesDirty', () => {
 })
 
 describe('DocumentForm (canonical layout)', () => {
+  beforeEach(() => {
+    draftAutoSaveState.draftId = undefined
+    draftAutoSaveState.isSaving = false
+    draftAutoSaveState.lastSavedAt = null
+    draftAutoSaveState.autosavePending = false
+    draftAutoSaveState.autosaveFailed = false
+  })
+
   it('renders a single page-level heading with the entity name', () => {
     render(<DocumentForm documentType="invoice" />)
     const h1s = screen.getAllByRole('heading', { level: 1 })
@@ -112,5 +135,14 @@ describe('DocumentForm (canonical layout)', () => {
     render(<DocumentForm documentType="invoice" />)
     fireEvent.click(screen.getByRole('button', { name: 'actions.openSaveMenu' }))
     expect(screen.getByRole('menuitem', { name: 'actions.saveAndClose' })).toBeInTheDocument()
+  })
+
+  it('renders purchase order additional costs against an autosaved draft id during creation', () => {
+    draftAutoSaveState.draftId = 'draft-po-1'
+
+    render(<DocumentForm documentType="purchase_order" />)
+
+    expect(screen.getByRole('region', { name: 'Additional costs' })).toBeInTheDocument()
+    expect(screen.getByText('Cost row for draft-po-1')).toBeInTheDocument()
   })
 })

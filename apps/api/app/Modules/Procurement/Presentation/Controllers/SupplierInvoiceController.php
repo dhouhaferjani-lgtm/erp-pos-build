@@ -14,6 +14,8 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\GoodsReceipt;
+use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Procurement\Application\CreateSupplierInvoiceService;
 use App\Modules\Procurement\Application\InvoiceFirstOrchestrator;
 use App\Modules\Procurement\Application\ProcurementPolicyResolver;
@@ -397,14 +399,8 @@ final class SupplierInvoiceController extends Controller
     {
         $pendingReceipt = $this->hasPendingReceipt($doc);
 
-        // Source PO reference.
-        $sourcePo = null;
-        if ($doc->sourceDocument !== null) {
-            $sourcePo = [
-                'id' => $doc->sourceDocument->id,
-                'number' => $doc->sourceDocument->document_number,
-            ];
-        }
+        $sourcePurchaseOrders = $this->sourcePurchaseOrders($doc);
+        $sourcePo = $sourcePurchaseOrders[0] ?? null;
 
         // Lines formatted per contract.
         $lines = $doc->lines->map(fn (DocumentLine $line): array => [
@@ -452,10 +448,109 @@ final class SupplierInvoiceController extends Controller
             'supplier_reference' => $doc->external_document_number,
             'lines' => $lines,
             'source_purchase_order' => $sourcePo,
+            'source_purchase_orders' => $sourcePurchaseOrders,
+            'consumed_receipts' => $this->consumedReceipts($doc),
             'match' => $this->buildMatchBlock($doc),
             'posted_at' => $postedAt,
             'attachments' => [],
         ];
+    }
+
+    /**
+     * @return list<array{id: string, number: string|null}>
+     */
+    private function sourcePurchaseOrders(Document $doc): array
+    {
+        $payload = is_array($doc->payload) ? $doc->payload : [];
+        $supplierInvoicePayload = is_array($payload['supplier_invoice'] ?? null) ? $payload['supplier_invoice'] : [];
+        $sourceIds = [];
+
+        if ($doc->source_document_id !== null) {
+            $sourceIds[] = $doc->source_document_id;
+        }
+
+        if (is_array($supplierInvoicePayload['source_document_ids'] ?? null)) {
+            foreach ($supplierInvoicePayload['source_document_ids'] as $sourceId) {
+                if (is_string($sourceId) && $sourceId !== '') {
+                    $sourceIds[] = $sourceId;
+                }
+            }
+        }
+
+        $sourceIds = array_values(array_unique($sourceIds));
+        if ($sourceIds === []) {
+            return [];
+        }
+
+        $purchaseOrders = Document::query()
+            ->where('tenant_id', $doc->tenant_id)
+            ->where('company_id', $doc->company_id)
+            ->where('type', DocumentType::PurchaseOrder)
+            ->whereIn('id', $sourceIds)
+            ->get()
+            ->keyBy('id');
+
+        $links = [];
+        foreach ($sourceIds as $sourceId) {
+            /** @var Document|null $purchaseOrder */
+            $purchaseOrder = $purchaseOrders->get($sourceId);
+            if ($purchaseOrder === null) {
+                continue;
+            }
+
+            $links[] = [
+                'id' => $purchaseOrder->id,
+                'number' => $purchaseOrder->document_number,
+            ];
+        }
+
+        return $links;
+    }
+
+    /**
+     * @return list<array{id: string, receipt_number: string|null, status: string, received_at: string|null, external_reference: string|null}>
+     */
+    private function consumedReceipts(Document $doc): array
+    {
+        $receiptLineIds = $doc->lines
+            ->pluck('source_line_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($receiptLineIds === []) {
+            return [];
+        }
+
+        $receiptIds = GoodsReceiptLine::query()
+            ->where('tenant_id', $doc->tenant_id)
+            ->where('company_id', $doc->company_id)
+            ->whereIn('id', $receiptLineIds)
+            ->pluck('goods_receipt_id')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($receiptIds === []) {
+            return [];
+        }
+
+        return array_values(GoodsReceipt::query()
+            ->where('tenant_id', $doc->tenant_id)
+            ->where('company_id', $doc->company_id)
+            ->whereIn('id', $receiptIds)
+            ->orderByDesc('received_at')
+            ->get()
+            ->map(fn (GoodsReceipt $receipt): array => [
+                'id' => $receipt->id,
+                'receipt_number' => $receipt->receipt_number,
+                'status' => $receipt->status->value,
+                'received_at' => $receipt->received_at->toIso8601String(),
+                'external_reference' => $receipt->external_reference,
+            ])
+            ->values()
+            ->all());
     }
 
     private function hasPendingReceipt(Document $doc): bool

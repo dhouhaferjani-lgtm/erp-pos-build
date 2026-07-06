@@ -13,6 +13,7 @@ import { GoodsReceiptListPage } from './GoodsReceiptListPage'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockAxiosPost = vi.hoisted(() => vi.fn())
+const mockAxiosDelete = vi.hoisted(() => vi.fn())
 const mockNavigate = vi.hoisted(() => vi.fn())
 const mockTranslate = vi.hoisted(() => vi.fn((key: string, options?: Record<string, string>) => {
   if (key === 'inventory:goodsReceipt.successMessageWithReceipt') {
@@ -30,6 +31,7 @@ vi.mock('../../lib/api', async () => {
       ...actual.api,
       get: mockApiGet,
       post: mockAxiosPost,
+      delete: mockAxiosDelete,
     },
   }
 })
@@ -169,6 +171,21 @@ const fullyReceivedPurchaseOrder = {
   },
 }
 
+const draftGoodsReceipt = {
+  id: 'draft-grn-1',
+  purchase_order_id: 'po-1',
+  purchase_order_number: 'PO-1',
+  supplier_id: 'partner-1',
+  supplier_name: 'Supplier',
+  receipt_number: 'GRN-DRAFT-1',
+  status: 'draft',
+  external_reference: 'BL-009',
+  received_at: '2026-06-30',
+  created_at: '2026-07-01T08:00:00Z',
+  lines_count: 2,
+  lines_summary: '2 lines',
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   URL.createObjectURL = vi.fn(() => 'blob:grn-pdf')
@@ -194,6 +211,7 @@ beforeEach(() => {
       },
     },
   })
+  mockAxiosDelete.mockResolvedValue({ data: {} })
 })
 
 afterEach(() => {
@@ -379,6 +397,64 @@ describe('GoodsReceiptListPage tenant scope', () => {
     expect(screen.queryByRole('link', { name: 'inventory:goodsReceipt.printGrn GRN-2026-0001' })).not.toBeInTheDocument()
     expect(URL.createObjectURL).toHaveBeenCalled()
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:grn-pdf')
+  })
+
+  it('renders draft goods receipts with supplier, purchase order, line summary, BL reference, and actions', async () => {
+    mockApiGet.mockImplementation(async (url: string, options?: { params?: { status?: string } }) => {
+      if (url === '/goods-receipts' && options?.params?.status === 'draft') {
+        return { data: { data: [draftGoodsReceipt], meta: { total: 1 } } }
+      }
+      if (url === '/goods-receipts') {
+        return { data: { data: [], meta: { total: 0 } } }
+      }
+      return { data: { data: [] } }
+    })
+
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    expect(await screen.findByRole('button', { name: 'inventory:goodsReceipt.tabs.drafts' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'inventory:goodsReceipt.tabs.drafts' }))
+
+    expect(await screen.findByText('GRN-DRAFT-1')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Supplier' })).toHaveAttribute('href', '/purchases/suppliers/partner-1')
+    expect(screen.getByRole('link', { name: 'PO-1' })).toHaveAttribute('href', '/purchases/orders/po-1')
+    expect(screen.getByText('2 lines')).toBeInTheDocument()
+    expect(screen.getByText('BL-009')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'inventory:goodsReceipt.actions.postDraft' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'inventory:goodsReceipt.actions.deleteDraft' })).toBeInTheDocument()
+  })
+
+  it('posts and deletes draft goods receipts through existing endpoints and refetches the workbench', async () => {
+    window.confirm = vi.fn(() => true)
+    mockApiGet.mockImplementation(async (url: string, options?: { params?: { status?: string } }) => {
+      if (url === '/goods-receipts' && options?.params?.status === 'draft') {
+        return { data: { data: [draftGoodsReceipt], meta: { total: 1 } } }
+      }
+      if (url === '/goods-receipts') {
+        return { data: { data: [], meta: { total: 0 } } }
+      }
+      return { data: { data: [] } }
+    })
+
+    const { queryClient } = renderWithProviders(<GoodsReceiptListPage />)
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    await userEvent.click(await screen.findByRole('button', { name: 'inventory:goodsReceipt.tabs.drafts' }))
+
+    await userEvent.click(await screen.findByRole('button', { name: 'inventory:goodsReceipt.actions.postDraft' }))
+
+    await waitFor(() => {
+      expect(mockAxiosPost).toHaveBeenCalledWith('/goods-receipts/draft-grn-1/post')
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        predicate: expect.any(Function),
+      })
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'inventory:goodsReceipt.actions.deleteDraft' }))
+
+    await waitFor(() => {
+      expect(window.confirm).toHaveBeenCalledWith('inventory:goodsReceipt.confirm.deleteDraft')
+      expect(mockAxiosDelete).toHaveBeenCalledWith('/goods-receipts/draft-grn-1')
+    })
   })
 
   it('blocks invoice creation when received purchase-order selection spans multiple suppliers', async () => {

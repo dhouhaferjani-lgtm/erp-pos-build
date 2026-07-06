@@ -17,9 +17,13 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { EntityLink } from '../../../components/molecules/EntityLink'
+import { FormField, Input, MoneyInput, Select, Textarea } from '../../../components/atoms'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
+import { getErrorMessage } from '../../../lib/api'
 import { formatCurrency, formatQuantity } from '../../../lib/decimal'
 import type { SupplierInvoiceMatchStatus } from './types'
+import { useActivePaymentMethods } from '../../treasury/hooks/usePaymentMethods'
+import { useActivePaymentRepositories } from '../../treasury/hooks/usePaymentRepositories'
 import { usePermissions } from '@/hooks/usePermissions'
 import {
   useSupplierInvoiceDetail,
@@ -30,6 +34,7 @@ import {
   usePurchaseOrderReceiptLinesForSupplierInvoice,
   useUploadAttachment,
   useDeleteAttachment,
+  useRecordSupplierPayment,
   downloadAttachment,
 } from './api'
 
@@ -61,7 +66,17 @@ export function SupplierInvoiceDetailPage() {
   const linkReceiptsMutation = useLinkSupplierInvoiceReceipts(id)
   const uploadMutation = useUploadAttachment(id)
   const deleteMutation = useDeleteAttachment(id)
+  const recordPaymentMutation = useRecordSupplierPayment(id)
+  const paymentMethodsQuery = useActivePaymentMethods()
+  const paymentRepositoriesQuery = useActivePaymentRepositories()
   const [receiptLineLinks, setReceiptLineLinks] = useState<Record<string, string>>({})
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethodId, setPaymentMethodId] = useState('')
+  const [paymentRepositoryId, setPaymentRepositoryId] = useState('')
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
+  const [paymentReference, setPaymentReference] = useState('')
+  const [paymentNotes, setPaymentNotes] = useState('')
+  const [paymentError, setPaymentError] = useState<string | null>(null)
   const canLinkReceipts = hasPermission('supplier-invoices.link-receipts')
   const openPurchaseOrdersQuery = useOpenPurchaseOrdersForSupplier(invoice?.partner.id ?? '')
   const supplierReceiptLinesQuery = usePurchaseOrderReceiptLinesForSupplierInvoice(
@@ -73,6 +88,13 @@ export function SupplierInvoiceDetailPage() {
   const paymentDialogRef = useRef<HTMLDialogElement>(null)
 
   function openPaymentDialog() {
+    setPaymentError(null)
+    if (invoice) {
+      setPaymentAmount(invoice.balance_due ?? invoice.total)
+      setPaymentDate(new Date().toISOString().split('T')[0])
+      setPaymentReference(invoice.number)
+      setPaymentNotes('')
+    }
     paymentDialogRef.current?.showModal()
   }
 
@@ -94,6 +116,12 @@ export function SupplierInvoiceDetailPage() {
   const isQtyBlocked = invoice.match_status === 'qty_blocked'
   const hasPendingReceipt = invoice.pending_receipt === true
   const postDisabled = isQtyBlocked || hasPendingReceipt
+  const sourcePurchaseOrders = invoice.source_purchase_orders && invoice.source_purchase_orders.length > 0
+    ? invoice.source_purchase_orders
+    : invoice.source_purchase_order
+      ? [invoice.source_purchase_order]
+      : []
+  const consumedReceipts = invoice.consumed_receipts ?? []
   const pendingReceiptLinks = invoice.lines
     .map((line) => ({
       invoice_line_id: line.id,
@@ -166,6 +194,44 @@ export function SupplierInvoiceDetailPage() {
     void downloadAttachment(id, attachmentId, filename)
   }
 
+  function handlePaymentSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!invoice) return
+
+    setPaymentError(null)
+    recordPaymentMutation.mutate(
+      {
+        amount: paymentAmount,
+        currency: invoice.currency,
+        payment_method_id: paymentMethodId,
+        repository_id: paymentRepositoryId,
+        partner_id: invoice.partner.id,
+        payment_date: paymentDate,
+        reference: paymentReference,
+        notes: paymentNotes,
+        allocations: [
+          {
+            document_id: invoice.id,
+            amount: paymentAmount,
+          },
+        ],
+      },
+      {
+        onSuccess: () => {
+          toast.success(t('purchases:supplierInvoices.toast.paymentRecorded'))
+          closePaymentDialog()
+        },
+        onError: (error: unknown) => {
+          const message =
+            (error as { response?: { data?: { error?: { message?: string }; message?: string } } })?.response?.data?.error?.message
+            ?? (error as { response?: { data?: { message?: string } } })?.response?.data?.message
+            ?? getErrorMessage(error)
+          setPaymentError(message)
+        },
+      },
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Back navigation */}
@@ -217,14 +283,22 @@ export function SupplierInvoiceDetailPage() {
             </button>
 
             {isPosted && (
-              <button
-                type="button"
-                data-testid="btn-record-payment"
-                onClick={() => { openPaymentDialog() }}
-                className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
-              >
-                {t('purchases:supplierInvoices.actions.recordPayment')}
-              </button>
+              <>
+                <Link
+                  to={`/treasury/payments/new?supplier_invoice=${invoice.id}`}
+                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+                >
+                  {t('purchases:supplierInvoices.actions.payInTreasury')}
+                </Link>
+                <button
+                  type="button"
+                  data-testid="btn-record-payment"
+                  onClick={() => { openPaymentDialog() }}
+                  className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+                >
+                  {t('purchases:supplierInvoices.actions.recordPayment')}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -290,27 +364,55 @@ export function SupplierInvoiceDetailPage() {
           )}
         </div>
 
-        {/* Linked PO */}
-        {invoice.source_purchase_order && (
+        {/* Linked procurement documents */}
+        {(sourcePurchaseOrders.length > 0 || consumedReceipts.length > 0) && (
           <div className={`rounded-md border ${borderColors.light} p-3`}>
-            <p className={`text-xs font-medium uppercase tracking-wide ${textColors.tertiary}`}>
-              {t('purchases:supplierInvoices.detail.linkedPO')}
-            </p>
-            <EntityLink
-              data-testid="link-source-po"
-              type="document"
-              id={invoice.source_purchase_order.id}
-              documentType="purchase_order"
-              label={(
-                <span className="inline-flex items-center gap-1">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  {t('purchases:supplierInvoices.detail.poNumber', {
-                    number: invoice.source_purchase_order.number,
-                  })}
-                </span>
-              )}
-              className="mt-1 inline-flex items-center gap-1 text-sm font-medium"
-            />
+            {sourcePurchaseOrders.length > 0 && (
+              <div>
+                <p className={`text-xs font-medium uppercase tracking-wide ${textColors.tertiary}`}>
+                  {t('purchases:supplierInvoices.detail.linkedPOs')}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {sourcePurchaseOrders.map((purchaseOrder) => (
+                    <EntityLink
+                      key={purchaseOrder.id}
+                      data-testid="link-source-po"
+                      type="document"
+                      id={purchaseOrder.id}
+                      documentType="purchase_order"
+                      label={(
+                        <span className="inline-flex items-center gap-1">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          {t('purchases:supplierInvoices.detail.poNumber', {
+                            number: purchaseOrder.number,
+                          })}
+                        </span>
+                      )}
+                      className="inline-flex items-center gap-1 text-sm font-medium"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            {consumedReceipts.length > 0 && (
+              <div className={sourcePurchaseOrders.length > 0 ? 'mt-3' : undefined}>
+                <p className={`text-xs font-medium uppercase tracking-wide ${textColors.tertiary}`}>
+                  {t('purchases:supplierInvoices.detail.consumedReceipts')}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {consumedReceipts.map((receipt) => (
+                    <EntityLink
+                      key={receipt.id}
+                      type="goodsReceipt"
+                      id={receipt.id}
+                      purchaseOrderId={sourcePurchaseOrders[0]?.id ?? invoice.source_document_id}
+                      label={receipt.receipt_number ?? receipt.id}
+                      className="inline-flex items-center gap-1 text-sm font-medium"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -577,19 +679,126 @@ export function SupplierInvoiceDetailPage() {
             ×
           </button>
         </div>
-        <p className={`text-sm ${textColors.tertiary}`}>
-          {/* Minimal placeholder — full payment form TBD when C4 ships */}
-          {t('purchases:supplierInvoices.actions.recordPayment')}
-        </p>
-        <div className={tokens.modal.footer}>
-          <button
-            type="button"
-            onClick={() => { closePaymentDialog() }}
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+        <form className="space-y-4" onSubmit={handlePaymentSubmit}>
+          <FormField
+            label={t('purchases:supplierInvoices.paymentForm.amount')}
+            htmlFor="supplier-payment-amount"
+            required
           >
-            {t('common:actions.cancel')}
-          </button>
-        </div>
+            <MoneyInput
+              id="supplier-payment-amount"
+              currency={invoice.currency}
+              min="0.001"
+              value={paymentAmount}
+              onChange={setPaymentAmount}
+              aria-label={t('purchases:supplierInvoices.paymentForm.amount')}
+              className={tokens.input.base}
+            />
+          </FormField>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              label={t('purchases:supplierInvoices.paymentForm.method')}
+              htmlFor="supplier-payment-method"
+              required
+            >
+              <Select
+                id="supplier-payment-method"
+                aria-label={t('purchases:supplierInvoices.paymentForm.method')}
+                value={paymentMethodId}
+                onChange={(event) => { setPaymentMethodId(event.target.value) }}
+                required
+              >
+                <option value="">{t('purchases:supplierInvoices.paymentForm.selectMethod')}</option>
+                {paymentMethodsQuery.data.map((method) => (
+                  <option key={method.id} value={method.id}>{method.name}</option>
+                ))}
+              </Select>
+            </FormField>
+
+            <FormField
+              label={t('purchases:supplierInvoices.paymentForm.repository')}
+              htmlFor="supplier-payment-repository"
+              required
+            >
+              <Select
+                id="supplier-payment-repository"
+                aria-label={t('purchases:supplierInvoices.paymentForm.repository')}
+                value={paymentRepositoryId}
+                onChange={(event) => { setPaymentRepositoryId(event.target.value) }}
+                required
+              >
+                <option value="">{t('purchases:supplierInvoices.paymentForm.selectRepository')}</option>
+                {paymentRepositoriesQuery.data.map((repository) => (
+                  <option key={repository.id} value={repository.id}>{repository.name}</option>
+                ))}
+              </Select>
+            </FormField>
+          </div>
+
+          <FormField
+            label={t('purchases:supplierInvoices.paymentForm.date')}
+            htmlFor="supplier-payment-date"
+            required
+          >
+            <Input
+              id="supplier-payment-date"
+              type="date"
+              aria-label={t('purchases:supplierInvoices.paymentForm.date')}
+              value={paymentDate}
+              onChange={(event) => { setPaymentDate(event.target.value) }}
+              required
+            />
+          </FormField>
+
+          <FormField
+            label={t('purchases:supplierInvoices.paymentForm.reference')}
+            htmlFor="supplier-payment-reference"
+          >
+            <Input
+              id="supplier-payment-reference"
+              aria-label={t('purchases:supplierInvoices.paymentForm.reference')}
+              value={paymentReference}
+              onChange={(event) => { setPaymentReference(event.target.value) }}
+            />
+          </FormField>
+
+          <FormField
+            label={t('purchases:supplierInvoices.paymentForm.notes')}
+            htmlFor="supplier-payment-notes"
+          >
+            <Textarea
+              id="supplier-payment-notes"
+              rows={3}
+              aria-label={t('purchases:supplierInvoices.paymentForm.notes')}
+              value={paymentNotes}
+              onChange={(event) => { setPaymentNotes(event.target.value) }}
+            />
+          </FormField>
+
+          {paymentError && (
+            <div role="alert" className={`${tokens.alert.base} ${tokens.alert.error}`}>
+              {paymentError}
+            </div>
+          )}
+
+          <div className={tokens.modal.footer}>
+            <button
+              type="button"
+              onClick={() => { closePaymentDialog() }}
+              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+            >
+              {t('common:actions.cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={recordPaymentMutation.isPending}
+              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+            >
+              {t('purchases:supplierInvoices.paymentForm.submit')}
+            </button>
+          </div>
+        </form>
       </dialog>
     </div>
   )

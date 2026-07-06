@@ -1,4 +1,10 @@
 {
+  "payments": {
+    "newForSupplierInvoice": "تسجيل دفعة مورد لـ {{invoiceNumber}}",
+    "form": {
+      "paymentForSupplierInvoice": "دفعة لفاتورة المورد {{invoiceNumber}}"
+    }
+  },
   "reconciliation": {
     "openingBalance": "الرصيد الافتتاحي",
     "startModal": {

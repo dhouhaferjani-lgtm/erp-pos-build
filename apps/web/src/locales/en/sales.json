@@ -264,8 +264,8 @@
     "freeQuantity": "Free qty",
     "unitPrice": "Unit Price",
     "priceEntryMode": {
-      "unit": "PU",
-      "total": "Total"
+      "unit": "PU HT",
+      "total": "Total HT"
     },
     "effectiveUnitCost": "Effective unit cost: {{amount}}",
     "bonusSavings": "Bonus savings: {{amount}}",

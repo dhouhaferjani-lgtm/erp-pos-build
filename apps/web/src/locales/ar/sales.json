@@ -7,8 +7,8 @@
     "freeQuantity": "الكمية المجانية",
     "unitPrice": "سعر الوحدة",
     "priceEntryMode": {
-      "unit": "سعر الوحدة",
-      "total": "المجموع"
+      "unit": "سعر الوحدة دون ضريبة",
+      "total": "المجموع دون ضريبة"
     },
     "effectiveUnitCost": "الكلفة الفعلية للوحدة: {{amount}}",
     "bonusSavings": "قيمة المجاني: {{amount}}",

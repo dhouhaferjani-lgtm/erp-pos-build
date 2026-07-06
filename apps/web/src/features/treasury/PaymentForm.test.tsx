@@ -105,6 +105,9 @@ function wrapper(queryClient: QueryClient) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  for (const key of Array.from(mockSearchParams.keys())) {
+    mockSearchParams.delete(key)
+  }
   setTenant('tenant-A', 'company-1')
   mockApiGet.mockImplementation(async (url: string) => {
     if (url === '/payment-methods') return { data: { data: [{ id: 'method-1', name: 'Cash', is_physical: false }] } }
@@ -158,6 +161,67 @@ describe('PaymentForm shared form primitives', () => {
       expect(queryClient.getQueryData(['payment-methods', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['partners', 'tenant-A', 'company-1'])).toBeDefined()
       expect(queryClient.getQueryData(['payment-repositories', 'tenant-A', 'company-1'])).toBeDefined()
+    })
+  })
+})
+
+describe('PaymentForm supplier invoice prefill', () => {
+  it('accepts a supplier_invoice query param and allocates the payment to that invoice', async () => {
+    mockSearchParams.set('supplier_invoice', 'si-1')
+    mockApiGet.mockImplementation(async (url: string) => {
+      if (url === '/payment-methods') return { data: { data: [CARD_METHOD] } }
+      if (url === '/partners') return { data: { data: [{ id: 'supplier-1', name: 'Supplier A' }] } }
+      if (url === '/payment-repositories') return { data: { data: [BANK_REPO] } }
+      if (url === '/supplier-invoices/si-1') {
+        return {
+          data: {
+            data: {
+              id: 'si-1',
+              number: 'SI-2026-009',
+              document_number: 'SI-2026-009',
+              partner: { id: 'supplier-1', name: 'Supplier A' },
+              partner_id: 'supplier-1',
+              total: '300.000',
+              balance_due: '125.500',
+            },
+          },
+        }
+      }
+      return { data: { data: [] } }
+    })
+
+    render(<PaymentForm />, { wrapper: wrapper(createClient()) })
+
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/supplier-invoices/si-1')
+    })
+
+    expect(await screen.findByLabelText('treasury:payments.form.amount *')).toHaveValue(125.5)
+    expect(screen.getByLabelText('treasury:payments.partner *')).toHaveValue('supplier-1')
+    expect(screen.getByLabelText('treasury:payments.reference')).toHaveValue('SI-2026-009')
+
+    fireEvent.change(screen.getByLabelText('treasury:payments.form.paymentMethod *'), {
+      target: { value: CARD_METHOD.id },
+    })
+    fireEvent.change(screen.getByLabelText('treasury:payments.form.repository *'), {
+      target: { value: BANK_REPO.id },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'common:save' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/payments', expect.objectContaining({
+        amount: '125.500',
+        payment_method_id: CARD_METHOD.id,
+        repository_id: BANK_REPO.id,
+        partner_id: 'supplier-1',
+        reference: 'SI-2026-009',
+        allocations: [{ document_id: 'si-1', amount: '125.500' }],
+      }))
+    })
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/purchases/supplier-invoices/si-1')
     })
   })
 })

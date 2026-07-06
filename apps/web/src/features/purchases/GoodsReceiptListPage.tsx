@@ -14,6 +14,7 @@ import {
   Truck,
   ReceiptText,
   Printer,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, getErrorMessage } from '../../lib/api'
@@ -93,11 +94,19 @@ interface GoodsReceiptIndexResponse {
 interface GoodsReceiptSummary {
   id: string
   purchase_order_id: string
+  purchase_order_number?: string | null
+  supplier_id?: string | null
+  supplier_name?: string | null
   receipt_number?: string | null
   status?: string | null
+  external_reference?: string | null
+  received_at?: string | null
+  created_at?: string | null
+  lines_count?: number | null
+  lines_summary?: string | null
 }
 
-type TabType = 'pending' | 'received'
+type TabType = 'pending' | 'received' | 'drafts'
 
 function scopedNamespacePredicate(
   namespace: string,
@@ -182,6 +191,17 @@ export function GoodsReceiptListPage() {
     enabled: hasTenantScope,
   })
 
+  const { data: draftReceipts = [], isLoading: draftReceiptsLoading } = useQuery({
+    queryKey: tenantScopedKey(['goods-receipts', 'drafts']),
+    queryFn: async () => {
+      const response = await api.get<GoodsReceiptIndexResponse>('/goods-receipts', {
+        params: { status: 'draft', per_page: 100 },
+      })
+      return response.data.data
+    },
+    enabled: hasTenantScope,
+  })
+
   const { data: postedReceipts = [] } = useQuery({
     queryKey: tenantScopedKey(['goods-receipts', 'posted-pdf-links']),
     queryFn: async () => {
@@ -255,6 +275,36 @@ export function GoodsReceiptListPage() {
     },
   })
 
+  const postDraftReceiptMutation = useMutation({
+    mutationFn: async (receiptId: string) => {
+      await api.post(`/goods-receipts/${receiptId}/post`)
+    },
+    onSuccess: async () => {
+      toast.success(t('inventory:goodsReceipt.messages.draftPosted'))
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('goods-receipts', tenantId, companyId),
+      })
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
+  })
+
+  const deleteDraftReceiptMutation = useMutation({
+    mutationFn: async (receiptId: string) => {
+      await api.delete(`/goods-receipts/${receiptId}`)
+    },
+    onSuccess: async () => {
+      toast.success(t('inventory:goodsReceipt.messages.draftDeleted'))
+      await queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('goods-receipts', tenantId, companyId),
+      })
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
+  })
+
   const handleReceiveClick = (po: PurchaseOrder) => {
     setIsLoadingReceiveDetail(true)
     api.get<DetailApiResponse>(`/purchase-orders/${po.id}`)
@@ -316,7 +366,11 @@ export function GoodsReceiptListPage() {
 
   const pendingOrders = pendingData ?? []
   const receivedOrders = [...(receivedData ?? []), ...(fullyReceivedConfirmed ?? [])]
-  const isLoading = activeTab === 'pending' ? pendingLoading : receivedLoading
+  const isLoading = activeTab === 'pending'
+    ? pendingLoading
+    : activeTab === 'received'
+      ? receivedLoading
+      : draftReceiptsLoading
 
   const orders = activeTab === 'pending' ? pendingOrders : receivedOrders
   const canCreateSupplierInvoice = hasPermission('purchases.create')
@@ -341,6 +395,12 @@ export function GoodsReceiptListPage() {
       selectedInvoicePoIds.forEach((poId) => { query.append('po', poId) })
       query.set('entry', 'receipts')
       void navigate(`/purchases/supplier-invoices/new?${query.toString()}`)
+    }
+  }
+
+  function handleDeleteDraftReceipt(receiptId: string) {
+    if (window.confirm(t('inventory:goodsReceipt.confirm.deleteDraft'))) {
+      deleteDraftReceiptMutation.mutate(receiptId)
     }
   }
 
@@ -433,6 +493,26 @@ export function GoodsReceiptListPage() {
             <CheckCircle2 className="h-4 w-4" />
             {t('inventory:goodsReceipt.tabs.received')}
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('drafts')
+              setSelectedInvoicePoIds([])
+            }}
+            className={`flex items-center gap-2 border-b-2 px-1 py-4 text-sm font-medium transition-colors ${
+              activeTab === 'drafts'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+            }`}
+          >
+            <ReceiptText className="h-4 w-4" />
+            {t('inventory:goodsReceipt.tabs.drafts')}
+            {draftReceiptCount > 0 && (
+              <span className={`${tokens.badge.base} ${tokens.badge.yellow}`}>
+                {draftReceiptCount}
+              </span>
+            )}
+          </button>
         </nav>
       </div>
 
@@ -441,6 +521,97 @@ export function GoodsReceiptListPage() {
         <div className="flex items-center justify-center py-12">
           <div className="text-gray-500">{t('common:status.loading')}</div>
         </div>
+      ) : activeTab === 'drafts' ? (
+        draftReceipts.length === 0 ? (
+          <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
+            <ReceiptText className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-4 text-lg font-medium text-gray-900">
+              {t('inventory:goodsReceipt.emptyDrafts')}
+            </h3>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {draftReceipts.map((receipt) => (
+              <div
+                key={receipt.id}
+                className="rounded-lg border border-gray-200 bg-white p-4 transition-colors hover:border-gray-300"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-lg font-semibold text-gray-900">
+                        {receipt.receipt_number ?? receipt.id}
+                      </span>
+                      <span className={`${tokens.badge.base} ${tokens.badge.yellow}`}>
+                        {t('inventory:goodsReceipt.status.draft')}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-gray-500">
+                      {receipt.supplier_id && receipt.supplier_name && (
+                        <span className="flex items-center gap-1">
+                          <Building2 className="h-4 w-4" />
+                          <EntityLink
+                            type="supplier"
+                            id={receipt.supplier_id}
+                            label={receipt.supplier_name}
+                            className="text-sm"
+                          />
+                        </span>
+                      )}
+                      {receipt.purchase_order_id && (
+                        <EntityLink
+                          type="document"
+                          id={receipt.purchase_order_id}
+                          documentType="purchase_order"
+                          label={receipt.purchase_order_number ?? receipt.purchase_order_id}
+                          className="text-sm"
+                        />
+                      )}
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        {formatDate(receipt.created_at ?? receipt.received_at)}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                      <span>
+                        {receipt.lines_summary
+                          ?? t('inventory:goodsReceipt.linesSummary', { count: receipt.lines_count ?? 0 })}
+                      </span>
+                      {receipt.external_reference && (
+                        <span>
+                          {receipt.external_reference}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { postDraftReceiptMutation.mutate(receipt.id) }}
+                      disabled={postDraftReceiptMutation.isPending}
+                      className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} gap-1`}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {t('inventory:goodsReceipt.actions.postDraft')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { handleDeleteDraftReceipt(receipt.id) }}
+                      disabled={deleteDraftReceiptMutation.isPending}
+                      className={`${tokens.button.base} ${tokens.button.danger} ${tokens.button.sizes.sm} gap-1`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {t('inventory:goodsReceipt.actions.deleteDraft')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       ) : orders.length === 0 ? (
         <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
           <Package className="mx-auto h-12 w-12 text-gray-400" />

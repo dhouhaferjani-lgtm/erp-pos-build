@@ -88,7 +88,7 @@ function scopedNamespacePredicate(
 }
 
 export function PurchaseOrderDetailPage() {
-  const { t } = useTranslation(['sales', 'common'])
+  const { t } = useTranslation(['sales', 'common', 'inventory', 'purchases'])
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { hasPermission } = usePermissions()
@@ -597,7 +597,49 @@ export function PurchaseOrderDetailPage() {
         </div>
 
         <div className="mt-6">
-          {activeTab === 'related' && <RelatedDocumentsTab documentId={purchaseOrder.id} />}
+          {activeTab === 'related' && (
+            <div className="space-y-6">
+              <RelatedDocumentsTab documentId={purchaseOrder.id} />
+              {purchaseOrder.goods_receipts && purchaseOrder.goods_receipts.length > 0 && (
+                <section className={tokens.card.base}>
+                  <h3 className={tokens.heading.section}>{t('inventory:goodsReceipt.title')}</h3>
+                  <div className="mt-3 space-y-2">
+                    {purchaseOrder.goods_receipts.map((receipt) => (
+                      <div key={receipt.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                        <EntityLink
+                          type="goodsReceipt"
+                          id={receipt.id}
+                          purchaseOrderId={purchaseOrder.id}
+                          label={receipt.receipt_number ?? receipt.id}
+                          className="font-medium"
+                        />
+                        <span className="text-gray-500">{receipt.external_reference ?? receipt.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {purchaseOrder.supplier_invoices && purchaseOrder.supplier_invoices.length > 0 && (
+                <section className={tokens.card.base}>
+                  <h3 className={tokens.heading.section}>{t('purchases:supplierInvoices.title')}</h3>
+                  <div className="mt-3 space-y-2">
+                    {purchaseOrder.supplier_invoices.map((invoice) => (
+                      <div key={invoice.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                        <EntityLink
+                          type="document"
+                          id={invoice.id}
+                          documentType="supplier_invoice"
+                          label={invoice.document_number ?? invoice.id}
+                          className="font-medium"
+                        />
+                        <span className="text-gray-500">{invoice.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
           {activeTab === 'attachments' && <DocumentAttachments documentId={purchaseOrder.id} />}
           {activeTab === 'landedCosts' && purchaseOrder.status === 'received' && (
             <PurchaseOrderLandedCostBreakdown documentId={purchaseOrder.id} />

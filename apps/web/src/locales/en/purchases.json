@@ -45,7 +45,9 @@
       "matchTable": "3-Way Match",
       "attachments": "Attachments",
       "postedAt": "Posted At",
-      "payment": "Record Payment"
+      "payment": "Record Payment",
+      "linkedPOs": "Linked POs",
+      "consumedReceipts": "Consumed GRNs"
     },
     "lines": {
       "ordered": "Ordered",
@@ -66,6 +68,7 @@
       "postPriceBlock": "Posting blocked: price variance exceeds policy threshold",
       "rematch": "Re-match",
       "recordPayment": "Record Payment",
+      "payInTreasury": "Pay in Treasury",
       "uploadAttachment": "Upload Attachment",
       "downloadAttachment": "Download",
       "deleteAttachment": "Delete"
@@ -95,13 +98,26 @@
       "attachmentDeleted": "Attachment deleted",
       "receiptsLinked": "Receipt links saved"
     },
+    "paymentForm": {
+      "amount": "Amount",
+      "method": "Payment method",
+      "repository": "Paid from",
+      "date": "Payment date",
+      "reference": "Reference",
+      "notes": "Notes",
+      "selectMethod": "Select payment method",
+      "selectRepository": "Select repository",
+      "submit": "Record payment",
+      "defaultNotes": "Payment for supplier invoice {{number}}"
+    },
     "pendingReceipt": {
       "badge": "Pending receipt",
       "detail": "This invoice cannot be posted until its received goods are associated.",
       "linkTitle": "Associate receipts",
       "linkDescription": "Enter the posted receipt line for each invoice line to clear the pending state.",
       "linkAction": "Associate receipts",
-      "receiptLineId": "Receipt line for {{quantity}}"
+      "receiptLineId": "Receipt line for {{quantity}}",
+      "selectReceiptLine": "Select receipt line"
     },
     "create": {
       "title": "New Supplier Invoice",

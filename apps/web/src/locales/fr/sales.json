@@ -264,8 +264,8 @@
     "freeQuantity": "Qté gratuite",
     "unitPrice": "Prix unitaire",
     "priceEntryMode": {
-      "unit": "PU",
-      "total": "Total"
+      "unit": "PU HT",
+      "total": "Total HT"
     },
     "effectiveUnitCost": "Coût unitaire effectif : {{amount}}",
     "bonusSavings": "Économie gratuité : {{amount}}",

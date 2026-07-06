@@ -2,11 +2,27 @@
   "goodsReceipt": {
     "successMessage": "تم استلام البضائع بنجاح",
     "successMessageWithReceipt": "تم استلام البضائع بنجاح ضمن {{receiptNumber}}",
+    "tabs": {
+      "drafts": "المسودات"
+    },
     "status": {
       "draft": "مسودة",
       "pending": "قيد الانتظار",
       "partial": "جزئي",
       "received": "مستلم"
+    },
+    "emptyDrafts": "لا توجد مسودات إيصال استلام",
+    "linesSummary": "{{count}} سطور",
+    "actions": {
+      "postDraft": "ترحيل",
+      "deleteDraft": "حذف"
+    },
+    "confirm": {
+      "deleteDraft": "هل تريد حذف مسودة إيصال الاستلام؟"
+    },
+    "messages": {
+      "draftPosted": "تم ترحيل مسودة إيصال الاستلام",
+      "draftDeleted": "تم حذف مسودة إيصال الاستلام"
     },
     "draftSaved": "تم حفظ مسودة إيصال الاستلام",
     "printGrn": "طباعة إيصال الاستلام"

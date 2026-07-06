@@ -44,7 +44,8 @@
     "description": "Receive goods from confirmed purchase orders",
     "tabs": {
       "pending": "Pending Receipt",
-      "received": "Received"
+      "received": "Received",
+      "drafts": "Drafts"
     },
   "status": {
     "draft": "Draft",
@@ -55,10 +56,23 @@
     "emptyPending": "No pending receipts",
     "emptyPendingHint": "Confirmed purchase orders will appear here for receiving",
     "emptyReceived": "No received orders yet",
+    "emptyDrafts": "No draft receipts",
     "receiveAll": "Receive All",
     "progress": "{{received}} of {{total}} items received",
     "draftSaved": "Goods receipt draft saved",
     "printGrn": "Print GRN",
+    "linesSummary": "{{count}} lines",
+    "actions": {
+      "postDraft": "Post",
+      "deleteDraft": "Delete"
+    },
+    "confirm": {
+      "deleteDraft": "Delete this draft goods receipt?"
+    },
+    "messages": {
+      "draftPosted": "Draft goods receipt posted",
+      "draftDeleted": "Draft goods receipt deleted"
+    },
     "successMessage": "Goods received successfully",
     "successMessageWithReceipt": "Goods received successfully under {{receiptNumber}}"
   },

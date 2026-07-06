@@ -52,8 +52,8 @@ vi.mock('react-i18next', () => ({
         'sales:lineItems.quantity': 'Qty',
         'sales:lineItems.freeQuantity': 'Free qty',
         'sales:lineItems.unitPrice': 'Unit Price',
-        'sales:lineItems.priceEntryMode.unit': 'PU',
-        'sales:lineItems.priceEntryMode.total': 'Total',
+        'sales:lineItems.priceEntryMode.unit': 'PU HT',
+        'sales:lineItems.priceEntryMode.total': 'Total HT',
         'sales:lineItems.effectiveUnitCost': `Effective unit cost: ${String(params?.['amount'] ?? '')}`,
         'sales:lineItems.bonusSavings': `Bonus savings: ${String(params?.['amount'] ?? '')}`,
         'sales:lineItems.pricing.cost': `Cost ${String(params?.['amount'] ?? '')}`,
@@ -439,7 +439,7 @@ describe('DocumentLineEditor — designation cells', () => {
     })
 
     expect(screen.queryByRole('spinbutton', { name: 'Free qty' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Total' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Total HT' })).not.toBeInTheDocument()
   })
 
   it('shows purchase bonus controls and effective-cost facts when the module and company flag are enabled', () => {
@@ -464,7 +464,7 @@ describe('DocumentLineEditor — designation cells', () => {
     )
 
     expect(screen.getByRole('spinbutton', { name: 'Free qty' })).toHaveValue(1)
-    expect(screen.getByRole('button', { name: 'Total' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Total HT' })).toBeInTheDocument()
     expect(screen.getByText('Effective unit cost: EUR 4.76')).toBeInTheDocument()
     expect(screen.getByText('Bonus savings: EUR 5.00')).toBeInTheDocument()
   })
@@ -501,7 +501,7 @@ describe('DocumentLineEditor — designation cells', () => {
     await user.clear(freeQuantityInput)
     await user.type(screen.getByRole('spinbutton', { name: 'Free qty' }), '1')
 
-    await user.click(screen.getByRole('button', { name: 'Total' }))
+    await user.click(screen.getByRole('button', { name: 'Total HT' }))
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Unit Price' }), {
       target: { value: '100.000' },
     })
@@ -512,6 +512,65 @@ describe('DocumentLineEditor — designation cells', () => {
         price_entry_mode: 'total',
         line_total: '100.000',
         unit_price: '14.286',
+      }),
+    ])
+  })
+
+  it('round-trips total price entry as an HT extended amount without tax drift', async () => {
+    const user = userEvent.setup()
+    companyConfigMock.enabledModules = ['Workshop', 'PurchaseBonus']
+    companyConfigMock.purchaseBonusEnabled = true
+    const line = makeLine({
+      quantity: '3',
+      unit_price: '10.000',
+      tax_rate: '19',
+      line_total: '35.700',
+      free_quantity: '0',
+      price_entry_mode: 'unit',
+    })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([line])
+      return (
+        <DocumentLineEditor
+          documentType="purchase_order"
+          lines={currentLines}
+          onChange={(nextLines) => {
+            onChange(nextLines)
+            setCurrentLines(nextLines)
+          }}
+        />
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: createWrapper() })
+
+    await user.click(screen.getByRole('button', { name: 'Total HT' }))
+    expect(screen.getByRole('spinbutton', { name: 'Unit Price' })).toHaveValue(30)
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Unit Price' }), {
+      target: { value: '33.000' },
+    })
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        price_entry_mode: 'total',
+        line_total: '39.270',
+        unit_price: '11.000',
+      }),
+    ])
+
+    await user.click(screen.getByRole('button', { name: 'PU HT' }))
+    await user.click(screen.getByRole('button', { name: 'Total HT' }))
+    await user.click(screen.getByRole('button', { name: 'PU HT' }))
+    await user.click(screen.getByRole('button', { name: 'Total HT' }))
+
+    expect(screen.getByRole('spinbutton', { name: 'Unit Price' })).toHaveValue(33)
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        price_entry_mode: 'total',
+        line_total: '39.270',
+        unit_price: '11.000',
       }),
     ])
   })

@@ -288,7 +288,58 @@ class PurchaseOrderController extends Controller
             return $this->notFoundResponse('Purchase order');
         }
 
-        return $this->documentResponse($documentModel, 200, $this->scale());
+        $data = DocumentData::fromModel($documentModel, true, $this->scale())->toArray();
+        $data['goods_receipts'] = $this->goodsReceiptLinks($documentModel);
+        $data['supplier_invoices'] = $this->supplierInvoiceLinks($documentModel);
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * @return list<array{id: string, receipt_number: string|null, status: string, received_at: string|null, external_reference: string|null}>
+     */
+    private function goodsReceiptLinks(Document $purchaseOrder): array
+    {
+        return array_values(GoodsReceipt::query()
+            ->where('tenant_id', $purchaseOrder->tenant_id)
+            ->where('company_id', $purchaseOrder->company_id)
+            ->where('purchase_order_id', $purchaseOrder->id)
+            ->orderByDesc('received_at')
+            ->get()
+            ->map(fn (GoodsReceipt $receipt): array => [
+                'id' => $receipt->id,
+                'receipt_number' => $receipt->receipt_number,
+                'status' => $receipt->status->value,
+                'received_at' => $receipt->received_at->toIso8601String(),
+                'external_reference' => $receipt->external_reference,
+            ])
+            ->values()
+            ->all());
+    }
+
+    /**
+     * @return list<array{id: string, document_number: string|null, status: string, total: string|null}>
+     */
+    private function supplierInvoiceLinks(Document $purchaseOrder): array
+    {
+        return array_values(Document::query()
+            ->where('tenant_id', $purchaseOrder->tenant_id)
+            ->where('company_id', $purchaseOrder->company_id)
+            ->where('type', DocumentType::SupplierInvoice)
+            ->where(function ($query) use ($purchaseOrder): void {
+                $query->where('source_document_id', $purchaseOrder->id)
+                    ->orWhereJsonContains('payload->supplier_invoice->source_document_ids', $purchaseOrder->id);
+            })
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn (Document $invoice): array => [
+                'id' => $invoice->id,
+                'document_number' => $invoice->document_number,
+                'status' => $invoice->status->value,
+                'total' => $invoice->total,
+            ])
+            ->values()
+            ->all());
     }
 
     /**

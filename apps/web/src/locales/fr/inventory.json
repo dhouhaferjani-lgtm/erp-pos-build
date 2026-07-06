@@ -44,7 +44,8 @@
     "description": "Réceptionner les marchandises des commandes fournisseurs confirmées",
     "tabs": {
       "pending": "En attente de réception",
-      "received": "Réceptionnés"
+      "received": "Réceptionnés",
+      "drafts": "Brouillons"
     },
   "status": {
     "draft": "Brouillon",
@@ -55,10 +56,23 @@
     "emptyPending": "Aucune réception en attente",
     "emptyPendingHint": "Les commandes fournisseurs confirmées apparaîtront ici pour réception",
     "emptyReceived": "Aucune commande réceptionnée",
+    "emptyDrafts": "Aucun brouillon de réception",
     "receiveAll": "Tout réceptionner",
     "progress": "{{received}} sur {{total}} articles reçus",
     "draftSaved": "Brouillon de réception enregistré",
     "printGrn": "Imprimer le BR",
+    "linesSummary": "{{count}} lignes",
+    "actions": {
+      "postDraft": "Poster",
+      "deleteDraft": "Supprimer"
+    },
+    "confirm": {
+      "deleteDraft": "Supprimer ce brouillon de réception ?"
+    },
+    "messages": {
+      "draftPosted": "Brouillon de réception posté",
+      "draftDeleted": "Brouillon de réception supprimé"
+    },
     "successMessage": "Marchandises réceptionnées avec succès",
     "successMessageWithReceipt": "Marchandises réceptionnées avec succès sous {{receiptNumber}}"
   },

@@ -101,6 +101,23 @@ function supplierInvoiceAttachmentsInvalidationPredicate(
   }
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 // ── List ───────────────────────────────────────────────────────────────────
 
 /**
@@ -476,6 +493,9 @@ export function useRecordSupplierPayment(invoiceId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         predicate: supplierInvoiceDetailInvalidationPredicate(invoiceId, tenantId, companyId),
+      })
+      void queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('payments', tenantId, companyId),
       })
     },
   })

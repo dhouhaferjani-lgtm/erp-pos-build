@@ -45,7 +45,9 @@
       "matchTable": "Rapprochement à 3 voies",
       "attachments": "Pièces jointes",
       "postedAt": "Comptabilisée le",
-      "payment": "Enregistrer le paiement"
+      "payment": "Enregistrer le paiement",
+      "linkedPOs": "BC liés",
+      "consumedReceipts": "BR consommés"
     },
     "lines": {
       "ordered": "Commandé",
@@ -66,6 +68,7 @@
       "postPriceBlock": "Comptabilisation bloquée : écart de prix hors politique",
       "rematch": "Re-rapprocher",
       "recordPayment": "Enregistrer le paiement",
+      "payInTreasury": "Payer dans la trésorerie",
       "uploadAttachment": "Joindre un document",
       "downloadAttachment": "Télécharger",
       "deleteAttachment": "Supprimer"
@@ -95,13 +98,26 @@
       "attachmentDeleted": "Pièce jointe supprimée",
       "receiptsLinked": "Réceptions associées"
     },
+    "paymentForm": {
+      "amount": "Montant",
+      "method": "Mode de paiement",
+      "repository": "Payé depuis",
+      "date": "Date de paiement",
+      "reference": "Référence",
+      "notes": "Notes",
+      "selectMethod": "Sélectionner un mode de paiement",
+      "selectRepository": "Sélectionner un dépôt",
+      "submit": "Enregistrer le paiement",
+      "defaultNotes": "Paiement de la facture fournisseur {{number}}"
+    },
     "pendingReceipt": {
       "badge": "Réception en attente",
       "detail": "Cette facture ne peut pas être comptabilisée avant l'association des marchandises reçues.",
       "linkTitle": "Associer des réceptions",
       "linkDescription": "Renseignez la ligne de réception validée pour chaque ligne de facture.",
       "linkAction": "Associer les réceptions",
-      "receiptLineId": "Ligne de réception pour {{quantity}}"
+      "receiptLineId": "Ligne de réception pour {{quantity}}",
+      "selectReceiptLine": "Sélectionner une ligne de réception"
     },
     "create": {
       "title": "Nouvelle facture fournisseur",

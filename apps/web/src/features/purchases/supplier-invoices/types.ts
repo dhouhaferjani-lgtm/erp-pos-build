@@ -77,6 +77,14 @@ export interface SourcePurchaseOrder {
   number: string
 }
 
+export interface ConsumedReceipt {
+  id: string
+  receipt_number: string | null
+  status: string
+  received_at: string | null
+  external_reference: string | null
+}
+
 export interface PerLineMatch {
   po_line_id: string
   ordered: string
@@ -111,6 +119,7 @@ export interface SupplierInvoiceDetail {
   /** Maps to external_document_number column via supplier_reference key. */
   supplier_reference: string | null
   currency: string
+  balance_due?: string | null
   total: string
   status: SupplierInvoiceStatus
   match_status: SupplierInvoiceMatchStatus
@@ -119,6 +128,8 @@ export interface SupplierInvoiceDetail {
   pending_receipt?: boolean
   lines: SupplierInvoiceLine[]
   source_purchase_order: SourcePurchaseOrder | null
+  source_purchase_orders?: SourcePurchaseOrder[]
+  consumed_receipts?: ConsumedReceipt[]
   match: InvoiceMatch
   attachments: DocumentAttachment[]
   posted_at: string | null
@@ -182,12 +193,19 @@ export interface PostBlockError {
 // ── Payment payload (reuses existing POST /payments endpoint) ──────────────
 
 export interface RecordPaymentPayload {
-  document_id: string
+  document_id?: string
   amount: string
   currency: string
   payment_method_id: string
+  repository_id?: string
+  partner_id?: string
   payment_date: string
   reference?: string
+  notes?: string
+  allocations?: {
+    document_id: string
+    amount: string
+  }[]
 }
 
 // ── Create prefill reads ──────────────────────────────────────────────────
