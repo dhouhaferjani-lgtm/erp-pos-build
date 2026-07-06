@@ -5,19 +5,35 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\Reports\AgedPayablesService;
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
+use App\Modules\Identity\Domain\Enums\UserStatus;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Procurement\Application\CreateSupplierInvoiceService;
+use App\Modules\Procurement\Application\DTOs\StandaloneReceiptInput;
+use App\Modules\Procurement\Application\DTOs\StandaloneReceiptLineInput;
+use App\Modules\Procurement\Application\StandaloneReceiptService;
+use App\Modules\Procurement\Application\SupplierInvoicePostingService;
+use App\Modules\Procurement\Domain\Enums\BillControlMode;
+use App\Modules\Procurement\Domain\Enums\MatchEnforcement;
+use App\Modules\Procurement\Domain\Enums\MatchMode;
+use App\Modules\Procurement\Domain\ProcurementPolicy;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -36,6 +52,10 @@ final class AgedPayablesAutoPoTest extends TestCase
     private Tenant $tenant;
 
     private Company $company;
+
+    private User $user;
+
+    private Location $warehouse;
 
     private Partner $supplier;
 
@@ -59,6 +79,27 @@ final class AgedPayablesAutoPoTest extends TestCase
             'locale' => 'fr_TN',
             'timezone' => 'Africa/Tunis',
             'status' => CompanyStatus::Active,
+        ]);
+        $this->user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Aged Payables Receiver',
+            'email' => 'aged-payables-receiver@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
+        ]);
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+        $this->warehouse = Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'AGED-WH',
+            'name' => 'Aged Payables Warehouse',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => true,
         ]);
         $this->supplier = Partner::create([
             'tenant_id' => $this->tenant->id,
@@ -131,6 +172,74 @@ final class AgedPayablesAutoPoTest extends TestCase
         $this->assertCount(0, $report->lines);
     }
 
+    #[Test]
+    public function real_posted_supplier_invoice_clears_auto_po_receipt_from_aged_payables(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-01 10:00:00'));
+
+        try {
+            app(ChartOfAccountsService::class)->seedForCompany($this->company);
+            $this->allowReceiptFirst();
+
+            $receiptResult = app(StandaloneReceiptService::class)->execute(new StandaloneReceiptInput(
+                companyId: $this->company->id,
+                supplierId: $this->supplier->id,
+                locationId: $this->warehouse->id,
+                actorId: $this->user->id,
+                idempotencyKey: 'aged-payables-real-si-001',
+                source: 'standalone_receipt',
+                externalReference: 'BL-AGED-REAL-SI',
+                externalDate: '2026-07-01',
+                postImmediately: true,
+                lines: [
+                    new StandaloneReceiptLineInput(
+                        productId: $this->product->id,
+                        variantId: null,
+                        quantity: '5.0000',
+                        freeQuantity: '0.0000',
+                        unitPrice: '7.250',
+                    ),
+                ],
+            ));
+
+            $purchaseOrder = $receiptResult->purchaseOrder->fresh(['lines']);
+            $receipt = $receiptResult->receipt->fresh(['lines']);
+            $this->assertNotNull($purchaseOrder);
+            $this->assertNotNull($receipt);
+
+            $before = app(AgedPayablesService::class)->generate($this->company->id, Carbon::parse('2026-07-05'));
+            $this->assertSame('36.2500', $before->grand_total);
+
+            /** @var DocumentLine $poLine */
+            $poLine = $purchaseOrder->lines->sole();
+            $invoice = app(CreateSupplierInvoiceService::class)->create([
+                'partner_id' => $this->supplier->id,
+                'source_document_id' => $purchaseOrder->id,
+                'source_document_ids' => [$purchaseOrder->id],
+                'currency' => 'TND',
+                'issue_date' => '2026-07-02',
+                'lines' => [[
+                    'source_line_id' => $poLine->id,
+                    'quantity' => '5.0000',
+                    'unit_price' => '7.250',
+                    'vat_rate' => '0.00',
+                ]],
+            ], $this->tenant->id, $this->company->id);
+
+            app(SupplierInvoicePostingService::class)->post($invoice, $this->user->id);
+
+            $this->assertSame(SupplierInvoiceMatchStatus::Matched, $invoice->fresh()->match_status);
+            $this->assertSame('5.0000', DocumentLine::query()->findOrFail($poLine->id)->quantity_invoiced);
+            $this->assertSame('5.0000', GoodsReceiptLine::query()->findOrFail($receipt->lines->sole()->id)->quantity_invoiced);
+
+            $after = app(AgedPayablesService::class)->generate($this->company->id, Carbon::parse('2026-07-05'));
+            $this->assertSame('0.0000', $after->grand_total);
+            $this->assertCount(0, $after->lines);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     private function createPurchaseOrder(bool $autoGenerated, string $documentNumber): Document
     {
         return Document::create([
@@ -156,6 +265,22 @@ final class AgedPayablesAutoPoTest extends TestCase
                     'created_at' => '2026-07-01T10:00:00+00:00',
                 ],
             ] : null,
+        ]);
+    }
+
+    private function allowReceiptFirst(): void
+    {
+        ProcurementPolicy::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'bill_control_mode' => BillControlMode::Received,
+            'match_mode' => MatchMode::ThreeWay,
+            'match_enforcement' => MatchEnforcement::Warn,
+            'variance_tolerance_percent' => '2.00',
+            'variance_tolerance_max_amount' => '1.000',
+            'allow_receipt_first' => true,
+            'allow_invoice_first' => false,
+            'invoice_first_requires_approval' => true,
         ]);
     }
 

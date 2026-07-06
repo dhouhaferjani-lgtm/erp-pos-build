@@ -107,6 +107,12 @@ Route::prefix('api/v1')->middleware([
         ->whereUuid('id')
         ->name('supplier-invoices.match');
 
+    // Link pending supplier invoice lines to posted receipt lines
+    Route::post('/supplier-invoices/{id}/link-receipts', [SupplierInvoiceController::class, 'linkReceipts'])
+        ->middleware('can:supplier-invoices.link-receipts')
+        ->whereUuid('id')
+        ->name('supplier-invoices.link-receipts');
+
     // Post supplier invoice (can:documents.update)
     Route::post('/supplier-invoices/{id}/post', [SupplierInvoiceController::class, 'post'])
         ->middleware('can:documents.update')

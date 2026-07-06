@@ -14,14 +14,18 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Procurement\Application\CreateSupplierInvoiceService;
+use App\Modules\Procurement\Application\InvoiceFirstOrchestrator;
 use App\Modules\Procurement\Application\ProcurementPolicyResolver;
 use App\Modules\Procurement\Application\SupplierInvoiceMatcher;
 use App\Modules\Procurement\Application\SupplierInvoicePostingService;
+use App\Modules\Procurement\Application\SupplierInvoiceReceiptLinkingService;
 use App\Modules\Procurement\Presentation\Requests\CreateSupplierInvoiceRequest;
 use App\Support\Traits\PaginatesResults;
+use App\Modules\Identity\Domain\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -46,8 +50,10 @@ final class SupplierInvoiceController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly CreateSupplierInvoiceService $createService,
+        private readonly InvoiceFirstOrchestrator $invoiceFirstOrchestrator,
         private readonly SupplierInvoiceMatcher $matcher,
         private readonly SupplierInvoicePostingService $postingService,
+        private readonly SupplierInvoiceReceiptLinkingService $receiptLinkingService,
         private readonly ProcurementPolicyResolver $policyResolver,
     ) {}
 
@@ -94,6 +100,25 @@ final class SupplierInvoiceController extends Controller
             if ($statusEnum !== null) {
                 $query->where('match_status', $statusEnum->value);
             }
+        }
+
+        $pendingReceipt = $request->query('pending_receipt');
+        if ($pendingReceipt === '1' || $pendingReceipt === 'true') {
+            $query->where(function (Builder $pendingQuery): void {
+                $driver = $pendingQuery->getModel()->getConnection()->getDriverName();
+                if ($driver === 'pgsql') {
+                    $pendingQuery->whereRaw("(payload #>> '{supplier_invoice,pending_receipt}') = 'true'");
+
+                    return;
+                }
+                if ($driver === 'mysql' || $driver === 'mariadb') {
+                    $pendingQuery->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.supplier_invoice.pending_receipt')) = 'true'");
+
+                    return;
+                }
+
+                $pendingQuery->whereRaw("json_extract(payload, '$.supplier_invoice.pending_receipt') = 1");
+            });
         }
 
         $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
@@ -184,12 +209,46 @@ final class SupplierInvoiceController extends Controller
         $companyId = $company->id;
         $tenantId = $company->tenant_id;
 
-        $document = $this->createService->create($request->validated(), $tenantId, $companyId);
+        $validated = $request->validated();
+        $invoiceFirstDelivered = ($validated['invoice_first_delivered'] ?? false) === true;
+        $pendingReceipt = ($validated['pending_receipt'] ?? false) === true;
+        $this->assertInvoiceFirstCreatePermission($request, $invoiceFirstDelivered, $pendingReceipt);
+
+        if ($invoiceFirstDelivered) {
+            $user = $request->user();
+            if (! $user instanceof User) {
+                abort(Response::HTTP_UNAUTHORIZED);
+            }
+
+            $document = $this->invoiceFirstOrchestrator->createDelivered($validated, $tenantId, $companyId, $user->id);
+        } else {
+            $document = $this->createService->create($validated, $tenantId, $companyId);
+        }
 
         return response()->json([
             'data' => $this->formatDetail($document),
             'meta' => ['timestamp' => now()->toIso8601String()],
         ], 201);
+    }
+
+    private function assertInvoiceFirstCreatePermission(Request $request, bool $invoiceFirstDelivered, bool $pendingReceipt): void
+    {
+        if (! $invoiceFirstDelivered && ! $pendingReceipt) {
+            return;
+        }
+
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(Response::HTTP_UNAUTHORIZED);
+        }
+
+        if (! $user->can('supplier-invoices.create-pending')) {
+            abort(Response::HTTP_FORBIDDEN);
+        }
+
+        if ($invoiceFirstDelivered && ! $user->can('goods-receipt.create-standalone')) {
+            abort(Response::HTTP_FORBIDDEN);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -218,6 +277,40 @@ final class SupplierInvoiceController extends Controller
     }
 
     // -------------------------------------------------------------------------
+    // POST /api/v1/supplier-invoices/{id}/link-receipts
+    // -------------------------------------------------------------------------
+
+    public function linkReceipts(Request $request, string $id): JsonResponse
+    {
+        /** @var array{links: list<array{invoice_line_id: string, receipt_line_id: string}>} $validated */
+        $validated = $request->validate([
+            'links' => ['required', 'array', 'min:1'],
+            'links.*.invoice_line_id' => ['required', 'uuid'],
+            'links.*.receipt_line_id' => ['required', 'uuid'],
+        ]);
+
+        $doc = $this->baseQuery()
+            ->ofType(DocumentType::SupplierInvoice)
+            ->with(['lines', 'partner', 'sourceDocument'])
+            ->find($id);
+
+        if ($doc === null) {
+            return $this->notFoundResponse('Supplier invoice');
+        }
+
+        try {
+            $doc = $this->receiptLinkingService->link($doc, $validated['links']);
+        } catch (\DomainException $e) {
+            return $this->validationErrorResponse('LINK_RECEIPTS_FAILED', $e->getMessage());
+        }
+
+        return response()->json([
+            'data' => $this->formatDetail($doc),
+            'meta' => ['timestamp' => now()->toIso8601String()],
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
     // POST /api/v1/supplier-invoices/{id}/post
     // -------------------------------------------------------------------------
 
@@ -238,7 +331,12 @@ final class SupplierInvoiceController extends Controller
         // incremented), so assertPostable() sees over-clear and would return 422
         // instead of the no-op the service already handles under lock.
         try {
-            $this->postingService->post($doc);
+            $user = $request->user();
+            if (! $user instanceof User) {
+                abort(Response::HTTP_UNAUTHORIZED);
+            }
+
+            $this->postingService->post($doc, $user->id);
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('POSTING_BLOCKED', $e->getMessage());
         }
@@ -271,6 +369,8 @@ final class SupplierInvoiceController extends Controller
      */
     private function formatListItem(Document $doc): array
     {
+        $pendingReceipt = $this->hasPendingReceipt($doc);
+
         return [
             'id' => $doc->id,
             'number' => $doc->document_number,
@@ -284,6 +384,7 @@ final class SupplierInvoiceController extends Controller
             'status' => $doc->status->value,
             'match_status' => $doc->match_status?->value,
             'has_source_document' => $doc->source_document_id !== null,
+            'pending_receipt' => $pendingReceipt,
         ];
     }
 
@@ -294,6 +395,8 @@ final class SupplierInvoiceController extends Controller
      */
     private function formatDetail(Document $doc): array
     {
+        $pendingReceipt = $this->hasPendingReceipt($doc);
+
         // Source PO reference.
         $sourcePo = null;
         if ($doc->sourceDocument !== null) {
@@ -307,6 +410,8 @@ final class SupplierInvoiceController extends Controller
         $lines = $doc->lines->map(fn (DocumentLine $line): array => [
             'id' => $line->id,
             'source_line_id' => $line->source_line_id,
+            'product_id' => $line->product_id,
+            'variant_id' => $line->variant_id,
             'quantity' => $line->quantity,
             'unit_price' => $line->unit_price,
             'vat_rate' => $line->tax_rate,
@@ -335,6 +440,7 @@ final class SupplierInvoiceController extends Controller
                 'name' => $doc->partner->name,
             ],
             'source_document_id' => $doc->source_document_id,
+            'pending_receipt' => $pendingReceipt,
             'issue_date' => $doc->document_date->toDateString(),
             'due_date' => $doc->due_date?->toDateString(),
             'currency' => $doc->currency,
@@ -350,6 +456,14 @@ final class SupplierInvoiceController extends Controller
             'posted_at' => $postedAt,
             'attachments' => [],
         ];
+    }
+
+    private function hasPendingReceipt(Document $doc): bool
+    {
+        $payload = is_array($doc->payload) ? $doc->payload : [];
+        $supplierInvoicePayload = is_array($payload['supplier_invoice'] ?? null) ? $payload['supplier_invoice'] : [];
+
+        return ($supplierInvoicePayload['pending_receipt'] ?? false) === true;
     }
 
     /**
