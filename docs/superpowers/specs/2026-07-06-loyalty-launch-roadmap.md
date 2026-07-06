@@ -197,7 +197,27 @@ LB-1 → LB-2 → LB-3 → LB-4 (LB-5 is a recorded decision). Reviewer map
 `fiscal-pos-reviewer`. Board: T-0002 (this session) + claim T-0005 when LB-4
 starts. PRs into dev per the dark-factory spec; laptop = scoped preflight only.
 
-## 4. Open owner questions (do not block the build)
+## 4. Deploy notes — `feat/loyalty-launch` (Branch A) — REQUIRED steps
+
+Branch A ships NO migration. It ships a NEW permission (`loyalty.enroll`) and
+program seeding. On every environment (staging first), after the code deploy:
+
+```bash
+# 1. Sync the permission into EVERY tenant DB (tenant-blind Spatie cache means
+#    a stale cache 403s every role, including admin, on the new endpoints):
+php artisan tenants:seed --class=RolesAndPermissionsSeeder
+# 2. Reset the Spatie permission cache (per project_spatie_permission_cache_tenant_blind):
+php artisan permission:cache-reset
+# 3. Tenants provisioned BEFORE this change have no loyalty program — re-run the
+#    demo seeder for the demo account (idempotent; re-run branch bootstraps the
+#    program) or create+activate a program via the web admin for real tenants:
+php artisan db:seed --class=DemoPharmacySeeder   # demo/staging account only
+```
+
+Verify after deploy: partner page shows the loyalty card for a manager; POS
+attach of a phone-holding customer returns `enrolled: true`.
+
+## 5. Open owner questions (do not block the build)
 
 1. PL-1 go/no-go: pay-with-points at the Tauri POS for launch? (Recommended: no.)
 2. LB-2 default program choice UI when multiple programs are active (rare until
