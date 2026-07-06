@@ -225,7 +225,26 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     if (bccomp(paidQuantity, '0') <= 0) {
       return '0.000'
     }
-    return bcdiv(decimalValue(netTotal ?? calculateNetExtendedAmount(line)), paidQuantity, 3)
+    const netAmount = decimalValue(netTotal ?? calculateNetExtendedAmount(line))
+    const workingScale = 4
+
+    if (line.discount_percent !== undefined && line.discount_percent !== null && line.discount_percent !== '') {
+      const discountRate = bcdiv(line.discount_percent, '100', workingScale)
+      const payableRate = bcsub('1', discountRate, workingScale)
+      const discountedQuantity = bcmul(paidQuantity, payableRate, workingScale)
+
+      if (bccomp(discountedQuantity, '0') <= 0) {
+        return '0.000'
+      }
+
+      return bcdiv(netAmount, discountedQuantity, 3)
+    }
+
+    if (line.discount_amount !== undefined && line.discount_amount !== null && line.discount_amount !== '') {
+      return bcdiv(bcadd(netAmount, decimalValue(line.discount_amount), workingScale), paidQuantity, 3)
+    }
+
+    return bcdiv(netAmount, paidQuantity, 3)
   }, [])
 
   const pricingContextLines = useMemo<PricingContextLineRequest[]>(() => (

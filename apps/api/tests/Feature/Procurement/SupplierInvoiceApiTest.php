@@ -48,6 +48,11 @@ use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
+use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
+use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentAllocation;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -1599,6 +1604,49 @@ final class SupplierInvoiceApiTest extends TestCase
         $this->assertArrayHasKey('quantity', $line);
         $this->assertArrayHasKey('unit_price', $line);
         $this->assertArrayHasKey('vat_rate', $line);
+    }
+
+    public function test_show_returns_balance_due_for_partially_paid_supplier_invoice(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '6.0000', '100.000', '0.00'));
+
+        $storeResponse->assertCreated();
+        $siId = $storeResponse->json('data.id');
+        $this->assertIsString($siId);
+
+        /** @var Document $supplierInvoice */
+        $supplierInvoice = Document::query()->findOrFail($siId);
+        $supplierInvoice->status = DocumentStatus::Posted;
+        $supplierInvoice->balance_due = '400.000';
+        $supplierInvoice->save();
+
+        $payment = Payment::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'amount' => '200.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+            'origin' => PaymentOrigin::WebAdmin,
+            'created_by' => $this->user->id,
+        ]);
+
+        PaymentAllocation::create([
+            'payment_id' => $payment->id,
+            'document_id' => $supplierInvoice->id,
+            'amount' => '200.000',
+        ]);
+
+        $showResponse = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/supplier-invoices/{$siId}");
+
+        $showResponse->assertOk();
+        $this->assertSame('400.000', $showResponse->json('data.balance_due'));
     }
 
     // -------------------------------------------------------------------------

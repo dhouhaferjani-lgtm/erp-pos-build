@@ -21,7 +21,7 @@ import type { SupplierInvoiceDetail } from './types'
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
 const mockApiRawGet = vi.hoisted(() => vi.fn())
-const mockHasPermission = vi.hoisted(() => vi.fn(() => true))
+const mockHasPermission = vi.hoisted(() => vi.fn((_permission: string) => true))
 
 vi.mock('../../../lib/api', async () => {
   const actual = await vi.importActual<typeof import('../../../lib/api')>('../../../lib/api')
@@ -442,6 +442,22 @@ describe('SupplierInvoiceDetailPage — Record Payment', () => {
     expect(payInTreasury).toHaveAttribute('href', '/treasury/payments/new?supplier_invoice=inv-detail-1')
   })
 
+  it('hides supplier payment actions without payments.create permission', async () => {
+    mockHasPermission.mockImplementation((permission: string) => permission !== 'payments.create')
+    mockApiGet.mockResolvedValue(
+      makeDetail({ status: 'posted', match_status: 'matched', posted_at: '2026-06-01T10:00:00Z' })
+    )
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('btn-record-payment')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByRole('link', {
+      name: 'purchases:supplierInvoices.actions.payInTreasury',
+    })).not.toBeInTheDocument()
+  })
+
   it('does not show Record Payment when invoice is draft', async () => {
     mockApiGet.mockResolvedValue(makeDetail({ status: 'draft' }))
     renderWithProviders(<SupplierInvoiceDetailPage />)
@@ -501,6 +517,63 @@ describe('SupplierInvoiceDetailPage — Record Payment', () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalled()
     })
+  })
+
+  it('caps the inline supplier-payment allocation at the invoice balance due', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(
+      makeDetail({
+        status: 'posted',
+        match_status: 'matched',
+        posted_at: '2026-06-01T10:00:00Z',
+        total: '300.000',
+        balance_due: '125.500',
+      }),
+    )
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await user.click(await screen.findByTestId('btn-record-payment'))
+    await user.clear(screen.getByLabelText('purchases:supplierInvoices.paymentForm.amount'))
+    await user.type(screen.getByLabelText('purchases:supplierInvoices.paymentForm.amount'), '200.000')
+    await user.selectOptions(
+      await screen.findByLabelText('purchases:supplierInvoices.paymentForm.method'),
+      'method-bank',
+    )
+    await user.selectOptions(
+      screen.getByLabelText('purchases:supplierInvoices.paymentForm.repository'),
+      'repo-bank',
+    )
+    await user.click(screen.getByRole('button', { name: 'purchases:supplierInvoices.paymentForm.submit' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/payments', expect.objectContaining({
+        amount: '200',
+        allocations: [
+          {
+            document_id: 'inv-detail-1',
+            amount: '125.500',
+          },
+        ],
+      }))
+    })
+  })
+
+  it('uses the MoneyInput default minimum instead of a hardcoded three-decimal minimum', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(
+      makeDetail({
+        status: 'posted',
+        match_status: 'matched',
+        posted_at: '2026-06-01T10:00:00Z',
+      }),
+    )
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await user.click(await screen.findByTestId('btn-record-payment'))
+
+    expect(screen.getByLabelText('purchases:supplierInvoices.paymentForm.amount')).toHaveAttribute('min', '0')
   })
 
   it('renders supplier over-payment errors in the payment dialog', async () => {

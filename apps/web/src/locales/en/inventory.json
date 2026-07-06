@@ -67,6 +67,7 @@
       "deleteDraft": "Delete"
     },
     "confirm": {
+      "postDraft": "Post this draft goods receipt? This will update stock and weighted average cost.",
       "deleteDraft": "Delete this draft goods receipt?"
     },
     "messages": {

@@ -30,7 +30,8 @@ final class GoodsReceiptController extends Controller
         $query = GoodsReceipt::query()
             ->where('tenant_id', $this->companyContext->requireTenantId())
             ->where('company_id', $this->companyContext->requireCompanyId())
-            ->with('lines')
+            ->with(['lines', 'purchaseOrder.partner'])
+            ->withCount('lines')
             ->orderByDesc('created_at')
             ->orderByDesc('id');
 
@@ -144,7 +145,8 @@ final class GoodsReceiptController extends Controller
         return GoodsReceipt::query()
             ->where('tenant_id', $this->companyContext->requireTenantId())
             ->where('company_id', $this->companyContext->requireCompanyId())
-            ->with('lines')
+            ->with(['lines', 'purchaseOrder.partner'])
+            ->withCount('lines')
             ->findOrFail($receiptId);
     }
 }

@@ -67,6 +67,7 @@
       "deleteDraft": "Supprimer"
     },
     "confirm": {
+      "postDraft": "Poster ce brouillon de réception ? Cela mettra à jour le stock et le coût moyen pondéré.",
       "deleteDraft": "Supprimer ce brouillon de réception ?"
     },
     "messages": {

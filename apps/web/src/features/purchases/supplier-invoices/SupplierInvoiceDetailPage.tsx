@@ -20,7 +20,7 @@ import { EntityLink } from '../../../components/molecules/EntityLink'
 import { FormField, Input, MoneyInput, Select, Textarea } from '../../../components/atoms'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { getErrorMessage } from '../../../lib/api'
-import { formatCurrency, formatQuantity } from '../../../lib/decimal'
+import { bccomp, formatCurrency, formatQuantity } from '../../../lib/decimal'
 import type { SupplierInvoiceMatchStatus } from './types'
 import { useActivePaymentMethods } from '../../treasury/hooks/usePaymentMethods'
 import { useActivePaymentRepositories } from '../../treasury/hooks/usePaymentRepositories'
@@ -78,6 +78,7 @@ export function SupplierInvoiceDetailPage() {
   const [paymentNotes, setPaymentNotes] = useState('')
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const canLinkReceipts = hasPermission('supplier-invoices.link-receipts')
+  const canCreatePayments = hasPermission('payments.create')
   const openPurchaseOrdersQuery = useOpenPurchaseOrdersForSupplier(invoice?.partner.id ?? '')
   const supplierReceiptLinesQuery = usePurchaseOrderReceiptLinesForSupplierInvoice(
     (openPurchaseOrdersQuery.data ?? []).map((po) => po.id),
@@ -199,6 +200,8 @@ export function SupplierInvoiceDetailPage() {
     if (!invoice) return
 
     setPaymentError(null)
+    const balanceDue = invoice.balance_due ?? invoice.total
+    const allocationAmount = bccomp(paymentAmount, balanceDue) > 0 ? balanceDue : paymentAmount
     recordPaymentMutation.mutate(
       {
         amount: paymentAmount,
@@ -212,7 +215,7 @@ export function SupplierInvoiceDetailPage() {
         allocations: [
           {
             document_id: invoice.id,
-            amount: paymentAmount,
+            amount: allocationAmount,
           },
         ],
       },
@@ -282,7 +285,7 @@ export function SupplierInvoiceDetailPage() {
               {t('purchases:supplierInvoices.actions.rematch')}
             </button>
 
-            {isPosted && (
+            {isPosted && canCreatePayments && (
               <>
                 <Link
                   to={`/treasury/payments/new?supplier_invoice=${invoice.id}`}
@@ -688,7 +691,6 @@ export function SupplierInvoiceDetailPage() {
             <MoneyInput
               id="supplier-payment-amount"
               currency={invoice.currency}
-              min="0.001"
               value={paymentAmount}
               onChange={setPaymentAmount}
               aria-label={t('purchases:supplierInvoices.paymentForm.amount')}

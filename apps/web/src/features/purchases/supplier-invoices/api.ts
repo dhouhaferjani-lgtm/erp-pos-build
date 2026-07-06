@@ -476,11 +476,6 @@ export function downloadAttachment(documentId: string, attachmentId: string, fil
 
 /**
  * Record a supplier payment via POST /payments.
- *
- * ASSUMPTION (2026-06-26): Payment endpoint is gated on the C4 Codex re-review.
- * The UI shows the "Record Payment" button on posted invoices but the mutation
- * calls the existing single-payment supplier path. Confirm C4 ships before
- * enabling this in production.
  */
 export function useRecordSupplierPayment(invoiceId: string) {
   const queryClient = useQueryClient()

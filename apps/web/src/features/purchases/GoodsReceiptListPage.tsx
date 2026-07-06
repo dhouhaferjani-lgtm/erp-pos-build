@@ -104,6 +104,7 @@ interface GoodsReceiptSummary {
   created_at?: string | null
   lines_count?: number | null
   lines_summary?: string | null
+  lines?: readonly unknown[]
 }
 
 type TabType = 'pending' | 'received' | 'drafts'
@@ -281,9 +282,14 @@ export function GoodsReceiptListPage() {
     },
     onSuccess: async () => {
       toast.success(t('inventory:goodsReceipt.messages.draftPosted'))
-      await queryClient.invalidateQueries({
-        predicate: scopedNamespacePredicate('goods-receipts', tenantId, companyId),
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('goods-receipts', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('purchase-orders', tenantId, companyId),
+        }),
+      ])
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
@@ -401,6 +407,12 @@ export function GoodsReceiptListPage() {
   function handleDeleteDraftReceipt(receiptId: string) {
     if (window.confirm(t('inventory:goodsReceipt.confirm.deleteDraft'))) {
       deleteDraftReceiptMutation.mutate(receiptId)
+    }
+  }
+
+  function handlePostDraftReceipt(receiptId: string) {
+    if (window.confirm(t('inventory:goodsReceipt.confirm.postDraft'))) {
+      postDraftReceiptMutation.mutate(receiptId)
     }
   }
 
@@ -577,7 +589,9 @@ export function GoodsReceiptListPage() {
                     <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-600">
                       <span>
                         {receipt.lines_summary
-                          ?? t('inventory:goodsReceipt.linesSummary', { count: receipt.lines_count ?? 0 })}
+                          ?? t('inventory:goodsReceipt.linesSummary', {
+                            count: receipt.lines_count ?? receipt.lines?.length ?? 0,
+                          })}
                       </span>
                       {receipt.external_reference && (
                         <span>
@@ -590,8 +604,8 @@ export function GoodsReceiptListPage() {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => { postDraftReceiptMutation.mutate(receipt.id) }}
-                      disabled={postDraftReceiptMutation.isPending}
+                      onClick={() => { handlePostDraftReceipt(receipt.id) }}
+                      disabled={postDraftReceiptMutation.isPending && postDraftReceiptMutation.variables === receipt.id}
                       className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} gap-1`}
                     >
                       <CheckCircle2 className="h-4 w-4" />
@@ -600,7 +614,7 @@ export function GoodsReceiptListPage() {
                     <button
                       type="button"
                       onClick={() => { handleDeleteDraftReceipt(receipt.id) }}
-                      disabled={deleteDraftReceiptMutation.isPending}
+                      disabled={deleteDraftReceiptMutation.isPending && deleteDraftReceiptMutation.variables === receipt.id}
                       className={`${tokens.button.base} ${tokens.button.danger} ${tokens.button.sizes.sm} gap-1`}
                     >
                       <Trash2 className="h-4 w-4" />

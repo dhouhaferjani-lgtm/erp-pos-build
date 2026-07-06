@@ -23,6 +23,7 @@ use App\Modules\Procurement\Application\SupplierInvoiceMatcher;
 use App\Modules\Procurement\Application\SupplierInvoicePostingService;
 use App\Modules\Procurement\Application\SupplierInvoiceReceiptLinkingService;
 use App\Modules\Procurement\Presentation\Requests\CreateSupplierInvoiceRequest;
+use App\Shared\Domain\CurrencyScale;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -443,6 +444,7 @@ final class SupplierInvoiceController extends Controller
             'subtotal' => $doc->subtotal,
             'tax_amount' => $doc->tax_amount,
             'total' => $doc->total,
+            'balance_due' => $this->supplierInvoiceBalanceDue($doc),
             'status' => $doc->status->value,
             'match_status' => $doc->match_status?->value,
             'supplier_reference' => $doc->external_document_number,
@@ -454,6 +456,14 @@ final class SupplierInvoiceController extends Controller
             'posted_at' => $postedAt,
             'attachments' => [],
         ];
+    }
+
+    private function supplierInvoiceBalanceDue(Document $doc): string
+    {
+        $scale = CurrencyScale::for((string) $doc->currency);
+        $balanceDue = (string) ($doc->balance_due ?? $doc->total ?? '0');
+
+        return CurrencyScale::bcformatStrict($balanceDue, $scale);
     }
 
     /**

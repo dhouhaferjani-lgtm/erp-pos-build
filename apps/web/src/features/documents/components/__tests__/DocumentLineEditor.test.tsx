@@ -575,6 +575,96 @@ describe('DocumentLineEditor — designation cells', () => {
     ])
   })
 
+  it('round-trips total price entry with a percentage discount without double-discounting', async () => {
+    companyConfigMock.enabledModules = ['Workshop', 'PurchaseBonus']
+    companyConfigMock.purchaseBonusEnabled = true
+    const line = makeLine({
+      quantity: '2',
+      unit_price: '15.000',
+      discount_percent: '10',
+      discount_amount: null,
+      tax_rate: '0',
+      line_total: '27.000',
+      free_quantity: '0',
+      price_entry_mode: 'total',
+    })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([line])
+      return (
+        <DocumentLineEditor
+          documentType="purchase_order"
+          lines={currentLines}
+          onChange={(nextLines) => {
+            onChange(nextLines)
+            setCurrentLines(nextLines)
+          }}
+        />
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: createWrapper() })
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Unit Price' }), {
+      target: { value: '36.000' },
+    })
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        price_entry_mode: 'total',
+        discount_percent: '10',
+        discount_amount: null,
+        line_total: '36.000',
+        unit_price: '20.000',
+      }),
+    ])
+  })
+
+  it('round-trips total price entry with an absolute discount without double-discounting', async () => {
+    companyConfigMock.enabledModules = ['Workshop', 'PurchaseBonus']
+    companyConfigMock.purchaseBonusEnabled = true
+    const line = makeLine({
+      quantity: '2',
+      unit_price: '17.500',
+      discount_percent: null,
+      discount_amount: '5.000',
+      tax_rate: '0',
+      line_total: '30.000',
+      free_quantity: '0',
+      price_entry_mode: 'total',
+    })
+
+    function ControlledEditor() {
+      const [currentLines, setCurrentLines] = useState<DocumentLine[]>([line])
+      return (
+        <DocumentLineEditor
+          documentType="purchase_order"
+          lines={currentLines}
+          onChange={(nextLines) => {
+            onChange(nextLines)
+            setCurrentLines(nextLines)
+          }}
+        />
+      )
+    }
+
+    render(<ControlledEditor />, { wrapper: createWrapper() })
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Unit Price' }), {
+      target: { value: '35.000' },
+    })
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({
+        price_entry_mode: 'total',
+        discount_percent: null,
+        discount_amount: '5.000',
+        line_total: '35.000',
+        unit_price: '20.000',
+      }),
+    ])
+  })
+
   it('lazily fetches bulk pricing context on unit-price focus and renders the hint', async () => {
     const user = userEvent.setup()
     vi.mocked(apiPost).mockResolvedValue({
