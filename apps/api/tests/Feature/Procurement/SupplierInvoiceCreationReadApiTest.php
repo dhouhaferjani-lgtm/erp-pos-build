@@ -342,8 +342,7 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
         ?string $number,
         GoodsReceiptStatus $status = GoodsReceiptStatus::Posted,
         array $overrides = [],
-    ): GoodsReceipt
-    {
+    ): GoodsReceipt {
         return GoodsReceipt::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,

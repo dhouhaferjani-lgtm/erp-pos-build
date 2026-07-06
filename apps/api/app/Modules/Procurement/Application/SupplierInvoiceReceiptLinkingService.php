@@ -8,7 +8,6 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;

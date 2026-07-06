@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\Modules\Media;
 
 use App\Modules\Media\Application\Services\MediaAttachmentService;
-use App\Modules\Media\Domain\Media\MediaAsset;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Media\MediaAsset;
 use App\Shared\Contracts\MediaServiceInterface;
 use App\Shared\DTOs\Media\MediaAttachmentView;
 use Illuminate\Foundation\Testing\RefreshDatabase;

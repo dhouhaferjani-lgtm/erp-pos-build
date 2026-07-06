@@ -11,10 +11,11 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Application\DTOs\ProductData;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Product;
-use App\Shared\Domain\CurrencyScale;
 use App\Shared\Contracts\ProductVariantLookup;
+use App\Shared\Domain\CurrencyScale;
 use App\Shared\DTOs\ProductVariantSummary;
 use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -98,7 +99,7 @@ final class LineEntryController extends Controller
             $lines,
         )));
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, Product> $products */
+        /** @var Collection<int, Product> $products */
         $products = Product::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)

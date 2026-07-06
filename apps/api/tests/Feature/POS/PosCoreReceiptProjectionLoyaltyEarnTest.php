@@ -23,12 +23,13 @@ use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
 use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Enums\TransactionType;
-use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
+use App\Shared\Contracts\Loyalty\SaleEarnContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -322,10 +323,11 @@ final class PosCoreReceiptProjectionLoyaltyEarnTest extends TestCase
         // container injects it into PosCoreReceiptProjection's constructor.
         $this->app->bind(
             LoyaltyEarningContract::class,
-            fn () => new class implements LoyaltyEarningContract {
-                public function earnForSale(\App\Shared\Contracts\Loyalty\SaleEarnContext $c): void
+            fn () => new class implements LoyaltyEarningContract
+            {
+                public function earnForSale(SaleEarnContext $c): void
                 {
-                    throw new \RuntimeException('boom');
+                    throw new RuntimeException('boom');
                 }
             },
         );

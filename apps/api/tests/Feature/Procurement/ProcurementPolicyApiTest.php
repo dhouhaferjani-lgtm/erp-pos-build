@@ -271,6 +271,7 @@ final class ProcurementPolicyApiTest extends TestCase
             'accepted_at' => now(),
         ]);
     }
+
     public function test_applying_a_preset_preserves_hand_tuned_tolerances(): void
     {
         $policy = ProcurementPolicy::create([
@@ -287,15 +288,15 @@ final class ProcurementPolicyApiTest extends TestCase
             'invoice_first_requires_approval' => false,
         ]);
 
-        $policy->applyPreset(\App\Modules\Procurement\Domain\Enums\ProcurementPreset::Leger)->save();
+        $policy->applyPreset(ProcurementPreset::Leger)->save();
         $policy->refresh();
 
         $this->assertSame(0, bccomp('7.50', $policy->variance_tolerance_percent, 2));
         $this->assertSame(0, bccomp('9.999', $policy->variance_tolerance_max_amount, 3));
-        $this->assertSame(\App\Modules\Procurement\Domain\Enums\MatchMode::TwoWay, $policy->match_mode);
+        $this->assertSame(MatchMode::TwoWay, $policy->match_mode);
         $this->assertTrue($policy->allowsReceiptFirst());
         $this->assertTrue($policy->allowsInvoiceFirst());
         $this->assertFalse($policy->requiresInvoiceFirstApproval());
-        $this->assertSame(\App\Modules\Procurement\Domain\Enums\ProcurementPreset::Leger, $policy->preset);
+        $this->assertSame(ProcurementPreset::Leger, $policy->preset);
     }
 }

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Accounting;
 
-use App\Modules\Accounting\Application\Services\Reports\AgedPayablesService;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\Reports\AgedPayablesService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;

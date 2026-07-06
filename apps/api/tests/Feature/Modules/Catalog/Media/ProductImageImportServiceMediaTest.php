@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Modules\Catalog\Media;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Domain\Enums\ImportStatus;
+use App\Modules\Import\Domain\Enums\ImportType;
+use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Media\Domain\Media\MediaAsset;
 use App\Modules\Media\Domain\Media\MediaAttachment;
-use App\Modules\Company\Domain\Company;
-use App\Modules\Identity\Domain\User;
-use App\Modules\Import\Domain\Enums\ImportStatus;
-use App\Modules\Import\Domain\Enums\ImportType;
-use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Product\Application\Services\ProductImageImportService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;

@@ -257,5 +257,4 @@ final class SalesOrderService
             confirmedAt: $confirmedAt,
         ));
     }
-
 }

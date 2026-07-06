@@ -6,11 +6,11 @@ namespace Tests\Feature\Modules\Catalog\Media;
 
 use App\Modules\Media\Application\Jobs\GenerateRenditions;
 use App\Modules\Media\Application\Services\MediaUploadService;
-use App\Modules\Media\Domain\Media\MediaAsset;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Media\MediaAsset;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;

@@ -6,13 +6,6 @@ namespace Tests\Feature\Modules\Product;
 
 use App\Enums\Vertical;
 use App\Modules\Catalog\Application\DTOs\ProductMediaData;
-use App\Modules\Media\Domain\Enums\MediaAssetType;
-use App\Modules\Media\Domain\Enums\MediaOwnerType;
-use App\Modules\Media\Domain\Enums\MediaRole;
-use App\Modules\Media\Domain\Enums\MediaSource;
-use App\Modules\Media\Domain\Enums\MediaStatus;
-use App\Modules\Media\Domain\Media\MediaAsset;
-use App\Modules\Media\Domain\Media\MediaAttachment;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
@@ -20,6 +13,13 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Media\Domain\Enums\MediaAssetType;
+use App\Modules\Media\Domain\Enums\MediaOwnerType;
+use App\Modules\Media\Domain\Enums\MediaRole;
+use App\Modules\Media\Domain\Enums\MediaSource;
+use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAttachment;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -28,6 +28,7 @@ use App\Shared\Contracts\CatalogMediaQueryInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Mockery\MockInterface;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -299,7 +300,7 @@ final class ProductDataMediaParityTest extends TestCase
         $fakeMap[$this->productB->id] = ProductMediaData::makeEmpty();
         $fakeMap[$this->productC->id] = ProductMediaData::makeEmpty();
 
-        /** @var \Mockery\MockInterface&CatalogMediaQueryInterface $spy */
+        /** @var MockInterface&CatalogMediaQueryInterface $spy */
         $spy = $this->mock(CatalogMediaQueryInterface::class);
 
         $spy->shouldReceive('forProducts')
@@ -309,6 +310,7 @@ final class ProductDataMediaParityTest extends TestCase
                 foreach ($ids as $id) {
                     $result[$id] = $fakeMap[$id] ?? ProductMediaData::makeEmpty();
                 }
+
                 return $result;
             });
 
