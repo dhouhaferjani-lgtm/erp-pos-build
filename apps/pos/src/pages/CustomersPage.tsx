@@ -8,7 +8,7 @@ import {
   listCustomers,
   updateCustomerSkinProfile,
 } from '@/lib/db/repositories/customerRepository';
-import { enqueuePendingCustomer } from '@/lib/db/repositories/pendingCustomerRepository';
+import { createPendingCustomer } from '@/lib/customer/pendingCustomerCreateService';
 import { apiPatch } from '@/lib/api';
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
 import { cn } from '@/lib/utils';
@@ -411,7 +411,9 @@ function AddCustomerForm({
         email: trimmedEmail || null,
       });
       const db = await getDatabase(companyId);
-      await enqueuePendingCustomer(db, {
+      // T-0001: writes the outbox row AND an optimistic `customers` mirror
+      // row, so the list reload in `onCreated` (listCustomers) finds it.
+      await createPendingCustomer(db, {
         client_customer_uuid: clientCustomerUuid,
         tenant_id: tenantId,
         company_id: companyId,

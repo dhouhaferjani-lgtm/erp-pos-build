@@ -2,10 +2,12 @@ import type Database from '@tauri-apps/plugin-sql';
 import { apiPost } from '@/lib/api';
 import {
   getPendingCustomers,
+  markPendingCustomerFailed,
   markPendingCustomerResolved,
   storeCustomerAlias,
   type PendingCustomerRow,
 } from '@/lib/db/repositories/pendingCustomerRepository';
+import { promoteCustomerServerId } from '@/lib/db/repositories/customerRepository';
 
 interface PendingCustomerAliasResponse {
   client_customer_uuid?: string;
@@ -79,18 +81,39 @@ export async function pushPendingCustomers(
   let resolved = 0;
 
   for (const row of pending) {
-    const response = assertResponse(
-      row,
-      await apiPost<PendingCustomerAliasResponse>('/pos/customers/pending', {
-        client_customer_uuid: row.client_customer_uuid,
-        name: row.name,
-        phone: row.phone,
-        email: row.email,
-      }),
-    );
+    let response: Required<PendingCustomerAliasResponse>;
+    try {
+      response = assertResponse(
+        row,
+        await apiPost<PendingCustomerAliasResponse>('/pos/customers/pending', {
+          client_customer_uuid: row.client_customer_uuid,
+          name: row.name,
+          phone: row.phone,
+          email: row.email,
+        }),
+      );
 
-    if (response.tenant_id !== tenantId || response.company_id !== companyId) {
-      throw new PendingCustomerSyncScopeError(tenantId, companyId, row, response);
+      if (response.tenant_id !== tenantId || response.company_id !== companyId) {
+        throw new PendingCustomerSyncScopeError(tenantId, companyId, row, response);
+      }
+    } catch (error) {
+      // A contract-violating response is permanent for this row: park it as
+      // failed so it stops poisoning the front of the queue and later rows
+      // still sync. Transient failures (network) propagate and retry next tick.
+      if (
+        error instanceof PendingCustomerSyncResponseError ||
+        error instanceof PendingCustomerSyncScopeError
+      ) {
+        await markPendingCustomerFailed(
+          db,
+          tenantId,
+          companyId,
+          row.client_customer_uuid,
+          error.message,
+        );
+        continue;
+      }
+      throw error;
     }
 
     await storeCustomerAlias(db, {
@@ -100,6 +123,15 @@ export async function pushPendingCustomers(
       server_partner_id: response.server_partner_id,
       resolved_at: response.resolved_at,
     });
+    // T-0001: re-key the optimistic mirror row written at create time so the
+    // delta pull upserts the server row onto it instead of duplicating it.
+    await promoteCustomerServerId(
+      db,
+      tenantId,
+      companyId,
+      row.client_customer_uuid,
+      response.server_partner_id,
+    );
     await markPendingCustomerResolved(db, tenantId, companyId, row.client_customer_uuid);
     resolved += 1;
   }

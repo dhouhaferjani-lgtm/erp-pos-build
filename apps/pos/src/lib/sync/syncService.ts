@@ -85,6 +85,7 @@ import { logSyncOperation, getSyncMetadata, setSyncMetadata, cleanupOldSyncLogs 
 import { coerceSyncError } from '@/lib/sync/coerceSyncError';
 import { reconcileOpenShift, applyShiftReconcileVerdict } from '@/lib/sync/shiftReconcile';
 import { pullCustomers } from '@/lib/customer/customerSyncService';
+import { pushPendingCustomers } from '@/lib/customer/pendingCustomerSyncService';
 import { withWriteTransaction } from '@/lib/db/writeGate';
 import {
   upsertVouchers,
@@ -164,7 +165,14 @@ export interface SyncResult {
    * `customersFailed` is set to `true` when the pull was skipped (missing
    * tenant/company context) or threw — it triggers `degraded` via
    * `errors.push()` (errors.length > 0 path in `computeDegraded`).
+   *
+   * T-0001 — `customersPushed` is the number of pending-customer outbox rows
+   * resolved server-side this tick (`pushPendingCustomers`). The push runs
+   * BEFORE the pull so the same tick's delta pull sees the server-created
+   * Partner rows. A push failure only surfaces in `errors` (degraded); it
+   * never sets `customersFailed` and never blocks the pull.
    */
+  customersPushed: number;
   customersPulled: number;
   customersFailed?: boolean;
   chainBreak: boolean;
@@ -2024,6 +2032,7 @@ export async function runFullSync(
   // Errors push into the shared `errors` array so `computeDegraded` picks
   // them up automatically via `errors.length > 0`. Cursor advancement lives
   // entirely inside `pullCustomers` (success-path-only) — no cursor logic here.
+  let customersPushed = 0;
   let customersPulled = 0;
   let customersFailed = false;
   {
@@ -2035,6 +2044,17 @@ export async function runFullSync(
       customersFailed = true;
       errors.push('Customer pull skipped: missing tenant/company context');
     } else {
+      // T-0001 — drain the pending-customer outbox BEFORE the delta pull so
+      // this tick's pull already sees the server-created Partner rows and
+      // the client→server alias promotion completes in one cycle. Failures
+      // are isolated like the other push steps: surfaced via `errors`
+      // (degraded tick), never blocking the pull below — the outbox rows
+      // stay 'pending' and are retried next tick.
+      try {
+        customersPushed = await pushPendingCustomers(db, tenantId, companyId);
+      } catch (e) {
+        errors.push(`Customer push failed: ${coerceSyncError(e)}`);
+      }
       try {
         customersPulled = await pullCustomers(db, tenantId, companyId);
       } catch (e) {
@@ -2138,6 +2158,7 @@ export async function runFullSync(
     vouchersPulled,
     voucherLedgerPulled,
     receiptQrIndexPulled,
+    customersPushed,
     customersPulled,
     customersFailed,
     chainBreak,

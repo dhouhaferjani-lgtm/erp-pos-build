@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { User, UserPlus, Wallet, X } from 'lucide-react';
 import { getDatabase } from '@/lib/db';
-import { enqueuePendingCustomer } from '@/lib/db/repositories/pendingCustomerRepository';
+import { createPendingCustomer } from '@/lib/customer/pendingCustomerCreateService';
 import { isBalanceStale } from '@/lib/db/repositories/customerRepository';
 import { usePaymentStore, type AttachedCheckoutCustomer } from '@/stores/paymentStore';
 import { cn } from '@/lib/utils';
@@ -141,7 +141,9 @@ export function CustomerAttachBody({
       });
       const timestamp = now().toISOString();
       const db = await getDatabase(companyId);
-      await enqueuePendingCustomer(db, {
+      // T-0001: writes the outbox row AND an optimistic `customers` mirror
+      // row so local search/list see the new customer immediately.
+      await createPendingCustomer(db, {
         client_customer_uuid: clientCustomerUuid,
         tenant_id: tenantId,
         company_id: companyId,

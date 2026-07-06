@@ -122,6 +122,9 @@ vi.mock('@/stores/terminalStore', () => ({
       shift: { id: 'shift-1' },
     }),
   },
+  // paymentStore imports this named export; the module factory must provide
+  // it or the account-payment path throws at call time.
+  fiscalShiftIdForReceipt: vi.fn((shift: { id: string }) => shift.id),
 }));
 
 vi.mock('@/stores/syncStore', () => ({
@@ -234,7 +237,9 @@ describe('CustomerSearchModal', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('customer.searchLabel'), { target: { value: 'mariam' } });
+    // This file's i18n mock resolves keys through en/pos.json, so the label
+    // is the translated string, not the raw key.
+    fireEvent.change(screen.getByLabelText('Customer search'), { target: { value: 'mariam' } });
     fireEvent.click(await screen.findByText('Mariam Ben Ali'));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDatabase } from '@/lib/db';
 import { migrations } from '@/lib/db/migrations';
 import { getPendingCustomers } from '@/lib/db/repositories/pendingCustomerRepository';
-import { upsertCustomer } from '@/lib/db/repositories/customerRepository';
+import { searchCustomers, upsertCustomer } from '@/lib/db/repositories/customerRepository';
 import { SqliteTestAdapter } from '@/lib/db/__tests__/helpers/sqliteTestAdapter';
 import { usePaymentStore } from '@/stores/paymentStore';
 import type { CustomerMirrorRow } from '@/lib/customer/customerTypes';
@@ -123,6 +123,9 @@ vi.mock('@/stores/terminalStore', () => ({
       shift: { id: 'shift-1' },
     }),
   },
+  // paymentStore imports this named export; the module factory must provide
+  // it or the account-payment path throws at call time.
+  fiscalShiftIdForReceipt: vi.fn((shift: { id: string }) => shift.id),
 }));
 
 vi.mock('@/stores/syncStore', () => ({
@@ -247,6 +250,15 @@ describe('CustomerAttachPanel', () => {
         phone: '+216 99 100 200',
         status: 'pending',
       },
+    ]);
+
+    // T-0001 Part A regression guard: the new customer must be immediately
+    // visible to the local search/list path (customers mirror), not only
+    // queued in the outbox.
+    await expect(
+      searchCustomers(db, { tenant_id: 'tenant-1', company_id: 'company-1', query: 'amina' }),
+    ).resolves.toMatchObject([
+      { id: '5bb57558-fcb5-48b1-8575-a99da4c58149', name: 'Amina Trabelsi' },
     ]);
   });
 

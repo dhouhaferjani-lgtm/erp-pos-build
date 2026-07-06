@@ -13,12 +13,17 @@ vi.mock('@/lib/db/repositories/pendingCustomerRepository', () => ({
   StaleCustomerAliasConflictError: class StaleCustomerAliasConflictError extends Error {},
 }));
 
+vi.mock('@/lib/db/repositories/customerRepository', () => ({
+  promoteCustomerServerId: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { apiPost } from '@/lib/api';
 import {
   getPendingCustomers,
   markPendingCustomerResolved,
   storeCustomerAlias,
 } from '@/lib/db/repositories/pendingCustomerRepository';
+import { promoteCustomerServerId } from '@/lib/db/repositories/customerRepository';
 import {
   PendingCustomerSyncResponseError,
   PendingCustomerSyncScopeError,
@@ -78,6 +83,16 @@ describe('pushPendingCustomers', () => {
       server_partner_id: 'server-partner-1',
       resolved_at: '2026-05-21T12:01:00.000Z',
     });
+    // T-0001 Part A: the optimistic mirror row (keyed by the client uuid)
+    // must be re-keyed to the server partner id so the later pull upserts
+    // onto the SAME row instead of duplicating it.
+    expect(promoteCustomerServerId).toHaveBeenCalledWith(
+      db,
+      TENANT_ID,
+      COMPANY_ID,
+      'client-customer-1',
+      'server-partner-1',
+    );
     expect(markPendingCustomerResolved).toHaveBeenCalledWith(
       db,
       TENANT_ID,
@@ -102,6 +117,7 @@ describe('pushPendingCustomers', () => {
     );
 
     expect(storeCustomerAlias).not.toHaveBeenCalled();
+    expect(promoteCustomerServerId).not.toHaveBeenCalled();
     expect(markPendingCustomerResolved).not.toHaveBeenCalled();
   });
 
@@ -121,6 +137,7 @@ describe('pushPendingCustomers', () => {
     );
 
     expect(storeCustomerAlias).not.toHaveBeenCalled();
+    expect(promoteCustomerServerId).not.toHaveBeenCalled();
     expect(markPendingCustomerResolved).not.toHaveBeenCalled();
   });
 });

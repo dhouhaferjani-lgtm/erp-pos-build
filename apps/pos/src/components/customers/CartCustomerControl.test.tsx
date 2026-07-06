@@ -2,7 +2,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { CartCustomerControl } from './CartCustomerControl';
 
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
+// Keep the real module surface (initReactI18next etc. are pulled in via the
+// component's import chain) and only stub the hook to echo raw keys.
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return { ...actual, useTranslation: () => ({ t: (k: string) => k }) };
+});
 
 const mockState: { selectedCustomer: unknown } = { selectedCustomer: null };
 vi.mock('@/stores/paymentStore', () => ({

@@ -131,6 +131,55 @@ export async function upsertCustomer(db: Database, input: CustomerMirrorRow): Pr
   );
 }
 
+/**
+ * T-0001 — re-key an optimistic pending-customer mirror row (keyed by its
+ * client uuid, written by `createPendingCustomer`) to the server partner id
+ * returned by `POST /pos/customers/pending`.
+ *
+ * Two shapes, both ending with exactly one row under the server id:
+ *   - normal: only the optimistic row exists → `UPDATE OR IGNORE` re-keys it
+ *     in place, the follow-up DELETE matches nothing;
+ *   - pull-first race: a delta pull already delivered the server row → the
+ *     UPDATE is skipped by OR IGNORE (PK conflict) and the DELETE drops the
+ *     stale optimistic row, leaving the server row untouched.
+ *
+ * The durable client→server mapping stays in `customer_aliases`
+ * (`storeCustomerAlias`); this only keeps the search/list mirror
+ * duplicate-free across the push→pull round-trip.
+ */
+export async function promoteCustomerServerId(
+  db: Database,
+  tenantId: string,
+  companyId: string,
+  clientCustomerUuid: string,
+  serverPartnerId: string,
+): Promise<void> {
+  assertPresent('tenant_id', tenantId);
+  assertPresent('company_id', companyId);
+  assertPresent('client_customer_uuid', clientCustomerUuid);
+  assertPresent('server_partner_id', serverPartnerId);
+
+  if (clientCustomerUuid === serverPartnerId) return;
+
+  await execute(
+    db,
+    `UPDATE OR IGNORE customers
+        SET id = $4
+      WHERE tenant_id = $1
+        AND company_id = $2
+        AND id = $3`,
+    [tenantId, companyId, clientCustomerUuid, serverPartnerId],
+  );
+  await execute(
+    db,
+    `DELETE FROM customers
+      WHERE tenant_id = $1
+        AND company_id = $2
+        AND id = $3`,
+    [tenantId, companyId, clientCustomerUuid],
+  );
+}
+
 export async function getCustomerById(
   db: Database,
   tenantId: string,

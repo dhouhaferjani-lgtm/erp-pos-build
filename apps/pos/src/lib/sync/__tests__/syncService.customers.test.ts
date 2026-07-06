@@ -38,6 +38,12 @@ vi.mock('@/lib/customer/customerSyncService', () => ({
   pullCustomers: vi.fn().mockResolvedValue(0),
 }));
 
+// T-0001 Part B target: pushPendingCustomers must run in the SAME tick,
+// BEFORE pullCustomers.
+vi.mock('@/lib/customer/pendingCustomerSyncService', () => ({
+  pushPendingCustomers: vi.fn().mockResolvedValue(0),
+}));
+
 vi.mock('@/lib/db/repositories/offlineReceiptRepository', async () => {
   const actual = await vi.importActual<
     typeof import('@/lib/db/repositories/offlineReceiptRepository')
@@ -176,6 +182,7 @@ vi.mock('@/stores/authStore', () => ({
 
 import { runFullSync } from '../syncService';
 import { pullCustomers } from '@/lib/customer/customerSyncService';
+import { pushPendingCustomers } from '@/lib/customer/pendingCustomerSyncService';
 import { useAuthStore } from '@/stores/authStore';
 import { apiGet } from '@/lib/api';
 
@@ -310,5 +317,91 @@ describe('Task 22 — pullCustomers wired into runFullSync', () => {
     // paymentConfigPulled runs BEFORE the customer pull — must still succeed,
     // confirming the tick's push+pull phases completed independently.
     expect(result.paymentConfigPulled).toBe(true);
+  });
+});
+
+// ─── T-0001 Part B — pushPendingCustomers wired into runFullSync ─────────────
+//
+// Root cause 2 of the "add customer never reaches the server" bug:
+// pushPendingCustomers had ZERO callers — the outbox filled up forever.
+// It must drain BEFORE pullCustomers in the same tick so the pull sees the
+// server-created Partner rows and the client→server alias promotion
+// completes in one cycle.
+
+describe('T-0001 — pushPendingCustomers wired into runFullSync', () => {
+  let db: ReturnType<typeof makeMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = makeMockDb();
+
+    vi.mocked(useAuthStore.getState).mockReturnValue({
+      user: { id: 'u1', tenantId: 'tenant-1' },
+      companyId: 'company-1',
+      refreshCompanyConfig: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    void (async () => {
+      const { useProductStore } = await import('@/stores/productStore');
+      useProductStore.setState({
+        companyConfig: {
+          company_id: 'company-1',
+          all_enabled_modules: ['POS'],
+        } as never,
+      });
+    })();
+
+    setupApiGetSequence();
+  });
+
+  it('calls pushPendingCustomers with tenant/company BEFORE pullCustomers and reports customersPushed', async () => {
+    vi.mocked(pushPendingCustomers).mockResolvedValueOnce(2);
+
+    const result = await runFullSync(db, 'terminal-1');
+
+    // Regression guard: the orphaned push function must now be called.
+    expect(pushPendingCustomers).toHaveBeenCalledOnce();
+    expect(pushPendingCustomers).toHaveBeenCalledWith(db, 'tenant-1', 'company-1');
+
+    // Ordering: push must complete before the pull starts, so the pull's
+    // delta window includes the customers the push just created server-side.
+    // (Fallbacks make a missing invocation fail the comparison loudly.)
+    const pushOrder =
+      vi.mocked(pushPendingCustomers).mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
+    const pullOrder =
+      vi.mocked(pullCustomers).mock.invocationCallOrder[0] ?? Number.NEGATIVE_INFINITY;
+    expect(pushOrder).toBeLessThan(pullOrder);
+
+    expect(result.customersPushed).toBe(2);
+    expect(result.customersFailed).toBeFalsy();
+  });
+
+  it('continues to pullCustomers (and the rest of the tick) when the push throws', async () => {
+    vi.mocked(pushPendingCustomers).mockRejectedValueOnce(new Error('Network error'));
+    vi.mocked(pullCustomers).mockResolvedValueOnce(3);
+
+    const result = await runFullSync(db, 'terminal-1');
+
+    // Push failure is isolated: pull still runs in the same tick.
+    expect(pullCustomers).toHaveBeenCalledOnce();
+    expect(result.customersPushed).toBe(0);
+    expect(result.customersPulled).toBe(3);
+    // Surfaced as a degraded-tick error, but NOT as a pull failure.
+    expect(result.customersFailed).toBeFalsy();
+    expect(result.errors.some((e) => e.includes('Customer push failed'))).toBe(true);
+    expect(result.degraded).toBe(true);
+  });
+
+  it('skips the push when tenant/company context is missing', async () => {
+    vi.mocked(useAuthStore.getState).mockReturnValue({
+      user: null,
+      companyId: null,
+      refreshCompanyConfig: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    const result = await runFullSync(db, 'terminal-1');
+
+    expect(pushPendingCustomers).not.toHaveBeenCalled();
+    expect(result.customersPushed).toBe(0);
   });
 });

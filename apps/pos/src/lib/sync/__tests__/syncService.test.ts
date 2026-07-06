@@ -132,6 +132,13 @@ vi.mock('@/lib/customer/customerSyncService', () => ({
   pullCustomers: vi.fn().mockResolvedValue(0),
 }));
 
+// T-0001 — pushPendingCustomers now runs before pullCustomers in the same
+// tick. Mocked for the same reason as pullCustomers above; behaviour is
+// covered in syncService.customers.test.ts.
+vi.mock('@/lib/customer/pendingCustomerSyncService', () => ({
+  pushPendingCustomers: vi.fn().mockResolvedValue(0),
+}));
+
 vi.mock('@/lib/db/repositories/terminalStateRepository', () => ({
   upsertTerminalState: vi.fn().mockResolvedValue(undefined),
   setShiftNumberSeed: vi.fn().mockResolvedValue(undefined),
