@@ -51,7 +51,10 @@ final readonly class StandaloneReceiptService
 
         $company = Company::query()->with('tenant')->findOrFail($input->companyId);
         $policy = $this->policyResolver->forCompany($company->id);
-        if (! $policy->allowsReceiptFirst()) {
+        if ($input->source === self::SOURCE_INVOICE_FIRST && ! $policy->allowsInvoiceFirst()) {
+            throw new \DomainException("Invoice-first procurement is disabled for company [{$company->id}].");
+        }
+        if ($input->source === self::SOURCE_STANDALONE_RECEIPT && ! $policy->allowsReceiptFirst()) {
             throw new \DomainException("Receipt-first procurement is disabled for company [{$company->id}].");
         }
 

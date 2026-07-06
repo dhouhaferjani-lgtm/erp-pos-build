@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
@@ -40,7 +41,8 @@ final class CreateSupplierInvoiceService
         private readonly TaxCalculationService $taxCalculationService,
         private readonly SupplierInvoiceMatcher $matcher,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
-        private readonly ReceiptLineConsumptionPlanner $receiptPlanner,
+        private readonly SupplierInvoiceMatchSnapshotService $matchSnapshotService,
+        private readonly ProcurementPolicyResolver $policyResolver,
     ) {}
 
     /**
@@ -55,16 +57,23 @@ final class CreateSupplierInvoiceService
         /** @var array<int, array<string, mixed>> $lines */
         $lines = $validated['lines'];
         /** @var list<string> $sourceDocumentIds */
-        $sourceDocumentIds = array_values(array_map('strval', $validated['source_document_ids'] ?? [$validated['source_document_id']]));
+        $sourceDocumentIds = array_values(array_map('strval', $validated['source_document_ids'] ?? []));
+        if ($sourceDocumentIds === [] && isset($validated['source_document_id'])) {
+            $sourceDocumentIds = [(string) $validated['source_document_id']];
+        }
+        $pendingReceipt = (bool) ($validated['pending_receipt'] ?? false);
+        if ($pendingReceipt && ! $this->policyResolver->forCompany($companyId)->allowsInvoiceFirst()) {
+            throw new \DomainException("Invoice-first procurement is disabled for company [{$companyId}].");
+        }
 
-        return DB::transaction(function () use ($tenantId, $companyId, $validated, $lines, $currency, $scale, $sourceDocumentIds): Document {
+        return DB::transaction(function () use ($tenantId, $companyId, $validated, $lines, $currency, $scale, $sourceDocumentIds, $pendingReceipt): Document {
             $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::SupplierInvoice);
 
             // ── Pass 1: compute per-line amounts at scale+1 before rounding ─────
             $subtotal = '0';
             $lineTaxTotal = '0';
 
-            /** @var array<int, array{qty: numeric-string, unitPrice: numeric-string, vatRate: numeric-string, lineSubtotal: numeric-string, lineTax: numeric-string, sourceLineId: string, isBonusLine: bool}> $lineData */
+            /** @var array<int, array{qty: numeric-string, unitPrice: numeric-string, vatRate: numeric-string, lineSubtotal: numeric-string, lineTax: numeric-string, sourceLineId: string|null, productId: string|null, variantId: string|null, isBonusLine: bool}> $lineData */
             $lineData = [];
 
             foreach ($lines as $lineInput) {
@@ -100,7 +109,9 @@ final class CreateSupplierInvoiceService
                     'vatRate' => $vatRate,
                     'lineSubtotal' => $lineSubtotal,
                     'lineTax' => $lineTax,
-                    'sourceLineId' => (string) $lineInput['source_line_id'],
+                    'sourceLineId' => isset($lineInput['source_line_id']) ? (string) $lineInput['source_line_id'] : null,
+                    'productId' => isset($lineInput['product_id']) ? (string) $lineInput['product_id'] : null,
+                    'variantId' => isset($lineInput['variant_id']) ? (string) $lineInput['variant_id'] : null,
                     'isBonusLine' => (bool) ($lineInput['is_bonus_line'] ?? $lineInput['isBonusLine'] ?? false),
                 ];
             }
@@ -110,7 +121,7 @@ final class CreateSupplierInvoiceService
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
                 'partner_id' => $validated['partner_id'],
-                'source_document_id' => $sourceDocumentIds[0],
+                'source_document_id' => $sourceDocumentIds[0] ?? null,
                 'type' => DocumentType::SupplierInvoice,
                 'fiscal_category' => FiscalCategory::NonFiscal,
                 'fiscal_status' => FiscalStatus::Draft,
@@ -129,6 +140,7 @@ final class CreateSupplierInvoiceService
                 'payload' => [
                     'supplier_invoice' => [
                         'source_document_ids' => $sourceDocumentIds,
+                        'pending_receipt' => $pendingReceipt,
                     ],
                 ],
                 'match_status' => SupplierInvoiceMatchStatus::Unmatched,
@@ -139,10 +151,13 @@ final class CreateSupplierInvoiceService
             $plannedBySourceLine = [];
             foreach ($lineData as $idx => $ld) {
                 /** @var DocumentLine|null $poLine */
-                $poLine = DocumentLine::find($ld['sourceLineId']);
-                $description = $poLine !== null ? $poLine->description : '';
+                $poLine = $ld['sourceLineId'] !== null ? DocumentLine::find($ld['sourceLineId']) : null;
+                $productId = $ld['productId'] ?? $poLine?->product_id;
+                $variantId = $ld['variantId'] ?? $poLine?->variant_id;
+                $product = $productId !== null ? Product::query()->find($productId) : null;
+                $description = $poLine !== null ? $poLine->description : ($product instanceof Product ? $product->name : '');
                 $snapshotAttributes = ['price_match_basis' => null, 'matched_receipt_line_id' => null];
-                if (! $ld['isBonusLine']) {
+                if ($ld['sourceLineId'] !== null && ! $ld['isBonusLine']) {
                     $alreadyPlanned = $plannedBySourceLine[$ld['sourceLineId']] ?? '0.0000';
                     $snapshotAttributes = $this->matchSnapshotAttributes($ld['sourceLineId'], $ld['qty'], $alreadyPlanned);
                     /** @var numeric-string $nextPlanned */
@@ -153,6 +168,9 @@ final class CreateSupplierInvoiceService
                 DocumentLine::create([
                     'document_id' => $document->id,
                     'line_number' => $idx + 1,
+                    'product_id' => $productId,
+                    'variant_id' => $variantId,
+                    'product_code' => $poLine->product_code ?? ($product instanceof Product ? $product->sku : null),
                     'description' => $description,
                     'quantity' => $ld['qty'],
                     'quantity_delivered' => '0.0000',
@@ -198,7 +216,7 @@ final class CreateSupplierInvoiceService
 
             // ── Auto-match ───────────────────────────────────────────────────────
             $document->load('lines');
-            $matchStatus = $this->matcher->match($document);
+            $matchStatus = $pendingReceipt ? SupplierInvoiceMatchStatus::Unmatched : $this->matcher->match($document);
             $document->match_status = $matchStatus;
             $document->save();
 
@@ -213,37 +231,6 @@ final class CreateSupplierInvoiceService
      */
     private function matchSnapshotAttributes(string $sourceLineId, string $qty, string $qtyAlreadyPlanned = '0.0000'): array
     {
-        /** @var DocumentLine|null $poLine */
-        $poLine = DocumentLine::query()->find($sourceLineId);
-        if ($poLine === null) {
-            return ['price_match_basis' => null, 'matched_receipt_line_id' => null];
-        }
-
-        $slices = $this->receiptPlanner->plan($sourceLineId, $qty, $qtyAlreadyPlanned);
-        if ($slices === []) {
-            return [
-                'price_match_basis' => CurrencyScale::bcformatStrict((string) ($poLine->accrual_unit_cost ?? $poLine->landed_unit_cost ?? $poLine->unit_price), 6),
-                'matched_receipt_line_id' => null,
-            ];
-        }
-
-        /** @var numeric-string $totalQty */
-        $totalQty = '0.0000';
-        /** @var numeric-string $totalValue */
-        $totalValue = '0.0000000';
-        foreach ($slices as $slice) {
-            $totalQty = bcadd($totalQty, $slice['qty'], 4);
-            $totalValue = bcadd($totalValue, bcmul($slice['qty'], $slice['basis'], 7), 7);
-        }
-
-        /** @var numeric-string $weighted */
-        $weighted = bccomp($totalQty, '0', 4) > 0
-            ? bcdiv($totalValue, $totalQty, 7)
-            : (string) ($poLine->accrual_unit_cost ?? $poLine->landed_unit_cost ?? $poLine->unit_price);
-
-        return [
-            'price_match_basis' => CurrencyScale::bcformatStrict(CurrencyScale::bcround($weighted, 6), 6),
-            'matched_receipt_line_id' => $slices[0]['receipt_line_id'],
-        ];
+        return $this->matchSnapshotService->forSourceLine($sourceLineId, $qty, $qtyAlreadyPlanned);
     }
 }

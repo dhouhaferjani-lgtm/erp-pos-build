@@ -9,6 +9,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Procurement\Application\ProcurementPolicyResolver;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
@@ -30,6 +31,7 @@ final class CreateSupplierInvoiceRequest extends FormRequest
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly ProcurementPolicyResolver $policyResolver,
     ) {
         parent::__construct();
     }
@@ -63,8 +65,13 @@ final class CreateSupplierInvoiceRequest extends FormRequest
     {
         $companyId = $this->companyContext->requireCompanyId();
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $invoiceFirstWithoutSources = $this->boolean('invoice_first_delivered') || $this->boolean('pending_receipt');
+        $sourceDocumentIdsRule = $invoiceFirstWithoutSources ? ['nullable', 'array'] : ['required', 'array', 'min:1'];
+        $sourceLineIdRule = $invoiceFirstWithoutSources ? ['nullable', 'uuid'] : ['required', 'uuid'];
 
         return [
+            'invoice_first_delivered' => ['sometimes', 'boolean'],
+            'pending_receipt' => ['sometimes', 'boolean'],
             'partner_id' => [
                 'required',
                 'uuid',
@@ -75,20 +82,38 @@ final class CreateSupplierInvoiceRequest extends FormRequest
                 'uuid',
                 ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
             ],
-            'source_document_ids' => ['required', 'array', 'min:1'],
+            'source_document_ids' => $sourceDocumentIdsRule,
             'source_document_ids.*' => [
                 'required',
                 'uuid',
                 'distinct',
                 ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
             ],
+            'location_id' => [
+                $this->boolean('invoice_first_delivered') ? 'required' : 'nullable',
+                'uuid',
+                ScopedExists::company('locations', $companyId),
+            ],
+            'idempotency_key' => [
+                $this->boolean('invoice_first_delivered') ? 'required' : 'nullable',
+                'string',
+                'max:64',
+            ],
+            'external_reference' => ['nullable', 'string', 'max:255'],
+            'external_date' => ['nullable', 'date'],
             'currency' => ['required', 'string', 'size:3'],
             'issue_date' => ['required', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:issue_date'],
             'supplier_reference' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'lines' => ['required', 'array', 'min:1'],
-            'lines.*.source_line_id' => ['required', 'uuid'],
+            'lines.*.source_line_id' => $sourceLineIdRule,
+            'lines.*.product_id' => [
+                $this->boolean('invoice_first_delivered') ? 'required' : 'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('products', $tenantId, $companyId),
+            ],
+            'lines.*.variant_id' => ['nullable', 'uuid'],
             'lines.*.quantity' => [
                 'required',
                 'numeric',
@@ -108,6 +133,10 @@ final class CreateSupplierInvoiceRequest extends FormRequest
                 'max:100',
                 'regex:/^-?\d+(\.\d{1,2})?$/',
             ],
+            'lines.*.batch' => ['nullable', 'array'],
+            'lines.*.batch.batch_number' => ['required_with:lines.*.batch', 'string', 'max:100'],
+            'lines.*.batch.expiry_date' => ['required_with:lines.*.batch', 'date_format:Y-m-d'],
+            'lines.*.batch.manufacturing_date' => ['nullable', 'date_format:Y-m-d'],
         ];
     }
 
@@ -129,6 +158,15 @@ final class CreateSupplierInvoiceRequest extends FormRequest
 
             /** @var array<string, mixed> $data */
             $data = $v->getData();
+            $invoiceFirstRequested = (bool) ($data['invoice_first_delivered'] ?? false) || (bool) ($data['pending_receipt'] ?? false);
+            if ($invoiceFirstRequested && ! $this->policyResolver->forCompany($this->companyContext->requireCompanyId())->allowsInvoiceFirst()) {
+                $v->errors()->add(
+                    'pending_receipt',
+                    'Invoice-first supplier invoices are disabled for this company.'
+                );
+
+                return;
+            }
 
             /** @var list<string> $sourceDocumentIds */
             $sourceDocumentIds = array_values(array_filter(
