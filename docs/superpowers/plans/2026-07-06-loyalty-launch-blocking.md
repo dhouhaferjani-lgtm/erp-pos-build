@@ -165,7 +165,7 @@ final readonly class ProgramBootstrapService
 
 - [ ] **Step 4: Run the test — PASS.** If `LoyaltyProgram::factory()` lacks needed states, check `database/factories` (`LoyaltyProgramFactory` exists — entity declares it).
 
-- [ ] **Step 5: Wire into ParapharmacySeeder.** In `run()`, after the `seedPartners` block (~line 390, before "7. Seed stock levels"), add — resolving the service via **method injection is not available in a plain protected flow**, so resolve once at the top of `run()` if `run()` already receives container-injected dependencies, otherwise add a `run(ProgramBootstrapService $loyaltyBootstrap)` parameter (Laravel seeders support method injection on `run()`); pass it down or store on the seeder:
+- [ ] **Step 5: Wire into ParapharmacySeeder.** **Do NOT change the `run()` signature** — `DemoPharmacySeeder::run()` calls `parent::run()` with zero args (plain PHP call, no container injection), so a required parameter fatals the demo seeding (adversarial review MAJOR-1). Instead **constructor-inject** the service (`public function __construct(private readonly ProgramBootstrapService $loyaltyBootstrap) {}` — seeders are container-resolved and `DemoPharmacySeeder` inherits the ctor; if `ParapharmacySeeder` already has a constructor, add the param there). Then in `run()`, after the `seedPartners` block (~line 390, before "7. Seed stock levels"), add:
 
 ```php
 // 6b. Guarantee an ACTIVE loyalty program (extra is enabled at line ~473 but
@@ -180,7 +180,7 @@ $loyaltyBootstrap->ensureActiveProgram(
 $this->command->info('✓ Loyalty program active');
 ```
 
-`DemoPharmacySeeder extends ParapharmacySeeder` and its first run delegates to `ParapharmacySeeder::run()` — no separate change needed; confirm by reading `DemoPharmacySeeder::run()` (line ~337 comment) while wiring.
+`DemoPharmacySeeder extends ParapharmacySeeder`; its FIRST run delegates to `parent::run()` and gets this for free. **Its RE-RUN branch skips `parent::run()`** (`DemoPharmacySeeder.php:369-388`) — so ALSO call `$this->loyaltyBootstrap->ensureActiveProgram($this->tenant->id, $this->localeCurrency(), 'Programme fidélité')` (or the equivalent tenant reference in that scope — read the re-run closure) inside the re-run tenant closure (`DemoPharmacySeeder.php:391+`), otherwise an already-provisioned demo/staging tenant stays program-less on redeploy (adversarial review MAJOR-2). It's idempotent, so calling it in both paths is safe. Add to the PR deploy note: tenants provisioned BEFORE this change need one re-run of the demo seeder (or a manual `ensureActiveProgram`) to get their program.
 
 - [ ] **Step 6: PHPStan + commit**
 
@@ -299,8 +299,13 @@ public function test_endpoints_require_loyalty_enroll_permission(): void
 // user WITHOUT the permission → 403 on both routes
 
 public function test_module_gate_blocks_tenant_without_loyalty_extra(): void
-// tenant enabled_extras [] → 403/404 per RequireModule behavior (assert same
-// status the existing LoyaltyPOSControllerTest module-gate test asserts)
+// tenant enabled_extras [] → assertStatus(403) (RequireModule aborts 403)
+
+public function test_cross_tenant_partner_is_not_reachable(): void
+// partner + member created under tenant B; acting as tenant A user with
+// loyalty.enroll, GET and POST enroll for that partner id → 404 (db-per-tenant:
+// the row simply doesn't exist on tenant A's connection). Mirror the
+// LoyaltyTenantIsolationTest arrangement.
 ```
 
 Write them as real PHPUnit methods with full arrange/act/assert (mirror sibling tests' style, `postJson`/`getJson`, assert JSON paths).
@@ -411,7 +416,7 @@ git commit -m "feat(loyalty): partner loyalty summary + enroll-by-partner endpoi
 - [ ] **Step 1: Failing Vitest** — render states: not-member → Enroll button (permission `loyalty.enroll` mocked true); member → points balance + program name + tier; no `loyalty.enroll` → enroll button hidden but balance still shown; mutation called with typed phone. `vi.mock` the hooks module and `usePermissions` (component-test mocking is allowed by repo conventions). Assert rendered text/testids, not classes.
 - [ ] **Step 2: Run — FAIL** (`cd apps/web && pnpm test src/features/loyalty/__tests__/PartnerLoyaltyCard.test.tsx`).
 - [ ] **Step 3: Implement.** API fns return `apiGet`/`apiPost` directly (NO double-unwrap). Card = a `Card` in the overview grid matching the Balance-card idiom (reuse the same Card/typography components the page already imports; tokens only). Enroll modal: phone input prefilled with `partnerPhone`, note text "enrolls into the active program"; submit → mutation → invalidate. All strings `t('loyalty:partnerCard.*')`; add keys (`title`, `points`, `tier`, `notMember`, `enroll`, `phoneLabel`, `enrollSuccess`, `enrollError`) to EVERY locale's `loyalty.json`.
-- [ ] **Step 4: Wire into `PartnerDetailPage`** overview grid (after the Business Information card, ~line 512):
+- [ ] **Step 4: Wire into `PartnerDetailPage`** overview grid (after the Business Information card, ~line 512). The page does NOT currently import `usePermissions` — add the import (`import { usePermissions } from '@/hooks/usePermissions'`):
 
 ```tsx
 {showLoyaltyCard && (
@@ -446,7 +451,7 @@ const showLoyaltyCard =
 - Consumes: existing `POST /loyalty/pos/balance` (find-or-create + enroll on phone — NO new backend endpoint; gated `pos.operate_terminal` which cashiers hold).
 - Produces: `useLoyaltyBalance(customer): { balance: LoyaltyBalance | null; refresh: () => void }` (**signature change** — update its one consumer, the badge); `enrollLoyalty(customerId: string, phone: string): Promise<LoyaltyBalance>` posting `{partner_id, phone}`.
 
-- [ ] **Step 1: Failing Vitest**: (a) not-enrolled + `rate !== null` renders an Enroll button (not the inert text); (b) `rate === null` (no active program) keeps the old quiet state, no button; (c) dialog submit calls `enrollLoyalty` with the typed phone then `refresh`; (d) enrolled state unchanged.
+- [ ] **Step 1: Failing Vitest**: (a) not-enrolled + `rate !== null` renders an Enroll button (not the inert text); (b) not-enrolled + `rate === null` (no active program) renders NOTHING — the badge's existing `if (!balance.enrolled && estimate === null) return null` early return; assert no button AND no chrome; (c) dialog submit calls `enrollLoyalty` with the typed phone then `refresh`; (d) enrolled state unchanged.
 - [ ] **Step 2: Run — FAIL** (`cd apps/pos && pnpm test`... scope to the file).
 - [ ] **Step 3: Implement.**
 
@@ -516,19 +521,26 @@ public function test_concurrent_style_duplicate_insert_hits_unique_constraint():
 // same (enrollment_id, 'pos_receipt', $sourceId) + transaction_type 'earn'
 // → expect Illuminate\Database\QueryException (SQLSTATE 23505)
 
-public function test_earnPoints_translates_unique_violation_to_already_earned(): void
-// simulate the TOCTOU: delete nothing, monkey-approach — call earnPoints twice but
-// neutralize the pre-check by pointing findBySourceDocument at a Transaction
-// with transaction_type 'redeem' for the same source (pre-check only blocks Earn)…
-// simplest deterministic arrangement: first earn normally, then UPDATE the row's
-// transaction_type to 'redeem' in SQL? NO — that breaches the index predicate.
-// Deterministic arrangement that exercises the catch: insert a competing Earn row
-// directly (as above) BETWEEN check and insert is not reproducible in-process —
-// instead assert the catch branch by calling the repository save path guarded in
-// earnPoints: seed the competing row, then call earnPoints and expect
-// InvalidArgumentException with message containing 'already earned'
-// (the PRE-CHECK will catch it — also fine: assert message + that exactly ONE
-// earn row exists). The constraint-path unit is covered by the first test.
+public function test_translateEarnDuplicate_converts_constraint_violation(): void
+// The pre-check is strictly broader than the index, so the catch branch is
+// unreachable in a single-connection test (adversarial review MAJOR-3). Extract
+// the translation into a small internal method and unit-test IT directly:
+//   translateEarnDuplicate(QueryException $e, string $sourceType, string $sourceId): ?InvalidArgumentException
+//   → returns the InvalidArgumentException("Points already earned for …") when
+//     errorInfo[0]==='23505' && message contains 'loyalty_txn_earn_source_unique',
+//     null otherwise. earnPoints' catch becomes:
+//       if (($iae = $this->translateEarnDuplicate($e, $sourceType, $sourceId)) !== null) { throw $iae; }
+//       throw $e;
+// Test with FABRICATED QueryExceptions (constructor takes connectionName, sql,
+// bindings, previous PDOException — set $previous->errorInfo = ['23505', 7, 'duplicate key value violates unique constraint "loyalty_txn_earn_source_unique"'];
+// check how QueryException derives errorInfo/message in this Laravel version first):
+//   (a) 23505 + index name in message → InvalidArgumentException with 'already earned'
+//   (b) 23505 + a DIFFERENT constraint name → null (rethrown as-is by caller)
+//   (c) non-23505 (e.g. '23503') → null
+
+public function test_duplicate_earn_via_earnPoints_still_yields_already_earned_and_one_row(): void
+// end-to-end guard (pre-check path): earn once, earn again with same source →
+// InvalidArgumentException message contains 'already earned'; exactly ONE earn row
 
 public function test_source_columns_written_and_backfill_query_shape(): void
 // earnPoints → row has source_type='pos_receipt', source_id=$id (columns, not just metadata)
@@ -570,6 +582,11 @@ public function up(): void
         FROM ranked r WHERE t.id = r.id AND r.rn > 1
     SQL);
 
+    // NOTE: the index is PER-ENROLLMENT while the earnPoints pre-check
+    // (findBySourceDocument) is GLOBAL — the index only fires on a true
+    // same-enrollment concurrent race (the defect being fixed). A future
+    // multi-program-earn change must relax the global pre-check; this index
+    // already supports per-enrollment earns.
     DB::statement(<<<'SQL'
         CREATE UNIQUE INDEX loyalty_txn_earn_source_unique
         ON loyalty_transactions (enrollment_id, source_type, source_id)
@@ -592,17 +609,36 @@ Add `'source_type', 'source_id'` to `Transaction::$fillable`; in `EarningProcess
 try {
     return DB::transaction(function () use (...) { ... });
 } catch (QueryException $e) {
-    if (($e->errorInfo[0] ?? null) === '23505'
-        && str_contains($e->getMessage(), 'loyalty_txn_earn_source_unique')) {
-        // Concurrent duplicate lost the race — same benign signal as the
-        // pre-check (TOCTOU closed by the partial unique index).
-        throw new InvalidArgumentException(
-            "Points already earned for {$sourceType} {$sourceId}", 0, $e,
-        );
+    $duplicate = $this->translateEarnDuplicate($e, $sourceType, $sourceId);
+    if ($duplicate !== null) {
+        throw $duplicate;
     }
     throw $e;
 }
 ```
+
+```php
+/**
+ * Concurrent duplicate lost the race on loyalty_txn_earn_source_unique —
+ * translate to the same benign "already earned" signal the pre-check throws
+ * (TOCTOU closed by the partial unique index). Extracted for direct unit
+ * testing: the broader global pre-check makes this branch unreachable in a
+ * single-connection feature test.
+ */
+private function translateEarnDuplicate(QueryException $e, string $sourceType, string $sourceId): ?InvalidArgumentException
+{
+    if (($e->errorInfo[0] ?? null) === '23505'
+        && str_contains($e->getMessage(), 'loyalty_txn_earn_source_unique')) {
+        return new InvalidArgumentException(
+            "Points already earned for {$sourceType} {$sourceId}", 0, $e,
+        );
+    }
+
+    return null;
+}
+```
+
+(PHPStan will flag a private method tested via reflection — prefer making it `@internal` public or test through a tiny protected-subclass shim; pick whichever the repo's existing tests use for cases like this.)
 
 `findBySourceDocument` → `Transaction::query()->where('source_type', $sourceType)->where('source_id', $sourceId)->first()` (backfill makes legacy rows visible; keep the global — not per-enrollment — semantics: the multi-enrollment idempotency change is explicitly OUT, memory `project_loyalty_earn_demo_cutoff`).
 
@@ -616,9 +652,9 @@ try {
 - Modify: `apps/api/app/Modules/Loyalty/Application/Services/SaleEarningService.php` (docblock only)
 - Test: extend `apps/api/tests/Feature/Loyalty/EarningDedupeConstraintTest.php` (or the listener's existing test file if one exists — search first)
 
-- [ ] **Step 1: Failing test** — listener handling a `ReceiptCompleted` for a receipt whose points were already earned (seed the earn txn first) must NOT `Log::error` (use `Log::spy()` / `Log::shouldReceive('error')->never()` scoped to the duplicate case) and must not create a second txn; a receipt with no prior earn still earns, and the txn `amount` came through bcmath (assert exact decimal string, e.g. `'25.500'`).
-- [ ] **Step 2: Run — FAIL** (current catch-all logs the duplicate as an error).
-- [ ] **Step 3: Implement.** In the listener's catch, mirror `SaleEarningService.php:74-90`: catch `InvalidArgumentException`, `continue` silently when the message contains `'already earned'`, `Log::error` otherwise; keep the generic `\Throwable` loud branch. Rule-19 fixes in the same file: `'price' => (string) $line->unit_price`, `'amount' => (string) $event->totalAmount` (`quantity` may stay — rules int-cast it). Update the `SaleEarningService` class docblock: the listener is NOT retired — it is the live earn path for server-authored receipts (exchange flow); the projection covers device-authored sales.
+- [ ] **Step 1: Failing tests** — (a) listener handling a `ReceiptCompleted` for a receipt whose points were already earned (seed the earn txn first) must NOT `Log::error` (use `Log::spy()` / `Log::shouldReceive('error')->never()` scoped to the duplicate case) and must not create a second txn; (b) a receipt with no prior earn still earns, and the txn `amount` came through bcmath (assert exact decimal string, e.g. `'25.500'`); (c) **listener-path earn-eligibility**: a non-Sale receipt (refund/return/void — check the `Receipt` model's type/status column and build accordingly) fired through the listener earns NOTHING (the projection has this guard at `PosCoreReceiptProjection.php:872`; the listener has none — adversarial review MINOR-6).
+- [ ] **Step 2: Run — FAIL** (current catch-all logs the duplicate as an error; non-Sale earns when total is positive).
+- [ ] **Step 3: Implement.** In the listener's catch, mirror `SaleEarningService.php:74-90`: catch `InvalidArgumentException`, `continue` silently when the message contains `'already earned'`, `Log::error` otherwise; keep the generic `\Throwable` loud branch. Add an earn-eligibility guard right after loading the receipt: skip unless the receipt is a real Sale (read the `Receipt` model for the authoritative type/training columns — mirror the projection's `ReceiptType::Sale && !trainingFlag` semantics as closely as the server model allows). Rule-19 fixes in the same file: remove the `(float)` casts — `'price' => (string) $line->unit_price`, `'amount' => $event->totalAmount` (already a string on the event; the fix is deleting the float cast, not adding a string cast). Update the `SaleEarningService` class docblock: the listener is NOT retired — it is the live earn path for server-authored receipts (exchange flow); the projection covers device-authored sales.
 - [ ] **Step 4: Run — PASS. Commit** (`fix(loyalty): quiet duplicate earns in receipt listener + rule-19 string amounts`).
 
 ### Task 9: Close the projection/listener rule-coverage divergence (items)
@@ -631,6 +667,7 @@ try {
 
 **Interfaces:**
 - Produces: `SaleEarnContext::$items` — `list<array{product_id: string, quantity: string}>` (primitives only, rule 6; **price deliberately omitted** — no `EarningRuleType` reads it); `SaleEarningService` resolves `category_id` per product and feeds `transactionData['items']` as `list<array{product_id: string, category_id: string|null, quantity: string}>` — the exact shape `PointEarningService::calculateItemPoints/calculateCategoryPoints/calculateQuantityPoints` consume.
+- Known limits to DOCUMENT in the SaleEarnContext docblock (not fix — acceptable for parapharmacy launch, adversarial review MINOR-7): `LineItemDTO.productId` is the PARENT product id, so an Item rule keyed on a variant id never matches device sales; `calculateItemPoints`/`getTotalQuantity` int-cast quantity, truncating fractional quantities ("2.500" → 2).
 
 - [ ] **Step 1: Failing test** (in the existing projection-earn test file — read its helpers first and reuse its fiscal-event fixture builder): active **Item** rule (`conditions: ['product_ids' => [$productId]]`, `reward_value '5'`) + projected sale with `quantity '2.000'` of that product → enrollment balance increases by `'10.000'`; replay the same fiscal event → still `'10.000'`, exactly one earn txn (rule 20). A second test: **Category** rule matches via the product's `category_id`.
 - [ ] **Step 2: Run — FAIL** (items empty ⇒ 0 points).

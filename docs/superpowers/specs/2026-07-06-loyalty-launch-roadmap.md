@@ -20,7 +20,7 @@ What the prompt got right, and what has to be corrected before building:
 
 | # | Prompt claim | Verdict 2026-07-06 |
 |---|---|---|
-| G1 | No seeder creates a LoyaltyProgram | **CONFIRMED** — `grep LoyaltyProgram::create database/` = 0 hits. `ParapharmacySeeder.php:473` enables the `Loyalty` extra only; `DemoPharmacySeeder` doesn't even enable the extra. **BUT**: `SeedDefaultEarningRuleOnProgramActivated` (registered listener) auto-seeds a 1-TND=1-point Spend rule when a program is ACTIVATED via `ProgramManagementService::activateProgram` — so an admin who creates+activates a program in the web UI gets working earn with zero extra config. The blocker is seeding only. |
+| G1 | No seeder creates a LoyaltyProgram | **CONFIRMED** — `grep LoyaltyProgram::create database/` = 0 hits. `ParapharmacySeeder.php:473` enables the `Loyalty` extra; `DemoPharmacySeeder extends ParapharmacySeeder` and INHERITS the extra via `parent::run()` (adversarial-review correction — an earlier claim that it lacked the extra was wrong). The real Demo gap: its RE-RUN branch skips `parent::run()` (`DemoPharmacySeeder.php:369-388`), so bootstrap wired only into the parent never reaches an already-provisioned demo tenant. **ALSO**: `SeedDefaultEarningRuleOnProgramActivated` (registered listener) auto-seeds a 1-TND=1-point Spend rule when a program is ACTIVATED via `ProgramManagementService::activateProgram` — an admin who creates+activates a program in the web UI gets working earn with zero extra config. The blocker is seeding only. |
 | G2 | Cashiers can't enroll | **NUANCED** — the entire `loyalty/pos/*` subtree (balance/lookup/preview/earn/redeem) is gated `can:pos.operate_terminal` (`Loyalty/Presentation/routes.php:189-211`), which cashiers HAVE (`RolesAndPermissionsSeeder.php:525`). So POS attach-time auto-enroll already works for cashiers (customer synced + has phone). What cashiers lack: any `loyalty.*` permission (`:507-540`), so all admin surfaces (`/loyalty/members`, enroll endpoint `can:loyalty.manage`) are closed; and the Tauri POS has NO enroll affordance — `CustomerLoyaltyBadge.tsx:39-41` renders inert "joins on purchase" text when `!enrolled`. |
 | G3 | No loyalty on customer record | **CONFIRMED** — `PartnerDetailPage.tsx` has zero loyalty references. Plug-in pattern exists: `showVehiclesTab`/`showDepositsTab` (`hasModule(...)` + customer-type, lines 206-210) + hook + modal triple (deposits tab). |
 | G4 | Phone hard-required both paths | **SPLIT** — `CreateMemberRequest.php:39-46` requires phone (unique per tenant, soft-delete aware). POS balance path takes `phone` as `nullable` (`PosBalanceRequest.php:19-24`); no phone → silent `notEnrolled` (`PosLoyaltyBalanceService.php:55-57`). Phone is the member identity key (`UNIQUE(tenant_id, phone)`). |
@@ -54,7 +54,9 @@ Without an active program EVERY earn/balance/enroll call silently no-ops.
   awkward; either way the seeded tenant must end with 1 ACTIVE program + 1 active
   Spend rule.
 - `DemoPharmacySeeder` (the launch-demo account, [[project_demo_pharmacy_account]]):
-  add `Loyalty` to `enabled_extras` + same program seeding.
+  inherits the extra AND the parent's program seeding on first run; its RE-RUN
+  branch must ALSO call the bootstrap (idempotent) so already-provisioned
+  demo/staging tenants get a program on redeploy.
 - Real (non-seeded) tenants: covered — admin creates+activates via existing UI;
   activation auto-seeds the Spend rule. No new config UX needed for launch (PL-6).
 - Tests: seeder test asserting active program + active Spend rule exist; POS
