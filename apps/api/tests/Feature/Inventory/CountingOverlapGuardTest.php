@@ -15,6 +15,7 @@ use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Exceptions\OverlappingCountingException;
 use App\Modules\Inventory\Domain\InventoryCounting;
+use App\Modules\Inventory\Domain\InventoryCountingEvent;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
@@ -278,6 +279,118 @@ final class CountingOverlapGuardTest extends TestCase
                 'Finalize must not transition the counting when the re-check fires.'
             );
         }
+    }
+
+    /**
+     * B5 deadlock escape: a count sitting in PendingReview (blocked from
+     * finalizing by the overlap guard, or simply awaiting review) must still
+     * be cancellable, and cancellation must not post any stock movement.
+     */
+    public function test_pending_review_counting_can_be_cancelled_without_posting_stock_movements(): void
+    {
+        $counting = $this->createCounting(CountingStatus::Draft);
+        $item = $this->createItem($counting, $this->productX, $this->location, null);
+        $this->service->activate($counting, $this->user);
+
+        $item->resolution_method = ItemResolutionMethod::AutoAllMatch;
+        $item->final_qty = $item->theoretical_qty;
+        $item->save();
+
+        $counting->transitionTo(CountingStatus::Count1Completed);
+        $counting->transitionTo(CountingStatus::PendingReview);
+
+        $this->assertDatabaseCount('stock_movements', 0);
+
+        $this->service->cancel($counting, 'no longer needed', $this->user);
+
+        $this->assertSame(CountingStatus::Cancelled, $this->freshStatus($counting));
+        $this->assertNotNull(($counting->fresh() ?? $counting)->cancelled_at);
+        $this->assertDatabaseCount('stock_movements', 0);
+        $this->assertDatabaseHas('inventory_counting_events', [
+            'counting_id' => $counting->id,
+            'event_type' => InventoryCountingEvent::COUNTING_CANCELLED,
+        ]);
+    }
+
+    /**
+     * B5 deadlock: two countings each land in PendingReview holding an
+     * overlapping (product, location, variant) grain — the guard blocks
+     * BOTH finalize() calls, since each sees the other as an active
+     * conflicting counting. Cancelling one is the only application-level
+     * escape; the survivor must then finalize cleanly.
+     */
+    public function test_cancelling_one_of_two_mutually_blocking_countings_unblocks_the_other(): void
+    {
+        // Counting A: activates first, holding product X. No conflict yet.
+        $countingA = $this->createCounting(CountingStatus::Draft);
+        $itemAX = $this->createItem($countingA, $this->productX, $this->location, null);
+        $this->service->activate($countingA, $this->user);
+
+        $itemAX->resolution_method = ItemResolutionMethod::AutoAllMatch;
+        $itemAX->final_qty = $itemAX->theoretical_qty;
+        $itemAX->save();
+        $countingA->transitionTo(CountingStatus::Count1Completed);
+        $countingA->transitionTo(CountingStatus::PendingReview);
+
+        // Counting B: activates on disjoint product Y, so activation succeeds.
+        $countingB = $this->createCounting(CountingStatus::Draft, [
+            'requires_count_2' => false,
+        ]);
+        $itemBY = $this->createItem($countingB, $this->productY, $this->location, null);
+        $this->service->activate($countingB, $this->user);
+
+        $itemBY->resolution_method = ItemResolutionMethod::AutoAllMatch;
+        $itemBY->final_qty = $itemBY->theoretical_qty;
+        $itemBY->save();
+        $countingB->transitionTo(CountingStatus::Count1Completed);
+        $countingB->transitionTo(CountingStatus::PendingReview);
+
+        // An unexpected item lands on A that matches B's active grain
+        // (product Y @ shared location, null variant) — constructed directly
+        // as the normal "add unexpected item" flow does not deterministically
+        // materialize a colliding row (see the finalize-revalidation test
+        // above for the same rationale).
+        InventoryCountingItem::create([
+            'counting_id' => $countingA->id,
+            'product_id' => $this->productY->id,
+            'location_id' => $this->location->id,
+            'variant_id' => null,
+            'theoretical_qty' => '0.0000',
+            'final_qty' => '1.0000',
+            'resolution_method' => ItemResolutionMethod::AutoAllMatch,
+            'is_unexpected_item' => true,
+        ]);
+
+        // Both are now mutually blocked: A's product-Y item conflicts with
+        // B (active/PendingReview), and B's product-Y item conflicts with A
+        // (also active/PendingReview).
+        try {
+            $this->service->finalize($countingA, $this->user);
+            $this->fail('Expected finalize(countingA) to throw OverlappingCountingException.');
+        } catch (OverlappingCountingException) {
+            // expected
+        }
+        $this->assertSame(CountingStatus::PendingReview, $this->freshStatus($countingA));
+
+        try {
+            $this->service->finalize($countingB, $this->user);
+            $this->fail('Expected finalize(countingB) to throw OverlappingCountingException.');
+        } catch (OverlappingCountingException) {
+            // expected
+        }
+        $this->assertSame(CountingStatus::PendingReview, $this->freshStatus($countingB));
+
+        $this->assertDatabaseCount('stock_movements', 0);
+
+        // The application-level escape: cancel one side of the deadlock.
+        $this->service->cancel($countingB, 'breaking overlap deadlock', $this->user);
+        $this->assertSame(CountingStatus::Cancelled, $this->freshStatus($countingB));
+        $this->assertDatabaseCount('stock_movements', 0);
+
+        // The survivor now finalizes cleanly: the only remaining conflicting
+        // counting is Cancelled, which is not an ACTIVE_OVERLAP_STATUSES member.
+        $this->service->finalize($countingA, $this->user);
+        $this->assertSame(CountingStatus::Finalized, $this->freshStatus($countingA));
     }
 
     // --- Helpers ---
