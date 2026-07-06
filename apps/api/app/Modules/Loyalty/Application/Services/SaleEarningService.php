@@ -111,9 +111,13 @@ final readonly class SaleEarningService implements LoyaltyEarningContract
     /**
      * Enrich the sale-line snapshot with each product's catalog category so the
      * Category earning rule can match — the fiscal canonical payload carries no
-     * category. `products.category_id` is a nullable bigint FK, so the resolved
-     * value is an int (or null); this mirrors what `EarnPointsOnReceiptCompleted`
-     * reads via `$line->product->category_id` on the server path.
+     * category. `products.category_id` is an UNCAST nullable bigint FK, so PDO
+     * can hand back either an int or a numeric string depending on the read
+     * path. `PointEarningService::calculateCategoryPoints` matches with a
+     * strict `in_array(..., true)`, so this path deliberately normalises the
+     * resolved value to `int|null` — `EarnPointsOnReceiptCompleted` (the
+     * server/listener earn path) normalises to the same `int|null` shape for
+     * the same reason; see that class for its own cast.
      *
      * @param  list<array{product_id: string, quantity: string}>  $items
      * @return list<array{product_id: string, category_id: int|null, quantity: string}>
@@ -125,8 +129,8 @@ final readonly class SaleEarningService implements LoyaltyEarningContract
         }
 
         // Deliberate DB-level read of the catalog table (no cross-module model
-        // import, rule 6) — mirrors what EarnPointsOnReceiptCompleted gets via
-        // $line->product->category_id, without the POS-model dependency.
+        // import, rule 6) — same category_id source EarnPointsOnReceiptCompleted
+        // reads via $line->product->category_id, without the POS-model dependency.
         $categories = DB::table('products')
             ->whereIn('id', array_values(array_unique(array_column($items, 'product_id'))))
             ->pluck('category_id', 'id');

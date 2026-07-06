@@ -219,6 +219,33 @@ final class PosCoreReceiptProjectionLoyaltyEarnTest extends TestCase
     }
 
     /**
+     * Seed an active LoyaltyProgram with a single active QUANTITY-type
+     * EarningRule. `PointEarningService::calculateQuantityPoints` sums
+     * `getTotalQuantity()` across every line item unconditionally — the rule's
+     * `conditions` are not consulted for matching (only `min_quantity`/
+     * `max_quantity` gates in `ruleApplies()` would restrict it, and this
+     * helper sets none) — so the rule earns `reward_value` points per total
+     * unit quantity in the transaction.
+     */
+    private function seedActiveQuantityProgram(string $rewardValue = '3'): LoyaltyProgram
+    {
+        $program = LoyaltyProgram::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'status' => ProgramStatus::Active,
+        ]);
+
+        EarningRule::factory()->create([
+            'program_id' => $program->id,
+            'rule_type' => EarningRuleType::Quantity,
+            'reward_value' => $rewardValue,
+            'is_active' => true,
+            'conditions' => [],
+        ]);
+
+        return $program;
+    }
+
+    /**
      * Create a real catalog Product row (tenant/company-scoped) whose id can be
      * bound as a line-item `product_id`, so `SaleEarningService::resolveItemCategories`
      * can resolve its `category_id` from the `products` table.
@@ -482,6 +509,33 @@ final class PosCoreReceiptProjectionLoyaltyEarnTest extends TestCase
 
         $this->assertCount(1, $earns);
         $this->assertSame('10.000', $earns->first()->amount);
+    }
+
+    public function test_quantity_rule_earns_on_device_sale(): void
+    {
+        // Active QUANTITY rule; device sale carries qty 2.000 of a single line.
+        // Pre-Task-9 the projection sent `items => []`, so getTotalQuantity()
+        // would have been 0 and this rule would have earned nothing.
+        $product = $this->createProduct();
+        $program = $this->seedActiveQuantityProgram('3');
+        $enrollment = $this->enrollPartner($program->id);
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            buyer: $this->buyerBlock(),
+            lines: $this->singleLine($product->id),
+        );
+
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $earns = Transaction::query()
+            ->where('enrollment_id', $enrollment->id)
+            ->where('transaction_type', TransactionType::Earn)
+            ->get();
+
+        $this->assertCount(1, $earns);
+        // qty 2 × reward_value 3 = 6.000 (scale 3, TND).
+        $this->assertSame('6.000', $earns->first()->amount);
+        $this->assertSame('6.000', (string) $enrollment->fresh()->current_balance);
     }
 
     public function test_item_rule_replay_credits_once(): void

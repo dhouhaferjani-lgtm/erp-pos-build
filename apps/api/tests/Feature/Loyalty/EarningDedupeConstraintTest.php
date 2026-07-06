@@ -26,6 +26,8 @@ use App\Modules\POS\Domain\Events\ReceiptCompleted;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Category;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
@@ -436,5 +438,83 @@ final class EarningDedupeConstraintTest extends TestCase
                 ->where('transaction_type', TransactionType::Earn)
                 ->count(),
         );
+    }
+
+    /**
+     * Task 9 review fix (Important-1): `Product::category_id` is an UNCAST
+     * nullable bigint FK, so on pgsql it arrives at
+     * `$line->product->category_id` as a numeric STRING ("5"), while
+     * `SaleEarningService::resolveItemCategories` (the device-sale earn path)
+     * normalises to `int`. `PointEarningService::calculateCategoryPoints`
+     * matches with a strict `in_array(..., true)`, so a category rule keyed on
+     * an int must earn on BOTH paths identically — this proves the listener
+     * path now normalises the same way.
+     */
+    public function test_listener_category_rule_earns_with_int_normalized_category_id(): void
+    {
+        $tenantId = (string) Str::uuid();
+        $scaffold = $this->createReceiptScaffold($tenantId);
+        $contact = $this->createContact($tenantId, $scaffold[0]->id);
+
+        $category = Category::factory()->create(['company_id' => $scaffold[0]->id]);
+        $product = Product::factory()->create([
+            'tenant_id' => $tenantId,
+            'company_id' => $scaffold[0]->id,
+            'category_id' => $category->id,
+        ]);
+
+        $program = LoyaltyProgram::factory()->create([
+            'tenant_id' => $tenantId,
+            'status' => ProgramStatus::Active,
+        ]);
+        EarningRule::factory()->create([
+            'program_id' => $program->id,
+            'rule_type' => EarningRuleType::Category,
+            'reward_value' => '5',
+            'is_active' => true,
+            'conditions' => ['category_ids' => [$category->id]],
+        ]);
+        $enrollment = $this->enrollContactMember($tenantId, $program->id, $contact->id);
+
+        $receipt = $this->createReceiptFor($tenantId, $scaffold, $contact->id, '10.000');
+        ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => $product->id,
+            'product_code' => 'PROD-001',
+            'product_name' => 'Widget A',
+            'quantity' => '2.0000',
+            'unit' => 'pcs',
+            'unit_price' => '5.000',
+            'line_total' => '10.000',
+            'tax_rate' => '0.00',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+        ]);
+
+        $event = new ReceiptCompleted(
+            receiptId: $receipt->id,
+            tenantId: $tenantId,
+            companyId: $scaffold[0]->id,
+            customerId: null,
+            totalAmount: '10.000',
+            currency: 'TND',
+        );
+
+        Log::spy();
+
+        $this->listener()->handle($event);
+
+        Log::shouldNotHaveReceived('error');
+
+        $transaction = Transaction::query()
+            ->where('enrollment_id', $enrollment->id)
+            ->where('transaction_type', TransactionType::Earn)
+            ->firstOrFail();
+
+        // qty 2 x reward_value 5 = 10.000 — only matches because category_id is
+        // int-normalized in the listener the same way SaleEarningService
+        // normalizes it on the device-sale path (review fix 1).
+        self::assertSame('10.000', $transaction->amount);
     }
 }
