@@ -338,6 +338,29 @@ class ZoneManagementTest extends TestCase
         $response->assertStatus(404);
     }
 
+    public function test_create_zone_with_malformed_location_id_returns_422(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/zones', [
+            'location_id' => 'not-a-uuid',
+            'name' => 'Aisle 1',
+            'code' => 'A1',
+        ]);
+
+        $this->assertApiValidationErrors($response, ['location_id']);
+    }
+
+    public function test_bulk_assign_with_malformed_product_id_returns_422(): void
+    {
+        $zone = $this->zoneService->createZone($this->tenant->id, $this->warehouse->id, 'Aisle 1', 'A1');
+
+        $response = $this->actingAs($this->user)->postJson(
+            "/api/v1/inventory/zones/{$zone->id}/assign-products",
+            ['product_ids' => [$this->product->id, 'not-a-uuid']],
+        );
+
+        $this->assertApiValidationErrors($response, ['product_ids.1']);
+    }
+
     public function test_destroy_with_non_uuid_id_returns_404(): void
     {
         $response = $this->actingAs($this->user)->deleteJson('/api/v1/inventory/zones/not-a-uuid');

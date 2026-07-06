@@ -31,7 +31,7 @@ class CreateZoneRequest extends FormRequest
         $locationId = (string) $this->input('location_id');
 
         return [
-            'location_id' => ['required', 'string', ScopedExists::company('locations', $company->id)],
+            'location_id' => ['required', 'bail', 'uuid', ScopedExists::company('locations', $company->id)],
             'name' => ['required', 'string', 'max:255'],
             'code' => [
                 'required',

@@ -30,7 +30,7 @@ class BulkAssignZoneRequest extends FormRequest
 
         return [
             'product_ids' => ['required', 'array', 'min:1'],
-            'product_ids.*' => ['string', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
+            'product_ids.*' => ['bail', 'uuid', ScopedExists::tenantAndCompany('products', $company->tenant_id, $company->id)],
         ];
     }
 }
