@@ -20,19 +20,17 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 final class ReplayAuditDto extends Data
 {
     public function __construct(
-        // Start of the replay window (typically the counting's activation
-        // or the count's device timestamp).
+        // The item's final_qty_as_of — the instant the shelf was physically
+        // counted (skew-corrected estimate); replay window start (exclusive).
         public string $windowFrom,
-        // End of the replay window (final_qty_as_of / apply time).
+        // The apply instant (now at finalize); replay window end (inclusive).
         public string $windowTo,
-        // Sum of signed stock_movement deltas that occurred inside the
-        // replay window, at quantity scale 4.
+        // Σ(quantity_after − quantity_before) of movements in (windowFrom, windowTo]
+        // — net stock change since the count, at quantity scale 4.
         public string $replayedDelta,
-        // Actual on-hand quantity observed at apply time.
+        // System on-hand at apply time, read under lock.
         public string $onHandAtApply,
-        // theoretical_qty replayed forward through the window
-        // (theoretical_qty + replayedDelta), for comparison against
-        // onHandAtApply.
+        // final_qty + replayedDelta (spec §4 expected_now) — NOT theoretical_qty-based.
         public string $expectedAtApply,
     ) {}
 }
