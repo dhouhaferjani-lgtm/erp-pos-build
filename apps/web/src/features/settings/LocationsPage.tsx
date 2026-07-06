@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truck, Store } from 'lucide-react'
+import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truck, Store, Layers } from 'lucide-react'
 import { fetchLocations, createLocation, updateLocation, deleteLocation, setDefaultLocation } from '../location/api'
 import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput } from '../location/api'
 import { isBranchTaxIdRequiredCountry } from '../location/branchTaxCountries'
@@ -16,6 +16,7 @@ import { useCompanyStore } from '../../stores/companyStore'
 import { Button, Checkbox, FormField, Input, Select, StatusBadge } from '../../components/atoms'
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { EmptyState } from '../../components/molecules'
+import { ZonesPanel } from './zones/ZonesPanel'
 
 type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile'
 
@@ -80,7 +81,7 @@ function scopedNamespacePredicate(
 }
 
 export function LocationsPage() {
-  const { t } = useTranslation(['common', 'settings'])
+  const { t } = useTranslation(['common', 'settings', 'inventory'])
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -89,6 +90,7 @@ export function LocationsPage() {
   const [editingLocation, setEditingLocation] = useState<LocationApiResponse | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<LocationApiResponse | null>(null)
   const [formData, setFormData] = useState<LocationFormData>(emptyForm)
+  const [zonesLocation, setZonesLocation] = useState<LocationApiResponse | null>(null)
 
   const { data: locations, isLoading } = useQuery({
     queryKey: tenantScopedKey(['locations']),
@@ -315,6 +317,15 @@ export function LocationsPage() {
                     variant="ghost"
                     size="sm"
                     className="gap-1"
+                    onClick={() => { setZonesLocation(location) }}
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    {t('inventory:zones.navLabel')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1"
                     onClick={() => { openEditModal(location) }}
                   >
                     <Edit className="h-3.5 w-3.5" />
@@ -521,6 +532,18 @@ export function LocationsPage() {
         variant="danger"
         isLoading={deleteMutation.isPending}
       />
+
+      {/* Zones Panel */}
+      <Modal
+        isOpen={zonesLocation !== null}
+        onClose={() => { setZonesLocation(null) }}
+        title={t('inventory:zones.panelTitle', { location: zonesLocation?.name ?? '' })}
+        size="xl"
+      >
+        <ModalContent>
+          {zonesLocation && <ZonesPanel locationId={zonesLocation.id} />}
+        </ModalContent>
+      </Modal>
     </div>
   )
 }

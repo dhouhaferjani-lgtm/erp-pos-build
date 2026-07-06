@@ -963,5 +963,55 @@
     "submitError": "Could not record opening stock. Please try again.",
     "resetSuccess": "Opening stock has been reset.",
     "resetError": "Could not reset opening stock. Please try again."
+  },
+  "zones": {
+    "navLabel": "Zones",
+    "panelTitle": "Zones — {{location}}",
+    "subtitle": "Shelf/section labels for counting and product placement",
+    "addZone": "Add zone",
+    "editZone": "Edit zone",
+    "empty": {
+      "title": "No zones yet",
+      "description": "Add a zone to scope counts by shelf or section."
+    },
+    "list": {
+      "sortOrder": "Order {{order}}",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "e.g. Aisle 3",
+      "nameRequired": "Name is required",
+      "code": "Code",
+      "codePlaceholder": "e.g. A3",
+      "codeRequired": "Code is required",
+      "sortOrder": "Sort order",
+      "isActive": "Active"
+    },
+    "actions": {
+      "assignProducts": "Assign products"
+    },
+    "deleteConfirm": {
+      "title": "Delete zone",
+      "message": "Delete zone \"{{name}}\"? Products assigned to it will need to be reassigned."
+    },
+    "bulkAssign": {
+      "title": "Assign products — {{zone}}",
+      "currentlyAssigned": "Currently assigned",
+      "noneAssigned": "No products assigned to this zone yet.",
+      "addProducts": "Add products",
+      "removeProduct": "Remove {{name}}",
+      "pendingCount": "{{count}} product selected",
+      "pendingCount_other": "{{count}} products selected",
+      "submit": "Assign",
+      "success": "Products assigned to zone.",
+      "productIdsRequired": "Select at least one product to assign."
+    },
+    "messages": {
+      "created": "Zone created.",
+      "updated": "Zone updated.",
+      "deleted": "Zone deleted."
+    }
   }
 }

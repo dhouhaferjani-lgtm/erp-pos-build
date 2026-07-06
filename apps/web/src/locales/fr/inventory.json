@@ -963,5 +963,55 @@
     "submitError": "Impossible d'enregistrer le stock initial. Veuillez réessayer.",
     "resetSuccess": "Le stock initial a été réinitialisé.",
     "resetError": "Impossible de réinitialiser le stock initial. Veuillez réessayer."
+  },
+  "zones": {
+    "navLabel": "Zones",
+    "panelTitle": "Zones — {{location}}",
+    "subtitle": "Étiquettes de rayon/section pour le comptage et le placement des produits",
+    "addZone": "Ajouter une zone",
+    "editZone": "Modifier la zone",
+    "empty": {
+      "title": "Aucune zone",
+      "description": "Ajoutez une zone pour cadrer les comptages par rayon ou section."
+    },
+    "list": {
+      "sortOrder": "Ordre {{order}}",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "form": {
+      "name": "Nom",
+      "namePlaceholder": "ex. Allée 3",
+      "nameRequired": "Le nom est requis",
+      "code": "Code",
+      "codePlaceholder": "ex. A3",
+      "codeRequired": "Le code est requis",
+      "sortOrder": "Ordre de tri",
+      "isActive": "Active"
+    },
+    "actions": {
+      "assignProducts": "Assigner des produits"
+    },
+    "deleteConfirm": {
+      "title": "Supprimer la zone",
+      "message": "Supprimer la zone \"{{name}}\" ? Les produits qui y sont assignés devront être réassignés."
+    },
+    "bulkAssign": {
+      "title": "Assigner des produits — {{zone}}",
+      "currentlyAssigned": "Actuellement assignés",
+      "noneAssigned": "Aucun produit assigné à cette zone pour le moment.",
+      "addProducts": "Ajouter des produits",
+      "removeProduct": "Retirer {{name}}",
+      "pendingCount": "{{count}} produit sélectionné",
+      "pendingCount_other": "{{count}} produits sélectionnés",
+      "submit": "Assigner",
+      "success": "Produits assignés à la zone.",
+      "productIdsRequired": "Sélectionnez au moins un produit à assigner."
+    },
+    "messages": {
+      "created": "Zone créée.",
+      "updated": "Zone mise à jour.",
+      "deleted": "Zone supprimée."
+    }
   }
 }
