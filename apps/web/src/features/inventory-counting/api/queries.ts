@@ -203,7 +203,7 @@ export function useManualOverride(countingId: number) {
       notes,
     }: {
       itemId: number
-      quantity: number
+      quantity: string
       notes: string
     }) => countingApi.manualOverride(itemId, quantity, notes),
     onSuccess: async () => {

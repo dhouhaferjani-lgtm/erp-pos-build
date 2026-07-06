@@ -8,7 +8,7 @@ export type CountingScopeType =
   | 'product'
   | 'location'
   | 'category'
-  | 'warehouse'
+  | 'zone'
   | 'full_inventory'
 
 export type CountingStatus =
@@ -118,7 +118,7 @@ export interface CountingItemLocation {
 }
 
 export interface CountingItemCount {
-  qty: number
+  qty: string
   at: string
   notes: string | null
 }
@@ -130,12 +130,16 @@ export interface ReconciliationItem {
   location: CountingItemLocation
   warehouse: { id: number; name: string }
 
-  theoretical_qty: number
+  // Scale-4 bcmath decimal strings end-to-end (never floats) — see
+  // docs/architecture/precision-contract.md. `variance`/`variance_percentage`
+  // are computed backend-side via plain PHP float arithmetic (not a
+  // decimal-cast column) and are genuinely numbers over the wire.
+  theoretical_qty: string
   count_1: CountingItemCount | null
   count_2: CountingItemCount | null
   count_3: CountingItemCount | null
 
-  final_qty: number | null
+  final_qty: string | null
   variance: number | null
   variance_percentage: number | null
 
@@ -212,14 +216,21 @@ export interface CreateCountingFormData {
   scope_filters: {
     product_ids?: string[]
     category_ids?: string[]
-    warehouse_ids?: string[]
     location_ids?: string[]
     location_id?: string
+    zone_ids?: string[]
   }
   execution_mode: CountingExecutionMode
   requires_count_2: boolean
   requires_count_3: boolean
   allow_unexpected_items: boolean
+  // Per-session sales blocking. REJECTED (422) by the backend when
+  // scope_type is 'zone' — the create wizard disables the toggle in that case.
+  block_sales: boolean
+  // Minutes of tolerance around a count instant used to resolve raw counter
+  // disagreements via movement replay (integer minute count, not a
+  // money/quantity decimal — plain number, no scale contract).
+  ambiguity_window_minutes: number
   count_1_user_id: string
   count_2_user_id?: string
   count_3_user_id?: string
@@ -229,7 +240,7 @@ export interface CreateCountingFormData {
 }
 
 export interface ManualOverrideFormData {
-  quantity: number
+  quantity: string
   notes: string
 }
 

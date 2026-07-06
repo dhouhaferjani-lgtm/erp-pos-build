@@ -6,6 +6,7 @@ import { useReconciliation, useTriggerThirdCount, useManualOverride } from '../a
 import { ManualOverrideDialog } from './ManualOverrideDialog'
 import type { ReconciliationItem, CountingItemCount } from '../types'
 import { cn } from '@/lib/utils'
+import { formatQuantity } from '@/lib/decimal'
 
 interface Props {
   countingId: number
@@ -48,7 +49,7 @@ function CountCell({ count, matchesTheoretical }: CountCellProps) {
       <span
         className={cn('font-mono', matchesTheoretical && 'text-green-600')}
       >
-        {count.qty}
+        {formatQuantity(count.qty)}
       </span>
       {/* Tooltip */}
       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
@@ -88,7 +89,10 @@ export function ReconciliationTable({ countingId }: Props) {
 
   const { summary, items } = data
 
-  const flaggedPendingItems = items.filter((i) => i.is_flagged && !i.final_qty)
+  // Explicit null check: final_qty is a scale-4 decimal STRING once resolved
+  // (e.g. '0.0000' for a genuine zero count) — a falsy check would wrongly
+  // treat a resolved zero-quantity item as still "needing action".
+  const flaggedPendingItems = items.filter((i) => i.is_flagged && i.final_qty === null)
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -114,7 +118,7 @@ export function ReconciliationTable({ countingId }: Props) {
     setSelectedItems([])
   }
 
-  const handleOverride = (quantity: number, notes: string) => {
+  const handleOverride = (quantity: string, notes: string) => {
     if (!overrideItem) return
 
     manualOverride.mutate({
@@ -177,7 +181,7 @@ export function ReconciliationTable({ countingId }: Props) {
     if (item.resolution_method === 'auto_counters_agree') {
       return 'bg-yellow-50/50'
     }
-    if (item.is_flagged && !item.final_qty) {
+    if (item.is_flagged && item.final_qty === null) {
       return 'bg-red-50/50'
     }
     return ''
@@ -282,7 +286,7 @@ export function ReconciliationTable({ countingId }: Props) {
             {items.map((item) => (
               <tr key={item.id} className={getRowClassName(item)}>
                 <td className="px-4 py-3">
-                  {item.is_flagged && !item.final_qty && (
+                  {item.is_flagged && item.final_qty === null && (
                     <input
                       type="checkbox"
                       checked={selectedItems.includes(item.id)}
@@ -306,7 +310,7 @@ export function ReconciliationTable({ countingId }: Props) {
                   {item.location.code}
                 </td>
                 <td className="px-4 py-3 text-center font-mono">
-                  {item.theoretical_qty}
+                  {formatQuantity(item.theoretical_qty)}
                 </td>
                 <td className="px-4 py-3 text-center">
                   <CountCell
@@ -333,7 +337,7 @@ export function ReconciliationTable({ countingId }: Props) {
                   />
                 </td>
                 <td className="px-4 py-3 text-center font-mono font-medium">
-                  {item.final_qty ?? '-'}
+                  {item.final_qty === null ? '-' : formatQuantity(item.final_qty)}
                 </td>
                 <td className="px-4 py-3 text-center">
                   {item.variance !== null && (
@@ -350,7 +354,7 @@ export function ReconciliationTable({ countingId }: Props) {
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  {item.is_flagged && !item.final_qty && (
+                  {item.is_flagged && item.final_qty === null && (
                     <div className="flex gap-1">
                       <button
                         type="button"

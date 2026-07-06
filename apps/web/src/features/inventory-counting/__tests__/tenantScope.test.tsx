@@ -99,6 +99,8 @@ const createCountingPayload: CreateCountingFormData = {
   requires_count_2: true,
   requires_count_3: false,
   allow_unexpected_items: true,
+  block_sales: false,
+  ambiguity_window_minutes: 15,
   count_1_user_id: 'user-1',
 }
 

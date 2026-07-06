@@ -94,7 +94,7 @@ export const countingApi = {
   // Manual override
   manualOverride: async (
     itemId: number,
-    quantity: number,
+    quantity: string,
     notes: string
   ): Promise<void> => {
     await apiPost(`${BASE_URL}/items/${String(itemId)}/override`, {
