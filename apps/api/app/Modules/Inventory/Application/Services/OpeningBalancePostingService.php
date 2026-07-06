@@ -131,7 +131,7 @@ final class OpeningBalancePostingService
                             'notes' => $posting->notes,
                             'user_id' => $posting->userId,
                             'is_historical' => $posting->isHistorical,
-                            'occurred_at' => now(),
+                            'occurred_at' => $posting->entryDate ?? now(),
                         ]);
 
                         // Update or create the stock level.

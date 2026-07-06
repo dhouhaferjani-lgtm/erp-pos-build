@@ -17,6 +17,9 @@ use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
@@ -95,6 +98,29 @@ final class StockMovementOccurredAtTest extends TestCase
             'company_id' => $this->companyId,
             'code' => 'CASH',
             'name' => 'Cash',
+        ]);
+
+        // GL accounts required by OpeningBalancePostingService
+        Account::create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => '3100',
+            'name' => 'Inventory Asset',
+            'type' => AccountType::Asset,
+            'system_purpose' => SystemAccountPurpose::Inventory,
+            'is_active' => true,
+            'is_system' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => '3900',
+            'name' => 'Opening Balance Equity',
+            'type' => AccountType::Equity,
+            'system_purpose' => SystemAccountPurpose::OpeningBalanceEquity,
+            'is_active' => true,
+            'is_system' => true,
         ]);
     }
 
@@ -264,6 +290,53 @@ final class StockMovementOccurredAtTest extends TestCase
             self::DEVICE_TIME,
             $movement->occurred_at->format('Y-m-d H:i:s'),
             'adjust() must honor an explicit occurred_at (replay path)'
+        );
+    }
+
+    // =================================================================
+    // (e) Opening balance posting stamps occurred_at with entryDate
+    // =================================================================
+
+    public function test_opening_balance_posting_stamps_entry_date(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+        ]);
+
+        $backdatedEntryDate = CarbonImmutable::parse('2026-05-15 10:30:00');
+
+        $posting = new \App\Modules\Inventory\Application\DTOs\OpeningBalancePosting(
+            tenantId: $this->tenantId,
+            companyId: $this->companyId,
+            userId: $this->operatorId,
+            entryDate: $backdatedEntryDate,
+            isHistorical: false,
+            sourceType: 'test',
+            sourceId: Str::uuid()->toString(),
+            reference: 'TEST-OB-001',
+            notes: null,
+            lines: [
+                new \App\Modules\Inventory\Application\DTOs\OpeningBalanceLine(
+                    productId: $product->id,
+                    variantId: null,
+                    locationId: $this->locationId,
+                    quantity: '10.0000',
+                    unitCost: '5.000',
+                ),
+            ],
+        );
+
+        $service = $this->app->make(\App\Modules\Inventory\Application\Services\OpeningBalancePostingService::class);
+        $result = $service->post($posting);
+
+        $movement = DB::table('stock_movements')->whereIn('id', $result->movementIdsInInputOrder)->first();
+        $this->assertNotNull($movement, 'opening balance posting must create a movement');
+        $this->assertNotNull($movement->occurred_at);
+        $this->assertSame(
+            '2026-05-15 10:30:00',
+            Carbon::parse($movement->occurred_at)->format('Y-m-d H:i:s'),
+            'opening balance movement occurred_at must equal the posting entry date'
         );
     }
 

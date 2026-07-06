@@ -75,7 +75,7 @@ return new class extends Migration
             $updated = DB::update(
                 'UPDATE stock_movements SET occurred_at = created_at
                  WHERE id IN (
-                     SELECT id FROM stock_movements WHERE occurred_at IS NULL LIMIT '.self::BACKFILL_BATCH.'
+                     SELECT id FROM stock_movements WHERE occurred_at IS NULL AND created_at IS NOT NULL LIMIT '.self::BACKFILL_BATCH.'
                  )'
             );
         } while ($updated > 0);
