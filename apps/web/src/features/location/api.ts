@@ -2,6 +2,12 @@ import { apiGet, apiPost, apiPatch, apiDelete } from '../../lib/api'
 import type { LocationType } from '../../stores/locationStore'
 
 /**
+ * Per-location POS stock-enforcement override. `null` means "inherit the
+ * company's `pos_stock_policy`" (mirrors `App\Modules\Company\Domain\Enums\PosStockPolicy`).
+ */
+export type PosStockPolicyOverride = 'block' | 'warn' | 'off'
+
+/**
  * API response format for location (snake_case from backend)
  */
 export interface LocationApiResponse {
@@ -22,6 +28,8 @@ export interface LocationApiResponse {
   is_default: boolean
   is_active: boolean
   pos_enabled: boolean
+  onboarding_mode: boolean
+  pos_stock_policy_override: PosStockPolicyOverride | null
   created_at: string
   updated_at: string
 }
@@ -43,6 +51,9 @@ export interface CreateLocationInput {
   vatNumber?: string | undefined
   legalIdentifiers?: Record<string, unknown> | undefined
   posEnabled?: boolean | undefined
+  onboardingMode?: boolean | undefined
+  // null sends "inherit the company policy"
+  posStockPolicyOverride?: PosStockPolicyOverride | null | undefined
 }
 
 /**
@@ -64,6 +75,9 @@ export interface UpdateLocationInput {
   legalIdentifiers?: Record<string, unknown> | null
   isActive?: boolean
   posEnabled?: boolean
+  onboardingMode?: boolean
+  // null clears the override (re-inherit the company's pos_stock_policy)
+  posStockPolicyOverride?: PosStockPolicyOverride | null
 }
 
 /**
@@ -83,6 +97,8 @@ interface CreateLocationPayload {
   vat_number?: string | undefined
   legal_identifiers?: Record<string, unknown> | undefined
   pos_enabled?: boolean | undefined
+  onboarding_mode?: boolean | undefined
+  pos_stock_policy_override?: PosStockPolicyOverride | null | undefined
 }
 
 interface UpdateLocationPayload {
@@ -100,6 +116,8 @@ interface UpdateLocationPayload {
   legal_identifiers?: Record<string, unknown> | null
   is_active?: boolean
   pos_enabled?: boolean
+  onboarding_mode?: boolean
+  pos_stock_policy_override?: PosStockPolicyOverride | null
 }
 
 /**
@@ -134,6 +152,8 @@ export async function createLocation(input: CreateLocationInput): Promise<Locati
     vat_number: input.vatNumber,
     legal_identifiers: input.legalIdentifiers,
     pos_enabled: input.posEnabled,
+    onboarding_mode: input.onboardingMode,
+    pos_stock_policy_override: input.posStockPolicyOverride,
   }
 
   return apiPost<LocationApiResponse>('/locations', payload)
@@ -159,6 +179,8 @@ export async function updateLocation(id: string, input: UpdateLocationInput): Pr
   if (input.legalIdentifiers !== undefined) payload.legal_identifiers = input.legalIdentifiers
   if (input.isActive !== undefined) payload.is_active = input.isActive
   if (input.posEnabled !== undefined) payload.pos_enabled = input.posEnabled
+  if (input.onboardingMode !== undefined) payload.onboarding_mode = input.onboardingMode
+  if (input.posStockPolicyOverride !== undefined) payload.pos_stock_policy_override = input.posStockPolicyOverride
 
   return apiPatch<LocationApiResponse>(`/locations/${id}`, payload)
 }
@@ -199,6 +221,8 @@ export function transformLocationResponse(response: LocationApiResponse) {
     isDefault: response.is_default,
     isActive: response.is_active,
     posEnabled: response.pos_enabled,
+    onboardingMode: response.onboarding_mode,
+    posStockPolicyOverride: response.pos_stock_policy_override,
     createdAt: response.created_at,
     updatedAt: response.updated_at,
   }
