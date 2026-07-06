@@ -218,5 +218,17 @@
     "title": "Ajuster les Points",
     "description": "Raison de l'ajustement",
     "positiveForAdd": "Utilisez un nombre positif pour ajouter, n\u00e9gatif pour d\u00e9duire"
+  },
+
+  "partnerCard": {
+    "title": "Fid\u00e9lit\u00e9",
+    "points": "pts",
+    "tier": "Niveau",
+    "notMember": "Non inscrit \u00e0 un programme de fid\u00e9lit\u00e9",
+    "enroll": "Inscrire",
+    "phoneLabel": "T\u00e9l\u00e9phone",
+    "enrollNote": "Inscrit au programme actif",
+    "enrollSuccess": "Inscription \u00e0 la fid\u00e9lit\u00e9 r\u00e9ussie",
+    "enrollError": "\u00c9chec de l'inscription du partenaire"
   }
 }
