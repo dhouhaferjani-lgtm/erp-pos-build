@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Schema;
  *   (freezes the replay window end), `expected_qty_at_apply` (theoretical
  *   qty replayed forward to apply time), `opening_unit_cost` (written by
  *   D3, read by B3), `replay_audit` (jsonb — see
- *   App\Modules\Inventory\Application\DTO\ReplayAuditDto), and
+ *   App\Modules\Inventory\Application\DTOs\ReplayAuditDto), and
  *   `flag_reasons` (jsonb array of CountingItemFlagReason values; the
  *   legacy scalar `flag_reason` column is untouched).
  *

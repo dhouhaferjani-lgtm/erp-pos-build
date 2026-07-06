@@ -9,7 +9,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Inventory\Application\DTO\ReplayAuditDto;
+use App\Modules\Inventory\Application\DTOs\ReplayAuditDto;
 use App\Modules\Inventory\Domain\Enums\CountingExecutionMode;
 use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
