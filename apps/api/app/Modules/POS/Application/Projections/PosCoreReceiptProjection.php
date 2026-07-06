@@ -991,7 +991,11 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
 
         $flags = $locked->late_sales_flags ?? [];
         foreach ($flags as $flag) {
-            if ($flag['receipt_id'] === $receiptId) {
+            // Defensive: `late_sales_flags` is a raw JSON column — the model's
+            // docblock shape is aspirational, not enforced at write time, so a
+            // legacy/malformed row must not fatal the queued worker.
+            /** @phpstan-ignore function.alreadyNarrowedType, nullCoalesce.offset */
+            if (is_array($flag) && ($flag['receipt_id'] ?? null) === $receiptId) {
                 return;
             }
         }

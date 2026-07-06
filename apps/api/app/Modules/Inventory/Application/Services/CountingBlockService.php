@@ -53,10 +53,15 @@ final class CountingBlockService
      *
      * Contract consumed by TerminalResource (payload) and
      * PosCoreReceiptProjection (late-sale flagging) — keep the signature exact.
+     *
+     * @param  string|null  $companyId  Pass the caller's already-known company id
+     *   (e.g. `Location::company_id`, already loaded) to skip the internal
+     *   Location lookup. Null (default) preserves the original behavior of
+     *   resolving it from `$locationId`.
      */
-    public function activeBlockFor(string $locationId): ?InventoryCounting
+    public function activeBlockFor(string $locationId, ?string $companyId = null): ?InventoryCounting
     {
-        $companyId = $this->resolveCompanyId($locationId);
+        $companyId ??= $this->resolveCompanyId($locationId);
         if ($companyId === null) {
             return null;
         }
@@ -87,11 +92,14 @@ final class CountingBlockService
      * Soft zone-count advisories for this location: one entry per zone (of this
      * location) currently under an active zone-scoped count. Never blocks.
      *
+     * @param  string|null  $companyId  Same skip-the-lookup contract as
+     *   {@see self::activeBlockFor()}.
+     *
      * @return array<int, array{zone_name: string, counting_number: string|null}>
      */
-    public function zoneAdvisoriesFor(string $locationId): array
+    public function zoneAdvisoriesFor(string $locationId, ?string $companyId = null): array
     {
-        $companyId = $this->resolveCompanyId($locationId);
+        $companyId ??= $this->resolveCompanyId($locationId);
         if ($companyId === null) {
             return [];
         }

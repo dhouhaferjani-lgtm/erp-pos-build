@@ -58,9 +58,16 @@ final class TerminalResource extends JsonResource
             // relation don't trigger a per-terminal counting lookup; the POS
             // device terminal payload always loads it. `CountingBlockService`
             // is a pure domain function (no deps), instantiated directly like
-            // `LocationStockPolicyResolver`.
+            // `LocationStockPolicyResolver`. `company_id` is a plain column on
+            // `Location` (not a relation), so it's already hydrated whenever
+            // `location` is loaded — passing it in skips the redundant
+            // per-terminal `Location` lookup `CountingBlockService` would
+            // otherwise run once per closure (2x per terminal payload).
             'active_counting_block' => $this->whenLoaded('location', function () {
-                $block = (new CountingBlockService)->activeBlockFor((string) $this->location->id);
+                $block = (new CountingBlockService)->activeBlockFor(
+                    (string) $this->location->id,
+                    (string) $this->location->company_id,
+                );
 
                 if ($block === null) {
                     return null;
@@ -73,7 +80,10 @@ final class TerminalResource extends JsonResource
                 ];
             }, null),
             'counting_zone_advisories' => $this->whenLoaded('location', function () {
-                return (new CountingBlockService)->zoneAdvisoriesFor((string) $this->location->id);
+                return (new CountingBlockService)->zoneAdvisoriesFor(
+                    (string) $this->location->id,
+                    (string) $this->location->company_id,
+                );
             }, []),
             'location' => $this->whenLoaded('location', function () {
                 return [
