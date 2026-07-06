@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * B3 — Supplier Invoice Presentation controller.
@@ -133,6 +134,42 @@ final class SupplierInvoiceController extends Controller
 
         return response()->json([
             'data' => $this->formatDetail($doc),
+            'meta' => ['timestamp' => now()->toIso8601String()],
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/v1/supplier-invoices/duplicate-reference
+    // -------------------------------------------------------------------------
+
+    public function duplicateReference(Request $request): JsonResponse
+    {
+        $partnerId = $request->query('partner_id');
+        $reference = $request->query('reference');
+
+        if (! is_string($partnerId) || $partnerId === '' || ! Str::isUuid($partnerId) || ! is_string($reference) || trim($reference) === '') {
+            return response()->json([
+                'data' => ['exists' => false],
+                'meta' => ['timestamp' => now()->toIso8601String()],
+            ]);
+        }
+
+        $invoice = $this->baseQuery()
+            ->ofType(DocumentType::SupplierInvoice)
+            ->where('partner_id', $partnerId)
+            ->where('external_document_number', trim($reference))
+            ->orderBy('document_date', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        return response()->json([
+            'data' => $invoice === null
+                ? ['exists' => false]
+                : [
+                    'exists' => true,
+                    'invoice_number' => $invoice->document_number,
+                ],
             'meta' => ['timestamp' => now()->toIso8601String()],
         ]);
     }

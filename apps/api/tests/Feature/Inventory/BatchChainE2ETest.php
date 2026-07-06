@@ -40,6 +40,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -162,6 +163,10 @@ final class BatchChainE2ETest extends TestCase
 
     public function test_purchase_receipt_transfer_pos_fefo_sale_and_expiry_check_chain(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            $this->markTestSkipped('Requires PostgreSQL: POS FEFO sale uses FOR UPDATE SKIP LOCKED.');
+        }
+
         $product = Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,

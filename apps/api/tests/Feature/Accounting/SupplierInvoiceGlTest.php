@@ -20,6 +20,9 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
+use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
+use App\Modules\Inventory\Domain\GoodsReceipt;
+use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Procurement\Application\SupplierInvoicePostingService;
@@ -68,6 +71,10 @@ final class SupplierInvoiceGlTest extends TestCase
 
     private Account $inventoryAccount;
 
+    private Account $ppvExpenseAccount;
+
+    private Account $ppvIncomeAccount;
+
     private GeneralLedgerHashService $hashService;
 
     protected function setUp(): void
@@ -97,6 +104,8 @@ final class SupplierInvoiceGlTest extends TestCase
         $this->stampDutyAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchaseStampDuty);
         $this->payableAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SupplierPayable);
         $this->inventoryAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Inventory);
+        $this->ppvExpenseAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchasePriceVarianceExpense);
+        $this->ppvIncomeAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchasePriceVarianceIncome);
 
         $this->supplier = Partner::create([
             'tenant_id' => $this->tenant->id,
@@ -463,10 +472,10 @@ final class SupplierInvoiceGlTest extends TestCase
     }
 
     // =========================================================================
-    // 3. Price variance under warn → posts, price delta routed to Inventory plug.
+    // 3. Price variance under warn → posts, price delta routed to PPV.
     // =========================================================================
 
-    public function test_price_variance_under_warn_routes_delta_to_inventory_plug(): void
+    public function test_price_variance_under_warn_routes_delta_to_ppv_expense(): void
     {
         // PO @ 10.000, invoice @ 11.000 → 5.000 delta over 5 units (2% of 50 = 1.000 → variance).
         $poLine = $this->confirmedPoWithReceipt('5.0000', '10.000');
@@ -487,11 +496,11 @@ final class SupplierInvoiceGlTest extends TestCase
         $this->assertNotNull($dr408);
         $this->assertSame('50.000', $dr408->debit);
 
-        // Dr Inventory = the price delta plug.
-        $drInv = $this->legOn($entry, $this->inventoryAccount);
-        $this->assertNotNull($drInv, 'Price variance must produce an Inventory plug leg');
-        $this->assertSame('5.000', $drInv->debit);
-        $this->assertSame('0.000', $drInv->credit);
+        $drPpv = $this->legOn($entry, $this->ppvExpenseAccount);
+        $this->assertNotNull($drPpv, 'Unfavorable price variance must produce a PPV expense leg');
+        $this->assertSame('5.000', $drPpv->debit);
+        $this->assertSame('0.000', $drPpv->credit);
+        $this->assertNull($this->legOn($entry, $this->inventoryAccount));
 
         // Dr VAT on the billed basis.
         $drVat = $this->legOn($entry, $this->vatDeductibleAccount);
@@ -649,12 +658,11 @@ final class SupplierInvoiceGlTest extends TestCase
         // 408 fully zeroes — the regression: with unit_price basis it would leave 2.500.
         $this->assertSame('0.000', $this->net408());
 
-        // The plug carries only the legitimate billed-vs-accrued reconciliation
-        // (50.000 − 52.500 = −2.500 Cr Inventory), not a phantom landed gap on 408.
-        $inv = $this->legOn($entry, $this->inventoryAccount);
-        $this->assertNotNull($inv);
-        $this->assertSame('0.000', $inv->debit);
-        $this->assertSame('2.500', $inv->credit);
+        $ppvIncome = $this->legOn($entry, $this->ppvIncomeAccount);
+        $this->assertNotNull($ppvIncome);
+        $this->assertSame('0.000', $ppvIncome->debit);
+        $this->assertSame('2.500', $ppvIncome->credit);
+        $this->assertNull($this->legOn($entry, $this->inventoryAccount));
 
         $this->assertBalanced($entry);
         $this->assertTrue($this->hashService->verifyChain($this->company->id));
@@ -686,10 +694,15 @@ final class SupplierInvoiceGlTest extends TestCase
         $this->assertNotNull($drVat);
         $this->assertSame('9.500', $drVat->debit);
 
-        // Inventory plug = price delta (5.000) + non-recoverable VAT (1.000) = 6.000.
+        $drPpv = $this->legOn($entry, $this->ppvExpenseAccount);
+        $this->assertNotNull($drPpv);
+        $this->assertSame('5.000', $drPpv->debit);
+        $this->assertSame('0.000', $drPpv->credit);
+
+        // Inventory plug = non-recoverable VAT only; price delta routes to PPV.
         $drInv = $this->legOn($entry, $this->inventoryAccount);
         $this->assertNotNull($drInv);
-        $this->assertSame('6.000', $drInv->debit);
+        $this->assertSame('1.000', $drInv->debit);
         $this->assertSame('0.000', $drInv->credit);
 
         $this->assertBalanced($entry);
@@ -722,11 +735,11 @@ final class SupplierInvoiceGlTest extends TestCase
         $this->assertNotNull($dr408);
         $this->assertSame('50.000', $dr408->debit);
 
-        // plug = 53.550 − (50.000 + 8.550) = −5.000 → Cr Inventory 5.000.
-        $inv = $this->legOn($entry, $this->inventoryAccount);
-        $this->assertNotNull($inv);
-        $this->assertSame('0.000', $inv->debit);
-        $this->assertSame('5.000', $inv->credit);
+        $ppvIncome = $this->legOn($entry, $this->ppvIncomeAccount);
+        $this->assertNotNull($ppvIncome);
+        $this->assertSame('0.000', $ppvIncome->debit);
+        $this->assertSame('5.000', $ppvIncome->credit);
+        $this->assertNull($this->legOn($entry, $this->inventoryAccount));
 
         $this->assertBalanced($entry);
         $this->assertTrue($this->hashService->verifyChain($this->company->id));
@@ -871,11 +884,11 @@ final class SupplierInvoiceGlTest extends TestCase
     }
 
     // =========================================================================
-    // 13. B3 BLOCKER: landed_unit_cost changed AFTER receipt → post() throws
-    //     divergence DomainException; no JE, status unchanged.
+    // 13. Wave 5: legacy zero-receipt fallback clears at immutable accrual basis
+    //     before mutable landed_unit_cost.
     // =========================================================================
 
-    public function test_landed_cost_changed_after_receipt_post_throws_divergence_exception(): void
+    public function test_legacy_zero_receipt_fallback_uses_accrual_basis_before_mutable_landed_cost(): void
     {
         // Receipt accrued 408 at landed_unit_cost=10.500 (B1 = 5 × 10.500 = 52.500).
         $poLine = $this->confirmedPoWithReceipt('5.0000', '10.000', landedUnitCost: '10.500');
@@ -899,27 +912,16 @@ final class SupplierInvoiceGlTest extends TestCase
             total: '59.500',
         );
 
-        $threw = false;
-        $exceptionMessage = '';
-        try {
-            $this->service()->post($invoice);
-        } catch (\DomainException $e) {
-            $threw = true;
-            $exceptionMessage = $e->getMessage();
-        }
+        $this->service()->post($invoice);
 
-        $this->assertTrue($threw, 'Post must throw when landed_unit_cost diverges from accrual basis');
-        $this->assertStringContainsStringIgnoringCase('accrual', $exceptionMessage,
-            'Exception message must mention "accrual" to be diagnosable');
+        $entry = $this->clearingEntry($invoice);
+        $dr408 = $this->legOn($entry, $this->grirAccount);
 
-        // Rolled back: no JE, no quantity_invoiced increment, invoice still Draft.
-        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_invoice')
-            ->where('source_id', $invoice->id)->count());
-        $this->assertSame('0.0000', $this->freshLine($poLine)->quantity_invoiced);
-        $this->assertSame(DocumentStatus::Draft, $this->freshDoc($invoice)->status);
-
-        // 408 is still at the receipt-accrued credit (not partially cleared).
-        $this->assertSame('52.500', $this->net408(), '408 must not be touched when post throws');
+        $this->assertNotNull($dr408);
+        $this->assertSame('52.500', $dr408->debit);
+        $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame(DocumentStatus::Posted, $this->freshDoc($invoice)->status);
+        $this->assertSame('0.000', $this->net408(), '408 clears at immutable accrual basis, not mutable landed cost');
     }
 
     // =========================================================================
@@ -952,5 +954,124 @@ final class SupplierInvoiceGlTest extends TestCase
         $this->assertSame('52.500', $dr408->debit);
         $this->assertBalanced($entry);
         $this->assertSame('0.000', $this->net408(), '408 must zero when no divergence');
+    }
+
+    public function test_wave4_override_clears_408_at_accrual_unit_cost_before_landed_unit_cost(): void
+    {
+        // Receipt accrued 408 at override basis 5.200, while legacy landed_unit_cost
+        // still carries the original PO basis until Wave 5 moves clearing to receipt lines.
+        $poLine = $this->confirmedPoWithReceipt('100.0000', '5.000', landedUnitCost: '5.200');
+        $poLine->landed_unit_cost = '5.000';
+        $poLine->accrual_unit_cost = '5.200';
+        $poLine->save();
+        $receipt = GoodsReceipt::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'purchase_order_id' => $poLine->document_id,
+            'receipt_number' => 'GRN-W4-'.Str::upper(Str::random(6)),
+            'status' => GoodsReceiptStatus::Posted,
+            'received_at' => now(),
+        ]);
+        GoodsReceiptLine::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'goods_receipt_id' => $receipt->id,
+            'po_line_id' => $poLine->id,
+            'product_id' => Str::uuid()->toString(),
+            'received_qty' => '100.0000',
+            'free_qty' => '0.0000',
+            'received_unit_price' => '5.200',
+            'landed_unit_cost' => '5.200000',
+            'accrual_unit_cost' => '5.200000',
+            'effective_unit_cost' => '5.200000',
+            'quantity_invoiced' => '0.0000',
+        ]);
+
+        $invoice = $this->supplierInvoice(
+            $this->freshLine($poLine),
+            ['qty' => '100.0000', 'unit_price' => '5.200', 'recoverable_vat' => '98.800'],
+            stampDuty: '0.000',
+            subtotal: '520.000',
+            total: '618.800',
+        );
+
+        $this->service()->post($invoice);
+
+        $entry = $this->clearingEntry($invoice);
+        $dr408 = $this->legOn($entry, $this->grirAccount);
+
+        $this->assertNotNull($dr408);
+        $this->assertSame('520.000', $dr408->debit);
+        $this->assertSame('0.000', $this->net408());
+        $this->assertBalanced($entry);
+    }
+
+    public function test_wave5_multi_receipt_divergent_accrual_bases_clear_fifo_without_interim_guard(): void
+    {
+        $poLine = $this->confirmedPoWithReceipt('50.0000', '5.000', landedUnitCost: '5.200');
+        $poLine->quantity = '100.0000';
+        $poLine->quantity_received = '100.0000';
+        $poLine->landed_unit_cost = '5.000';
+        $poLine->accrual_unit_cost = '5.200';
+        $poLine->line_total = '500.000';
+        $poLine->save();
+
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            '50.0000',
+            '5.400',
+            'TND',
+        );
+
+        $receipt = GoodsReceipt::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'purchase_order_id' => $poLine->document_id,
+            'receipt_number' => 'GRN-W4-'.Str::upper(Str::random(6)),
+            'status' => GoodsReceiptStatus::Posted,
+            'received_at' => now(),
+        ]);
+
+        foreach ([['qty' => '50.0000', 'price' => '5.200'], ['qty' => '50.0000', 'price' => '5.400']] as $receiptLine) {
+            GoodsReceiptLine::create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'goods_receipt_id' => $receipt->id,
+                'po_line_id' => $poLine->id,
+                'product_id' => Str::uuid()->toString(),
+                'received_qty' => $receiptLine['qty'],
+                'free_qty' => '0.0000',
+                'received_unit_price' => $receiptLine['price'],
+                'landed_unit_cost' => $receiptLine['price'].'000',
+                'accrual_unit_cost' => $receiptLine['price'].'000',
+                'effective_unit_cost' => $receiptLine['price'].'000',
+                'quantity_invoiced' => '0.0000',
+            ]);
+        }
+
+        $invoice = $this->supplierInvoice(
+            $this->freshLine($poLine),
+            ['qty' => '100.0000', 'unit_price' => '5.300', 'recoverable_vat' => '100.700'],
+            stampDuty: '0.000',
+            subtotal: '530.000',
+            total: '630.700',
+        );
+
+        $this->service()->post($invoice);
+
+        $entry = $this->clearingEntry($invoice);
+        $dr408 = $this->legOn($entry, $this->grirAccount);
+
+        $this->assertNotNull($dr408);
+        $this->assertSame('530.000', $dr408->debit);
+        $this->assertSame('0.000', $this->net408());
+        $this->assertSame('100.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $receiptLines = GoodsReceiptLine::query()
+            ->where('po_line_id', $poLine->id)
+            ->orderBy('accrual_unit_cost')
+            ->get();
+        $this->assertSame('50.0000', $receiptLines[0]->quantity_invoiced);
+        $this->assertSame('50.0000', $receiptLines[1]->quantity_invoiced);
     }
 }

@@ -15,6 +15,7 @@ import {
   Send,
   Lock,
   MoreVertical,
+  ReceiptText,
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '../../../components/atoms'
@@ -30,6 +31,7 @@ export interface DocumentActionBarProps {
   onConvert?: (() => void) | undefined
   onConvertToDelivery?: (() => void) | undefined
   onReceiveGoods?: (() => void) | undefined
+  onCreateSupplierInvoice?: (() => void) | undefined
   onRecordPayment?: (() => void) | undefined
   onCreateCreditNote?: (() => void) | undefined
   onCreateReturnNote?: (() => void) | undefined
@@ -42,6 +44,7 @@ export interface DocumentActionBarProps {
   isPreviewing?: boolean | undefined
   isPrinting?: boolean | undefined
   isSendingEmail?: boolean | undefined
+  canCreateSupplierInvoice?: boolean | undefined
 }
 
 interface VisibleAction {
@@ -50,6 +53,7 @@ interface VisibleAction {
   label: string
   onClick: () => void
   disabled: boolean
+  title?: string | undefined
 }
 
 export function DocumentActionBar({
@@ -61,6 +65,7 @@ export function DocumentActionBar({
   onConvert,
   onConvertToDelivery,
   onReceiveGoods,
+  onCreateSupplierInvoice,
   onRecordPayment,
   onCreateCreditNote,
   onCreateReturnNote,
@@ -72,8 +77,9 @@ export function DocumentActionBar({
   isPreviewing = false,
   isPrinting = false,
   isSendingEmail = false,
+  canCreateSupplierInvoice: hasUninvoicedReceiptLines = false,
 }: DocumentActionBarProps) {
-  const { t } = useTranslation(['sales', 'common'])
+  const { t } = useTranslation(['sales', 'common', 'purchases'])
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -119,6 +125,11 @@ export function DocumentActionBar({
     document.type === 'purchase_order' &&
     document.status === 'confirmed' &&
     !document.goods_received
+
+  const canShowCreateSupplierInvoice =
+    document.type === 'purchase_order' &&
+    ['confirmed', 'received'].includes(document.status) &&
+    onCreateSupplierInvoice !== undefined
 
   const canRecordPayment =
     (document.type === 'invoice' && ['confirmed', 'posted'].includes(document.status) && document.payment_status !== 'paid') ||
@@ -195,6 +206,19 @@ export function DocumentActionBar({
     })
   }
 
+  if (canShowCreateSupplierInvoice && onCreateSupplierInvoice) {
+    visibleActions.push({
+      key: 'createSupplierInvoice',
+      icon: ReceiptText,
+      label: t('purchases:supplierInvoices.actions.createFromPurchaseOrder'),
+      onClick: onCreateSupplierInvoice,
+      disabled: isActionPending || !hasUninvoicedReceiptLines,
+      title: !hasUninvoicedReceiptLines
+        ? t('purchases:supplierInvoices.create.noReceiptLines')
+        : undefined,
+    })
+  }
+
   if (canRecordPayment && onRecordPayment) {
     visibleActions.push({
       key: 'recordPayment',
@@ -243,6 +267,7 @@ export function DocumentActionBar({
             variant={index === 0 ? 'primary' : 'secondary'}
             disabled={action.disabled}
             onClick={action.onClick}
+            title={action.title}
             className="gap-2"
           >
             <Icon className="h-4 w-4" />

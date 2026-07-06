@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -26,9 +26,11 @@ import { ProductCell } from '../../../components/molecules/line-items'
 import { tokens } from '../../../lib/designTokens'
 import { entityRoutes } from '../../../lib/entityRoutes'
 import { useCompany } from '../../../hooks/useCompany'
+import { usePermissions } from '../../../hooks/usePermissions'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from '@/features/purchases/components/ReceiveGoodsDialog'
+import { usePurchaseOrderReceiptLines } from '@/features/purchases/supplier-invoices/api'
 import type { Document } from '../../../types/document'
 
 type ConfirmAction = 'confirm' | null
@@ -50,6 +52,15 @@ interface ReceiptStatusResponse {
   total_received: string
   percentage: number
   lines: ReceiptStatusLine[]
+}
+
+interface ReceiveGoodsResponse {
+  data: Document
+  meta?: {
+    goods_receipt?: {
+      receipt_number?: string | null
+    } | null
+  }
 }
 
 const receiptStatusTones: Record<ReceiptStatusValue, StatusTone> = {
@@ -81,6 +92,8 @@ function scopedNamespacePredicate(
 export function PurchaseOrderDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
   const { id = '' } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const { hasPermission } = usePermissions()
   const queryClient = useQueryClient()
   const { currentCompany } = useCompany()
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
@@ -117,6 +130,9 @@ export function PurchaseOrderDetailPage() {
     enabled: id.length > 0 && tenantId !== null && companyId !== null,
   })
 
+  const { data: uninvoicedReceiptLines } = usePurchaseOrderReceiptLines(id, id.length > 0)
+  const canCreateSupplierInvoice = hasPermission('purchases.create') && (uninvoicedReceiptLines?.length ?? 0) > 0
+
   // PDF mutations
   const downloadPdfMutation = useDownloadPdf()
   const previewPdfMutation = usePreviewPdf()
@@ -142,9 +158,11 @@ export function PurchaseOrderDetailPage() {
 
   // Receive goods mutation
   const receiveGoodsMutation = useMutation({
-    mutationFn: (request: ReceiveGoodsRequest) =>
-      apiPost<{ message: string }>(`/purchase-orders/${id}/receive`, request),
-    onSuccess: async () => {
+    mutationFn: async (request: ReceiveGoodsRequest) => {
+      const response = await api.post<ReceiveGoodsResponse>(`/purchase-orders/${id}/receive`, request)
+      return response.data
+    },
+    onSuccess: async (response) => {
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
@@ -156,7 +174,10 @@ export function PurchaseOrderDetailPage() {
         }),
       ])
       setShowReceiveDialog(false)
-      toast.success(t('documents.messages.goodsReceived'))
+      const receiptNumber = response.meta?.goods_receipt?.receipt_number
+      toast.success(receiptNumber
+        ? t('documents.messages.goodsReceivedWithReceipt', { receiptNumber })
+        : t('documents.messages.goodsReceived'))
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
@@ -295,6 +316,8 @@ export function PurchaseOrderDetailPage() {
               isActionPending={isActionPending}
               onConfirm={() => { setConfirmAction('confirm'); }}
               onReceiveGoods={() => { setShowReceiveDialog(true); }}
+              onCreateSupplierInvoice={hasPermission('purchases.create') ? () => { void navigate(`/purchases/supplier-invoices/new?po=${id}`) } : undefined}
+              canCreateSupplierInvoice={canCreateSupplierInvoice}
               onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
               onDownloadPdf={handleDownloadPdf}
               onPreviewPdf={handlePreviewPdf}

@@ -41,6 +41,8 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Procurement\Domain\Enums\ProcurementPreset;
+use App\Modules\Procurement\Domain\ProcurementPolicy;
 use App\Modules\Product\Domain\Enums\ParapharmacyCategory;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
@@ -402,6 +404,13 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
                 $this->localeCurrency(),
                 'Programme fidélité',
             );
+
+            // Ensure the demo company has a procurement policy so supplier-invoice
+            // matching / receipt workflows behave predictably in the demo.
+            // Idempotent (firstOrCreate), safe on first run and re-run.
+            ProcurementPolicy::firstOrCreateForCompany($this->company)
+                ->applyPreset(ProcurementPreset::Standard)
+                ->save();
 
             $this->seedTunisiaTerminals($this->shops);
             $this->seedTunisiaCashiers($this->company, $this->shops);

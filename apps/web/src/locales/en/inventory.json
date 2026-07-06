@@ -56,7 +56,8 @@
     "emptyReceived": "No received orders yet",
     "receiveAll": "Receive All",
     "progress": "{{received}} of {{total}} items received",
-    "successMessage": "Goods received successfully"
+    "successMessage": "Goods received successfully",
+    "successMessageWithReceipt": "Goods received successfully under {{receiptNumber}}"
   },
   "products": {
     "title": "Products",

@@ -237,7 +237,8 @@
       "confirmed": "Document confirmé",
       "cancelled": "Document annulé",
       "posted": "Document comptabilisé",
-      "goodsReceived": "Marchandises réceptionnées"
+      "goodsReceived": "Marchandises réceptionnées",
+      "goodsReceivedWithReceipt": "Marchandises réceptionnées sous {{receiptNumber}}"
     },
     "taxExemptionMention": "Exonération fiscale applicable à {{partner}} - {{reason}}",
     "vehicle": "Véhicule",
@@ -352,6 +353,12 @@
       "quantity": "Quantité à réceptionner",
       "freeQuantity": "Gratuité à réceptionner",
       "freeOrderedSummary": "Gratuité commandée : {{ordered}} · reçue : {{received}}",
+      "orderedUnitPrice": "PU commande",
+      "deliveredUnitPrice": "PU livré",
+      "variance": "Écart",
+      "noVariance": "—",
+      "priceEditReadOnly": "Le prix livré ne peut être modifié que par les utilisateurs autorisés.",
+      "priceOverrideReason": "Motif de modification du prix",
       "batchNumber": "Numéro de lot",
       "expiryDate": "Date d'expiration",
       "submit": "Réceptionner"

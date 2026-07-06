@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
@@ -12,10 +13,15 @@ import { PurchaseOrderDetailPage } from '../PurchaseOrderDetailPage'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
+const mockAxiosPost = vi.hoisted(() => vi.fn())
 const mockRouteId = vi.hoisted(() => ({ current: 'po-1' }))
+const mockNavigate = vi.hoisted(() => vi.fn())
 const mockTranslate = vi.hoisted(() => vi.fn((key: string, options?: Record<string, string>) => {
   if (key === 'purchaseOrders.receivedOfTotal') {
     return `${options?.['received'] ?? '?'} of ${options?.['total'] ?? '?'}`
+  }
+  if (key === 'documents.messages.goodsReceivedWithReceipt') {
+    return `Goods received: ${options?.['receiptNumber'] ?? '?'}`
   }
 
   return key
@@ -25,7 +31,7 @@ vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
   return {
     ...actual,
-    api: { get: mockApiGet },
+    api: { get: mockApiGet, post: mockAxiosPost },
     apiPost: mockApiPost,
     getErrorMessage: () => 'request failed',
   }
@@ -37,6 +43,7 @@ vi.mock('react-router-dom', async () => {
     ...actual,
     Link: ({ children }: { children: ReactNode }) => <a href="/test">{children}</a>,
     useParams: () => ({ id: mockRouteId.current }),
+    useNavigate: () => mockNavigate,
   }
 })
 
@@ -225,6 +232,17 @@ beforeEach(() => {
   setTenant('tenant-A', 'company-1')
   mockPurchaseOrderResponses()
   mockApiPost.mockResolvedValue({ data: { data: purchaseOrderFixture() } })
+  mockAxiosPost.mockResolvedValue({
+    data: {
+      data: purchaseOrderFixture(),
+      meta: {
+        goods_receipt: {
+          id: 'gr-1',
+          receipt_number: 'GRN-2026-0031',
+        },
+      },
+    },
+  })
 })
 
 afterEach(() => {
@@ -337,11 +355,22 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
     await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
 
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
+      expect(mockAxiosPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
         quantities: {
           'line-1': '2.5',
         },
       })
+    })
+  })
+
+  it('surfaces the created GRN number after receiving goods', async () => {
+    render(<PurchaseOrderDetailPage />, { wrapper: wrapper(createClient()) })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'receive-goods' }))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('Goods received: GRN-2026-0031')
     })
   })
 
@@ -437,7 +466,7 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
     await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
 
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
+      expect(mockAxiosPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
         quantities: {
           'line-1': '5.0000',
         },

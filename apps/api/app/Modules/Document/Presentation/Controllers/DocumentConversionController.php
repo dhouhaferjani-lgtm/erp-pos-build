@@ -342,6 +342,7 @@ class DocumentConversionController extends Controller
                 DocumentType::PurchaseOrder,  // Target is same type (updates existing doc)
                 [
                     'received_quantities' => $quantities,
+                    'actor_user_id' => $request->user()?->id !== null ? (string) $request->user()->id : null,
                 ]
             );
 

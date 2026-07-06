@@ -8,19 +8,24 @@
  * - Payment: reuse POST /payments (gated on C4 re-review — see contract).
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query'
 import { api, apiGet, apiPost, apiDelete, authenticatedDownload } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
+import type { Document } from '../../../types/document'
 import type {
   SupplierInvoiceListResponse,
   SupplierInvoiceDetail,
   SupplierInvoiceListParams,
   CreateSupplierInvoicePayload,
+  DuplicateSupplierInvoiceReferenceResult,
   DocumentAttachment,
   RecordPaymentPayload,
   InvoiceMatch,
+  OpenPurchaseOrderForSupplierInvoice,
+  PurchaseOrderForSupplierInvoice,
+  PurchaseOrderReceiptLine,
 } from './types'
 
 // ── Query key factories ────────────────────────────────────────────────────
@@ -32,6 +37,14 @@ export const supplierInvoiceKeys = {
     ['supplier-invoices', 'detail', id] as const,
   attachments: (id: string) =>
     ['supplier-invoices', 'attachments', id] as const,
+  purchaseOrder: (id: string) =>
+    ['supplier-invoices', 'purchase-order', id] as const,
+  receiptLines: (purchaseOrderId: string) =>
+    ['supplier-invoices', 'purchase-order', purchaseOrderId, 'receipt-lines'] as const,
+  openPurchaseOrders: (partnerId: string) =>
+    ['supplier-invoices', 'open-purchase-orders', partnerId] as const,
+  duplicateReference: (partnerId: string, reference: string) =>
+    ['supplier-invoices', 'duplicate-reference', partnerId, reference] as const,
 } as const
 
 function supplierInvoiceListInvalidationPredicate(
@@ -156,6 +169,169 @@ export function useCreateSupplierInvoice() {
   })
 }
 
+export function usePurchaseOrderForSupplierInvoice(id: string) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const enabled = tenantId !== null && companyId !== null && id !== ''
+
+  return useQuery({
+    queryKey: tenantScopedKey([...supplierInvoiceKeys.purchaseOrder(id)]),
+    queryFn: async () => {
+      const response = await api.get<{ data: Document }>(`/purchase-orders/${id}`)
+      const document = response.data.data
+      return {
+        id: document.id,
+        document_number: document.document_number ?? document.id,
+        partner_id: document.partner_id ?? '',
+        partner_name: document.partner_name ?? '',
+        currency: document.currency,
+        lines: (document.lines ?? []).map((line) => ({
+          id: line.id,
+          description: line.description,
+          product_id: line.product_id,
+          product_name: line.product_name,
+          unit_price: line.unit_price,
+          tax_rate: line.tax_rate,
+        })),
+      } satisfies PurchaseOrderForSupplierInvoice
+    },
+    enabled,
+  })
+}
+
+export function usePurchaseOrdersForSupplierInvoice(ids: string[]): { data: PurchaseOrderForSupplierInvoice[]; isLoading: boolean } {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const enabled = tenantId !== null && companyId !== null
+  const uniqueIds = Array.from(new Set(ids.filter((id) => id !== '')))
+
+  const queries = useQueries({
+    queries: uniqueIds.map((id) => ({
+      queryKey: tenantScopedKey([...supplierInvoiceKeys.purchaseOrder(id)]),
+      queryFn: async (): Promise<PurchaseOrderForSupplierInvoice> => {
+        const response = await api.get<{ data: Document }>(`/purchase-orders/${id}`)
+        const document = response.data.data
+        return {
+          id: document.id,
+          document_number: document.document_number ?? document.id,
+          partner_id: document.partner_id ?? '',
+          partner_name: document.partner_name ?? '',
+          currency: document.currency,
+          lines: (document.lines ?? []).map((line) => ({
+            id: line.id,
+            description: line.description,
+            product_id: line.product_id,
+            product_name: line.product_name,
+            unit_price: line.unit_price,
+            tax_rate: line.tax_rate,
+          })),
+        }
+      },
+      enabled,
+    })),
+  })
+
+  return {
+    data: queries
+      .map((query) => query.data)
+      .filter((document): document is PurchaseOrderForSupplierInvoice => document !== undefined),
+    isLoading: queries.some((query) => query.isLoading),
+  }
+}
+
+export function usePurchaseOrderReceiptLines(purchaseOrderId: string, enabled = true) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const queryEnabled = tenantId !== null && companyId !== null && purchaseOrderId !== '' && enabled
+
+  return useQuery({
+    queryKey: tenantScopedKey([...supplierInvoiceKeys.receiptLines(purchaseOrderId)]),
+    queryFn: () =>
+      apiGet<PurchaseOrderReceiptLine[]>(
+        `/purchase-orders/${purchaseOrderId}/receipt-lines`,
+        { uninvoiced: '1' },
+      ),
+    enabled: queryEnabled,
+  })
+}
+
+export function usePurchaseOrderReceiptLinesForSupplierInvoice(purchaseOrderIds: string[], enabled = true) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const queryEnabled = tenantId !== null && companyId !== null && enabled
+  const uniqueIds = Array.from(new Set(purchaseOrderIds.filter((id) => id !== '')))
+
+  const queries = useQueries({
+    queries: uniqueIds.map((purchaseOrderId) => ({
+      queryKey: tenantScopedKey([...supplierInvoiceKeys.receiptLines(purchaseOrderId)]),
+      queryFn: () =>
+        apiGet<PurchaseOrderReceiptLine[]>(
+          `/purchase-orders/${purchaseOrderId}/receipt-lines`,
+          { uninvoiced: '1' },
+        ),
+      enabled: queryEnabled,
+    })),
+  })
+
+  return {
+    data: queries.flatMap((query) => query.data ?? []),
+    isLoading: queries.some((query) => query.isLoading),
+  }
+}
+
+export function useOpenPurchaseOrdersForSupplier(partnerId: string) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const enabled = tenantId !== null && companyId !== null && partnerId !== ''
+
+  return useQuery({
+    queryKey: tenantScopedKey([...supplierInvoiceKeys.openPurchaseOrders(partnerId)]),
+    queryFn: async () => {
+      const response = await api.get<{ data: Document[] }>('/purchase-orders', {
+        params: {
+          partner_id: partnerId,
+          status: 'received',
+          has_uninvoiced: '1',
+          per_page: 100,
+        },
+      })
+      return response.data.data.map((document) => ({
+        id: document.id,
+        document_number: document.document_number ?? document.id,
+        currency: document.currency,
+        total: document.total,
+      } satisfies OpenPurchaseOrderForSupplierInvoice))
+    },
+    enabled,
+  })
+}
+
+export function useDuplicateSupplierInvoiceReference(
+  partnerId: string,
+  reference: string,
+  enabled: boolean,
+) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const normalizedReference = reference.trim()
+  const queryEnabled =
+    tenantId !== null &&
+    companyId !== null &&
+    partnerId !== '' &&
+    normalizedReference !== '' &&
+    enabled
+
+  return useQuery({
+    queryKey: tenantScopedKey([...supplierInvoiceKeys.duplicateReference(partnerId, normalizedReference)]),
+    queryFn: () =>
+      apiGet<DuplicateSupplierInvoiceReferenceResult>('/supplier-invoices/duplicate-reference', {
+        partner_id: partnerId,
+        reference: normalizedReference,
+      }),
+    enabled: queryEnabled,
+  })
+}
+
 // ── Match ──────────────────────────────────────────────────────────────────
 
 export function useRematchSupplierInvoice(id: string) {
@@ -215,18 +391,21 @@ export function useUploadAttachment(documentId: string) {
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   return useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: (input: File | { documentId: string; file: File }) => {
+      const targetDocumentId = 'file' in input ? input.documentId : documentId
+      const file = 'file' in input ? input.file : input
       const formData = new FormData()
       formData.append('file', file)
       formData.append('role', 'source_document')
       return apiPost<DocumentAttachment>(
-        `/documents/${documentId}/attachments`,
+        `/documents/${targetDocumentId}/attachments`,
         formData,
       )
     },
-    onSuccess: () => {
+    onSuccess: (_attachment, input) => {
+      const targetDocumentId = 'file' in input ? input.documentId : documentId
       void queryClient.invalidateQueries({
-        predicate: supplierInvoiceAttachmentsInvalidationPredicate(documentId, tenantId, companyId),
+        predicate: supplierInvoiceAttachmentsInvalidationPredicate(targetDocumentId, tenantId, companyId),
       })
     },
   })

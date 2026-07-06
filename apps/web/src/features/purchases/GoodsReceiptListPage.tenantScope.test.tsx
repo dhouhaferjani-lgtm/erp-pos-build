@@ -1,6 +1,7 @@
 import { QueryClient, useQuery } from '@tanstack/react-query'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
@@ -11,7 +12,15 @@ import { createTestQueryClient, renderWithProviders } from '../../test/renderWit
 import { GoodsReceiptListPage } from './GoodsReceiptListPage'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
-const mockApiPost = vi.hoisted(() => vi.fn())
+const mockAxiosPost = vi.hoisted(() => vi.fn())
+const mockNavigate = vi.hoisted(() => vi.fn())
+const mockTranslate = vi.hoisted(() => vi.fn((key: string, options?: Record<string, string>) => {
+  if (key === 'inventory:goodsReceipt.successMessageWithReceipt') {
+    return `Goods receipt: ${options?.['receiptNumber'] ?? '?'}`
+  }
+
+  return key
+}))
 
 vi.mock('../../lib/api', async () => {
   const actual = await vi.importActual<typeof import('../../lib/api')>('../../lib/api')
@@ -20,8 +29,8 @@ vi.mock('../../lib/api', async () => {
     api: {
       ...actual.api,
       get: mockApiGet,
+      post: mockAxiosPost,
     },
-    apiPost: mockApiPost,
   }
 })
 
@@ -52,9 +61,17 @@ vi.mock('../../components/ui/ConfirmDialog', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: mockTranslate,
   }),
 }))
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  }
+})
 
 vi.mock('sonner', () => ({
   toast: {
@@ -70,7 +87,7 @@ function setTenant(tenantId: string, companyId: string) {
       name: 'Test User',
       email: 'test@example.com',
       tenant_id: tenantId,
-      roles: [],
+      roles: ['admin'],
       email_verified_at: null,
     },
     token: 'test-token',
@@ -164,7 +181,17 @@ beforeEach(() => {
     }
     return { data: { data: [pendingPurchaseOrder, fullyReceivedPurchaseOrder] } }
   })
-  mockApiPost.mockResolvedValue({ message: 'received' })
+  mockAxiosPost.mockResolvedValue({
+    data: {
+      data: pendingPurchaseOrder,
+      meta: {
+        goods_receipt: {
+          id: 'gr-1',
+          receipt_number: 'GRN-2026-0032',
+        },
+      },
+    },
+  })
 })
 
 afterEach(() => {
@@ -226,7 +253,7 @@ describe('GoodsReceiptListPage tenant scope', () => {
 
     expect(await screen.findByText('PO-DOC-DATE')).toBeInTheDocument()
     expect(screen.queryByText('Invalid Date')).not.toBeInTheDocument()
-    expect(screen.getByText(new Date('2026-06-28').toLocaleDateString())).toBeInTheDocument()
+    expect(screen.getByText(/6\/28\/2026|06\/28\/2026/)).toBeInTheDocument()
   })
 
   it('links purchase orders, suppliers, and product previews from receipt rows', async () => {
@@ -248,12 +275,94 @@ describe('GoodsReceiptListPage tenant scope', () => {
 
     await waitFor(() => {
       expect(mockApiGet).toHaveBeenCalledWith('/purchase-orders/po-1')
-      expect(mockApiPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
+      expect(mockAxiosPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
         quantities: {
           'line-1': '1',
         },
       })
     })
+  })
+
+  it('surfaces the created GRN number after receiving goods from the receipt list', async () => {
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    await userEvent.click(await screen.findByText('inventory:goodsReceipt.receiveAll'))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('Goods receipt: GRN-2026-0032')
+    })
+  })
+
+  it('allows invoice creation when received purchase-order selection spans multiple POs for one supplier', async () => {
+    const receivedPoA = {
+      ...fullyReceivedPurchaseOrder,
+      id: 'po-received-a',
+      document_number: 'PO-RECEIVED-A',
+      partner_id: 'supplier-1',
+      partner_name: 'Same Supplier',
+    }
+    const receivedPoB = {
+      ...fullyReceivedPurchaseOrder,
+      id: 'po-received-b',
+      document_number: 'PO-RECEIVED-B',
+      partner_id: 'supplier-1',
+      partner_name: 'Same Supplier',
+    }
+    mockApiGet.mockImplementation(async (_url: string, options?: { params?: { status?: string } }) => {
+      if (options?.params?.status === 'received') {
+        return { data: { data: [receivedPoA, receivedPoB] } }
+      }
+      return { data: { data: [] } }
+    })
+
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'inventory:goodsReceipt.tabs.received' }))
+    const checkboxes = await screen.findAllByLabelText('purchases:supplierInvoices.create.selectReceiptPo')
+    await userEvent.click(checkboxes[0])
+    await userEvent.click(checkboxes[1])
+
+    const action = screen.getByTestId('invoice-receipts')
+    expect(action).toBeEnabled()
+    await userEvent.click(action)
+
+    expect(mockNavigate).toHaveBeenCalledWith('/purchases/supplier-invoices/new?po=po-received-a&po=po-received-b&entry=receipts')
+  })
+
+  it('blocks invoice creation when received purchase-order selection spans multiple suppliers', async () => {
+    const receivedPoA = {
+      ...fullyReceivedPurchaseOrder,
+      id: 'po-received-a',
+      document_number: 'PO-RECEIVED-A',
+      partner_id: 'supplier-1',
+      partner_name: 'Supplier A',
+    }
+    const receivedPoB = {
+      ...fullyReceivedPurchaseOrder,
+      id: 'po-received-b',
+      document_number: 'PO-RECEIVED-B',
+      partner_id: 'supplier-2',
+      partner_name: 'Supplier B',
+    }
+    mockApiGet.mockImplementation(async (_url: string, options?: { params?: { status?: string } }) => {
+      if (options?.params?.status === 'received') {
+        return { data: { data: [receivedPoA, receivedPoB] } }
+      }
+      return { data: { data: [] } }
+    })
+
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'inventory:goodsReceipt.tabs.received' }))
+    const checkboxes = await screen.findAllByLabelText('purchases:supplierInvoices.create.selectReceiptPo')
+    await userEvent.click(checkboxes[0])
+    await userEvent.click(checkboxes[1])
+
+    const action = screen.getByTestId('invoice-receipts')
+    expect(action).toBeDisabled()
+    expect(action).toHaveAttribute('title', 'purchases:supplierInvoices.create.crossSupplierTooltip')
+    expect(screen.getByText('purchases:supplierInvoices.create.crossSupplierTooltip')).toBeInTheDocument()
   })
 
   it('refetches current-tenant purchase and stock caches and preserves tenant-B cache (.584-.585)', async () => {

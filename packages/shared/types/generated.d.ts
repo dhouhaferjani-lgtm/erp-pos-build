@@ -282,7 +282,7 @@ export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
-export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty' | 'sales_stamp_duty_payable';
+export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'purchase_price_variance_expense' | 'purchase_price_variance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty' | 'sales_stamp_duty_payable';
 }
 declare namespace App.Modules.BatchExpiry.Domain.Enums {
 export type ExpiryStatus = 'ok' | 'approaching' | 'warning' | 'critical' | 'expired';
@@ -786,6 +786,44 @@ export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' 
 export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
 }
 declare namespace App.Modules.Inventory.Application.DTOs {
+export type GoodsReceiptData = {
+id: string;
+tenant_id: string;
+company_id: string;
+purchase_order_id: string;
+receipt_number: string;
+status: string;
+received_at: string;
+received_by: string | null;
+notes: string | null;
+payload: Array<any> | null;
+lines: Array<App.Modules.Inventory.Application.DTOs.GoodsReceiptLineData>;
+created_at: string;
+updated_at: string;
+};
+export type GoodsReceiptLineData = {
+id: string;
+goods_receipt_id: string;
+po_line_id: string;
+product_id: string;
+variant_id: string | null;
+received_qty: string;
+free_qty: string;
+received_unit_price: string | null;
+landed_unit_cost: string;
+accrual_unit_cost: string;
+effective_unit_cost: string;
+movement_id: string | null;
+free_movement_id: string | null;
+quantity_invoiced: string;
+free_quantity_invoiced: string;
+price_override_by: string | null;
+price_override_at: string | null;
+price_override_old_basis: string | null;
+price_override_reason: string | null;
+created_at: string;
+updated_at: string;
+};
 export type StockLevelData = {
 id: string;
 product_id: string;
@@ -808,6 +846,7 @@ export type AssignmentStatus = 'pending' | 'in_progress' | 'completed' | 'overdu
 export type CountingExecutionMode = 'parallel' | 'sequential';
 export type CountingScopeType = 'product_location' | 'product' | 'location' | 'category' | 'full_inventory';
 export type CountingStatus = 'draft' | 'scheduled' | 'count_1_in_progress' | 'count_1_completed' | 'count_2_in_progress' | 'count_2_completed' | 'count_3_in_progress' | 'count_3_completed' | 'pending_review' | 'finalized' | 'cancelled';
+export type GoodsReceiptStatus = 'draft' | 'posted' | 'cancelled';
 export type ItemResolutionMethod = 'pending' | 'auto_all_match' | 'auto_counters_agree' | 'third_count_decisive' | 'manual_override';
 export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_positive' | 'transfer_in' | 'production_output' | 'opening_balance' | 'delivery' | 'supplier_return' | 'adjustment_negative' | 'count_correction' | 'transfer_out' | 'damage' | 'expiry' | 'write_off' | 'consumption' | 'pos_sale' | 'pos_return';
 export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' | 'adjustment' | 'opening';
@@ -1348,6 +1387,21 @@ message: string | null;
 declare namespace App.Modules.PlatformIntegration.Domain.Enums {
 export type PlatformLookupStatus = 'found' | 'not_found' | 'error' | 'cached';
 }
+declare namespace App.Modules.Procurement.Application.DTOs {
+export type ProcurementPolicyData = {
+id: string | null;
+tenant_id: string;
+company_id: string;
+preset: string | null;
+bill_control_mode: string;
+match_mode: string;
+match_enforcement: string;
+variance_tolerance_percent: string;
+variance_tolerance_max_amount: string;
+created_at: string | null;
+updated_at: string | null;
+};
+}
 declare namespace App.Modules.Procurement.Domain.Dto {
 export type RfqPayload = {
 groupId: string;
@@ -1363,6 +1417,7 @@ declare namespace App.Modules.Procurement.Domain.Enums {
 export type BillControlMode = 'received' | 'ordered';
 export type MatchEnforcement = 'warn' | 'block';
 export type MatchMode = 'two_way' | 'three_way';
+export type ProcurementPreset = 'complet' | 'standard' | 'leger';
 export type SupplierCreditNoteReason = 'price_adjustment' | 'goods_return';
 }
 declare namespace App.Modules.Product.Application.DTOs {

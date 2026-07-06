@@ -55,6 +55,7 @@ const ReturnNoteDetailPage = lazy(() => import('../features/documents/return-not
 // Purchases module
 const GoodsReceiptListPage = lazy(() => import('../features/purchases/GoodsReceiptListPage').then((m) => ({ default: m.GoodsReceiptListPage })))
 const SupplierInvoiceListPage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceListPage').then((m) => ({ default: m.SupplierInvoiceListPage })))
+const SupplierInvoiceCreatePage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceCreatePage').then((m) => ({ default: m.SupplierInvoiceCreatePage })))
 const SupplierInvoiceDetailPage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceDetailPage').then((m) => ({ default: m.SupplierInvoiceDetailPage })))
 const QuoteRequestListPage = lazy(() => import('../features/purchases/quote-requests/QuoteRequestListPage').then((m) => ({ default: m.QuoteRequestListPage })))
 const QuoteRequestCreatePage = lazy(() => import('../features/purchases/quote-requests/QuoteRequestCreatePage').then((m) => ({ default: m.QuoteRequestCreatePage })))
@@ -886,6 +887,16 @@ export function AppRoutes() {
               <RequirePermission moduleKey="purchases">
                 <SuspenseWrapper>
                   <SupplierInvoiceListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="supplier-invoices/new"
+            element={
+              <RequirePermission permission="purchases.create">
+                <SuspenseWrapper>
+                  <SupplierInvoiceCreatePage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

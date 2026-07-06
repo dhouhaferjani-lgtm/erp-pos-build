@@ -20,13 +20,21 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\GoodsReceipt;
+use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Procurement\Application\SupplierCreditNotePostingService;
+use App\Modules\Procurement\Application\SupplierInvoicePostingService;
+use App\Modules\Procurement\Domain\Enums\BillControlMode;
+use App\Modules\Procurement\Domain\Enums\MatchEnforcement;
+use App\Modules\Procurement\Domain\Enums\MatchMode;
 use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
+use App\Modules\Procurement\Domain\ProcurementPolicy;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -114,6 +122,16 @@ final class SupplierCreditNoteGlTest extends TestCase
             'name' => 'D1 Test Supplier',
             'type' => PartnerType::Supplier,
             'tax_status' => PartnerTaxStatus::REGISTERED,
+        ]);
+
+        ProcurementPolicy::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'bill_control_mode' => BillControlMode::Received,
+            'match_mode' => MatchMode::ThreeWay,
+            'match_enforcement' => MatchEnforcement::Warn,
+            'variance_tolerance_percent' => '2.00',
+            'variance_tolerance_max_amount' => '1.000',
         ]);
 
         $this->hashService = app(GeneralLedgerHashService::class);
@@ -268,6 +286,88 @@ final class SupplierCreditNoteGlTest extends TestCase
         return $creditNote;
     }
 
+    private function receiptLineForPoLine(
+        DocumentLine $poLine,
+        string $receivedQty,
+        string $invoicedQty,
+        string $freeQty = '0.0000',
+        string $freeInvoicedQty = '0.0000',
+    ): GoodsReceiptLine {
+        $receipt = GoodsReceipt::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'purchase_order_id' => $poLine->document_id,
+            'receipt_number' => 'GRN-D1-'.Str::upper(Str::random(6)),
+            'status' => GoodsReceiptStatus::Posted,
+            'received_at' => now(),
+        ]);
+
+        return GoodsReceiptLine::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'goods_receipt_id' => $receipt->id,
+            'po_line_id' => $poLine->id,
+            'product_id' => Str::uuid()->toString(),
+            'received_qty' => $receivedQty,
+            'free_qty' => $freeQty,
+            'received_unit_price' => null,
+            'landed_unit_cost' => $poLine->unit_price,
+            'accrual_unit_cost' => $poLine->unit_price,
+            'effective_unit_cost' => $poLine->unit_price,
+            'quantity_invoiced' => $invoicedQty,
+            'free_quantity_invoiced' => $freeInvoicedQty,
+        ]);
+    }
+
+    /**
+     * @param  numeric-string  $qty
+     * @param  numeric-string  $unitPrice
+     */
+    private function supplierInvoiceForPoLine(DocumentLine $poLine, string $qty, string $unitPrice): Document
+    {
+        $extended = bcmul($qty, $unitPrice, 3);
+
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierInvoice,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SI-D1-RE-'.Str::upper(Str::random(6)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'source_document_id' => $poLine->document_id,
+            'subtotal' => $extended,
+            'line_tax_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'stamp_duty_amount' => '0.000',
+            'total' => $extended,
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'D1 reinvoice line',
+            'quantity' => $qty,
+            'quantity_delivered' => '0.0000',
+            'quantity_received' => '0.0000',
+            'quantity_invoiced' => '0.0000',
+            'unit_price' => $unitPrice,
+            'line_total' => $extended,
+            'allocated_costs' => '0.0000',
+            'tax_amount' => '0.000',
+            'tax_recoverable' => true,
+            'recoverable_tax_amount' => '0.000',
+            'non_recoverable_tax_amount' => '0.000',
+            'source_line_id' => $poLine->id,
+            'price_match_basis' => $unitPrice,
+        ]);
+
+        return $invoice->load('lines');
+    }
+
     private function service(): SupplierCreditNotePostingService
     {
         return app(SupplierCreditNotePostingService::class);
@@ -402,6 +502,37 @@ final class SupplierCreditNoteGlTest extends TestCase
 
         // quantity_invoiced reduced 5 → 3 (reopens the PO line for re-invoicing).
         $this->assertSame('3.0000', $this->freshLine($poLine)->quantity_invoiced);
+    }
+
+    public function test_goods_return_reopens_receipt_line_window_and_reinvoice_posts_cleanly(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('5.0000', '10.000');
+        $receiptLine = $this->receiptLineForPoLine($poLine, receivedQty: '5.0000', invoicedQty: '5.0000');
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '10.000', 'recoverable_vat' => '0.000'],
+            subtotal: '20.000',
+            total: '20.000',
+        );
+
+        $this->service()->post($creditNote);
+
+        $this->assertSame('3.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame('3.0000', GoodsReceiptLine::findOrFail($receiptLine->id)->quantity_invoiced);
+
+        $reinvoice = $this->supplierInvoiceForPoLine($poLine, qty: '2.0000', unitPrice: '10.000');
+        app(SupplierInvoicePostingService::class)->post($reinvoice);
+
+        $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame('5.0000', GoodsReceiptLine::findOrFail($receiptLine->id)->quantity_invoiced);
+
+        $this->service()->post($this->freshDoc($creditNote));
+
+        $this->assertSame(1, JournalEntry::where('source_type', 'supplier_credit_note')->where('source_id', $creditNote->id)->count());
+        $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
+        $this->assertSame('5.0000', GoodsReceiptLine::findOrFail($receiptLine->id)->quantity_invoiced);
     }
 
     public function test_bonus_goods_return_decrements_free_counter_issues_stock_at_wac_and_avoids_supplier_payable(): void

@@ -171,4 +171,70 @@ class DocumentFulfillmentIsPhysicalTest extends TestCase
         // A null-type but is_physical=true product should still require delivery
         $this->assertEquals(FulfillmentStatus::NotFulfilled, $document->getFulfillmentStatus());
     }
+
+    public function test_non_delivery_child_documents_do_not_satisfy_fulfillment(): void
+    {
+        $physicalProduct = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Physical Fulfillment Product',
+            'sku' => 'PHY-FUL-001',
+            'is_physical' => true,
+            'sale_price' => '100.00',
+        ]);
+
+        $invoice = $this->createInvoiceWithProduct($physicalProduct);
+        $this->createChildDocumentWithProduct($invoice, DocumentType::CreditNote, $physicalProduct);
+
+        $salesOrder = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::SalesOrder,
+            'status' => DocumentStatus::Confirmed,
+            'partner_id' => $this->customer->id,
+            'document_number' => 'SO-'.uniqid(),
+            'document_date' => now(),
+            'total' => '100.00',
+        ]);
+        DocumentLine::create([
+            'document_id' => $salesOrder->id,
+            'product_id' => $physicalProduct->id,
+            'line_number' => 1,
+            'description' => $physicalProduct->name,
+            'quantity' => '1.0000',
+            'unit_price' => '100.00',
+            'line_total' => '100.00',
+        ]);
+        $this->createChildDocumentWithProduct($salesOrder, DocumentType::ReturnNote, $physicalProduct);
+
+        $this->assertEquals(FulfillmentStatus::NotFulfilled, $invoice->getFulfillmentStatus());
+        $this->assertEquals(FulfillmentStatus::NotFulfilled, $salesOrder->getFulfillmentStatus());
+    }
+
+    private function createChildDocumentWithProduct(Document $parent, DocumentType $type, Product $product): Document
+    {
+        $child = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'source_document_id' => $parent->id,
+            'type' => $type,
+            'status' => DocumentStatus::Confirmed,
+            'partner_id' => $this->customer->id,
+            'document_number' => $type->getPrefix().'-'.uniqid(),
+            'document_date' => now(),
+            'total' => '100.00',
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $child->id,
+            'product_id' => $product->id,
+            'line_number' => 1,
+            'description' => $product->name,
+            'quantity' => '1.0000',
+            'unit_price' => '100.00',
+            'line_total' => '100.00',
+        ]);
+
+        return $child;
+    }
 }

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -11,6 +12,7 @@ import { CompanyPage } from './CompanyPage'
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPatch = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
+const mockApiPut = vi.hoisted(() => vi.fn())
 const mockApiDelete = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/api', async () => {
@@ -21,6 +23,7 @@ vi.mock('@/lib/api', async () => {
       get: mockApiGet,
       patch: mockApiPatch,
       post: mockApiPost,
+      put: mockApiPut,
       delete: mockApiDelete,
     },
     getErrorMessage: () => 'request failed',
@@ -61,6 +64,18 @@ function companySettings() {
   }
 }
 
+function procurementPolicy(preset: 'complet' | 'standard' | 'leger' | null = 'standard') {
+  return {
+    company_id: 'company-1',
+    preset,
+    bill_control_mode: 'received',
+    match_mode: preset === 'leger' ? 'two_way' : 'three_way',
+    match_enforcement: preset === 'complet' ? 'block' : 'warn',
+    variance_tolerance_percent: '2.00',
+    variance_tolerance_max_amount: '1.000',
+  }
+}
+
 function setTenant() {
   useAuthStore.setState({
     user: {
@@ -95,9 +110,16 @@ function wrapper() {
 beforeEach(() => {
   vi.clearAllMocks()
   setTenant()
-  mockApiGet.mockResolvedValue({ data: { data: companySettings() } })
+  mockApiGet.mockImplementation((url: string) => {
+    if (url === '/procurement-policies') {
+      return Promise.resolve({ data: { data: procurementPolicy() } })
+    }
+
+    return Promise.resolve({ data: { data: companySettings() } })
+  })
   mockApiPatch.mockResolvedValue({ data: {} })
   mockApiPost.mockResolvedValue({ data: {} })
+  mockApiPut.mockResolvedValue({ data: { data: procurementPolicy('leger') } })
   mockApiDelete.mockResolvedValue({ data: {} })
 })
 
@@ -132,5 +154,48 @@ describe('CompanyPage (canonical primitives)', () => {
     })
     const save = screen.getByRole('button', { name: 'common:actions.save' })
     expect(save.tagName).toBe('BUTTON')
+  })
+
+  it('renders procurement preset controls in company settings', async () => {
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'settings:company.tabs.procurement' }))
+
+    expect(await screen.findByRole('button', { name: /settings:company.procurement.presets.complet.title/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /settings:company.procurement.presets.standard.title/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /settings:company.procurement.presets.leger.title/ })).toBeInTheDocument()
+    expect(screen.getByLabelText('settings:company.procurement.fields.matchMode')).toBeInTheDocument()
+  })
+
+  it('writes a selected procurement preset immediately', async () => {
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'settings:company.tabs.procurement' }))
+    await userEvent.click(await screen.findByRole('button', { name: /settings:company.procurement.presets.leger.title/ }))
+
+    await waitFor(() => {
+      expect(mockApiPut).toHaveBeenCalledWith('/procurement-policies', { preset: 'leger' })
+    })
+  })
+
+  it('clears the procurement preset when advanced raw fields are saved', async () => {
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'settings:company.tabs.procurement' }))
+    await userEvent.selectOptions(
+      await screen.findByLabelText('settings:company.procurement.fields.matchEnforcement'),
+      'block',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'settings:company.procurement.actions.saveAdvanced' }))
+
+    await waitFor(() => {
+      expect(mockApiPut).toHaveBeenCalledWith('/procurement-policies', {
+        bill_control_mode: 'received',
+        match_mode: 'three_way',
+        match_enforcement: 'block',
+        variance_tolerance_percent: '2.00',
+        variance_tolerance_max_amount: '1.000',
+      })
+    })
   })
 })

@@ -7,6 +7,7 @@ namespace App\Modules\Procurement\Presentation\Requests;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
@@ -21,9 +22,9 @@ use Illuminate\Validation\Validator;
  *   percent  (vat_rate)  = /^-?\d+(\.\d{1,2})?$/
  *
  * Cross-field validation (after basic rules):
- *   - source_document_id must be a PurchaseOrder for this company.
- *   - Each source_line_id must belong to lines of the referenced PO.
- *   - The PO's partner_id must match partner_id in the request body.
+ *   - source_document_ids must be PurchaseOrders for this company.
+ *   - Each source_line_id must belong to lines of one referenced PO.
+ *   - Every PO must share the request partner_id and currency.
  */
 final class CreateSupplierInvoiceRequest extends FormRequest
 {
@@ -36,6 +37,23 @@ final class CreateSupplierInvoiceRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $sourceDocumentIds = $this->input('source_document_ids');
+
+        if (! is_array($sourceDocumentIds)) {
+            $sourceDocumentId = $this->input('source_document_id');
+            $sourceDocumentIds = is_string($sourceDocumentId) && $sourceDocumentId !== ''
+                ? [$sourceDocumentId]
+                : [];
+        }
+
+        $this->merge([
+            'source_document_ids' => $sourceDocumentIds,
+            'source_document_id' => $sourceDocumentIds[0] ?? $this->input('source_document_id'),
+        ]);
     }
 
     /**
@@ -53,8 +71,15 @@ final class CreateSupplierInvoiceRequest extends FormRequest
                 ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
             ],
             'source_document_id' => [
+                'nullable',
+                'uuid',
+                ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
+            ],
+            'source_document_ids' => ['required', 'array', 'min:1'],
+            'source_document_ids.*' => [
                 'required',
                 'uuid',
+                'distinct',
                 ScopedExists::tenantAndCompany('documents', $tenantId, $companyId),
             ],
             'currency' => ['required', 'string', 'size:3'],
@@ -90,9 +115,9 @@ final class CreateSupplierInvoiceRequest extends FormRequest
      * Additional cross-field validation after the basic rules pass.
      *
      * Validates:
-     *   1. source_document_id references a PurchaseOrder (not another doc type).
-     *   2. Every source_line_id belongs to that PO.
-     *   3. The PO's partner matches the request partner_id.
+     *   1. source_document_ids reference PurchaseOrders (not another doc type).
+     *   2. Every source_line_id belongs to one of those POs.
+     *   3. Every PO shares the request partner_id and currency.
      */
     public function withValidator(Validator $validator): void
     {
@@ -105,45 +130,76 @@ final class CreateSupplierInvoiceRequest extends FormRequest
             /** @var array<string, mixed> $data */
             $data = $v->getData();
 
-            $sourceDocumentId = $data['source_document_id'] ?? null;
-            if (! is_string($sourceDocumentId)) {
+            /** @var list<string> $sourceDocumentIds */
+            $sourceDocumentIds = array_values(array_filter(
+                $data['source_document_ids'] ?? [],
+                static fn (mixed $id): bool => is_string($id),
+            ));
+            if ($sourceDocumentIds === []) {
                 return;
             }
 
-            /** @var Document|null $po */
-            $po = Document::find($sourceDocumentId);
+            /** @var array<string, Document> $purchaseOrders */
+            $purchaseOrders = Document::query()
+                ->whereIn('id', $sourceDocumentIds)
+                ->get()
+                ->keyBy('id')
+                ->all();
 
-            if ($po === null || $po->type !== DocumentType::PurchaseOrder) {
-                $v->errors()->add(
-                    'source_document_id',
-                    'The source document must be a purchase order.'
-                );
-
+            foreach ($sourceDocumentIds as $idx => $sourceDocumentId) {
+                $po = $purchaseOrders[$sourceDocumentId] ?? null;
+                if ($po === null || $po->type !== DocumentType::PurchaseOrder) {
+                    $v->errors()->add(
+                        "source_document_ids.{$idx}",
+                        'The source document must be a purchase order.'
+                    );
+                }
+            }
+            if ($v->errors()->isNotEmpty()) {
                 return;
             }
 
-            // Validate partner matches PO partner.
+            foreach ($sourceDocumentIds as $idx => $sourceDocumentId) {
+                $po = $purchaseOrders[$sourceDocumentId];
+                if ($po->status === DocumentStatus::Cancelled) {
+                    $v->errors()->add(
+                        "source_document_ids.{$idx}",
+                        'Cancelled purchase orders cannot be invoiced.'
+                    );
+                }
+            }
+            if ($v->errors()->isNotEmpty()) {
+                return;
+            }
+
             $partnerId = $data['partner_id'] ?? null;
-            if ($partnerId !== $po->partner_id) {
-                $v->errors()->add(
-                    'partner_id',
-                    'The partner must match the purchase order partner.'
-                );
+            foreach ($purchaseOrders as $po) {
+                if ($partnerId !== $po->partner_id) {
+                    $v->errors()->add(
+                        'partner_id',
+                        'The partner must match all purchase order partners.'
+                    );
+                    break;
+                }
             }
 
-            // Validate currency matches PO currency (Phase 1 domestic-only).
             $currency = $data['currency'] ?? null;
-            if (is_string($currency) && $currency !== $po->currency) {
-                $v->errors()->add(
-                    'currency',
-                    'The invoice currency must match the purchase order currency.'
-                );
+            if (is_string($currency)) {
+                foreach ($purchaseOrders as $po) {
+                    if ($currency !== $po->currency) {
+                        $v->errors()->add(
+                            'currency',
+                            'The invoice currency must match all purchase order currencies.'
+                        );
+                        break;
+                    }
+                }
             }
 
-            // Validate every source_line_id belongs to the referenced PO.
             /** @var array<int, array<string, mixed>> $lines */
             $lines = $data['lines'] ?? [];
-            $poLineIds = DocumentLine::where('document_id', $po->id)
+            $poLineIds = DocumentLine::query()
+                ->whereIn('document_id', $sourceDocumentIds)
                 ->pluck('id')
                 ->all();
 
@@ -156,7 +212,7 @@ final class CreateSupplierInvoiceRequest extends FormRequest
                 if (! in_array($sourceLineId, $poLineIds, true)) {
                     $v->errors()->add(
                         "lines.{$idx}.source_line_id",
-                        'The source line must belong to the referenced purchase order.'
+                        'The source line must belong to one of the referenced purchase orders.'
                     );
                 }
             }

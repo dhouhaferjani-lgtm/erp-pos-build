@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\Procurement\Presentation\Controllers\ProcurementPolicyController;
 use App\Modules\Procurement\Presentation\Controllers\PurchaseQuoteRequestController;
 use App\Modules\Procurement\Presentation\Controllers\SupplierInvoiceController;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +29,13 @@ Route::prefix('api/v1')->middleware([
     SetPermissionsTeam::class,
     EnforceTokenTenantClaim::class,
 ])->group(function (): void {
+    Route::get('/procurement-policies', [ProcurementPolicyController::class, 'show'])
+        ->middleware('can:settings.view')
+        ->name('procurement-policies.show');
+    Route::put('/procurement-policies', [ProcurementPolicyController::class, 'update'])
+        ->middleware('can:settings.update')
+        ->name('procurement-policies.update');
+
     Route::get('/purchase-quote-requests', [PurchaseQuoteRequestController::class, 'index'])
         ->middleware('can:purchase-quote-requests.view')
         ->name('purchase-quote-requests.index');
@@ -72,9 +80,15 @@ Route::prefix('api/v1')->middleware([
         ->middleware('can:documents.view')
         ->name('supplier-invoices.index');
 
+    // Check duplicate supplier reference (can:documents.view)
+    Route::get('/supplier-invoices/duplicate-reference', [SupplierInvoiceController::class, 'duplicateReference'])
+        ->middleware('can:documents.view')
+        ->name('supplier-invoices.duplicate-reference');
+
     // Show single supplier invoice (can:documents.view)
     Route::get('/supplier-invoices/{id}', [SupplierInvoiceController::class, 'show'])
         ->middleware('can:documents.view')
+        ->whereUuid('id')
         ->name('supplier-invoices.show');
 
     // Create supplier invoice + auto-match (can:documents.update)
@@ -85,10 +99,12 @@ Route::prefix('api/v1')->middleware([
     // Re-run matcher (can:documents.update)
     Route::post('/supplier-invoices/{id}/match', [SupplierInvoiceController::class, 'match'])
         ->middleware('can:documents.update')
+        ->whereUuid('id')
         ->name('supplier-invoices.match');
 
     // Post supplier invoice (can:documents.update)
     Route::post('/supplier-invoices/{id}/post', [SupplierInvoiceController::class, 'post'])
         ->middleware('can:documents.update')
+        ->whereUuid('id')
         ->name('supplier-invoices.post');
 });

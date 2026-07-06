@@ -361,6 +361,22 @@ class Document extends Model
     }
 
     /**
+     * Supplier invoices can link to multiple POs through payload while keeping
+     * source_document_id as the backward-compatible first PO column.
+     *
+     * @return Builder<static>
+     */
+    public function payloadLinkedSupplierInvoiceChildren(): Builder
+    {
+        return static::query()
+            ->where('tenant_id', $this->tenant_id)
+            ->where('company_id', $this->company_id)
+            ->where('id', '!=', $this->id)
+            ->where('type', DocumentType::SupplierInvoice)
+            ->whereJsonContains('payload->supplier_invoice->source_document_ids', $this->id);
+    }
+
+    /**
      * Get the full document chain (ancestors and descendants)
      *
      * Returns an array with:
@@ -374,14 +390,41 @@ class Document extends Model
     {
         // Get all ancestors by traversing up
         $ancestors = new Collection;
+        $ancestorIds = [];
         $parent = $this->sourceDocument;
-        while ($parent !== null) {
+        while ($parent !== null && ! isset($ancestorIds[$parent->id])) {
             $ancestors->prepend($parent);
+            $ancestorIds[$parent->id] = true;
             $parent = $parent->sourceDocument;
         }
 
+        $sourceDocumentIds = $this->supplierInvoiceSourceDocumentIds();
+        if ($sourceDocumentIds !== []) {
+            $linkedSources = static::query()
+                ->where('tenant_id', $this->tenant_id)
+                ->where('company_id', $this->company_id)
+                ->whereIn('id', $sourceDocumentIds)
+                ->get()
+                ->keyBy('id');
+
+            foreach ($sourceDocumentIds as $sourceDocumentId) {
+                if ($sourceDocumentId === $this->id || isset($ancestorIds[$sourceDocumentId])) {
+                    continue;
+                }
+
+                /** @var Document|null $linkedSource */
+                $linkedSource = $linkedSources->get($sourceDocumentId);
+                if ($linkedSource === null) {
+                    continue;
+                }
+
+                $ancestors->push($linkedSource);
+                $ancestorIds[$sourceDocumentId] = true;
+            }
+        }
+
         // Get all descendants recursively
-        $descendants = $this->getAllDescendants();
+        $descendants = $this->getAllDescendants([$this->id => true]);
 
         // Get siblings - documents with the same source_document_id
         $siblings = new Collection;
@@ -403,21 +446,62 @@ class Document extends Model
     /**
      * Recursively get all descendant documents
      *
+     * @param  array<string, bool>  $visitedDocumentIds
      * @return Collection<int, Document>
      */
-    protected function getAllDescendants(): Collection
+    protected function getAllDescendants(array $visitedDocumentIds = []): Collection
     {
         $descendants = new Collection;
+        $visitedDocumentIds[$this->id] = true;
 
-        foreach ($this->childDocuments as $child) {
+        $children = $this->childDocuments()
+            ->orderBy('created_at')
+            ->get()
+            ->merge($this->payloadLinkedSupplierInvoiceChildren()->orderBy('created_at')->get())
+            ->unique('id')
+            ->values();
+
+        foreach ($children as $child) {
+            if (isset($visitedDocumentIds[$child->id])) {
+                continue;
+            }
+
+            $visitedDocumentIds[$child->id] = true;
             $descendants->push($child);
-            $childDescendants = $child->getAllDescendants();
+            $childDescendants = $child->getAllDescendants($visitedDocumentIds);
             foreach ($childDescendants as $descendant) {
+                if (isset($visitedDocumentIds[$descendant->id])) {
+                    continue;
+                }
+
+                $visitedDocumentIds[$descendant->id] = true;
                 $descendants->push($descendant);
             }
         }
 
         return $descendants;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function supplierInvoiceSourceDocumentIds(): array
+    {
+        $sourceDocumentIds = $this->payload['supplier_invoice']['source_document_ids'] ?? [];
+        if (! is_array($sourceDocumentIds)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($sourceDocumentIds as $sourceDocumentId) {
+            if (! is_string($sourceDocumentId) || isset($ids[$sourceDocumentId])) {
+                continue;
+            }
+
+            $ids[$sourceDocumentId] = true;
+        }
+
+        return array_keys($ids);
     }
 
     /**

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
@@ -9,13 +10,16 @@ import {
   ChevronRight,
   Building2,
   Calendar,
-  Truck
+  Truck,
+  ReceiptText
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, apiPost } from '../../lib/api'
+import { api } from '../../lib/api'
 import { formatDate as formatLocaleDate } from '../../lib/format'
+import { textColors, tokens } from '../../lib/designTokens'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompany } from '../../hooks/useCompany'
+import { usePermissions } from '../../hooks/usePermissions'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { EntityLink } from '../../components/molecules/EntityLink'
@@ -67,6 +71,15 @@ interface DetailApiResponse {
   data: PurchaseOrder
 }
 
+interface ReceiveGoodsResponse {
+  data: PurchaseOrder
+  meta?: {
+    goods_receipt?: {
+      receipt_number?: string | null
+    } | null
+  }
+}
+
 type TabType = 'pending' | 'received'
 
 function scopedNamespacePredicate(
@@ -87,14 +100,17 @@ function scopedNamespacePredicate(
 }
 
 export function GoodsReceiptListPage() {
-  const { t } = useTranslation(['common', 'sales', 'inventory'])
+  const { t } = useTranslation(['common', 'sales', 'inventory', 'purchases'])
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const { hasPermission } = usePermissions()
   const { currentCompany } = useCompany()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const hasTenantScope = tenantId !== null && companyId !== null
   const [activeTab, setActiveTab] = useState<TabType>('pending')
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
+  const [selectedInvoicePoIds, setSelectedInvoicePoIds] = useState<string[]>([])
   const [showReceiveModal, setShowReceiveModal] = useState(false)
   const [isLoadingReceiveDetail, setIsLoadingReceiveDetail] = useState(false)
 
@@ -140,10 +156,15 @@ export function GoodsReceiptListPage() {
 
   // Receive goods mutation
   const receiveGoodsMutation = useMutation({
-    mutationFn: ({ poId, request }: { poId: string; request: ReceiveGoodsRequest }) =>
-      apiPost<{ message: string }>(`/purchase-orders/${poId}/receive`, request),
-    onSuccess: async () => {
-      toast.success(t('inventory:goodsReceipt.successMessage'))
+    mutationFn: async ({ poId, request }: { poId: string; request: ReceiveGoodsRequest }) => {
+      const response = await api.post<ReceiveGoodsResponse>(`/purchase-orders/${poId}/receive`, request)
+      return response.data
+    },
+    onSuccess: async (response) => {
+      const receiptNumber = response.meta?.goods_receipt?.receipt_number
+      toast.success(receiptNumber
+        ? t('inventory:goodsReceipt.successMessageWithReceipt', { receiptNumber })
+        : t('inventory:goodsReceipt.successMessage'))
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('purchase-orders', tenantId, companyId),
@@ -227,6 +248,29 @@ export function GoodsReceiptListPage() {
   const isLoading = activeTab === 'pending' ? pendingLoading : receivedLoading
 
   const orders = activeTab === 'pending' ? pendingOrders : receivedOrders
+  const canCreateSupplierInvoice = hasPermission('purchases.create')
+  const selectedInvoicePurchaseOrders = receivedOrders.filter((po) => selectedInvoicePoIds.includes(po.id))
+  const selectedInvoiceSupplierIds = Array.from(new Set(selectedInvoicePurchaseOrders.map((po) => po.partner_id)))
+  const crossSupplierInvoiceSelection = selectedInvoiceSupplierIds.length > 1
+  const canInvoiceSelectedReceipts = activeTab === 'received' && selectedInvoicePoIds.length > 0 && !crossSupplierInvoiceSelection
+  const invoiceSelectionBlocked = activeTab === 'received' && selectedInvoicePoIds.length > 0 && crossSupplierInvoiceSelection
+
+  function toggleInvoiceSelection(poId: string) {
+    setSelectedInvoicePoIds((current) =>
+      current.includes(poId)
+        ? current.filter((id) => id !== poId)
+        : [...current, poId],
+    )
+  }
+
+  function handleInvoiceReceipts() {
+    if (selectedInvoicePoIds.length > 0 && !crossSupplierInvoiceSelection) {
+      const query = new URLSearchParams()
+      selectedInvoicePoIds.forEach((poId) => { query.append('po', poId) })
+      query.set('entry', 'receipts')
+      void navigate(`/purchases/supplier-invoices/new?${query.toString()}`)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -240,6 +284,26 @@ export function GoodsReceiptListPage() {
             {t('inventory:goodsReceipt.description')}
           </p>
         </div>
+        {activeTab === 'received' && canCreateSupplierInvoice && (
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              data-testid="invoice-receipts"
+              disabled={!canInvoiceSelectedReceipts}
+              title={invoiceSelectionBlocked ? t('purchases:supplierInvoices.create.crossSupplierTooltip') : undefined}
+              onClick={handleInvoiceReceipts}
+              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
+            >
+              <ReceiptText className="h-4 w-4" />
+              {t('purchases:supplierInvoices.create.invoiceReceipts')}
+            </button>
+            {invoiceSelectionBlocked && (
+              <span className={`text-xs ${textColors.warning}`}>
+                {t('purchases:supplierInvoices.create.crossSupplierTooltip')}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -247,7 +311,10 @@ export function GoodsReceiptListPage() {
         <nav className="-mb-px flex space-x-8">
           <button
             type="button"
-            onClick={() => { setActiveTab('pending') }}
+            onClick={() => {
+              setActiveTab('pending')
+              setSelectedInvoicePoIds([])
+            }}
             className={`flex items-center gap-2 border-b-2 px-1 py-4 text-sm font-medium transition-colors ${
               activeTab === 'pending'
                 ? 'border-blue-500 text-blue-600'
@@ -264,7 +331,10 @@ export function GoodsReceiptListPage() {
           </button>
           <button
             type="button"
-            onClick={() => { setActiveTab('received') }}
+            onClick={() => {
+              setActiveTab('received')
+              setSelectedInvoicePoIds([])
+            }}
             className={`flex items-center gap-2 border-b-2 px-1 py-4 text-sm font-medium transition-colors ${
               activeTab === 'received'
                 ? 'border-blue-500 text-blue-600'
@@ -311,6 +381,15 @@ export function GoodsReceiptListPage() {
                   {/* Order Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
+                      {activeTab === 'received' && (
+                        <input
+                          type="checkbox"
+                          aria-label={t('purchases:supplierInvoices.create.selectReceiptPo', { number: po.document_number })}
+                          checked={selectedInvoicePoIds.includes(po.id)}
+                          onChange={() => { toggleInvoiceSelection(po.id) }}
+                          className={tokens.checkbox.base}
+                        />
+                      )}
                       <EntityLink
                         type="document"
                         id={po.id}

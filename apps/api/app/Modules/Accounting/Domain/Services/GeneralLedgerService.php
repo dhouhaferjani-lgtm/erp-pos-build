@@ -1159,9 +1159,8 @@ final class GeneralLedgerService
      *   Dr/Cr Inventory                   = plug = Cr401 − (Dr408 + DrVAT + DrTimbre)
      *   Cr SupplierPayable (401)          = invoice.total  (partner-tagged)
      *
-     * The Inventory leg is the balancing figure: it absorbs the price variance, the
-     * capitalized non-recoverable VAT, and any per-leg rounding residue so that
-     * debits == credits EXACTLY. Zero legs (VAT, timbre, plug) are omitted.
+     * The Inventory leg carries capitalized non-recoverable VAT after the PPV
+     * split. Zero legs (VAT, timbre, plug) are omitted.
      *
      * Balance invariant (fail loudly): invoice.total must equal
      *   billedHt + recoverableVat + nonRecoverableVat + timbre.
@@ -1223,16 +1222,22 @@ final class GeneralLedgerService
             ));
         }
 
-        // Inventory plug = Cr401 − (Dr408 + DrVAT + DrTimbre). Absorbs price delta,
-        // non-recoverable VAT, and any rounding residue → debits == credits exactly.
+        // Plug = Cr401 − (Dr408 + DrVAT + DrTimbre). Split invoice-vs-accrual
+        // price delta to PPV; leave non-recoverable VAT on Inventory.
         $drKnown = bcadd(bcadd($accruedHtR, $recoverableVatR, $scale), $timbreR, $scale);
         /** @var numeric-string $plug */
         $plug = bcsub($totalR, $drKnown, $scale);
+        /** @var numeric-string $priceDelta */
+        $priceDelta = bcsub($billedHtR, $accruedHtR, $scale);
+        /** @var numeric-string $inventoryPlug */
+        $inventoryPlug = bcsub($plug, $priceDelta, $scale);
 
         $grirAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::GoodsReceivedNotInvoiced);
         $vatAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::VatDeductible);
         $stampAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::PurchaseStampDuty);
         $inventoryAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::Inventory);
+        $ppvExpenseAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::PurchasePriceVarianceExpense);
+        $ppvIncomeAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::PurchasePriceVarianceIncome);
         $payableAccount = Account::findByPurposeOrFail($companyId, SystemAccountPurpose::SupplierPayable);
 
         $company = Company::findOrFail($companyId);
@@ -1289,26 +1294,50 @@ final class GeneralLedgerService
             ]);
         }
 
-        // Dr/Cr Inventory — balancing plug (price delta + non-recoverable VAT + rounding).
-        $plugCmp = bccomp($plug, '0', $scale);
-        if ($plugCmp > 0) {
+        // Dr/Cr PPV — invoice-vs-accrual price delta. Inventory is untouched.
+        $priceDeltaCmp = bccomp($priceDelta, '0', $scale);
+        if ($priceDeltaCmp > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $ppvExpenseAccount->id,
+                'partner_id' => null,
+                'debit' => $priceDelta,
+                'credit' => '0',
+                'description' => 'Purchase price variance (unfavorable)',
+                'line_order' => $lineOrder++,
+            ]);
+        } elseif ($priceDeltaCmp < 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $ppvIncomeAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => bcmul($priceDelta, '-1', $scale),
+                'description' => 'Purchase price variance (favorable)',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        // Dr/Cr Inventory — only non-recoverable VAT.
+        $inventoryPlugCmp = bccomp($inventoryPlug, '0', $scale);
+        if ($inventoryPlugCmp > 0) {
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $inventoryAccount->id,
                 'partner_id' => null,
-                'debit' => $plug,
+                'debit' => $inventoryPlug,
                 'credit' => '0',
-                'description' => 'Inventory price variance / non-recoverable VAT (plug)',
+                'description' => 'Inventory non-recoverable VAT',
                 'line_order' => $lineOrder++,
             ]);
-        } elseif ($plugCmp < 0) {
+        } elseif ($inventoryPlugCmp < 0) {
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $inventoryAccount->id,
                 'partner_id' => null,
                 'debit' => '0',
-                'credit' => bcmul($plug, '-1', $scale),
-                'description' => 'Inventory price variance / non-recoverable VAT (plug)',
+                'credit' => bcmul($inventoryPlug, '-1', $scale),
+                'description' => 'Inventory non-recoverable VAT',
                 'line_order' => $lineOrder++,
             ]);
         }

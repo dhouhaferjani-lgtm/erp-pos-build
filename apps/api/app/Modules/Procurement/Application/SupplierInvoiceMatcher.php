@@ -8,8 +8,11 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
+use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Procurement\Domain\Enums\MatchEnforcement;
+use App\Modules\Procurement\Domain\Enums\MatchMode;
 use App\Modules\Procurement\Domain\ProcurementPolicy;
+use App\Shared\Domain\CurrencyScale;
 
 /**
  * C2 — Supplier Invoice 3-way Matcher
@@ -61,6 +64,7 @@ final class SupplierInvoiceMatcher
 
     public function __construct(
         private readonly ProcurementPolicyResolver $resolver,
+        private readonly ReceiptLineConsumptionPlanner $receiptPlanner,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -144,6 +148,21 @@ final class SupplierInvoiceMatcher
      */
     public function matchableQty(DocumentLine $poLine): string
     {
+        $receiptLines = GoodsReceiptLine::query()
+            ->where('po_line_id', $poLine->id)
+            ->get();
+
+        if ($receiptLines->isNotEmpty()) {
+            /** @var numeric-string $matchable */
+            $matchable = '0.0000';
+            /** @var GoodsReceiptLine $receiptLine */
+            foreach ($receiptLines as $receiptLine) {
+                $matchable = bcadd($matchable, $this->receiptPlanner->matchableQty($receiptLine), 4);
+            }
+
+            return CurrencyScale::bcformatStrict($matchable, 4);
+        }
+
         /** @phpstan-ignore argument.type */
         return bcsub(
             $poLine->quantity_received,
@@ -392,12 +411,25 @@ final class SupplierInvoiceMatcher
                 continue;
             }
 
-            /** @var numeric-string $freeMatchable */
-            $freeMatchable = bcsub(
-                (string) ($poLine->free_quantity_received ?? '0'),
-                (string) ($poLine->free_quantity_invoiced ?? '0'),
-                4,
-            );
+            $receiptLines = GoodsReceiptLine::query()
+                ->where('po_line_id', $poLine->id)
+                ->get();
+
+            if ($receiptLines->isNotEmpty()) {
+                /** @var numeric-string $freeMatchable */
+                $freeMatchable = '0.0000';
+                /** @var GoodsReceiptLine $receiptLine */
+                foreach ($receiptLines as $receiptLine) {
+                    $freeMatchable = bcadd($freeMatchable, $this->receiptPlanner->freeMatchableQty($receiptLine), 4);
+                }
+            } else {
+                /** @var numeric-string $freeMatchable */
+                $freeMatchable = bcsub(
+                    (string) ($poLine->free_quantity_received ?? '0'),
+                    (string) ($poLine->free_quantity_invoiced ?? '0'),
+                    4,
+                );
+            }
 
             if (
                 bccomp($freeMatchable, '0', 4) <= 0
@@ -463,12 +495,12 @@ final class SupplierInvoiceMatcher
         ProcurementPolicy $policy,
     ): SupplierInvoiceMatchStatus {
         $invoiceUnitPrice = $invoiceLine->unit_price;
-        $poUnitPrice = $poLine->unit_price;
+        $basisUnitPrice = $this->priceBasisForInvoiceLine($invoiceLine, $poLine, $policy);
         $invoicedQty = $invoiceLine->quantity;
 
-        // |invoice_unit_price − po_unit_price|  (money scale 3)
+        // |invoice_unit_price − basis_unit_price|  (money scale 3)
         /** @phpstan-ignore argument.type */
-        $priceDiff = bcsub($invoiceUnitPrice, $poUnitPrice, 3);
+        $priceDiff = bcsub($invoiceUnitPrice, $basisUnitPrice, 3);
         /** @phpstan-ignore argument.type */
         if (bccomp($priceDiff, '0', 3) < 0) {
             /** @phpstan-ignore argument.type */
@@ -479,15 +511,15 @@ final class SupplierInvoiceMatcher
         /** @phpstan-ignore argument.type */
         $extendedVariance = bcmul($priceDiff, $invoicedQty, 3);
 
-        // PO extended = po_unit_price × invoiced_qty (base for percent threshold)
+        // Basis extended = basis_unit_price × invoiced_qty (base for percent threshold)
         /** @phpstan-ignore argument.type */
-        $poExtended = bcmul($poUnitPrice, $invoicedQty, 3);
+        $basisExtended = bcmul($basisUnitPrice, $invoicedQty, 3);
 
         // Convert tolerance percent to decimal fraction (e.g. '2.00' → '0.020000')
         /** @phpstan-ignore argument.type */
         $percentFraction = bcmul($policy->variance_tolerance_percent, '0.01', 6);
         /** @phpstan-ignore argument.type */
-        $percentageThreshold = bcmul($poExtended, $percentFraction, 3);
+        $percentageThreshold = bcmul($basisExtended, $percentFraction, 3);
 
         /** @phpstan-ignore argument.type */
         $withinPercentage = bccomp($extendedVariance, $percentageThreshold, 3) <= 0;
@@ -499,6 +531,46 @@ final class SupplierInvoiceMatcher
         }
 
         return SupplierInvoiceMatchStatus::PriceVariance;
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function priceBasisForInvoiceLine(
+        DocumentLine $invoiceLine,
+        DocumentLine $poLine,
+        ProcurementPolicy $policy,
+    ): string {
+        if ($policy->match_mode === MatchMode::TwoWay) {
+            return CurrencyScale::bcformatStrict((string) $poLine->unit_price, 6);
+        }
+
+        if ($invoiceLine->price_match_basis !== null) {
+            return CurrencyScale::bcformatStrict((string) $invoiceLine->price_match_basis, 6);
+        }
+
+        $slices = $this->receiptPlanner->plan($poLine->id, (string) $invoiceLine->quantity);
+        if ($slices === []) {
+            return CurrencyScale::bcformatStrict((string) $poLine->unit_price, 6);
+        }
+
+        /** @var numeric-string $totalQty */
+        $totalQty = '0.0000';
+        /** @var numeric-string $totalValue */
+        $totalValue = '0.0000000';
+        foreach ($slices as $slice) {
+            $totalQty = bcadd($totalQty, $slice['qty'], 4);
+            $totalValue = bcadd($totalValue, bcmul($slice['qty'], $slice['basis'], 7), 7);
+        }
+
+        if (bccomp($totalQty, '0', 4) <= 0) {
+            return CurrencyScale::bcformatStrict((string) $poLine->unit_price, 6);
+        }
+
+        /** @var numeric-string $weighted */
+        $weighted = bcdiv($totalValue, $totalQty, 7);
+
+        return CurrencyScale::bcformatStrict(CurrencyScale::bcround($weighted, 6), 6);
     }
 
     /**

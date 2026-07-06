@@ -57,6 +57,7 @@
       "subtotal": "المجموع الفرعي"
     },
     "actions": {
+      "createFromPurchaseOrder": "إنشاء فاتورة مورد",
       "post": "ترحيل الفاتورة",
       "postDisabled": "لا يمكن الترحيل: {{reason}}",
       "postBlocked": "الترحيل محظور: فوترة زائدة عن الكميات المستلمة",
@@ -90,6 +91,45 @@
       "paymentRecorded": "تم تسجيل الدفع بنجاح",
       "attachmentUploaded": "تم رفع المرفق",
       "attachmentDeleted": "تم حذف المرفق"
+    },
+    "create": {
+      "title": "فاتورة مورد جديدة",
+      "description": "أنشئ مسودة من بنود الاستلام غير المفوترة.",
+      "supplier": "المورد",
+      "supplierPlaceholder": "ابحث عن مورد",
+      "purchaseOrder": "أمر الشراء",
+      "purchaseOrderPlaceholder": "اختر أمر شراء مستلماً",
+      "issueDate": "تاريخ الفاتورة",
+      "dueDate": "تاريخ الاستحقاق",
+      "supplierReference": "مرجع المورد",
+      "notes": "ملاحظات",
+      "linesTitle": "بنود الاستلام",
+      "saveDraft": "حفظ كمسودة",
+      "pickSupplierAndPo": "اختر مورداً وأمر شراء لتحميل بنود الاستلام.",
+      "noReceiptLines": "لا توجد بنود استلام غير مفوترة",
+      "duplicateWarning": "استُخدم المرجع سابقاً في {{number}}",
+      "attachments": "المرفقات",
+      "attachmentCount": "{{count}} محدد",
+      "attachmentsUploaded": "تم رفع {{count}} مرفق إلى هذه المسودة",
+      "attachmentUploadFailed": "تم إنشاء الفاتورة، وفشل رفع المرفق — أعد المحاولة من صفحة الفاتورة.",
+      "invoiceReceipts": "فوترة الاستلامات",
+      "linkedPOs": "أوامر الشراء المرتبطة: {{numbers}}",
+      "crossSupplierTooltip": "اختر بنود استلام من مورد واحد.",
+      "selectReceiptPo": "اختيار استلامات {{number}}",
+      "columns": {
+        "product": "المنتج",
+        "received": "مُستلم",
+        "invoiced": "مُفوتر سابقاً",
+        "quantity": "للفوترة",
+        "unitPrice": "سعر الوحدة",
+        "vatRate": "ض.ق.م",
+        "match": "المطابقة"
+      },
+      "match": {
+        "matched": "مطابقة",
+        "priceVariance": "فرق سعر",
+        "quantityVariance": "فرق كمية"
+      }
     }
   },
   "quoteRequests": {

@@ -57,6 +57,7 @@
       "subtotal": "Sous-total"
     },
     "actions": {
+      "createFromPurchaseOrder": "Créer facture fournisseur",
       "post": "Comptabiliser",
       "postDisabled": "Impossible de comptabiliser : {{reason}}",
       "postBlocked": "Comptabilisation bloquée : sur-facturation de quantité",
@@ -90,6 +91,45 @@
       "paymentRecorded": "Paiement enregistré avec succès",
       "attachmentUploaded": "Pièce jointe envoyée",
       "attachmentDeleted": "Pièce jointe supprimée"
+    },
+    "create": {
+      "title": "Nouvelle facture fournisseur",
+      "description": "Créer un brouillon depuis les lignes de réception non facturées.",
+      "supplier": "Fournisseur",
+      "supplierPlaceholder": "Rechercher un fournisseur",
+      "purchaseOrder": "Bon de commande",
+      "purchaseOrderPlaceholder": "Sélectionner un BC reçu",
+      "issueDate": "Date facture",
+      "dueDate": "Échéance",
+      "supplierReference": "Réf. fournisseur",
+      "notes": "Notes",
+      "linesTitle": "Lignes de réception",
+      "saveDraft": "Enregistrer brouillon",
+      "pickSupplierAndPo": "Choisissez un fournisseur et un BC pour charger les réceptions.",
+      "noReceiptLines": "Aucune ligne de réception à facturer",
+      "duplicateWarning": "Référence déjà utilisée sur {{number}}",
+      "attachments": "Pièces jointes",
+      "attachmentCount": "{{count}} sélectionnée(s)",
+      "attachmentsUploaded": "{{count}} pièce(s) jointe(s) téléversée(s) dans ce brouillon",
+      "attachmentUploadFailed": "Facture créée, pièce jointe échouée — réessayez depuis la fiche.",
+      "invoiceReceipts": "Facturer les réceptions",
+      "linkedPOs": "BC liés : {{numbers}}",
+      "crossSupplierTooltip": "Sélectionnez des réceptions d'un seul fournisseur.",
+      "selectReceiptPo": "Sélectionner les réceptions de {{number}}",
+      "columns": {
+        "product": "Produit",
+        "received": "Reçu",
+        "invoiced": "Déjà fact.",
+        "quantity": "À facturer",
+        "unitPrice": "PU",
+        "vatRate": "TVA",
+        "match": "Rapprochement"
+      },
+      "match": {
+        "matched": "Rapprochée",
+        "priceVariance": "Écart de prix",
+        "quantityVariance": "Écart de quantité"
+      }
     }
   },
   "quoteRequests": {

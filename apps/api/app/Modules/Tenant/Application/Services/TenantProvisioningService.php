@@ -156,18 +156,7 @@ class TenantProvisioningService
                 'pos_stock_policy' => PosStockPolicy::defaultForVertical($tenant->vertical),
             ]);
 
-            $defaultPolicy = ProcurementPolicy::defaultForVertical($tenant->vertical);
-            ProcurementPolicy::firstOrCreate(
-                ['company_id' => $company->id],
-                [
-                    'tenant_id' => $tenant->id,
-                    'bill_control_mode' => $defaultPolicy->bill_control_mode->value,
-                    'match_mode' => $defaultPolicy->match_mode->value,
-                    'match_enforcement' => $defaultPolicy->match_enforcement->value,
-                    'variance_tolerance_percent' => $defaultPolicy->variance_tolerance_percent,
-                    'variance_tolerance_max_amount' => $defaultPolicy->variance_tolerance_max_amount,
-                ]
-            );
+            ProcurementPolicy::firstOrCreateForCompany($company);
 
             Location::create([
                 'id' => Str::uuid()->toString(),
