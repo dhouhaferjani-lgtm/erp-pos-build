@@ -153,7 +153,7 @@ else
     if [ "$SYNC_PERMISSIONS_ON_BOOT" = "true" ]; then
         echo ""
         echo "Syncing role/permission catalog across tenant databases (direct -> $DIRECT_DB_HOST)..."
-        if DB_HOST="$DIRECT_DB_HOST" php artisan tenants:seed --class='Database\Seeders\RolesAndPermissionsSeeder'; then
+        if DB_HOST="$DIRECT_DB_HOST" php artisan tenants:seed --force --class='Database\Seeders\RolesAndPermissionsSeeder'; then
             echo "  Permission sync: [completed]"
         else
             echo "  Permission sync: [completed with per-tenant errors - check logs]"
