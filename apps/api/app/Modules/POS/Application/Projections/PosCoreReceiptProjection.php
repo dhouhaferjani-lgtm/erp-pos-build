@@ -6,6 +6,7 @@ namespace App\Modules\POS\Application\Projections;
 
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\SaleReceiptCanonicalView;
 use App\Modules\Fiscal\Domain\DTOs\SaleReceiptPayload;
@@ -884,6 +885,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 receiptNumber: (string) $event->sequence_number,
                 postedAt: $event->event_time_device,
                 earnBase: $totalNorm,
+                items: array_map(static fn (LineItemDTO $li): array => [
+                    'product_id' => $li->productId,
+                    'quantity' => $li->quantity,
+                ], $view->lineItems()),
             ));
         } catch (\Throwable $e) {
             Log::error('PosCoreReceiptProjection: loyalty earn failed (sale unaffected)', [

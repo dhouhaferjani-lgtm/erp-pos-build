@@ -11,15 +11,19 @@ use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Repositories\LoyaltyProgramRepositoryInterface;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
 use App\Shared\Contracts\Loyalty\SaleEarnContext;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 /**
  * Credits loyalty points for a completed POS sale using the existing
- * points-per-money-unit Spend rule. Relocates the (retired)
- * EarnPointsOnReceiptCompleted listener logic behind the cross-module
- * contract, reading the buyer from the sealed sale snapshot and passing
- * money as strings (rule 19). Best-effort: never throws to the caller.
+ * points-per-money-unit Spend rule. Invoked behind the cross-module
+ * contract by PosCoreReceiptProjection for device-authored sales, reading
+ * the buyer from the sealed sale snapshot and passing money as strings
+ * (rule 19). EarnPointsOnReceiptCompleted is NOT retired — it remains the
+ * live earn path for server-authored receipts (e.g. the exchange flow),
+ * listening directly for the ReceiptCompleted domain event. Best-effort:
+ * never throws to the caller.
  */
 final readonly class SaleEarningService implements LoyaltyEarningContract
 {
@@ -56,7 +60,7 @@ final readonly class SaleEarningService implements LoyaltyEarningContract
         $transactionData = [
             'amount' => $context->earnBase,        // numeric-string (rule 19)
             'currency' => $context->currency,
-            'items' => [],                          // Spend rule needs only the aggregate base
+            'items' => $this->resolveItemCategories($context->items), // Item/Category/Quantity rules
             'timestamp' => $context->postedAt,      // sealed device time (Codex SF-3)
         ];
 
@@ -102,5 +106,45 @@ final readonly class SaleEarningService implements LoyaltyEarningContract
                 ]);
             }
         }
+    }
+
+    /**
+     * Enrich the sale-line snapshot with each product's catalog category so the
+     * Category earning rule can match — the fiscal canonical payload carries no
+     * category. `products.category_id` is an UNCAST nullable bigint FK, so PDO
+     * can hand back either an int or a numeric string depending on the read
+     * path. `PointEarningService::calculateCategoryPoints` matches with a
+     * strict `in_array(..., true)`, so this path deliberately normalises the
+     * resolved value to `int|null` — `EarnPointsOnReceiptCompleted` (the
+     * server/listener earn path) normalises to the same `int|null` shape for
+     * the same reason; see that class for its own cast.
+     *
+     * @param  list<array{product_id: string, quantity: string}>  $items
+     * @return list<array{product_id: string, category_id: int|null, quantity: string}>
+     */
+    private function resolveItemCategories(array $items): array
+    {
+        if ($items === []) {
+            return [];
+        }
+
+        // Deliberate DB-level read of the catalog table (no cross-module model
+        // import, rule 6) — same category_id source EarnPointsOnReceiptCompleted
+        // reads via $line->product->category_id, without the POS-model dependency.
+        $categories = DB::table('products')
+            ->whereIn('id', array_values(array_unique(array_column($items, 'product_id'))))
+            ->pluck('category_id', 'id');
+
+        return array_map(static function (array $i) use ($categories): array {
+            $categoryId = $categories[$i['product_id']] ?? null;
+
+            return [
+                'product_id' => $i['product_id'],
+                // Normalise to the bigint FK's int identity so the rule's strict
+                // in_array() category match holds regardless of PDO stringification.
+                'category_id' => $categoryId === null ? null : (int) $categoryId,
+                'quantity' => $i['quantity'],
+            ];
+        }, $items);
     }
 }
