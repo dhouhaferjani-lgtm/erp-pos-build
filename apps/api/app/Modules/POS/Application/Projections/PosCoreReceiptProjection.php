@@ -34,6 +34,7 @@ use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
 use App\Shared\Contracts\Loyalty\SaleEarnContext;
+use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -993,6 +994,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // `stock_levels` row and stamps `variant_id` on the movement;
                 // a non-variant line passes null → product-level row.
                 variantId: $line->variantId,
+                // occurred_at = DEVICE event time (offline-authored sale projected
+                // later); the replay must order by when the sale happened, not
+                // when the server inserted the row.
+                occurredAt: $event->event_time_device,
             );
         }
     }
@@ -1015,6 +1020,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $receiptId,
         string $cashierId,
         ?string $variantId = null,
+        ?CarbonInterface $occurredAt = null,
     ): void {
         $stockLevelQuery = StockLevel::query()
             ->where('product_id', $productId)
@@ -1091,6 +1097,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             'notes' => "Stock issued via PosCoreReceiptProjection (receipt: {$receiptId})",
             'user_id' => $cashierId,
             'is_historical' => false,
+            'occurred_at' => $occurredAt ?? now(),
         ]);
     }
 
@@ -1127,6 +1134,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // restocks the variant row, a non-variant refund the
                 // product-level row.
                 variantId: $line->variantId,
+                // occurred_at = DEVICE event time of the refund/void event.
+                occurredAt: $event->event_time_device,
             );
         }
     }
@@ -1152,6 +1161,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $receiptId,
         string $cashierId,
         ?string $variantId = null,
+        ?CarbonInterface $occurredAt = null,
     ): void {
         $stockLevelQuery = StockLevel::query()
             ->where('product_id', $productId)
@@ -1211,6 +1221,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             'notes' => "Stock restocked via PosCoreReceiptProjection refund/void (receipt: {$receiptId})",
             'user_id' => $cashierId,
             'is_historical' => false,
+            'occurred_at' => $occurredAt ?? now(),
         ]);
     }
 

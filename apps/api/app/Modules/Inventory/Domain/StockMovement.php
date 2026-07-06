@@ -41,6 +41,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $user_id
  * @property bool $is_historical
  * @property string|null $reverses_movement_id
+ * @property Carbon|null $occurred_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
@@ -79,6 +80,7 @@ class StockMovement extends Model
         'user_id',
         'is_historical',
         'reverses_movement_id',
+        'occurred_at',
     ];
 
     /**
@@ -100,6 +102,9 @@ class StockMovement extends Model
             'avg_cost_before' => 'decimal:6',
             'avg_cost_after' => 'decimal:6',
             'is_historical' => 'boolean',
+            // Event time (device time for POS paths, now() otherwise). Drives the
+            // live-inventory-counting replay; backfilled from created_at.
+            'occurred_at' => 'datetime',
         ];
     }
 

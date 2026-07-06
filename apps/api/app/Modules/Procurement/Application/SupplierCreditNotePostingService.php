@@ -682,6 +682,7 @@ final class SupplierCreditNotePostingService
             'reference' => $creditNote->document_number,
             'reference_type' => Document::class,
             'reference_id' => $creditNote->id,
+            'occurred_at' => now(),
         ]);
 
         return $totalCost;

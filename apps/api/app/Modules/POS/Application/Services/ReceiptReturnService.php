@@ -1252,6 +1252,9 @@ final class ReceiptReturnService
             'notes' => "Stock returned via POS return (return receipt: {$returnReceiptId})",
             'user_id' => $cashierId,
             'is_historical' => false,
+            // Server-side return processing time — no device event time exists
+            // in this flow (the device authors refunds via the projection path).
+            'occurred_at' => now(),
         ]);
     }
 
@@ -1343,6 +1346,7 @@ final class ReceiptReturnService
             'notes' => "Scrapped on return (return receipt: {$returnReceiptId})",
             'user_id' => $cashierId,
             'is_historical' => false,
+            'occurred_at' => now(),
         ]);
     }
 

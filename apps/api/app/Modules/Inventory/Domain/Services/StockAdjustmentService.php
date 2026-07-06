@@ -22,6 +22,7 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\Domain\Exceptions\VariantRequiredException;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -608,14 +609,15 @@ final class StockAdjustmentService
         ?string $expectedCompanyId = null,
         ?string $variantId = null,
         ?MovementReason $reasonCode = null,
+        ?CarbonInterface $occurredAt = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
 
-        return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId, $expectedCompanyId, $variantId, $reasonCode): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId, $expectedCompanyId, $variantId, $reasonCode, $occurredAt): StockMovement {
             $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
             // WAC serialization seam (product-grain advisory key; §6.7).
-            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $newQuantity, $reason, $userId, $companyId, $variantId, $reasonCode): StockMovement {
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $newQuantity, $reason, $userId, $companyId, $variantId, $reasonCode, $occurredAt): StockMovement {
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
                 /** @var numeric-string $quantityBefore */
@@ -637,6 +639,7 @@ final class StockAdjustmentService
                     userId: $userId,
                     variantId: $variantId,
                     reason: $reasonCode,
+                    occurredAt: $occurredAt,
                 );
 
                 if (bccomp($difference, '0', self::SCALE) > 0) {
@@ -842,6 +845,7 @@ final class StockAdjustmentService
         ?string $variantId = null,
         ?MovementReason $reason = null,
         ?string $unitCost = null,
+        ?CarbonInterface $occurredAt = null,
     ): StockMovement {
         // Scope the Location lookup to $companyId (derived from the upstream
         // trusted StockLevel). A forged locationId from another company would
@@ -876,6 +880,10 @@ final class StockAdjustmentService
             'total_cost' => $persistedTotalCost,
             'reference' => $reference,
             'user_id' => $userId,
+            // Event time (rule: device time for POS paths, now() otherwise).
+            // adjust() threads a device/replay time here; other entry points
+            // (receive/issue/transfer) default to now().
+            'occurred_at' => $occurredAt ?? now(),
         ]);
     }
 
