@@ -51,7 +51,10 @@ final class MovementReplayService
         /** @var string|int|float|null $sum */
         $sum = $query->selectRaw('SUM(quantity_after - quantity_before) as delta')->value('delta');
 
-        return bcadd($sum === null ? '0' : (string) $sum, '0', InventoryScale::QUANTITY_SCALE);
+        /** @var numeric-string $sumString */
+        $sumString = $sum === null ? '0' : (string) $sum;
+
+        return bcadd($sumString, '0', InventoryScale::QUANTITY_SCALE);
     }
 
     /**
