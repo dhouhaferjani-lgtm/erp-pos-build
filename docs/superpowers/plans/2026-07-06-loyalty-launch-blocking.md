@@ -547,7 +547,7 @@ public function test_source_columns_written_and_backfill_query_shape(): void
 ```
 
 - [ ] **Step 2: Run — FAIL** (columns missing).
-- [ ] **Step 3: Migration**
+- [ ] **Step 3: Migration.** **IMPORTANT — phpunit runs on SQLite `:memory:` (`phpunit.xml`), production/staging is PG.** Branch on `DB::connection()->getDriverName()` like the existing precedent (`2025_12_02_070000_create_inventory_countings_table.php:95`): PG path below; SQLite path uses `json_extract(metadata, '$.source_type') IS NOT NULL` + `json_extract(...)` for the backfill (SQLite supports partial `CREATE UNIQUE INDEX ... WHERE`, so the index statement is shared). `translateEarnDuplicate` stays PG-shaped (23505) — production is PG; the unit test fabricates the PG QueryException; the SQLite feature test only asserts a QueryException is thrown.
 
 ```php
 public function up(): void
@@ -557,7 +557,8 @@ public function up(): void
         $table->string('source_id', 64)->nullable();
     });
 
-    // Backfill from metadata (jsonb_exists avoids PDO '?' operator escaping).
+    // Backfill from metadata (jsonb_exists avoids PDO '?' operator escaping) — PG branch;
+    // SQLite branch uses json_extract equivalents (see driver note above).
     DB::statement(<<<'SQL'
         UPDATE loyalty_transactions
         SET source_type = metadata->>'source_type', source_id = metadata->>'source_id'
