@@ -79,7 +79,7 @@ export function StampCardsTab({ programId }: StampCardsTabProps) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.stampsRequired')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.stampsPerItem')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.expiryDays')}</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">{t('common:actions')}</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">{t('common:table.actions')}</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">

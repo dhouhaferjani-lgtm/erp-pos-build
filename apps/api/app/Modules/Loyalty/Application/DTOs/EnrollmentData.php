@@ -14,6 +14,7 @@ class EnrollmentData extends Data
     public function __construct(
         public string $id,
         public string $program_id,
+        public ?string $program_name,
         public string $member_id,
         public string $current_balance,
         public string $lifetime_earned,
@@ -32,6 +33,7 @@ class EnrollmentData extends Data
         return new self(
             id: $enrollment->id,
             program_id: $enrollment->program_id,
+            program_name: $enrollment->relationLoaded('program') ? $enrollment->program->name : null,
             member_id: $enrollment->member_id,
             current_balance: (string) $enrollment->current_balance,
             lifetime_earned: (string) $enrollment->lifetime_earned,

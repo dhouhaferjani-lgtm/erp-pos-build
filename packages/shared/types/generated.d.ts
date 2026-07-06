@@ -900,6 +900,7 @@ updated_at: string | null;
 export type EnrollmentData = {
 id: string;
 program_id: string;
+program_name: string | null;
 member_id: string;
 current_balance: string;
 lifetime_earned: string;

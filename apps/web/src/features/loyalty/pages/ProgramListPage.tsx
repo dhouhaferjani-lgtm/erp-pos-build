@@ -138,7 +138,7 @@ export function ProgramListPage() {
                   {t('loyalty:fields.startDate')}
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                  {t('common:actions')}
+                  {t('common:table.actions')}
                 </th>
               </tr>
             </thead>

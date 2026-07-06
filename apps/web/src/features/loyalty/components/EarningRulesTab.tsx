@@ -35,11 +35,15 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
   const [deleteTarget, setDeleteTarget] = useState<EarningRule | null>(null)
 
   const handleOpenCreate = () => {
+    createMutation.reset()
+    updateMutation.reset()
     setEditingRule(null)
     setIsModalOpen(true)
   }
 
   const handleOpenEdit = (rule: EarningRule) => {
+    createMutation.reset()
+    updateMutation.reset()
     setEditingRule(rule)
     setIsModalOpen(true)
   }
@@ -90,7 +94,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.rewardValue')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.priority')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('loyalty:fields.status')}</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">{t('common:actions')}</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">{t('common:table.actions')}</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -149,10 +153,15 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
 
       <EarningRuleFormModal
         isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); }}
+        onClose={() => {
+          createMutation.reset()
+          updateMutation.reset()
+          setIsModalOpen(false)
+        }}
         onSubmit={handleSubmit}
         isPending={createMutation.isPending || updateMutation.isPending}
         editingRule={editingRule}
+        serverError={editingRule ? updateMutation.error : createMutation.error}
       />
 
       <ConfirmDialog

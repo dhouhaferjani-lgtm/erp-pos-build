@@ -72,6 +72,9 @@ class EarningRuleController extends Controller
         $data = array_merge($request->validated(), [
             'program_id' => $programId,
         ]);
+        // validated() drops an empty conditions array (nested-rule rebuild);
+        // the column is NOT NULL, so an unconditional rule must persist [].
+        $data['conditions'] ??= [];
 
         $rule = new EarningRule($data);
         $rule = $this->earningRuleRepository->save($rule);

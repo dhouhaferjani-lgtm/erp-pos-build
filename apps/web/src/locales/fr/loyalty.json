@@ -144,6 +144,12 @@
     "time": "Horaire"
   },
 
+  "earningRewardTypes": {
+    "fixed": "Fixe",
+    "multiplier": "Multiplicateur",
+    "percentage": "Pourcentage"
+  },
+
   "rewardTypes": {
     "free_item": "Article Gratuit",
     "discount_amount": "R\u00e9duction (Montant)",

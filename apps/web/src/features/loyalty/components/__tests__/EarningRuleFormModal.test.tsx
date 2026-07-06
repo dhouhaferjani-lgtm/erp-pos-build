@@ -47,4 +47,64 @@ describe('EarningRuleFormModal — string payload', () => {
     expect(typeof payload.reward_value).toBe('string')
     expect(payload.reward_value).toBe('5.50')
   })
+
+  it('submits reward_type, empty conditions, and priority one by default', async () => {
+    render(
+      <EarningRuleFormModal
+        isOpen
+        onClose={onClose}
+        onSubmit={onSubmit}
+        isPending={false}
+        editingRule={null}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Default Rule' } })
+    fireEvent.change(screen.getAllByRole('spinbutton')[1], { target: { value: '1.0000' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'common:save' }))
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalled()
+    })
+
+    const [payload] = onSubmit.mock.calls[0] as [CreateEarningRuleData]
+    expect(payload).toMatchObject({
+      priority: 1,
+      reward_type: 'fixed',
+      conditions: {},
+    })
+  })
+
+  it('renders API validation errors inline', () => {
+    const serverError = {
+      response: {
+        data: {
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'The given data was invalid.',
+            errors: {
+              reward_type: ['Reward type is required'],
+              conditions: ['Conditions are required'],
+            },
+          },
+        },
+      },
+    }
+
+    render(
+      <EarningRuleFormModal
+        isOpen
+        onClose={onClose}
+        onSubmit={onSubmit}
+        isPending={false}
+        editingRule={null}
+        serverError={serverError}
+      />,
+    )
+
+    expect(screen.getByText('The given data was invalid.')).toBeInTheDocument()
+    expect(screen.getByText('Reward type is required')).toBeInTheDocument()
+    expect(screen.getByText('Conditions are required')).toBeInTheDocument()
+  })
 })

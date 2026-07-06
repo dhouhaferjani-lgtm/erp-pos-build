@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { textColors } from '@/lib/designTokens'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pencil, Plus, MinusCircle, RefreshCw, Coins, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/atoms'
@@ -252,8 +253,8 @@ export function MemberDetailPage() {
               <div key={enrollment.id} className="bg-white rounded-lg border border-gray-200 p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <h3 className="font-semibold text-gray-900">
-                      {enrollment.program?.name ?? enrollment.program_id}
+                    <h3 className={`font-semibold ${textColors.primary}`}>
+                      {enrollment.program?.name ?? enrollment.program_name ?? enrollment.program_id}
                     </h3>
                     <Badge variant={ENROLLMENT_STATUS_VARIANTS[enrollment.status]}>
                       {t(`loyalty:statuses.${enrollment.status}`)}

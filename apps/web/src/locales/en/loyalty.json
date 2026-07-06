@@ -144,6 +144,12 @@
     "time": "Time"
   },
 
+  "earningRewardTypes": {
+    "fixed": "Fixed",
+    "multiplier": "Multiplier",
+    "percentage": "Percentage"
+  },
+
   "rewardTypes": {
     "free_item": "Free Item",
     "discount_amount": "Discount (Amount)",

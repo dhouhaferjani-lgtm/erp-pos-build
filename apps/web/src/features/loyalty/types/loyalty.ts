@@ -5,6 +5,7 @@ export type MemberStatus = 'active' | 'inactive' | 'suspended'
 export type EnrollmentStatus = 'active' | 'suspended' | 'opted_out'
 export type RewardType = 'free_item' | 'discount_amount' | 'discount_percent' | 'choice' | 'credit' | 'external'
 export type EarningRuleType = 'spend' | 'item' | 'category' | 'quantity' | 'visit' | 'threshold' | 'time'
+export type EarningRuleRewardType = 'fixed' | 'multiplier' | 'percentage'
 export type QualificationType = 'spend' | 'points_earned' | 'visits' | 'manual'
 export type TransactionType = 'earn' | 'redeem' | 'adjust' | 'expire' | 'transfer_in' | 'transfer_out'
 
@@ -60,7 +61,7 @@ export interface EarningRule {
   is_active: boolean
   conditions: EarningRuleConditions
   reward_value: string
-  reward_type: string
+  reward_type: EarningRuleRewardType
   start_date: string | null
   end_date: string | null
   max_earn_per_transaction: string | null
@@ -72,10 +73,10 @@ export interface EarningRule {
 export interface CreateEarningRuleData {
   name: string
   rule_type: EarningRuleType
-  priority?: number
-  conditions?: EarningRuleConditions
+  priority: number
+  conditions: EarningRuleConditions
   reward_value: string
-  reward_type?: string
+  reward_type: EarningRuleRewardType
   start_date?: string | null
   end_date?: string | null
   max_earn_per_transaction?: string | null
@@ -251,6 +252,7 @@ export interface MemberListResponse {
 export interface Enrollment {
   id: string
   program_id: string
+  program_name?: string | null
   member_id: string
   current_balance: string
   lifetime_earned: string

@@ -16,7 +16,7 @@ const mockRules = [
     is_active: true,
     conditions: {},
     reward_value: '10',
-    reward_type: 'points',
+    reward_type: 'fixed',
     start_date: null,
     end_date: null,
     max_earn_per_transaction: null,

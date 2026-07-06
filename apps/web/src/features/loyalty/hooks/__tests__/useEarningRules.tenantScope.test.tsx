@@ -88,7 +88,7 @@ function earningRuleFixture(id: string): EarningRule {
     is_active: true,
     conditions: {},
     reward_value: '10',
-    reward_type: 'points',
+    reward_type: 'fixed',
     start_date: null,
     end_date: null,
     max_earn_per_transaction: null,
@@ -101,7 +101,10 @@ function earningRuleFixture(id: string): EarningRule {
 const createPayload: CreateEarningRuleData = {
   name: 'Rule',
   rule_type: 'spend',
+  priority: 1,
+  conditions: {},
   reward_value: '10',
+  reward_type: 'fixed',
 }
 
 beforeEach(() => {
