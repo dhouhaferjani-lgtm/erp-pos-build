@@ -17,6 +17,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Loyalty\Application\Services\ProgramBootstrapService;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Brand;
 use App\Modules\Product\Domain\Certification;
@@ -90,6 +91,25 @@ class ParapharmacySeeder extends Seeder
     protected Company $company;
 
     protected Location $location;
+
+    /**
+     * Seeders are container-resolved (`db:seed` / `$this->call()`), so
+     * constructor injection is safe here despite Agent rule 13 targeting
+     * production code — the launch roadmap LB-1 note: this guarantees an
+     * ACTIVE loyalty program + default Spend rule exists for every seeded
+     * tenant, otherwise loyalty earn/balance calls silently no-op.
+     *
+     * `protected` (not `private`) so {@see DemoPharmacySeeder}'s re-run
+     * branch — which skips {@see run()} — can also call it.
+     */
+    public function __construct(
+        private readonly ProgramBootstrapService $loyaltyBootstrap,
+    ) {}
+
+    protected function loyaltyBootstrap(): ProgramBootstrapService
+    {
+        return $this->loyaltyBootstrap;
+    }
 
     /**
      * Units of measure keyed by code, resolved once after UomSeeder runs so
@@ -393,6 +413,17 @@ class ParapharmacySeeder extends Seeder
         $this->command->info('🧴 Seeding customer skin types...');
         $this->seedCustomerSkinTypes($this->company);
         $this->command->info('✓ Customer skin types seeded');
+
+        // 6b. Guarantee an ACTIVE loyalty program (extra is enabled at line ~473 but
+        //     nothing seeds a program, so every earn/balance call silently no-ops —
+        //     2026-07-06 loyalty launch roadmap LB-1).
+        $this->command->info('🎁 Seeding loyalty program...');
+        $this->loyaltyBootstrap()->ensureActiveProgram(
+            $this->tenant->id,
+            $this->localeCurrency(),
+            'Programme fidélité',
+        );
+        $this->command->info('✓ Loyalty program active');
 
         // 7. Seed stock levels
         $this->command->info('📊 Seeding stock levels...');

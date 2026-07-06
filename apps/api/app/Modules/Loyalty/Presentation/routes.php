@@ -7,6 +7,7 @@ use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Loyalty\Presentation\Controllers\EarningRuleController;
 use App\Modules\Loyalty\Presentation\Controllers\LoyaltyEarnRateController;
 use App\Modules\Loyalty\Presentation\Controllers\LoyaltyMemberController;
+use App\Modules\Loyalty\Presentation\Controllers\LoyaltyPartnerController;
 use App\Modules\Loyalty\Presentation\Controllers\LoyaltyPOSController;
 use App\Modules\Loyalty\Presentation\Controllers\LoyaltyProgramController;
 use App\Modules\Loyalty\Presentation\Controllers\RewardController;
@@ -209,6 +210,19 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         Route::post('/balance', [LoyaltyPOSController::class, 'balance'])
             ->middleware('can:pos.operate_terminal')
             ->name('loyalty.pos.balance');
+    });
+
+    // Partner-record loyalty surface (boss-app card + cashier enrollment).
+    // Deliberately gated on the NARROW loyalty.enroll (cashier-holdable), not
+    // loyalty.view/manage — this is an enrollment surface, not loyalty admin.
+    Route::prefix('loyalty/partners')->group(function () {
+        Route::get('/{partnerId}', [LoyaltyPartnerController::class, 'show'])
+            ->middleware('can:loyalty.enroll')
+            ->name('loyalty.partners.show');
+
+        Route::post('/{partnerId}/enroll', [LoyaltyPartnerController::class, 'enroll'])
+            ->middleware('can:loyalty.enroll')
+            ->name('loyalty.partners.enroll');
     });
 
     // Loyalty Members (Admin)

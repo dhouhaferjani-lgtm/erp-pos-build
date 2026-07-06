@@ -898,6 +898,21 @@ metadata: Array<any> | null;
 created_at: string;
 updated_at: string | null;
 };
+export type PartnerEnrollmentSummaryData = {
+enrollment_id: string;
+program_id: string;
+program_name: string;
+balance: string;
+tier: string | null;
+status: string;
+};
+export type PartnerLoyaltySummaryData = {
+is_member: boolean;
+member_id: string | null;
+phone: string | null;
+first_name: string | null;
+enrollments: Array<App.Modules.Loyalty.Application.DTOs.PartnerEnrollmentSummaryData>;
+};
 export type QualifyingItemsData = {
 product_ids: Array<any> | null;
 category_ids: Array<any> | null;

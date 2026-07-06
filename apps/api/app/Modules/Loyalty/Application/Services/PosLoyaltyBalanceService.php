@@ -6,10 +6,8 @@ namespace App\Modules\Loyalty\Application\Services;
 
 use App\Modules\Loyalty\Application\Resolvers\MemberResolver;
 use App\Modules\Loyalty\Domain\Entities\EarningRule;
-use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyProgram;
 use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
-use App\Modules\Loyalty\Domain\Enums\MemberStatus;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Repositories\EarningRuleRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
@@ -31,6 +29,7 @@ final readonly class PosLoyaltyBalanceService
         private EnrollmentRepositoryInterface $enrollmentRepository,
         private EarningRuleRepositoryInterface $earningRuleRepository,
         private MemberEnrollmentService $enrollmentService,
+        private MemberProvisioningService $memberProvisioning,
     ) {}
 
     /** @return BalanceResult */
@@ -55,7 +54,7 @@ final readonly class PosLoyaltyBalanceService
             if ($phone === null || $phone === '') {
                 return $notEnrolled; // phone is the required unique key — cannot create
             }
-            $member = $this->findOrCreateMember($tenantId, $partnerId, $contactId, $phone, $name);
+            $member = $this->memberProvisioning->findOrCreateMember($tenantId, $partnerId, $contactId, $phone, $name);
         }
 
         $enrollment = $this->enrollmentRepository->findByMemberAndProgram($member->id, $program->id);
@@ -85,47 +84,5 @@ final readonly class PosLoyaltyBalanceService
             ->first(fn (EarningRule $r) => $r->rule_type === EarningRuleType::Spend);
 
         return $spend !== null ? (string) $spend->reward_value : null;
-    }
-
-    private function findOrCreateMember(
-        string $tenantId,
-        ?string $partnerId,
-        ?string $contactId,
-        string $phone,
-        ?string $name,
-    ): LoyaltyMember {
-        $normalized = LoyaltyMember::normalizePhone($phone);
-
-        // Dedupe by the unique key (tenant, phone): reuse an existing member if present.
-        // The unique index is non-partial and the model soft-deletes, so a soft-deleted
-        // row still occupies the index — query withTrashed and restore it instead of
-        // creating (which would 500 on the unique violation). (Codex N2)
-        $existing = LoyaltyMember::withTrashed()
-            ->where('tenant_id', $tenantId)->where('phone', $normalized)->first();
-        if ($existing !== null) {
-            if ($existing->trashed()) {
-                $existing->restore();
-            }
-            [$type, $id] = $contactId !== null ? ['contact', $contactId] : ['partner', $partnerId];
-            $existing->loyaltyable_type = $type;
-            $existing->loyaltyable_id = $id;
-            $existing->customer_id = $partnerId;
-            $existing->save();
-
-            return $existing;
-        }
-
-        [$type, $id] = $contactId !== null ? ['contact', $contactId] : ['partner', $partnerId];
-
-        return LoyaltyMember::create([
-            'tenant_id' => $tenantId,
-            'loyaltyable_type' => $type,
-            'loyaltyable_id' => $id,
-            'customer_id' => $partnerId,
-            'phone' => $normalized,
-            'first_name' => $name,
-            'status' => MemberStatus::Active,
-            'enrollment_date' => now(),
-        ]);
     }
 }

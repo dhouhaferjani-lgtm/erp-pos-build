@@ -1,16 +1,19 @@
-import type { ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { useCartStore } from '@/stores/cartStore'
 import { useLoyaltyBalance } from '@/lib/loyalty/useLoyaltyBalance'
 import type { AttachedCheckoutCustomer } from '@/stores/paymentStore'
+import { LoyaltyEnrollDialog } from './LoyaltyEnrollDialog'
 
 interface Props { customer: AttachedCheckoutCustomer }
 
 export function CustomerLoyaltyBadge({ customer }: Props): ReactElement | null {
   const { t } = useTranslation('pos')
-  const balance = useLoyaltyBalance(customer)
+  const { balance, refresh } = useLoyaltyBalance(customer)
   const total = useCartStore((s) => s.total())
+  const [enrollOpen, setEnrollOpen] = useState(false)
 
   if (balance === null) return null // module off / offline / unsynced / call failed
 
@@ -37,7 +40,17 @@ export function CustomerLoyaltyBadge({ customer }: Props): ReactElement | null {
         </Badge>
       )}
       {!balance.enrolled && (
-        <span className="text-xs text-muted-foreground">{t('loyalty.joinsOnPurchase')}</span>
+        <>
+          <Button variant="secondary" size="sm" onClick={() => setEnrollOpen(true)}>
+            {t('loyalty.enroll')}
+          </Button>
+          <LoyaltyEnrollDialog
+            open={enrollOpen}
+            customer={customer}
+            onClose={() => setEnrollOpen(false)}
+            onEnrolled={() => { setEnrollOpen(false); refresh() }}
+          />
+        </>
       )}
     </div>
   )

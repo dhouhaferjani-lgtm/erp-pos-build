@@ -1086,6 +1086,11 @@
   "loyalty": {
     "points": "{{amount}} pts",
     "earnEstimate": "+{{points}} pts cette vente",
-    "joinsOnPurchase": "Adhésion à l'achat"
+    "joinsOnPurchase": "Adhésion à l'achat",
+    "enroll": "Inscrire",
+    "enrollTitle": "Inscription au programme de fidélité",
+    "enrollPhoneLabel": "Numéro de téléphone",
+    "enrollSubmit": "Inscrire",
+    "enrollFailed": "Échec de l'inscription. Veuillez réessayer."
   }
 }

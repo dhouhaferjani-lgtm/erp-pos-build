@@ -33,6 +33,8 @@ import { usePartnerVehicles } from '../vehicles/hooks/usePartnerVehicles'
 import { partnerVehiclesInvalidationPredicate } from './_invalidation'
 import { useCompanyConfig } from '@/contexts'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PartnerLoyaltyCard } from '@/features/loyalty'
 
 interface PartnerAccountBalance {
   partner_id: string
@@ -135,6 +137,7 @@ export function PartnerDetailPage() {
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
   const { hasModule } = useCompanyConfig()
+  const { hasPermission } = usePermissions()
   const hasTenantScope = tenantId !== null && companyId !== null
   const tabParam = searchParams.get('tab')
   const activeTab: PartnerDetailTab = isPartnerDetailTab(tabParam) ? tabParam : 'overview'
@@ -208,6 +211,11 @@ export function PartnerDetailPage() {
     hasModule('Vehicle') &&
     (partner?.type === 'customer' || partner?.type === 'both')
   const showDepositsTab = isCustomerContext && (partner?.type === 'customer' || partner?.type === 'both')
+  const showLoyaltyCard =
+    isCustomerContext &&
+    hasModule('Loyalty') &&
+    (partner?.type === 'customer' || partner?.type === 'both') &&
+    hasPermission('loyalty.enroll')
 
   const { data: deposits = [] } = usePartnerDeposits(id)
   const { data: partnerVehiclesData } = usePartnerVehicles(showVehiclesTab ? id : undefined)
@@ -510,6 +518,11 @@ export function PartnerDetailPage() {
                 </div>
               </dl>
             </div>
+
+            {/* Loyalty Card */}
+            {showLoyaltyCard && (
+              <PartnerLoyaltyCard partnerId={id} partnerPhone={partner.phone ?? null} />
+            )}
 
             {/* Notes */}
             {partner.notes && (

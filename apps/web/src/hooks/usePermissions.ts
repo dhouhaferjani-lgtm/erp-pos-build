@@ -160,6 +160,7 @@ export const PERMISSIONS = {
   // Loyalty
   'loyalty.view': ['admin', 'manager'],
   'loyalty.manage': ['admin', 'manager'],
+  'loyalty.enroll': ['admin', 'manager', 'cashier'],
 
   // Contacts / CRM
   'contacts.view': ['admin', 'manager', 'sales', 'cashier'],
