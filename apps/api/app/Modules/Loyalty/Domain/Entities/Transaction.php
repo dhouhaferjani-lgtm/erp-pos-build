@@ -25,6 +25,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $order_line_id
  * @property string|null $reward_id
  * @property string|null $earning_rule_id
+ * @property string|null $source_type
+ * @property string|null $source_id
  * @property string|null $description
  * @property array<string, mixed>|null $metadata
  * @property string|null $created_by
@@ -57,6 +59,8 @@ class Transaction extends Model
         'order_line_id',
         'reward_id',
         'earning_rule_id',
+        'source_type',
+        'source_id',
         'description',
         'metadata',
         'created_by',

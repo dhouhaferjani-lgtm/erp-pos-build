@@ -60,12 +60,18 @@ final readonly class EloquentTransactionRepository implements TransactionReposit
     }
 
     /**
-     * Find transaction by source document (for idempotency checking)
+     * Find transaction by source document (for idempotency checking).
+     *
+     * Reads the dedicated source_type/source_id columns (backfilled from
+     * metadata) so the pre-check aligns with the loyalty_txn_earn_source_unique
+     * index. Kept GLOBAL (not per-enrollment) — the multi-enrollment idempotency
+     * change is explicitly out of scope.
      */
     public function findBySourceDocument(string $sourceType, string $sourceId): ?Transaction
     {
-        return Transaction::whereJsonContains('metadata->source_type', $sourceType)
-            ->whereJsonContains('metadata->source_id', $sourceId)
+        return Transaction::query()
+            ->where('source_type', $sourceType)
+            ->where('source_id', $sourceId)
             ->first();
     }
 

@@ -14,6 +14,7 @@ use App\Modules\Loyalty\Domain\Repositories\TransactionRepositoryInterface;
 use App\Modules\Loyalty\Domain\Services\PointEarningService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -88,96 +89,130 @@ final readonly class EarningProcessingService
             ]);
         }
 
-        return DB::transaction(function () use ($enrollment, $transactionData, $sourceType, $sourceId, $description, $rules) {
-            // Resolve scale for this transaction's currency (safe: falls back when no CompanyContext bound)
-            $currency = isset($transactionData['currency']) && is_string($transactionData['currency'])
-                ? $transactionData['currency']
-                : null;
-            $scale = $this->scaleResolver->getScaleSafe($currency, self::FALLBACK_SCALE);
+        try {
+            return DB::transaction(function () use ($enrollment, $transactionData, $sourceType, $sourceId, $description, $rules) {
+                // Resolve scale for this transaction's currency (safe: falls back when no CompanyContext bound)
+                $currency = isset($transactionData['currency']) && is_string($transactionData['currency'])
+                    ? $transactionData['currency']
+                    : null;
+                $scale = $this->scaleResolver->getScaleSafe($currency, self::FALLBACK_SCALE);
 
-            // Calculate points using domain service — accumulate with bcmath (no float drift)
-            $totalPoints = '0';
+                // Calculate points using domain service — accumulate with bcmath (no float drift)
+                $totalPoints = '0';
 
-            foreach ($rules as $rule) {
-                $pointsAmount = $this->pointEarningService->calculatePoints(
-                    $enrollment,
-                    $transactionData,
-                    $rule
-                );
+                foreach ($rules as $rule) {
+                    $pointsAmount = $this->pointEarningService->calculatePoints(
+                        $enrollment,
+                        $transactionData,
+                        $rule
+                    );
 
-                $totalPoints = bcadd($totalPoints, CurrencyScale::bcformat($pointsAmount->value, $scale), $scale);
-            }
+                    $totalPoints = bcadd($totalPoints, CurrencyScale::bcformat($pointsAmount->value, $scale), $scale);
+                }
 
-            // If no points earned, return early (don't create transaction)
-            if (bccomp($totalPoints, '0', $scale) <= 0) {
-                return TransactionData::from([
-                    'id' => '',
+                // If no points earned, return early (don't create transaction)
+                if (bccomp($totalPoints, '0', $scale) <= 0) {
+                    return TransactionData::from([
+                        'id' => '',
+                        'enrollment_id' => $enrollment->id,
+                        'transaction_type' => TransactionType::Earn,
+                        'amount' => '0',
+                        'balance_before' => (string) $enrollment->current_balance,
+                        'balance_after' => (string) $enrollment->current_balance,
+                        'description' => 'Transaction did not qualify for points',
+                        'metadata' => [
+                            'source_type' => $sourceType,
+                            'source_id' => $sourceId,
+                        ],
+                        'created_at' => now()->toIso8601String(),
+                    ]);
+                }
+
+                $points = $totalPoints;
+
+                // Pre-canonicalize monetary amount in transaction_data before JSONB storage
+                $canonicalTransactionData = $transactionData;
+                if (isset($canonicalTransactionData['amount'])) {
+                    $canonicalTransactionData['amount'] = CurrencyScale::bcformat(
+                        (string) $canonicalTransactionData['amount'],
+                        $scale
+                    );
+                }
+
+                // Create earning transaction
+                $transaction = new Transaction([
                     'enrollment_id' => $enrollment->id,
                     'transaction_type' => TransactionType::Earn,
-                    'amount' => '0',
-                    'balance_before' => (string) $enrollment->current_balance,
-                    'balance_after' => (string) $enrollment->current_balance,
-                    'description' => 'Transaction did not qualify for points',
+                    'amount' => $points,
+                    'balance_before' => $enrollment->current_balance,
+                    'balance_after' => bcadd((string) $enrollment->current_balance, $points, $scale),
+                    'description' => $description ?? "Earned {$points} points",
+                    'source_type' => $sourceType,
+                    'source_id' => $sourceId,
                     'metadata' => [
                         'source_type' => $sourceType,
                         'source_id' => $sourceId,
+                        'transaction_data' => $canonicalTransactionData,
                     ],
-                    'created_at' => now()->toIso8601String(),
+                    'created_at' => now(),
                 ]);
-            }
 
-            $points = $totalPoints;
+                $transaction = $this->transactionRepository->save($transaction);
 
-            // Pre-canonicalize monetary amount in transaction_data before JSONB storage
-            $canonicalTransactionData = $transactionData;
-            if (isset($canonicalTransactionData['amount'])) {
-                $canonicalTransactionData['amount'] = CurrencyScale::bcformat(
-                    (string) $canonicalTransactionData['amount'],
-                    $scale
-                );
-            }
+                // Update enrollment balances
+                $enrollment->current_balance = bcadd((string) $enrollment->current_balance, $points, $scale);
+                $enrollment->lifetime_earned = bcadd((string) $enrollment->lifetime_earned, $points, $scale);
+                $enrollment->last_transaction_at = now();
 
-            // Create earning transaction
-            $transaction = new Transaction([
-                'enrollment_id' => $enrollment->id,
-                'transaction_type' => TransactionType::Earn,
-                'amount' => $points,
-                'balance_before' => $enrollment->current_balance,
-                'balance_after' => bcadd((string) $enrollment->current_balance, $points, $scale),
-                'description' => $description ?? "Earned {$points} points",
-                'metadata' => [
-                    'source_type' => $sourceType,
-                    'source_id' => $sourceId,
-                    'transaction_data' => $canonicalTransactionData,
-                ],
-                'created_at' => now(),
-            ]);
+                $enrollment = $this->enrollmentRepository->save($enrollment);
 
-            $transaction = $this->transactionRepository->save($transaction);
+                // Dispatch event after transaction commits
+                DB::afterCommit(function () use ($transaction, $enrollment, $points, $sourceType, $sourceId) {
+                    event(new PointsEarnedV2(
+                        transactionId: $transaction->id,
+                        enrollmentId: $enrollment->id,
+                        memberId: $enrollment->member_id,
+                        programId: $enrollment->program_id,
+                        amount: (float) $points,
+                        sourceType: $sourceType,
+                        sourceId: $sourceId,
+                        earnedAt: $transaction->created_at->toIso8601String(),
+                    ));
+                });
 
-            // Update enrollment balances
-            $enrollment->current_balance = bcadd((string) $enrollment->current_balance, $points, $scale);
-            $enrollment->lifetime_earned = bcadd((string) $enrollment->lifetime_earned, $points, $scale);
-            $enrollment->last_transaction_at = now();
-
-            $enrollment = $this->enrollmentRepository->save($enrollment);
-
-            // Dispatch event after transaction commits
-            DB::afterCommit(function () use ($transaction, $enrollment, $points, $sourceType, $sourceId) {
-                event(new PointsEarnedV2(
-                    transactionId: $transaction->id,
-                    enrollmentId: $enrollment->id,
-                    memberId: $enrollment->member_id,
-                    programId: $enrollment->program_id,
-                    amount: (float) $points,
-                    sourceType: $sourceType,
-                    sourceId: $sourceId,
-                    earnedAt: $transaction->created_at->toIso8601String(),
-                ));
+                return TransactionData::fromModel($transaction);
             });
+        } catch (QueryException $e) {
+            // A concurrent duplicate lost the race on loyalty_txn_earn_source_unique —
+            // translate to the same benign "already earned" signal the pre-check throws.
+            $duplicate = $this->translateEarnDuplicate($e, $sourceType, $sourceId);
+            if ($duplicate !== null) {
+                throw $duplicate;
+            }
 
-            return TransactionData::fromModel($transaction);
-        });
+            throw $e;
+        }
+    }
+
+    /**
+     * Concurrent duplicate lost the race on loyalty_txn_earn_source_unique —
+     * translate to the same benign "already earned" signal the pre-check throws
+     * (TOCTOU closed by the partial unique index). Extracted for direct unit
+     * testing: the broader global pre-check makes this catch branch unreachable
+     * in a single-connection feature test.
+     *
+     * @internal Exposed for unit testing only; call it via earnPoints().
+     */
+    public function translateEarnDuplicate(QueryException $e, string $sourceType, string $sourceId): ?InvalidArgumentException
+    {
+        if (($e->errorInfo[0] ?? null) === '23505'
+            && str_contains($e->getMessage(), 'loyalty_txn_earn_source_unique')) {
+            return new InvalidArgumentException(
+                "Points already earned for {$sourceType} {$sourceId}", 0, $e,
+            );
+        }
+
+        return null;
     }
 
     /**
