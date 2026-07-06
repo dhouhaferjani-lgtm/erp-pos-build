@@ -87,7 +87,7 @@ Migration requirements (copy the `2026_06_02_100006` pattern): `public $withinTr
 - Create: `apps/api/database/migrations/tenant/2026_07_06_200002_create_location_zones_tables.php`
 - Create: `apps/api/app/Modules/Inventory/Domain/{LocationZone,ProductZoneAssignment}.php`
 - Create: `apps/api/app/Modules/Inventory/Application/Services/ZoneService.php`
-- Create: `apps/api/app/Modules/Inventory/Application/DTO/{ZoneDto,ZoneProductAssignmentDto}.php` (typescript-transformable, matching existing DTO conventions in the module)
+- Create: `apps/api/app/Modules/Inventory/Application/DTOs/{ZoneDto,ZoneProductAssignmentDto}.php` (typescript-transformable, matching existing DTO conventions in the module)
 - Create: `Presentation/Controllers/ZoneController.php`, `Presentation/Requests/{CreateZoneRequest,UpdateZoneRequest,BulkAssignZoneRequest}.php`
 - Modify: `Presentation/routes.php`
 - Test: `apps/api/tests/Feature/Inventory/ZoneManagementTest.php`
@@ -107,7 +107,7 @@ Migration requirements (copy the `2026_06_02_100006` pattern): `public $withinTr
 - Modify: `Domain/Enums/CountingScopeType.php` (+`case Zone = 'zone';` + every closed `match` in the enum)
 - Modify: `Domain/InventoryCounting.php`, `Domain/InventoryCountingItem.php` (fillable/casts for every new column)
 - Create: `Domain/Enums/CountingItemFlagReason.php` (`basket_window`, `negative_at_apply`, `clock_skew`, `normalized_agreement`)
-- Create: `Application/DTO/ReplayAuditDto.php` (`windowFrom`, `windowTo`, `replayedDelta`, `onHandAtApply`, `expectedAtApply`)
+- Create: `Application/DTOs/ReplayAuditDto.php` (`windowFrom`, `windowTo`, `replayedDelta`, `onHandAtApply`, `expectedAtApply`)
 - Test: `apps/api/tests/Feature/Inventory/LiveCountingSchemaTest.php`
 
 **Interfaces:**
