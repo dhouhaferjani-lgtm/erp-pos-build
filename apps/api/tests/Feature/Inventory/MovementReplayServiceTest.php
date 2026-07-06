@@ -273,4 +273,39 @@ final class MovementReplayServiceTest extends TestCase
             $this->service->hasMovementNear($this->productId, $this->locationId, null, $instant, 5)
         );
     }
+
+    public function test_boundary_normalizes_non_utc_timezone_to_utc(): void
+    {
+        // Same instant represented in UTC and Europe/Paris (+02:00 in summer).
+        // 2026-07-01 10:00:00 UTC = 2026-07-01 12:00:00 Europe/Paris.
+        $t = CarbonImmutable::parse('2026-07-01 10:00:00', 'UTC');
+        $tParis = CarbonImmutable::parse('2026-07-01 12:00:00', 'Europe/Paris');
+
+        // Verify they represent the same instant.
+        $this->assertTrue($t->eq($tParis), 'sanity: both times represent the same instant');
+
+        // Create a receipt movement after the UTC window (same movement in both scenarios).
+        $this->movement('5.0000', '15.0000', $t->addHour(), movementType: MovementType::Receipt);
+
+        // Call signedDelta with UTC boundaries.
+        $deltaUtc = $this->service->signedDelta(
+            $this->productId,
+            $this->locationId,
+            null,
+            $t,
+            $t->addDay(),
+        );
+
+        // Call signedDelta with Paris-timezone boundaries (same instants, different tz).
+        $deltaParis = $this->service->signedDelta(
+            $this->productId,
+            $this->locationId,
+            null,
+            $tParis,
+            $tParis->addDay(),
+        );
+
+        $this->assertSame('10.0000', $deltaUtc);
+        $this->assertSame('10.0000', $deltaParis, 'non-UTC timezone boundary must normalize to UTC and yield same result as UTC equivalent');
+    }
 }

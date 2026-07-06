@@ -106,9 +106,11 @@ final class MovementReplayService
      * `timestampTz` (precision 0) storage of `occurred_at`/`created_at` — a
      * value carrying sub-second precision would never compare equal to a
      * stored boundary row, breaking the exact-boundary (from, to] semantics.
+     * Converts to UTC before formatting to ensure consistent comparison
+     * regardless of the caller's timezone.
      */
     private function boundary(CarbonInterface $instant): string
     {
-        return $instant->format('Y-m-d H:i:s');
+        return \Carbon\CarbonImmutable::instance($instant)->utc()->format('Y-m-d H:i:s');
     }
 }
