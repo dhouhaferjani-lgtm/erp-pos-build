@@ -847,6 +847,26 @@ max_quantity: string | null;
 is_below_minimum: boolean;
 quantity_decimals: number;
 };
+export type ZoneDto = {
+id: string;
+location_id: string;
+name: string;
+code: string;
+sort_order: number;
+is_active: boolean;
+created_at: string;
+updated_at: string;
+};
+export type ZoneProductAssignmentDto = {
+id: string;
+product_id: string;
+product_name: string | null;
+product_sku: string | null;
+location_id: string;
+zone_id: string;
+created_at: string;
+updated_at: string;
+};
 }
 declare namespace App.Modules.Inventory.Domain.Enums {
 export type AssignmentStatus = 'pending' | 'in_progress' | 'completed' | 'overdue';
