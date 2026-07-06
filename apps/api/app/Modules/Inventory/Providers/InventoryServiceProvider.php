@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Providers;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationServiceInterface;
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
+use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Inventory\Application\Services\LinkedCostApplicationService;
 use App\Modules\Inventory\Application\Services\LocationStockQueryService;
 use App\Modules\Inventory\Application\Services\StockReservationService;
@@ -14,6 +15,8 @@ use App\Modules\Inventory\Application\Services\VariantStockReaderService;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Listeners\PostCOGSOnInvoice;
 use App\Shared\Contracts\Inventory\LinkedCostApplicatorInterface;
+use App\Shared\Contracts\Inventory\ReceiptLineGuardInterface;
+use App\Shared\Contracts\Inventory\ReservationReleaserInterface;
 use App\Shared\Contracts\LocationStockReader;
 use App\Shared\Contracts\VariantStockReader;
 use Illuminate\Support\Facades\Event;
@@ -23,6 +26,15 @@ class InventoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(
+            ReceiptLineGuardInterface::class,
+            GoodsReceiptService::class,
+        );
+        $this->app->bind(
+            ReservationReleaserInterface::class,
+            StockReservationService::class,
+        );
+
         $this->app->bind(
             InventoryReservationServiceInterface::class,
             StockReservationService::class,

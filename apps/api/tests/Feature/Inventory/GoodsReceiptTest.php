@@ -834,17 +834,21 @@ class GoodsReceiptTest extends TestCase
     }
 
     // =========================================================================
-    // 8. Authorization — GoodsReceiptService is a service-layer class with no
-    //    HTTP controller/routes. Authorization tests require an API endpoint.
+    // 8. Authorization — draft lifecycle routes are guarded by permissions.
     // =========================================================================
 
-    public function test_goods_receipt_service_has_no_direct_http_endpoint(): void
+    public function test_goods_receipt_draft_lifecycle_routes_are_guarded(): void
     {
-        $hasGoodsReceiptRoute = collect(Route::getRoutes())->contains(
-            fn (RoutingRoute $route): bool => str_contains($route->uri(), 'goods-receipt')
-        );
+        $show = Route::getRoutes()->getByName('goods-receipts.show');
+        $post = Route::getRoutes()->getByName('goods-receipts.post');
+        $destroy = Route::getRoutes()->getByName('goods-receipts.destroy');
 
-        $this->assertFalse($hasGoodsReceiptRoute);
+        $this->assertInstanceOf(RoutingRoute::class, $show);
+        $this->assertInstanceOf(RoutingRoute::class, $post);
+        $this->assertInstanceOf(RoutingRoute::class, $destroy);
+        $this->assertContains('can:inventory.view', $show->gatherMiddleware());
+        $this->assertContains('can:purchase-orders.receive', $post->gatherMiddleware());
+        $this->assertContains('can:purchase-orders.receive', $destroy->gatherMiddleware());
     }
 
     // =========================================================================

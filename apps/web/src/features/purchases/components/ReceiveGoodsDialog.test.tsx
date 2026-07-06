@@ -107,7 +107,7 @@ describe('ReceiveGoodsDialog', () => {
       screen.getByLabelText('purchaseOrders.receive.priceOverrideReason'),
       'Supplier delivery note changed the price',
     )
-    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.saveAndPost' }))
 
     expect(onConfirm).toHaveBeenCalledWith({
       quantities: {

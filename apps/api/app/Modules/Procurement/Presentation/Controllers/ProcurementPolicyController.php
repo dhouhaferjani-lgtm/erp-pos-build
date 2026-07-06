@@ -46,6 +46,9 @@ final class ProcurementPolicyController extends Controller
                 'match_enforcement' => $validated['match_enforcement'],
                 'variance_tolerance_percent' => $this->formatDecimal((string) $validated['variance_tolerance_percent'], 2),
                 'variance_tolerance_max_amount' => $this->formatDecimal((string) $validated['variance_tolerance_max_amount'], 3),
+                'allow_receipt_first' => $validated['allow_receipt_first'],
+                'allow_invoice_first' => $validated['allow_invoice_first'],
+                'invoice_first_requires_approval' => $validated['invoice_first_requires_approval'],
             ])->save();
         }
 

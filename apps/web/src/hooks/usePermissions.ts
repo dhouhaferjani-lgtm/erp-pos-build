@@ -17,6 +17,10 @@ export const PERMISSIONS = {
   'purchases.create': ['admin', 'purchases', 'manager'],
   'purchases.edit': ['admin', 'purchases', 'manager'],
   'goods-receipt.edit-price': ['admin', 'manager'],
+  'goods-receipt.create-standalone': ['admin', 'purchases', 'manager'],
+  'supplier-invoices.create-pending': ['admin', 'purchases', 'manager', 'accountant'],
+  'supplier-invoices.link-receipts': ['admin', 'purchases', 'manager', 'accountant'],
+  'supplier-invoices.approve-invoice-first': ['admin', 'manager', 'accountant'],
 
   // Inventory
   'inventory.view': ['admin', 'inventory', 'manager'],
@@ -57,6 +61,7 @@ export const PERMISSIONS = {
   'treasury.view': ['admin', 'treasury', 'accountant', 'manager'],
   'treasury.create': ['admin', 'treasury', 'accountant', 'manager'],
   'treasury.edit': ['admin', 'treasury', 'accountant', 'manager'],
+  'payments.create': ['admin', 'treasury', 'accountant', 'manager'],
 
   // Treasury - Repositories
   'repositories.view': ['admin', 'treasury', 'accountant', 'manager'],

@@ -28,6 +28,7 @@ import { FormField } from '../../components/atoms/FormField'
 import { Input } from '../../components/atoms/Input'
 import { Select } from '../../components/atoms/Select'
 import { StatusBadge } from '../../components/atoms/StatusBadge'
+import { Toggle } from '../../components/atoms/Toggle'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { ReceiptSettingsTab } from './components/ReceiptSettingsTab'
 
@@ -69,6 +70,9 @@ interface ProcurementPolicy {
   match_enforcement: 'warn' | 'block'
   variance_tolerance_percent: string
   variance_tolerance_max_amount: string
+  allow_receipt_first: boolean
+  allow_invoice_first: boolean
+  invoice_first_requires_approval: boolean
 }
 
 interface ProcurementPolicyResponse {
@@ -83,14 +87,23 @@ type ProcurementPolicyPayload =
       match_enforcement: 'warn' | 'block'
       variance_tolerance_percent: string
       variance_tolerance_max_amount: string
+      allow_receipt_first: boolean
+      allow_invoice_first: boolean
+      invoice_first_requires_approval: boolean
     }
 
 type CompanyTab = 'general' | 'procurement' | 'receipt'
 
 const procurementPresets: ProcurementPreset[] = ['complet', 'standard', 'leger']
 
+const procurementPresetEntryPoints: Record<ProcurementPreset, Pick<ProcurementPolicy, 'allow_receipt_first' | 'allow_invoice_first'>> = {
+  complet: { allow_receipt_first: false, allow_invoice_first: false },
+  standard: { allow_receipt_first: true, allow_invoice_first: false },
+  leger: { allow_receipt_first: true, allow_invoice_first: true },
+}
+
 export function CompanyPage() {
-  const { t } = useTranslation(['settings', 'common'])
+  const { t } = useTranslation(['settings', 'common', 'purchases'])
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -158,6 +171,9 @@ export function CompanyPage() {
       match_enforcement: procurementPolicy.match_enforcement,
       variance_tolerance_percent: procurementPolicy.variance_tolerance_percent,
       variance_tolerance_max_amount: procurementPolicy.variance_tolerance_max_amount,
+      allow_receipt_first: procurementPolicy.allow_receipt_first,
+      allow_invoice_first: procurementPolicy.allow_invoice_first,
+      invoice_first_requires_approval: procurementPolicy.invoice_first_requires_approval,
     })
   }
 
@@ -188,6 +204,9 @@ export function CompanyPage() {
         match_enforcement: policy.match_enforcement,
         variance_tolerance_percent: policy.variance_tolerance_percent,
         variance_tolerance_max_amount: policy.variance_tolerance_max_amount,
+        allow_receipt_first: policy.allow_receipt_first,
+        allow_invoice_first: policy.allow_invoice_first,
+        invoice_first_requires_approval: policy.invoice_first_requires_approval,
       })
       await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['procurement-policy']) })
       showNotification('success', t('settings:company.procurement.messages.saved'))
@@ -266,6 +285,13 @@ export function CompanyPage() {
     setProcurementForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  const handleProcurementToggleChange = (
+    field: 'allow_receipt_first' | 'allow_invoice_first' | 'invoice_first_requires_approval',
+    value: boolean,
+  ) => {
+    setProcurementForm((prev) => ({ ...prev, [field]: value }))
+  }
+
   const handleProcurementSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     updateProcurementMutation.mutate({
@@ -274,6 +300,9 @@ export function CompanyPage() {
       match_enforcement: (procurementForm.match_enforcement ?? 'warn') as 'warn' | 'block',
       variance_tolerance_percent: procurementForm.variance_tolerance_percent ?? '2.00',
       variance_tolerance_max_amount: procurementForm.variance_tolerance_max_amount ?? '1.000',
+      allow_receipt_first: procurementForm.allow_receipt_first ?? false,
+      allow_invoice_first: procurementForm.allow_invoice_first ?? false,
+      invoice_first_requires_approval: procurementForm.invoice_first_requires_approval ?? true,
     })
   }
 
@@ -432,6 +461,7 @@ export function CompanyPage() {
               <div className="grid gap-4 lg:grid-cols-3">
                 {procurementPresets.map((preset) => {
                   const isActive = procurementPolicy?.preset === preset
+                  const entryPoints = procurementPresetEntryPoints[preset]
                   return (
                     <button
                       key={preset}
@@ -459,6 +489,12 @@ export function CompanyPage() {
                         </StatusBadge>
                         <StatusBadge tone={preset === 'complet' ? 'danger' : 'warning'} className="text-xs">
                           {t(`settings:company.procurement.enforcement.${preset === 'complet' ? 'block' : 'warn'}`)}
+                        </StatusBadge>
+                        <StatusBadge tone={entryPoints.allow_receipt_first ? 'success' : 'neutral'} className="text-xs">
+                          {t(`purchases:settings.procurement.entryPoints.receiptFirst.${entryPoints.allow_receipt_first ? 'on' : 'off'}`)}
+                        </StatusBadge>
+                        <StatusBadge tone={entryPoints.allow_invoice_first ? 'success' : 'neutral'} className="text-xs">
+                          {t(`purchases:settings.procurement.entryPoints.invoiceFirst.${entryPoints.allow_invoice_first ? 'on' : 'off'}`)}
                         </StatusBadge>
                       </div>
                     </button>
@@ -529,6 +565,54 @@ export function CompanyPage() {
                       onChange={(e) => { handleProcurementFieldChange('variance_tolerance_max_amount', e.target.value) }}
                     />
                   </FormField>
+                </div>
+
+                <div className={cn('mt-5 grid gap-3 border-t pt-5 lg:grid-cols-3', borderColors.light)}>
+                  <div className={cn('flex items-start justify-between gap-3 rounded-md border p-3', borderColors.light)}>
+                    <span className="min-w-0">
+                      <span className={cn('block text-sm font-medium', textColors.primary)}>
+                        {t('purchases:settings.procurement.entryPoints.allowReceiptFirst')}
+                      </span>
+                      <span className={cn('mt-1 block text-xs leading-5', textColors.tertiary)}>
+                        {t('purchases:settings.procurement.entryPoints.allowReceiptFirstHelp')}
+                      </span>
+                    </span>
+                    <Toggle
+                      aria-label={t('purchases:settings.procurement.entryPoints.allowReceiptFirst')}
+                      checked={procurementForm.allow_receipt_first ?? false}
+                      onChange={(e) => { handleProcurementToggleChange('allow_receipt_first', e.target.checked) }}
+                    />
+                  </div>
+                  <div className={cn('flex items-start justify-between gap-3 rounded-md border p-3', borderColors.light)}>
+                    <span className="min-w-0">
+                      <span className={cn('block text-sm font-medium', textColors.primary)}>
+                        {t('purchases:settings.procurement.entryPoints.allowInvoiceFirst')}
+                      </span>
+                      <span className={cn('mt-1 block text-xs leading-5', textColors.tertiary)}>
+                        {t('purchases:settings.procurement.entryPoints.allowInvoiceFirstHelp')}
+                      </span>
+                    </span>
+                    <Toggle
+                      aria-label={t('purchases:settings.procurement.entryPoints.allowInvoiceFirst')}
+                      checked={procurementForm.allow_invoice_first ?? false}
+                      onChange={(e) => { handleProcurementToggleChange('allow_invoice_first', e.target.checked) }}
+                    />
+                  </div>
+                  <div className={cn('flex items-start justify-between gap-3 rounded-md border p-3', borderColors.light)}>
+                    <span className="min-w-0">
+                      <span className={cn('block text-sm font-medium', textColors.primary)}>
+                        {t('purchases:settings.procurement.entryPoints.invoiceFirstRequiresApproval')}
+                      </span>
+                      <span className={cn('mt-1 block text-xs leading-5', textColors.tertiary)}>
+                        {t('purchases:settings.procurement.entryPoints.invoiceFirstRequiresApprovalHelp')}
+                      </span>
+                    </span>
+                    <Toggle
+                      aria-label={t('purchases:settings.procurement.entryPoints.invoiceFirstRequiresApproval')}
+                      checked={procurementForm.invoice_first_requires_approval ?? true}
+                      onChange={(e) => { handleProcurementToggleChange('invoice_first_requires_approval', e.target.checked) }}
+                    />
+                  </div>
                 </div>
 
                 <div className="mt-6 flex justify-end">

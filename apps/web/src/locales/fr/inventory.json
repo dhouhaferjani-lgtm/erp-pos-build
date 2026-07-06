@@ -44,18 +44,36 @@
     "description": "Réceptionner les marchandises des commandes fournisseurs confirmées",
     "tabs": {
       "pending": "En attente de réception",
-      "received": "Réceptionnés"
+      "received": "Réceptionnés",
+      "drafts": "Brouillons"
     },
-    "status": {
-      "pending": "En attente",
-      "partial": "Partiel",
-      "received": "Réceptionné"
-    },
+  "status": {
+    "draft": "Brouillon",
+    "pending": "En attente",
+    "partial": "Partiel",
+    "received": "Réceptionné"
+  },
     "emptyPending": "Aucune réception en attente",
     "emptyPendingHint": "Les commandes fournisseurs confirmées apparaîtront ici pour réception",
     "emptyReceived": "Aucune commande réceptionnée",
+    "emptyDrafts": "Aucun brouillon de réception",
     "receiveAll": "Tout réceptionner",
     "progress": "{{received}} sur {{total}} articles reçus",
+    "draftSaved": "Brouillon de réception enregistré",
+    "printGrn": "Imprimer le BR",
+    "linesSummary": "{{count}} lignes",
+    "actions": {
+      "postDraft": "Poster",
+      "deleteDraft": "Supprimer"
+    },
+    "confirm": {
+      "postDraft": "Poster ce brouillon de réception ? Cela mettra à jour le stock et le coût moyen pondéré.",
+      "deleteDraft": "Supprimer ce brouillon de réception ?"
+    },
+    "messages": {
+      "draftPosted": "Brouillon de réception posté",
+      "draftDeleted": "Brouillon de réception supprimé"
+    },
     "successMessage": "Marchandises réceptionnées avec succès",
     "successMessageWithReceipt": "Marchandises réceptionnées avec succès sous {{receiptNumber}}"
   },
@@ -346,6 +364,38 @@
       "reverseSuccess": "Mise au rebut annulée avec succès.",
       "reverseAlreadyReversed": "Cette mise au rebut a déjà été annulée.",
       "reverseFailed": "Échec de l'annulation de la mise au rebut."
+    }
+  },
+  "entryExitNotes": {
+    "title": "Bons d'entrée/sortie",
+    "subtitle": "{{count}} bon enregistré",
+    "subtitle_plural": "{{count}} bons enregistrés",
+    "filters": {
+      "in": "Entrées",
+      "out": "Sorties"
+    },
+    "direction": {
+      "in": "Entrée",
+      "out": "Sortie",
+      "flat": "Sans mouvement de stock"
+    },
+    "columns": {
+      "direction": "Sens",
+      "source": "Source",
+      "location": "Emplacement",
+      "lines": "Lignes",
+      "actor": "Acteur",
+      "date": "Date"
+    },
+    "sourceTypes": {
+      "goods_receipt": "Bon de réception",
+      "delivery_note": "Bon de livraison",
+      "stock_transfer": "Transfert de stock",
+      "adjustment_batch": "Ajustement"
+    },
+    "empty": {
+      "title": "Aucun bon d'entrée/sortie",
+      "description": "Les bons apparaîtront ici lorsque des mouvements de stock seront enregistrés."
     }
   },
   "margin": {
@@ -858,6 +908,10 @@
       "stockMovements": {
         "title": "Mouvements de stock",
         "description": "Suivre les entrées, sorties, transferts et ajustements"
+      },
+      "entryExitNotes": {
+        "title": "Bons d'entrée/sortie",
+        "description": "Consulter les bons groupés issus des mouvements de stock"
       },
       "inventoryCounting": {
         "title": "Comptage d'inventaire",

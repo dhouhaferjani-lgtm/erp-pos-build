@@ -10,6 +10,7 @@ use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -32,6 +33,8 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
             'status',
             'received_at',
             'received_by',
+            'external_reference',
+            'external_date',
             'notes',
             'payload',
             'created_at',
@@ -64,18 +67,20 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
             'updated_at',
         ]));
 
-        $this->assertColumn('goods_receipts', 'receipt_number', 'varchar', false);
+        $this->assertColumn('goods_receipts', 'receipt_number', 'varchar', true);
         $this->assertColumn('goods_receipts', 'status', 'varchar', false);
         $this->assertColumn('goods_receipts', 'purchase_order_id', 'varchar', false);
         $this->assertColumn('goods_receipts', 'received_by', 'varchar', true);
+        $this->assertColumn('goods_receipts', 'external_reference', 'varchar', true);
+        $this->assertColumn('goods_receipts', 'external_date', 'date', true);
         $this->assertColumn('goods_receipts', 'payload', 'text', true);
 
         $this->assertColumn('goods_receipt_lines', 'received_qty', 'numeric', false);
         $this->assertColumn('goods_receipt_lines', 'free_qty', 'numeric', false);
         $this->assertColumn('goods_receipt_lines', 'received_unit_price', 'numeric', true);
-        $this->assertColumn('goods_receipt_lines', 'landed_unit_cost', 'numeric', false);
-        $this->assertColumn('goods_receipt_lines', 'accrual_unit_cost', 'numeric', false);
-        $this->assertColumn('goods_receipt_lines', 'effective_unit_cost', 'numeric', false);
+        $this->assertColumn('goods_receipt_lines', 'landed_unit_cost', 'numeric', true);
+        $this->assertColumn('goods_receipt_lines', 'accrual_unit_cost', 'numeric', true);
+        $this->assertColumn('goods_receipt_lines', 'effective_unit_cost', 'numeric', true);
         $this->assertColumn('goods_receipt_lines', 'quantity_invoiced', 'numeric', false);
         $this->assertColumn('goods_receipt_lines', 'price_override_old_basis', 'numeric', true);
 
@@ -94,14 +99,19 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
         $this->assertStringContainsString('goods_receipt_lines_free_movement_id_unique', $migration);
         $this->assertStringContainsString('WHERE movement_id IS NOT NULL', $migration);
         $this->assertStringContainsString('WHERE free_movement_id IS NOT NULL', $migration);
+        $draftMigration = file_get_contents(database_path('migrations/tenant/2026_07_06_110000_goods_receipt_draft_columns.php'));
+        $this->assertIsString($draftMigration);
+        $this->assertStringContainsString('goods_receipts_company_id_receipt_number_unique', $draftMigration);
+        $this->assertStringContainsString('WHERE receipt_number IS NOT NULL', $draftMigration);
 
-        $this->assertSame(['draft', 'posted', 'cancelled'], array_map(
+        $this->assertSame(['draft', 'posted'], array_map(
             static fn (GoodsReceiptStatus $status): string => $status->value,
             GoodsReceiptStatus::cases(),
         ));
 
         $this->assertSame(GoodsReceiptStatus::class, (new GoodsReceipt)->getCasts()['status']);
         $this->assertSame('array', (new GoodsReceipt)->getCasts()['payload']);
+        $this->assertSame('date', (new GoodsReceipt)->getCasts()['external_date']);
         $this->assertSame('decimal:4', (new GoodsReceiptLine)->getCasts()['received_qty']);
         $this->assertSame('decimal:4', (new GoodsReceiptLine)->getCasts()['free_qty']);
         $this->assertSame('decimal:3', (new GoodsReceiptLine)->getCasts()['received_unit_price']);
@@ -116,6 +126,62 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
         $this->assertIndexExists('goods_receipt_lines_tenant_id_goods_receipt_id_index', false);
         $this->assertIndexExists('goods_receipt_lines_movement_id_unique', true);
         $this->assertIndexExists('goods_receipt_lines_free_movement_id_unique', true);
+        $this->assertIndexSqlContains(
+            'goods_receipts_company_id_receipt_number_unique',
+            'WHERE receipt_number IS NOT NULL',
+        );
+    }
+
+    #[Test]
+    public function draft_receipts_can_be_persisted_without_a_grn_or_costed_lines(): void
+    {
+        $receiptId = (string) Str::uuid();
+
+        DB::table('goods_receipts')->insert([
+            'id' => $receiptId,
+            'tenant_id' => (string) Str::uuid(),
+            'company_id' => (string) Str::uuid(),
+            'purchase_order_id' => (string) Str::uuid(),
+            'receipt_number' => null,
+            'status' => GoodsReceiptStatus::Draft->value,
+            'received_at' => now(),
+            'received_by' => null,
+            'notes' => null,
+            'payload' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('goods_receipt_lines')->insert([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => (string) Str::uuid(),
+            'company_id' => (string) Str::uuid(),
+            'goods_receipt_id' => $receiptId,
+            'po_line_id' => (string) Str::uuid(),
+            'product_id' => (string) Str::uuid(),
+            'variant_id' => null,
+            'received_qty' => '2.0000',
+            'free_qty' => '0.0000',
+            'received_unit_price' => null,
+            'landed_unit_cost' => null,
+            'accrual_unit_cost' => null,
+            'effective_unit_cost' => null,
+            'movement_id' => null,
+            'free_movement_id' => null,
+            'quantity_invoiced' => '0.0000',
+            'price_override_by' => null,
+            'price_override_at' => null,
+            'price_override_old_basis' => null,
+            'price_override_reason' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertDatabaseHas('goods_receipts', [
+            'id' => $receiptId,
+            'receipt_number' => null,
+            'status' => GoodsReceiptStatus::Draft->value,
+        ]);
     }
 
     private function assertColumn(
@@ -156,5 +222,16 @@ final class GoodsReceiptLedgerSchemaTest extends TestCase
 
         $this->assertNotNull($index, "Index {$indexName} is missing.");
         $this->assertSame($unique ? 1 : 0, (int) $index->unique, "Unexpected uniqueness for {$indexName}.");
+    }
+
+    private function assertIndexSqlContains(string $indexName, string $expectedSql): void
+    {
+        $index = DB::selectOne(
+            'SELECT sql FROM sqlite_master WHERE type = ? AND name = ?',
+            ['index', $indexName],
+        );
+
+        $this->assertNotNull($index, "Index {$indexName} is missing from sqlite_master.");
+        $this->assertStringContainsString($expectedSql, (string) $index->sql);
     }
 }

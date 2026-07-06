@@ -70,6 +70,20 @@ function calculateLineTotal(
   return bcadd(discountedSubtotal, calculateLineTax(discountedSubtotal, taxRate))
 }
 
+function calculateTotalFromNetAmount(netAmount: string | number, taxRate: string | number): string {
+  const net = decimalValue(netAmount)
+  return bcadd(net, calculateLineTax(net, taxRate))
+}
+
+function calculateNetExtendedAmount(line: DocumentLine): string {
+  return calculateDiscountedSubtotal(
+    line.quantity,
+    line.unit_price,
+    line.discount_percent,
+    line.discount_amount,
+  )
+}
+
 interface Product {
   id: string
   name: string
@@ -203,7 +217,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     hasModule('PurchaseBonus') &&
     companyConfig?.purchase_bonus_enabled === true
 
-  const deriveUnitPrice = useCallback((line: DocumentLine): string => {
+  const deriveUnitPrice = useCallback((line: DocumentLine, netTotal?: string | number): string => {
     const paidQuantity = decimalValue(line.quantity)
     if ((line.price_entry_mode ?? 'unit') !== 'total') {
       return decimalValue(line.unit_price)
@@ -211,7 +225,26 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     if (bccomp(paidQuantity, '0') <= 0) {
       return '0.000'
     }
-    return bcdiv(decimalValue(line.line_total), paidQuantity, 3)
+    const netAmount = decimalValue(netTotal ?? calculateNetExtendedAmount(line))
+    const workingScale = 4
+
+    if (line.discount_percent !== undefined && line.discount_percent !== null && line.discount_percent !== '') {
+      const discountRate = bcdiv(line.discount_percent, '100', workingScale)
+      const payableRate = bcsub('1', discountRate, workingScale)
+      const discountedQuantity = bcmul(paidQuantity, payableRate, workingScale)
+
+      if (bccomp(discountedQuantity, '0') <= 0) {
+        return '0.000'
+      }
+
+      return bcdiv(netAmount, discountedQuantity, 3)
+    }
+
+    if (line.discount_amount !== undefined && line.discount_amount !== null && line.discount_amount !== '') {
+      return bcdiv(bcadd(netAmount, decimalValue(line.discount_amount), workingScale), paidQuantity, 3)
+    }
+
+    return bcdiv(netAmount, paidQuantity, 3)
   }, [])
 
   const pricingContextLines = useMemo<PricingContextLineRequest[]>(() => (
@@ -377,7 +410,9 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
             'tax_rate' in updates
           ) {
             if ((updatedLine.price_entry_mode ?? 'unit') === 'total') {
-              updatedLine.unit_price = deriveUnitPrice(updatedLine)
+              const netTotal = 'line_total' in updates ? updates.line_total : calculateNetExtendedAmount(updatedLine)
+              updatedLine.unit_price = deriveUnitPrice(updatedLine, netTotal)
+              updatedLine.line_total = calculateTotalFromNetAmount(decimalValue(netTotal), updatedLine.tax_rate)
             } else {
               updatedLine.line_total = calculateLineTotal(
                 updatedLine.quantity,
@@ -404,8 +439,9 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     if (bccomp(physicalQuantity, '0') <= 0) return null
 
     const unitPrice = deriveUnitPrice(line)
+    const netTotal = calculateNetExtendedAmount({ ...line, unit_price: unitPrice })
     return {
-      effectiveUnitCost: bcdiv(decimalValue(line.line_total), physicalQuantity, 6),
+      effectiveUnitCost: bcdiv(netTotal, physicalQuantity, 6),
       savings: bcmul(freeQuantity, unitPrice),
     }
   }, [deriveUnitPrice])
@@ -562,7 +598,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                 currency={companyCurrency}
                 min="0"
                 error={isBlocked}
-                value={(line.price_entry_mode ?? 'unit') === 'total' ? decimalValue(line.line_total) : decimalValue(line.unit_price)}
+                value={(line.price_entry_mode ?? 'unit') === 'total' ? calculateNetExtendedAmount(line) : decimalValue(line.unit_price)}
                 onFocus={() => {
                   setFocusedPriceLineId(line.id)
                 }}

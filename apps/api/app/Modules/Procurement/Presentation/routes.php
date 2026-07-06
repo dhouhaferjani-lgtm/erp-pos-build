@@ -6,6 +6,7 @@ use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Procurement\Presentation\Controllers\ProcurementPolicyController;
 use App\Modules\Procurement\Presentation\Controllers\PurchaseQuoteRequestController;
+use App\Modules\Procurement\Presentation\Controllers\StandaloneReceiptController;
 use App\Modules\Procurement\Presentation\Controllers\SupplierInvoiceController;
 use Illuminate\Support\Facades\Route;
 
@@ -35,6 +36,10 @@ Route::prefix('api/v1')->middleware([
     Route::put('/procurement-policies', [ProcurementPolicyController::class, 'update'])
         ->middleware('can:settings.update')
         ->name('procurement-policies.update');
+
+    Route::post('/goods-receipts/standalone', [StandaloneReceiptController::class, 'store'])
+        ->middleware('can:goods-receipt.create-standalone')
+        ->name('goods-receipts.standalone.store');
 
     Route::get('/purchase-quote-requests', [PurchaseQuoteRequestController::class, 'index'])
         ->middleware('can:purchase-quote-requests.view')
@@ -101,6 +106,12 @@ Route::prefix('api/v1')->middleware([
         ->middleware('can:documents.update')
         ->whereUuid('id')
         ->name('supplier-invoices.match');
+
+    // Link pending supplier invoice lines to posted receipt lines
+    Route::post('/supplier-invoices/{id}/link-receipts', [SupplierInvoiceController::class, 'linkReceipts'])
+        ->middleware('can:supplier-invoices.link-receipts')
+        ->whereUuid('id')
+        ->name('supplier-invoices.link-receipts');
 
     // Post supplier invoice (can:documents.update)
     Route::post('/supplier-invoices/{id}/post', [SupplierInvoiceController::class, 'post'])

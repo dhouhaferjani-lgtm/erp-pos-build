@@ -12,6 +12,8 @@
       "statusPlaceholder": "All statuses",
       "matchStatus": "Match Status",
       "matchStatusPlaceholder": "All match statuses",
+      "pendingReceipt": "Receipt association",
+      "pendingReceiptPlaceholder": "All invoices",
       "dateFrom": "From",
       "dateTo": "To"
     },
@@ -43,7 +45,9 @@
       "matchTable": "3-Way Match",
       "attachments": "Attachments",
       "postedAt": "Posted At",
-      "payment": "Record Payment"
+      "payment": "Record Payment",
+      "linkedPOs": "Linked POs",
+      "consumedReceipts": "Consumed GRNs"
     },
     "lines": {
       "ordered": "Ordered",
@@ -64,6 +68,7 @@
       "postPriceBlock": "Posting blocked: price variance exceeds policy threshold",
       "rematch": "Re-match",
       "recordPayment": "Record Payment",
+      "payInTreasury": "Pay in Treasury",
       "uploadAttachment": "Upload Attachment",
       "downloadAttachment": "Download",
       "deleteAttachment": "Delete"
@@ -90,7 +95,29 @@
       "rematched": "Match status updated",
       "paymentRecorded": "Payment recorded successfully",
       "attachmentUploaded": "Attachment uploaded",
-      "attachmentDeleted": "Attachment deleted"
+      "attachmentDeleted": "Attachment deleted",
+      "receiptsLinked": "Receipt links saved"
+    },
+    "paymentForm": {
+      "amount": "Amount",
+      "method": "Payment method",
+      "repository": "Paid from",
+      "date": "Payment date",
+      "reference": "Reference",
+      "notes": "Notes",
+      "selectMethod": "Select payment method",
+      "selectRepository": "Select repository",
+      "submit": "Record payment",
+      "defaultNotes": "Payment for supplier invoice {{number}}"
+    },
+    "pendingReceipt": {
+      "badge": "Pending receipt",
+      "detail": "This invoice cannot be posted until its received goods are associated.",
+      "linkTitle": "Associate receipts",
+      "linkDescription": "Enter the posted receipt line for each invoice line to clear the pending state.",
+      "linkAction": "Associate receipts",
+      "receiptLineId": "Receipt line for {{quantity}}",
+      "selectReceiptLine": "Select receipt line"
     },
     "create": {
       "title": "New Supplier Invoice",
@@ -116,6 +143,21 @@
       "linkedPOs": "Linked POs: {{numbers}}",
       "crossSupplierTooltip": "Select receipt rows from one supplier.",
       "selectReceiptPo": "Select receipts from {{number}}",
+      "entryMode": {
+        "title": "Entry route",
+        "description": "Choose whether this invoice is linked to existing receipts or starts the receipt workflow.",
+        "pending": "Goods not received",
+        "delivered": "Goods delivered",
+        "receipts": "Existing receipts"
+      },
+      "invoiceFirst": {
+        "location": "Receiving location",
+        "externalReference": "Delivery reference",
+        "externalDate": "Delivery date"
+      },
+      "manualLine": {
+        "productId": "Product ID"
+      },
       "columns": {
         "product": "Product",
         "received": "Received",
@@ -131,6 +173,61 @@
         "quantityVariance": "Quantity variance"
       }
     }
+  },
+  "settings": {
+    "procurement": {
+      "entryPoints": {
+        "allowReceiptFirst": "Allow receipt-first",
+        "allowReceiptFirstHelp": "Teams can receive goods before a supplier invoice is recorded.",
+        "allowInvoiceFirst": "Allow invoice-first",
+        "allowInvoiceFirstHelp": "Teams can create a pending supplier invoice before goods are received.",
+        "invoiceFirstRequiresApproval": "Require invoice-first approval",
+        "invoiceFirstRequiresApprovalHelp": "Posting an invoice-first bill requires the approval permission.",
+        "receiptFirst": {
+          "on": "Receipt-first on",
+          "off": "Receipt-first off"
+        },
+        "invoiceFirst": {
+          "on": "Invoice-first on",
+          "off": "Invoice-first off"
+        }
+      }
+    }
+  },
+  "standaloneReceipt": {
+    "title": "New Goods Receipt",
+    "description": "Receive supplier goods before a purchase order exists.",
+    "actions": {
+      "saveDraft": "Save draft",
+      "postNow": "Post now",
+      "addLine": "Add line",
+      "removeLine": "Remove line",
+      "newReceipt": "New receipt"
+    },
+    "fields": {
+      "supplier": "Supplier",
+      "location": "Location",
+      "blNumber": "BL number",
+      "blDate": "BL date",
+      "product": "Product",
+      "quantity": "Quantity",
+      "freeQuantity": "Free quantity",
+      "unitPrice": "Unit price"
+    },
+    "placeholders": {
+      "supplier": "Select supplier",
+      "location": "Select location",
+      "product": "Select product"
+    },
+    "lines": {
+      "title": "Receipt lines"
+    },
+    "toast": {
+      "draftCreated": "Goods receipt draft created",
+      "posted": "Goods receipt posted"
+    },
+    "policyDisabled": "Receipt-first procurement is disabled for this company.",
+    "footerHint": "A linked auto-generated purchase order is created for traceability."
   },
   "quoteRequests": {
     "title": "Quote Requests",

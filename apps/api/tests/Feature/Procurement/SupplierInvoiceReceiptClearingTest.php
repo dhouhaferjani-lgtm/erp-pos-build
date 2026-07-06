@@ -214,6 +214,32 @@ final class SupplierInvoiceReceiptClearingTest extends TestCase
         $this->assertSame('0.0000', DocumentLine::findOrFail($poLine->id)->free_quantity_invoiced);
     }
 
+    public function test_posting_ignores_draft_receipt_lines_and_uses_legacy_po_line_path(): void
+    {
+        $poLine = $this->createPoLine('10.0000', '5.000', '10.0000');
+        [$draftLine] = $this->createReceiptLines($poLine, [
+            ['qty' => '10.0000', 'basis' => null],
+        ], GoodsReceiptStatus::Draft);
+
+        $invoice = $this->createInvoice(
+            $poLine,
+            qty: '5.0000',
+            unitPrice: '5.000',
+            subtotal: '25.000',
+            recoverableVat: '4.750',
+            total: '29.750',
+            snapshotBasis: '5.000000',
+            matchedReceiptLineId: null,
+        );
+
+        app(SupplierInvoicePostingService::class)->post($invoice);
+
+        $entry = $this->clearingEntry($invoice);
+        $this->assertLeg($entry, $this->grirAccount, debit: '25.000', credit: '0.000');
+        $this->assertSame('5.0000', DocumentLine::findOrFail($poLine->id)->quantity_invoiced);
+        $this->assertSame('0.0000', GoodsReceiptLine::findOrFail($draftLine->id)->quantity_invoiced);
+    }
+
     public function test_bonus_line_consumes_free_receipt_window_without_overclearing_408(): void
     {
         $poLine = $this->createPoLine('12.0000', '5.000', '10.0000');
@@ -650,17 +676,17 @@ final class SupplierInvoiceReceiptClearingTest extends TestCase
     }
 
     /**
-     * @param  list<array{qty: numeric-string, basis: numeric-string, free_qty?: numeric-string}>  $lines
+     * @param  list<array{qty: numeric-string, basis: numeric-string|null, free_qty?: numeric-string}>  $lines
      * @return list<GoodsReceiptLine>
      */
-    private function createReceiptLines(DocumentLine $poLine, array $lines): array
+    private function createReceiptLines(DocumentLine $poLine, array $lines, GoodsReceiptStatus $status = GoodsReceiptStatus::Posted): array
     {
         $receipt = GoodsReceipt::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'purchase_order_id' => $poLine->document_id,
-            'receipt_number' => 'GRN-RC-'.Str::upper(Str::random(6)),
-            'status' => GoodsReceiptStatus::Posted,
+            'receipt_number' => $status === GoodsReceiptStatus::Posted ? 'GRN-RC-'.Str::upper(Str::random(6)) : null,
+            'status' => $status,
             'received_at' => now(),
         ]);
 

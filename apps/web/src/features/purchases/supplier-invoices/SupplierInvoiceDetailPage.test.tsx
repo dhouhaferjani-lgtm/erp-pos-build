@@ -8,7 +8,8 @@
  * 4. Per-line match table renders ordered/received/invoiced/matchable/price_variance columns
  */
 
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -18,15 +19,23 @@ import type { SupplierInvoiceDetail } from './types'
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
 const mockApiGet = vi.hoisted(() => vi.fn())
+const mockApiPost = vi.hoisted(() => vi.fn())
+const mockApiRawGet = vi.hoisted(() => vi.fn())
+const mockHasPermission = vi.hoisted(() => vi.fn((_permission: string) => true))
 
 vi.mock('../../../lib/api', async () => {
   const actual = await vi.importActual<typeof import('../../../lib/api')>('../../../lib/api')
   return {
     ...actual,
     apiGet: mockApiGet,
-    api: { ...actual.api, get: vi.fn() },
+    apiPost: mockApiPost,
+    api: { ...actual.api, get: mockApiRawGet },
   }
 })
+
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
+}))
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -102,6 +111,7 @@ function makeDetail(overrides: Partial<SupplierInvoiceDetail> = {}): SupplierInv
     supplier_reference: 'REF-001',
     currency: 'TND',
     total: '1500.000',
+    balance_due: '1500.000',
     status: 'draft',
     match_status: 'matched',
     // Backend detail emits source_document_id (not has_source_document).
@@ -143,9 +153,100 @@ let SupplierInvoiceDetailPage: React.ComponentType<Record<string, never>>
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  HTMLDialogElement.prototype.showModal = vi.fn(function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '')
+  })
+  HTMLDialogElement.prototype.close = vi.fn(function close(this: HTMLDialogElement) {
+    this.removeAttribute('open')
+  })
   setTenant()
+  mockHasPermission.mockReturnValue(true)
   // apiGet returns unwrapped data
-  mockApiGet.mockResolvedValue(makeDetail())
+  mockApiGet.mockImplementation((url: string) => {
+    if (url.includes('/receipt-lines')) {
+      return Promise.resolve([
+        {
+          id: 'receipt-line-1',
+          receipt_number: 'GRN-2026-0031',
+          external_reference: 'BL-31',
+          external_date: '2026-07-05',
+          product_id: 'product-1',
+          variant_id: null,
+          received_qty: '10.0000',
+          free_qty: '0.0000',
+          quantity_invoiced: '4.0000',
+          free_quantity_invoiced: '0.0000',
+          accrual_unit_cost: '5.200000',
+          received_unit_price: '5.200',
+          po_line_id: 'po-line-1',
+        },
+      ])
+    }
+    return Promise.resolve(makeDetail())
+  })
+  mockApiRawGet.mockResolvedValue({
+    data: {
+      data: [
+        {
+          id: 'po-1',
+          document_number: 'PO-2026-001',
+          currency: 'TND',
+          total: '1500.000',
+        },
+      ],
+    },
+  })
+  mockApiRawGet.mockImplementation((url: string) => {
+    if (url === '/payment-methods') {
+      return Promise.resolve({
+        data: {
+          data: [
+            {
+              id: 'method-bank',
+              name: 'Bank transfer',
+              is_active: true,
+              is_physical: false,
+              has_maturity: false,
+              requires_third_party: false,
+              is_push: true,
+              has_deducted_fees: false,
+              is_restricted: false,
+            },
+          ],
+        },
+      })
+    }
+    if (url === '/payment-repositories') {
+      return Promise.resolve({
+        data: {
+          data: [
+            {
+              id: 'repo-bank',
+              code: 'BANK',
+              name: 'Main bank',
+              type: 'bank_account',
+              is_active: true,
+              is_default: true,
+              balance: '10000.000',
+            },
+          ],
+        },
+      })
+    }
+    return Promise.resolve({
+      data: {
+        data: [
+          {
+            id: 'po-1',
+            document_number: 'PO-2026-001',
+            currency: 'TND',
+            total: '1500.000',
+          },
+        ],
+      },
+    })
+  })
+  mockApiPost.mockResolvedValue(makeDetail({ pending_receipt: false }))
   const mod = await import('./SupplierInvoiceDetailPage')
   SupplierInvoiceDetailPage = mod.SupplierInvoiceDetailPage
 })
@@ -200,6 +301,64 @@ describe('SupplierInvoiceDetailPage — Post action', () => {
       expect(btn).toBeInTheDocument()
     })
   })
+
+  it('disables posting while receipt association is pending', async () => {
+    mockApiGet.mockResolvedValue(makeDetail({ pending_receipt: true, match_status: 'unmatched' }))
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('btn-post')).toBeDisabled()
+      expect(screen.getByTestId('pending-receipt-banner')).toHaveTextContent(
+        'purchases:supplierInvoices.pendingReceipt.detail'
+      )
+    })
+  })
+})
+
+describe('SupplierInvoiceDetailPage — receipt linking', () => {
+  it('links pending invoice lines to receipt lines', async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url.includes('/receipt-lines')) {
+        return Promise.resolve([
+          {
+            id: 'receipt-line-1',
+            receipt_number: 'GRN-2026-0031',
+            product_id: 'product-1',
+            variant_id: null,
+            received_qty: '10.0000',
+            free_qty: '0.0000',
+            quantity_invoiced: '4.0000',
+            free_quantity_invoiced: '0.0000',
+            accrual_unit_cost: '5.200000',
+            received_unit_price: '5.200',
+            po_line_id: 'po-line-1',
+          },
+        ])
+      }
+      return Promise.resolve(makeDetail({ pending_receipt: true, match_status: 'unmatched' }))
+    })
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await screen.findByText(/GRN-2026-0031/)
+    fireEvent.change(await screen.findByTestId('link-receipt-line-selector-line-1'), {
+      target: { value: 'receipt-line-1' },
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('link-receipts')).not.toBeDisabled()
+    })
+    fireEvent.click(screen.getByTestId('link-receipts'))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/supplier-invoices/inv-detail-1/link-receipts', {
+        links: [
+          {
+            invoice_line_id: 'line-1',
+            receipt_line_id: 'receipt-line-1',
+          },
+        ],
+      })
+    })
+  })
 })
 
 describe('SupplierInvoiceDetailPage — per-line match table', () => {
@@ -232,6 +391,31 @@ describe('SupplierInvoiceDetailPage — source PO link', () => {
       expect(link).toHaveAttribute('href', expect.stringContaining('po-1'))
     })
   })
+
+  it('renders all source purchase orders and consumed receipt links', async () => {
+    mockApiGet.mockResolvedValueOnce(makeDetail({
+      source_purchase_orders: [
+        { id: 'po-1', number: 'PO-2026-001' },
+        { id: 'po-2', number: 'PO-2026-002' },
+      ],
+      consumed_receipts: [
+        {
+          id: 'grn-1',
+          receipt_number: 'GRN-2026-001',
+          status: 'posted',
+          received_at: '2026-06-15T08:00:00Z',
+          external_reference: 'BL-001',
+        },
+      ],
+    }))
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    expect(await screen.findByText('purchases:supplierInvoices.detail.linkedPOs')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /PO-2026-001/ })).toHaveAttribute('href', '/purchases/orders/po-1')
+    expect(screen.getByRole('link', { name: /PO-2026-002/ })).toHaveAttribute('href', '/purchases/orders/po-2')
+    expect(screen.getByText('purchases:supplierInvoices.detail.consumedReceipts')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'GRN-2026-001' })).toHaveAttribute('href', '/purchases/orders/po-1')
+  })
 })
 
 describe('SupplierInvoiceDetailPage — Record Payment', () => {
@@ -245,11 +429,191 @@ describe('SupplierInvoiceDetailPage — Record Payment', () => {
     })
   })
 
+  it('shows a secondary Pay in Treasury link for posted invoices', async () => {
+    mockApiGet.mockResolvedValue(
+      makeDetail({ status: 'posted', match_status: 'matched', posted_at: '2026-06-01T10:00:00Z' })
+    )
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    const payInTreasury = await screen.findByRole('link', {
+      name: 'purchases:supplierInvoices.actions.payInTreasury',
+    })
+
+    expect(payInTreasury).toHaveAttribute('href', '/treasury/payments/new?supplier_invoice=inv-detail-1')
+  })
+
+  it('hides supplier payment actions without payments.create permission', async () => {
+    mockHasPermission.mockImplementation((permission: string) => permission !== 'payments.create')
+    mockApiGet.mockResolvedValue(
+      makeDetail({ status: 'posted', match_status: 'matched', posted_at: '2026-06-01T10:00:00Z' })
+    )
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('btn-record-payment')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByRole('link', {
+      name: 'purchases:supplierInvoices.actions.payInTreasury',
+    })).not.toBeInTheDocument()
+  })
+
   it('does not show Record Payment when invoice is draft', async () => {
     mockApiGet.mockResolvedValue(makeDetail({ status: 'draft' }))
     renderWithProviders(<SupplierInvoiceDetailPage />)
     await waitFor(() => {
       expect(screen.queryByTestId('btn-record-payment')).not.toBeInTheDocument()
     })
+  })
+
+  it('records a supplier payment with string amount and allocation to the invoice', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(
+      makeDetail({
+        status: 'posted',
+        match_status: 'matched',
+        posted_at: '2026-06-01T10:00:00Z',
+        balance_due: '125.500',
+      }),
+    )
+    const { queryClient } = renderWithProviders(<SupplierInvoiceDetailPage />)
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await user.click(await screen.findByTestId('btn-record-payment'))
+    await screen.findByRole('dialog', { name: 'purchases:supplierInvoices.detail.payment' })
+
+    expect(screen.getByRole('spinbutton', { name: 'purchases:supplierInvoices.paymentForm.amount' })).toHaveValue(125.5)
+    await user.selectOptions(
+      await screen.findByLabelText('purchases:supplierInvoices.paymentForm.method'),
+      'method-bank',
+    )
+    await user.selectOptions(
+      screen.getByLabelText('purchases:supplierInvoices.paymentForm.repository'),
+      'repo-bank',
+    )
+    await user.clear(screen.getByLabelText('purchases:supplierInvoices.paymentForm.reference'))
+    await user.type(screen.getByLabelText('purchases:supplierInvoices.paymentForm.reference'), 'WIRE-42')
+    await user.type(screen.getByLabelText('purchases:supplierInvoices.paymentForm.notes'), 'Paid from bank portal')
+    await user.click(screen.getByRole('button', { name: 'purchases:supplierInvoices.paymentForm.submit' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/payments', {
+        amount: '125.500',
+        currency: 'TND',
+        payment_method_id: 'method-bank',
+        repository_id: 'repo-bank',
+        partner_id: 'p-1',
+        payment_date: expect.any(String),
+        reference: 'WIRE-42',
+        notes: 'Paid from bank portal',
+        allocations: [
+          {
+            document_id: 'inv-detail-1',
+            amount: '125.500',
+          },
+        ],
+      })
+    })
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalled()
+    })
+  })
+
+  it('caps the inline supplier-payment allocation at the invoice balance due', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(
+      makeDetail({
+        status: 'posted',
+        match_status: 'matched',
+        posted_at: '2026-06-01T10:00:00Z',
+        total: '300.000',
+        balance_due: '125.500',
+      }),
+    )
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await user.click(await screen.findByTestId('btn-record-payment'))
+    await user.clear(screen.getByLabelText('purchases:supplierInvoices.paymentForm.amount'))
+    await user.type(screen.getByLabelText('purchases:supplierInvoices.paymentForm.amount'), '200.000')
+    await user.selectOptions(
+      await screen.findByLabelText('purchases:supplierInvoices.paymentForm.method'),
+      'method-bank',
+    )
+    await user.selectOptions(
+      screen.getByLabelText('purchases:supplierInvoices.paymentForm.repository'),
+      'repo-bank',
+    )
+    await user.click(screen.getByRole('button', { name: 'purchases:supplierInvoices.paymentForm.submit' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/payments', expect.objectContaining({
+        amount: '200',
+        allocations: [
+          {
+            document_id: 'inv-detail-1',
+            amount: '125.500',
+          },
+        ],
+      }))
+    })
+  })
+
+  it('uses the MoneyInput default minimum instead of a hardcoded three-decimal minimum', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(
+      makeDetail({
+        status: 'posted',
+        match_status: 'matched',
+        posted_at: '2026-06-01T10:00:00Z',
+      }),
+    )
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await user.click(await screen.findByTestId('btn-record-payment'))
+
+    expect(screen.getByLabelText('purchases:supplierInvoices.paymentForm.amount')).toHaveAttribute('min', '0')
+  })
+
+  it('renders supplier over-payment errors in the payment dialog', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(
+      makeDetail({
+        status: 'posted',
+        match_status: 'matched',
+        posted_at: '2026-06-01T10:00:00Z',
+        balance_due: '125.500',
+      }),
+    )
+    mockApiPost.mockRejectedValueOnce({
+      response: {
+        data: {
+          error: {
+            code: 'SUPPLIER_PAYMENT_EXCEEDS_PAYABLE',
+            message: 'Payment amount exceeds the supplier invoice outstanding balance',
+          },
+        },
+      },
+    })
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await user.click(await screen.findByTestId('btn-record-payment'))
+    await user.selectOptions(
+      await screen.findByLabelText('purchases:supplierInvoices.paymentForm.method'),
+      'method-bank',
+    )
+    await user.selectOptions(
+      screen.getByLabelText('purchases:supplierInvoices.paymentForm.repository'),
+      'repo-bank',
+    )
+    await user.clear(screen.getByLabelText('purchases:supplierInvoices.paymentForm.amount'))
+    await user.type(screen.getByLabelText('purchases:supplierInvoices.paymentForm.amount'), '126.000')
+    await user.click(screen.getByRole('button', { name: 'purchases:supplierInvoices.paymentForm.submit' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Payment amount exceeds the supplier invoice outstanding balance',
+    )
   })
 })

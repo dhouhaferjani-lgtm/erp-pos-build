@@ -21,6 +21,9 @@ final class ProcurementPolicyData extends Data
         public readonly string $match_enforcement,
         public readonly string $variance_tolerance_percent,
         public readonly string $variance_tolerance_max_amount,
+        public readonly bool $allow_receipt_first,
+        public readonly bool $allow_invoice_first,
+        public readonly bool $invoice_first_requires_approval,
         public readonly ?string $created_at,
         public readonly ?string $updated_at,
     ) {}
@@ -37,6 +40,9 @@ final class ProcurementPolicyData extends Data
             match_enforcement: $policy->match_enforcement->value,
             variance_tolerance_percent: self::formatDecimal((string) $policy->variance_tolerance_percent, 2),
             variance_tolerance_max_amount: self::formatDecimal((string) $policy->variance_tolerance_max_amount, 3),
+            allow_receipt_first: $policy->allowsReceiptFirst(),
+            allow_invoice_first: $policy->allowsInvoiceFirst(),
+            invoice_first_requires_approval: $policy->requiresInvoiceFirstApproval(),
             created_at: $policy->created_at?->toIso8601String(),
             updated_at: $policy->updated_at?->toIso8601String(),
         );

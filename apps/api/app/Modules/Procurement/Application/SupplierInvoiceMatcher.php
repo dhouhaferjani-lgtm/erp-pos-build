@@ -149,6 +149,7 @@ final class SupplierInvoiceMatcher
     public function matchableQty(DocumentLine $poLine): string
     {
         $receiptLines = GoodsReceiptLine::query()
+            ->postedReceipts()
             ->where('po_line_id', $poLine->id)
             ->get();
 
@@ -412,6 +413,7 @@ final class SupplierInvoiceMatcher
             }
 
             $receiptLines = GoodsReceiptLine::query()
+                ->postedReceipts()
                 ->where('po_line_id', $poLine->id)
                 ->get();
 

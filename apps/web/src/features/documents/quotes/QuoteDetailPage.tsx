@@ -13,7 +13,7 @@ import { DocumentAttachments } from '../components/DocumentAttachments'
 import { DocumentTotals } from '../components/DocumentTotals'
 import { DocumentHeader } from '../components/DocumentHeader'
 import type { QuoteExpiryInfo } from '../components/DocumentHeader'
-import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
+import { useDownloadPdf, usePreviewPdf, usePrintPdf, useRevertDocument, useSendDocumentEmail } from '../hooks'
 import { useRelatedDocuments } from '../hooks/useRelatedDocuments'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { Modal } from '../../../components/organisms/Modal'
@@ -25,7 +25,7 @@ import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
 
-type ConfirmAction = 'confirm' | 'convert' | null
+type ConfirmAction = 'confirm' | 'convert' | 'revert' | null
 type ActiveTab = 'related' | 'attachments'
 
 function scopedNamespacePredicate(
@@ -107,6 +107,7 @@ export function QuoteDetailPage() {
   const previewPdfMutation = usePreviewPdf()
   const printPdfMutation = usePrintPdf()
   const sendEmailMutation = useSendDocumentEmail()
+  const revertMutation = useRevertDocument(id, 'quote')
 
   // Confirm quote mutation
   const confirmMutation = useMutation({
@@ -145,7 +146,7 @@ export function QuoteDetailPage() {
     },
   })
 
-  const isActionPending = confirmMutation.isPending || convertMutation.isPending
+  const isActionPending = confirmMutation.isPending || convertMutation.isPending || revertMutation.isPending
 
   // Action handlers
   const handleConfirm = () => {
@@ -155,6 +156,18 @@ export function QuoteDetailPage() {
 
   const handleConvert = () => {
     convertMutation.mutate()
+    setConfirmAction(null)
+  }
+
+  const handleRevert = () => {
+    revertMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast.success(t('documents.messages.revertedToDraft'))
+      },
+      onError: (error) => {
+        toast.error(getErrorMessage(error))
+      },
+    })
     setConfirmAction(null)
   }
 
@@ -229,6 +242,7 @@ export function QuoteDetailPage() {
               isActionPending={isActionPending}
               onConfirm={() => { setConfirmAction('confirm'); }}
               {...((!relatedDocs || relatedDocs.descendants.length === 0) ? { onConvert: () => { setConfirmAction('convert'); } } : {})}
+              onRevert={() => { setConfirmAction('revert'); }}
               onDownloadPdf={handleDownloadPdf}
               onPreviewPdf={handlePreviewPdf}
               onPrintPdf={handlePrintPdf}
@@ -425,6 +439,16 @@ export function QuoteDetailPage() {
         message={t('quotes.convertToOrderMessage')}
         confirmText={t('common:convert')}
         isLoading={convertMutation.isPending}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'revert'}
+        onClose={() => { setConfirmAction(null); }}
+        onConfirm={handleRevert}
+        title={t('documents.revertToDraftTitle')}
+        message={t('documents.revertToDraftMessage')}
+        confirmText={t('documents.revertToDraft')}
+        isLoading={revertMutation.isPending}
       />
 
       {/* Email Modal */}

@@ -227,7 +227,7 @@ class InvoiceDocumentTest extends TestCase
         $this->assertEquals('cancelled', $response->json('data.status'));
     }
 
-    public function test_posted_invoice_cannot_be_cancelled(): void
+    public function test_unpaid_posted_invoice_can_be_cancelled_and_voided(): void
     {
         $invoice = Document::create([
             'tenant_id' => $this->tenant->id,
@@ -246,8 +246,9 @@ class InvoiceDocumentTest extends TestCase
             'reason' => 'Customer requested cancellation',
         ]);
 
-        $response->assertStatus(422);
-        $this->assertStringContainsString('Cannot cancel posted invoice', $response->json('error'));
+        $response->assertStatus(200);
+        $this->assertEquals('cancelled', $response->json('data.status'));
+        $this->assertEquals(FiscalStatus::Voided->value, $response->json('data.fiscal_status'));
     }
 
     public function test_posted_invoice_can_be_credited(): void

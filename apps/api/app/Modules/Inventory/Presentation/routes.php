@@ -6,6 +6,8 @@ use App\Modules\Company\Presentation\Controllers\LocationController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Inventory\Presentation\Controllers\CountingItemController;
+use App\Modules\Inventory\Presentation\Controllers\EntryExitNoteController;
+use App\Modules\Inventory\Presentation\Controllers\GoodsReceiptController;
 use App\Modules\Inventory\Presentation\Controllers\InventoryCountingController;
 use App\Modules\Inventory\Presentation\Controllers\StockLevelController;
 use App\Modules\Inventory\Presentation\Controllers\StockMovementController;
@@ -62,6 +64,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:inventory.view')
         ->name('stock-movements.index');
 
+    Route::get('/entry-exit-notes', [EntryExitNoteController::class, 'index'])
+        ->middleware('can:inventory.view')
+        ->name('entry-exit-notes.index');
+
     Route::post('/stock-movements/receive', [StockMovementController::class, 'receive'])
         ->middleware('can:inventory.receive')
         ->name('stock-movements.receive');
@@ -98,6 +104,30 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/stock-movements/adjust', [StockMovementController::class, 'adjust'])
         ->middleware('can:inventory.adjust')
         ->name('stock-movements.adjust');
+
+    // Goods Receipts
+    Route::get('/goods-receipts', [GoodsReceiptController::class, 'index'])
+        ->middleware('can:inventory.view')
+        ->name('goods-receipts.index');
+    Route::get('/goods-receipts/{receipt}', [GoodsReceiptController::class, 'show'])
+        ->whereUuid('receipt')
+        ->middleware('can:inventory.view')
+        ->name('goods-receipts.show');
+
+    Route::get('/goods-receipts/{receipt}/pdf', [GoodsReceiptController::class, 'pdf'])
+        ->whereUuid('receipt')
+        ->middleware('can:inventory.view')
+        ->name('goods-receipts.pdf');
+
+    Route::post('/goods-receipts/{receipt}/post', [GoodsReceiptController::class, 'post'])
+        ->whereUuid('receipt')
+        ->middleware('can:purchase-orders.receive')
+        ->name('goods-receipts.post');
+
+    Route::delete('/goods-receipts/{receipt}', [GoodsReceiptController::class, 'destroy'])
+        ->whereUuid('receipt')
+        ->middleware('can:purchase-orders.receive')
+        ->name('goods-receipts.destroy');
 
     // Stock Reservations
     Route::get('/stock-reservations', [StockReservationController::class, 'index'])

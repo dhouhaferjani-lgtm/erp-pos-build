@@ -208,22 +208,24 @@ final class EnrichmentReviewService
             $this->brandResolution->dispatchPushIfNeeded($brandResolutionOutcome, $companyId);
         }
 
-        try {
-            SendEnrichmentFeedbackJob::dispatch(
-                trackingId: $trackingId,
-                action: EnrichmentFeedbackAction::Confirmed->value,
-                reason: null,
-                notes: null,
-                companyId: $companyId,
-            )->afterCommit();
-        } catch (\Throwable $e) {
-            Log::warning('enrichment feedback dispatch failed', [
-                'tracking_id' => $trackingId,
-                'action' => EnrichmentFeedbackAction::Confirmed->value,
-                'company_id' => $companyId,
-                'exception' => $e::class,
-                'message' => $e->getMessage(),
-            ]);
+        if (is_string($trackingId)) {
+            try {
+                SendEnrichmentFeedbackJob::dispatch(
+                    trackingId: $trackingId,
+                    action: EnrichmentFeedbackAction::Confirmed->value,
+                    reason: null,
+                    notes: null,
+                    companyId: $companyId,
+                )->afterCommit();
+            } catch (\Throwable $e) {
+                Log::warning('enrichment feedback dispatch failed', [
+                    'tracking_id' => $trackingId,
+                    'action' => EnrichmentFeedbackAction::Confirmed->value,
+                    'company_id' => $companyId,
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -252,23 +254,25 @@ final class EnrichmentReviewService
             'platform_submission_id' => null,
         ]);
 
-        try {
-            SendEnrichmentFeedbackJob::dispatch(
-                trackingId: $trackingId,
-                action: EnrichmentFeedbackAction::Rejected->value,
-                reason: $reason->value,
-                notes: $notes,
-                companyId: $companyId,
-            )->afterCommit();
-        } catch (\Throwable $e) {
-            Log::warning('enrichment feedback dispatch failed', [
-                'tracking_id' => $trackingId,
-                'action' => EnrichmentFeedbackAction::Rejected->value,
-                'reason' => $reason->value,
-                'company_id' => $companyId,
-                'exception' => $e::class,
-                'message' => $e->getMessage(),
-            ]);
+        if (is_string($trackingId)) {
+            try {
+                SendEnrichmentFeedbackJob::dispatch(
+                    trackingId: $trackingId,
+                    action: EnrichmentFeedbackAction::Rejected->value,
+                    reason: $reason->value,
+                    notes: $notes,
+                    companyId: $companyId,
+                )->afterCommit();
+            } catch (\Throwable $e) {
+                Log::warning('enrichment feedback dispatch failed', [
+                    'tracking_id' => $trackingId,
+                    'action' => EnrichmentFeedbackAction::Rejected->value,
+                    'reason' => $reason->value,
+                    'company_id' => $companyId,
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -315,8 +319,8 @@ final class EnrichmentReviewService
             brand: is_string($payload['brand'] ?? null) ? $payload['brand'] : null,
             description: is_string($payload['description'] ?? null) ? $payload['description'] : null,
             classification: is_array($payload['classification'] ?? null) ? $payload['classification'] : [],
-            ingredients: is_array($payload['ingredients'] ?? null) ? $payload['ingredients'] : [],
-            images: is_array($payload['images'] ?? null) ? $payload['images'] : [],
+            ingredients: $this->ingredientsFromPayload($payload['ingredients'] ?? null),
+            images: $this->imagesFromPayload($payload['images'] ?? null),
             confidence_score: (int) ($payload['confidence_score'] ?? 0),
             enrichment_tier: is_string($payload['enrichment_tier'] ?? null) ? $payload['enrichment_tier'] : null,
             field_confidence: is_array($payload['field_confidence'] ?? null) ? $payload['field_confidence'] : null,
@@ -328,6 +332,62 @@ final class EnrichmentReviewService
             canonical_brand_slug: is_string($payload['canonical_brand_slug'] ?? null) ? $payload['canonical_brand_slug'] : null,
             external_brand_id: is_string($payload['external_brand_id'] ?? null) ? $payload['external_brand_id'] : null,
         );
+    }
+
+    /**
+     * @return list<array{name: string, position: int}>
+     */
+    private function ingredientsFromPayload(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $ingredients = [];
+        foreach ($value as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $name = $item['name'] ?? null;
+            $position = $item['position'] ?? null;
+            if (is_string($name) && is_int($position)) {
+                $ingredients[] = [
+                    'name' => $name,
+                    'position' => $position,
+                ];
+            }
+        }
+
+        return $ingredients;
+    }
+
+    /**
+     * @return list<array{url: string|null, thumbnail: string|null, type: string|null}>
+     */
+    private function imagesFromPayload(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $images = [];
+        foreach ($value as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $url = $item['url'] ?? null;
+            $thumbnail = $item['thumbnail'] ?? null;
+            $type = $item['type'] ?? null;
+            $images[] = [
+                'url' => is_string($url) ? $url : null,
+                'thumbnail' => is_string($thumbnail) ? $thumbnail : null,
+                'type' => is_string($type) ? $type : null,
+            ];
+        }
+
+        return $images;
     }
 
     private function payloadMatches(

@@ -43,7 +43,7 @@ final class PurchaseOrderService
      *
      * @throws \DomainException If purchase order cannot be confirmed
      */
-    public function confirm(Document $purchaseOrder): Document
+    public function confirm(Document $purchaseOrder, ?string $actorId = null): Document
     {
         if ($purchaseOrder->type !== DocumentType::PurchaseOrder) {
             throw new \DomainException(
@@ -57,8 +57,8 @@ final class PurchaseOrderService
             );
         }
 
-        return DB::transaction(function () use ($purchaseOrder): Document {
-            $this->confirmAndAllocateCosts($purchaseOrder);
+        return DB::transaction(function () use ($purchaseOrder, $actorId): Document {
+            $this->confirmAndAllocateCosts($purchaseOrder, $actorId);
 
             $purchaseOrder->refresh();
 
@@ -70,10 +70,10 @@ final class PurchaseOrderService
     /**
      * Confirm purchase order and allocate landed costs and taxes.
      */
-    private function confirmAndAllocateCosts(Document $purchaseOrder): void
+    private function confirmAndAllocateCosts(Document $purchaseOrder, ?string $actorId): void
     {
         $confirmedAt = now();
-        $confirmedBy = auth()->id();
+        $confirmedBy = $actorId ?? auth()->id();
 
         // Update status first
         $purchaseOrder->update([

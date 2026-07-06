@@ -73,6 +73,9 @@ function procurementPolicy(preset: 'complet' | 'standard' | 'leger' | null = 'st
     match_enforcement: preset === 'complet' ? 'block' : 'warn',
     variance_tolerance_percent: '2.00',
     variance_tolerance_max_amount: '1.000',
+    allow_receipt_first: preset !== 'complet',
+    allow_invoice_first: preset === 'leger',
+    invoice_first_requires_approval: true,
   }
 }
 
@@ -165,6 +168,9 @@ describe('CompanyPage (canonical primitives)', () => {
     expect(screen.getByRole('button', { name: /settings:company.procurement.presets.standard.title/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /settings:company.procurement.presets.leger.title/ })).toBeInTheDocument()
     expect(screen.getByLabelText('settings:company.procurement.fields.matchMode')).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'purchases:settings.procurement.entryPoints.allowReceiptFirst' })).toBeChecked()
+    expect(screen.getByRole('switch', { name: 'purchases:settings.procurement.entryPoints.allowInvoiceFirst' })).not.toBeChecked()
+    expect(screen.getByRole('switch', { name: 'purchases:settings.procurement.entryPoints.invoiceFirstRequiresApproval' })).toBeChecked()
   })
 
   it('writes a selected procurement preset immediately', async () => {
@@ -186,6 +192,8 @@ describe('CompanyPage (canonical primitives)', () => {
       await screen.findByLabelText('settings:company.procurement.fields.matchEnforcement'),
       'block',
     )
+    await userEvent.click(screen.getByRole('switch', { name: 'purchases:settings.procurement.entryPoints.allowInvoiceFirst' }))
+    await userEvent.click(screen.getByRole('switch', { name: 'purchases:settings.procurement.entryPoints.invoiceFirstRequiresApproval' }))
     await userEvent.click(screen.getByRole('button', { name: 'settings:company.procurement.actions.saveAdvanced' }))
 
     await waitFor(() => {
@@ -195,6 +203,9 @@ describe('CompanyPage (canonical primitives)', () => {
         match_enforcement: 'block',
         variance_tolerance_percent: '2.00',
         variance_tolerance_max_amount: '1.000',
+        allow_receipt_first: true,
+        allow_invoice_first: true,
+        invoice_first_requires_approval: false,
       })
     })
   })

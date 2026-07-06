@@ -150,6 +150,7 @@ final class SupplierCreditNotePostingService
 
             /** @var Collection<int, GoodsReceiptLine> $lockedReceiptLines */
             $lockedReceiptLines = GoodsReceiptLine::query()
+                ->postedReceipts()
                 ->where('company_id', $creditNote->company_id)
                 ->whereIn('po_line_id', $poLineIds)
                 ->lockForUpdate()
@@ -514,6 +515,7 @@ final class SupplierCreditNotePostingService
     private function receiptLedgerSum(string $poLineId, string $column): string
     {
         return CurrencyScale::bcformatStrict((string) GoodsReceiptLine::query()
+            ->postedReceipts()
             ->where('po_line_id', $poLineId)
             ->sum($column), 4);
     }

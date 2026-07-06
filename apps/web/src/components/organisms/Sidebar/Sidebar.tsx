@@ -174,6 +174,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'quoteRequests', href: '/purchases/quote-requests', icon: FileQuestion },
         { key: 'purchaseOrders', href: '/purchases/orders', icon: ClipboardList },
         { key: 'goodsReceipts', href: '/purchases/receipts', icon: Package },
+        { key: 'newGoodsReceipt', href: '/purchases/receipts/new', icon: Package2, permission: 'goods-receipt.create-standalone' },
         { key: 'supplierInvoices', href: '/purchases/supplier-invoices', icon: Receipt },
         { key: 'returnNotes', href: '/inventory/return-notes', icon: RotateCcw },
       ],

@@ -41,6 +41,9 @@ final class UpdateProcurementPolicyRequest extends FormRequest
                 'max:999999999999.999',
                 'decimal:0,3',
             ],
+            'allow_receipt_first' => ['required_without:preset', 'boolean'],
+            'allow_invoice_first' => ['required_without:preset', 'boolean'],
+            'invoice_first_requires_approval' => ['required_without:preset', 'boolean'],
         ];
     }
 
@@ -60,6 +63,9 @@ final class UpdateProcurementPolicyRequest extends FormRequest
                         'match_enforcement',
                         'variance_tolerance_percent',
                         'variance_tolerance_max_amount',
+                        'allow_receipt_first',
+                        'allow_invoice_first',
+                        'invoice_first_requires_approval',
                     ] as $rawField) {
                         if ($this->has($rawField)) {
                             $validator->errors()->add('preset', 'Preset updates cannot be mixed with raw policy fields.');

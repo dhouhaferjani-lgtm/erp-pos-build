@@ -10,6 +10,7 @@ use App\Modules\Loyalty\Domain\Entities\LoyaltyProgram;
 use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class SeedDefaultEarningRuleOnProgramActivatedTest extends TestCase
@@ -19,7 +20,7 @@ final class SeedDefaultEarningRuleOnProgramActivatedTest extends TestCase
     public function test_activation_seeds_a_single_spend_rule_on_a_fresh_program(): void
     {
         $program = LoyaltyProgram::factory()->create([
-            'tenant_id' => (string) \Illuminate\Support\Str::uuid(),
+            'tenant_id' => (string) Str::uuid(),
             'status' => ProgramStatus::Draft,
         ]);
 
@@ -35,7 +36,7 @@ final class SeedDefaultEarningRuleOnProgramActivatedTest extends TestCase
     public function test_activation_does_not_seed_when_an_active_rule_already_exists(): void
     {
         $program = LoyaltyProgram::factory()->create([
-            'tenant_id' => (string) \Illuminate\Support\Str::uuid(),
+            'tenant_id' => (string) Str::uuid(),
             'status' => ProgramStatus::Draft,
         ]);
         EarningRule::factory()->create([

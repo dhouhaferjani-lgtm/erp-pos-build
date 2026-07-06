@@ -16,7 +16,7 @@ import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
 import { DocumentHeader } from '../components/DocumentHeader'
 import { DocumentOutstandingCallout } from '../components/DocumentOutstandingCallout'
 import { PaymentHistorySection, OutstandingAmountSection } from '../components'
-import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail } from '../hooks'
+import { useDownloadPdf, usePreviewPdf, usePrintPdf, useRevertDocument, useSendDocumentEmail } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal'
@@ -33,7 +33,7 @@ import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from '@/features/purchas
 import { usePurchaseOrderReceiptLines } from '@/features/purchases/supplier-invoices/api'
 import type { Document } from '../../../types/document'
 
-type ConfirmAction = 'confirm' | null
+type ConfirmAction = 'confirm' | 'revert' | null
 type ActiveTab = 'related' | 'attachments' | 'landedCosts' | 'payments'
 type ReceiptStatusValue = 'not_received' | 'partially_received' | 'fully_received'
 
@@ -90,7 +90,7 @@ function scopedNamespacePredicate(
 }
 
 export function PurchaseOrderDetailPage() {
-  const { t } = useTranslation(['sales', 'common'])
+  const { t } = useTranslation(['sales', 'common', 'inventory', 'purchases'])
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { hasPermission } = usePermissions()
@@ -138,6 +138,7 @@ export function PurchaseOrderDetailPage() {
   const previewPdfMutation = usePreviewPdf()
   const printPdfMutation = usePrintPdf()
   const sendEmailMutation = useSendDocumentEmail()
+  const revertMutation = useRevertDocument(id, 'purchase_order')
 
   // Confirm PO mutation
   const confirmMutation = useMutation({
@@ -184,7 +185,7 @@ export function PurchaseOrderDetailPage() {
     },
   })
 
-  const isActionPending = confirmMutation.isPending || receiveGoodsMutation.isPending
+  const isActionPending = confirmMutation.isPending || receiveGoodsMutation.isPending || revertMutation.isPending
 
   // Action handlers
   const handleConfirm = () => {
@@ -194,6 +195,18 @@ export function PurchaseOrderDetailPage() {
 
   const handleReceiveGoods = (request: ReceiveGoodsRequest) => {
     receiveGoodsMutation.mutate(request)
+  }
+
+  const handleRevert = () => {
+    revertMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast.success(t('documents.messages.revertedToDraft'))
+      },
+      onError: (error) => {
+        toast.error(getErrorMessage(error))
+      },
+    })
+    setConfirmAction(null)
   }
 
   const handleDownloadPdf = () => {
@@ -316,6 +329,7 @@ export function PurchaseOrderDetailPage() {
               isActionPending={isActionPending}
               onConfirm={() => { setConfirmAction('confirm'); }}
               onReceiveGoods={() => { setShowReceiveDialog(true); }}
+              onRevert={() => { setConfirmAction('revert'); }}
               onCreateSupplierInvoice={hasPermission('purchases.create') ? () => { void navigate(`/purchases/supplier-invoices/new?po=${id}`) } : undefined}
               canCreateSupplierInvoice={canCreateSupplierInvoice}
               onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
@@ -566,7 +580,49 @@ export function PurchaseOrderDetailPage() {
         </div>
 
         <div className="mt-6">
-          {activeTab === 'related' && <RelatedDocumentsTab documentId={purchaseOrder.id} />}
+          {activeTab === 'related' && (
+            <div className="space-y-6">
+              <RelatedDocumentsTab documentId={purchaseOrder.id} />
+              {purchaseOrder.goods_receipts && purchaseOrder.goods_receipts.length > 0 && (
+                <section className={tokens.card.base}>
+                  <h3 className={tokens.heading.section}>{t('inventory:goodsReceipt.title')}</h3>
+                  <div className="mt-3 space-y-2">
+                    {purchaseOrder.goods_receipts.map((receipt) => (
+                      <div key={receipt.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                        <EntityLink
+                          type="goodsReceipt"
+                          id={receipt.id}
+                          purchaseOrderId={purchaseOrder.id}
+                          label={receipt.receipt_number ?? receipt.id}
+                          className="font-medium"
+                        />
+                        <span className="text-gray-500">{receipt.external_reference ?? receipt.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {purchaseOrder.supplier_invoices && purchaseOrder.supplier_invoices.length > 0 && (
+                <section className={tokens.card.base}>
+                  <h3 className={tokens.heading.section}>{t('purchases:supplierInvoices.title')}</h3>
+                  <div className="mt-3 space-y-2">
+                    {purchaseOrder.supplier_invoices.map((invoice) => (
+                      <div key={invoice.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                        <EntityLink
+                          type="document"
+                          id={invoice.id}
+                          documentType="supplier_invoice"
+                          label={invoice.document_number ?? invoice.id}
+                          className="font-medium"
+                        />
+                        <span className="text-gray-500">{invoice.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
           {activeTab === 'attachments' && <DocumentAttachments documentId={purchaseOrder.id} />}
           {activeTab === 'landedCosts' && purchaseOrder.status === 'received' && (
             <PurchaseOrderLandedCostBreakdown documentId={purchaseOrder.id} />
@@ -604,6 +660,16 @@ export function PurchaseOrderDetailPage() {
         message={t('documents.confirmMessage')}
         confirmText={t('common:confirm')}
         isLoading={confirmMutation.isPending}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'revert'}
+        onClose={() => { setConfirmAction(null); }}
+        onConfirm={handleRevert}
+        title={t('documents.revertToDraftTitle')}
+        message={t('documents.revertToDraftMessage')}
+        confirmText={t('documents.revertToDraft')}
+        isLoading={revertMutation.isPending}
       />
 
       <ReceiveGoodsDialog

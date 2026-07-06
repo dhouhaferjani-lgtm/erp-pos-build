@@ -20,6 +20,7 @@ use App\Modules\Inventory\Domain\Events\ReservationReleasedV2;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockReservation;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\Inventory\ReservationReleaserInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -41,7 +42,7 @@ use Illuminate\Support\Str;
  * - High-value reservations trigger alerts
  * - Suspicious release patterns (expired, manual) are flagged
  */
-class StockReservationService implements InventoryReservationServiceInterface
+class StockReservationService implements InventoryReservationServiceInterface, ReservationReleaserInterface
 {
     private const int QUANTITY_SCALE = 4;
 
@@ -626,6 +627,24 @@ class StockReservationService implements InventoryReservationServiceInterface
             reason: $reason,
             expectedTenantId: $expectedTenantId,
             expectedCompanyId: $expectedCompanyId,
+        );
+    }
+
+    public function releaseReservationsForSource(
+        string $sourceType,
+        string $sourceId,
+        string $reason,
+        ?string $releasedBy = null,
+        ?string $expectedTenantId = null,
+        ?string $expectedCompanyId = null,
+    ): int {
+        return $this->releaseBySource(
+            ReservationSource::from($sourceType),
+            $sourceId,
+            ReleaseReason::from($reason),
+            $releasedBy,
+            $expectedTenantId,
+            $expectedCompanyId,
         );
     }
 }

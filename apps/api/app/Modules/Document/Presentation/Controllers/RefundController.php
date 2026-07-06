@@ -48,9 +48,12 @@ class RefundController extends Controller
         $invoice = $this->scopedQuery()->findOrFail($id);
 
         try {
+            $user = $request->user();
+
             $cancelled = $this->refundService->cancelInvoice(
                 $invoice,
-                (string) $request->input('reason')
+                (string) $request->input('reason'),
+                $user === null ? null : (string) $user->getAuthIdentifier(),
             );
 
             return response()->json([
@@ -60,6 +63,7 @@ class RefundController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),
+                'code' => $e->getMessage(),
             ], 422);
         }
     }
@@ -88,6 +92,7 @@ class RefundController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),
+                'code' => $e->getMessage(),
             ], 422);
         }
     }

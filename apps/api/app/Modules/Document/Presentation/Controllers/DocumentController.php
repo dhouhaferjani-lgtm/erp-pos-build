@@ -10,6 +10,7 @@ use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Treasury\Domain\Payment;
 use App\Support\Traits\PaginatesResults;
@@ -42,6 +43,7 @@ class DocumentController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly TaxCalculationService $taxCalculationService,
+        private readonly DocumentPostingService $documentPostingService,
     ) {}
 
     /**
@@ -182,6 +184,52 @@ class DocumentController extends Controller
 
         return response()->json([
             'data' => DocumentData::fromModel($documentModel),
+            'meta' => [
+                'timestamp' => now()->toIso8601String(),
+            ],
+        ]);
+    }
+
+    /**
+     * Revert a supported confirmed document back to draft.
+     *
+     * POST /api/v1/documents/{document}/revert
+     */
+    public function revert(Request $request, string $document): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+
+        $documentModel = Document::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->with(['lines', 'lines.product.unitOfMeasure', 'vehicleContext'])
+            ->find($document);
+
+        if ($documentModel === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'NOT_FOUND',
+                    'message' => 'Document not found',
+                ],
+            ], 404);
+        }
+
+        try {
+            $reverted = $this->documentPostingService->revert(
+                $documentModel,
+                $request->user()?->getAuthIdentifier(),
+            );
+        } catch (\DomainException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => $e->getMessage(),
+                    'message' => $e->getMessage(),
+                ],
+            ], 422);
+        }
+
+        return response()->json([
+            'data' => DocumentData::fromModel($reverted, true),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
             ],
