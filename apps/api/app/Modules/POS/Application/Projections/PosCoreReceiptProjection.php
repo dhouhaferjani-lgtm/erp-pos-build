@@ -14,8 +14,10 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\OriginalReceiptUnresolvableException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\CountingBlockService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
@@ -130,6 +132,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentMethodResolver $paymentMethodResolver,
         private readonly LoyaltyEarningContract $loyaltyEarning,
+        private readonly CountingBlockService $countingBlockService,
     ) {}
 
     public function name(): string
@@ -934,6 +937,71 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         }
 
         $this->decrementStockForLines($receiptId, $event, $terminal, $view, $receiptType);
+
+        // Live inventory counting task C2: a signed sale can never be rejected
+        // server-side (device-SoT). If it arrives against an ACTIVE
+        // sales-blocking count at this location and its DEVICE event time falls
+        // inside the block window, the sale is ACCEPTED (stock already moved
+        // above) and we append {receipt_id, occurred_at} to the counting's
+        // `late_sales_flags` so review can reconcile the leak.
+        $this->flagLateSaleForActiveBlock($receiptId, $event, $terminal);
+    }
+
+    /**
+     * Append a late-sale flag when this sale landed inside an active
+     * sales-blocking count window for the terminal's location.
+     *
+     * Runs inside `apply()`'s `DB::transaction`, AFTER the stock decrement, so
+     * the flag and the movement commit atomically. Idempotent: the outer
+     * fiscal_event_id guard prevents replay, and we additionally dedupe by
+     * `receipt_id`. A `lockForUpdate` on the counting row serializes concurrent
+     * appends from different receipts against the same jsonb array.
+     *
+     * Rule 20 — this runs in the queued projector with NO CompanyContext;
+     * `CountingBlockService` resolves company from the location id itself.
+     */
+    private function flagLateSaleForActiveBlock(
+        string $receiptId,
+        FiscalEvent $event,
+        Terminal $terminal,
+    ): void {
+        $block = $this->countingBlockService->activeBlockFor((string) $terminal->location_id);
+        if ($block === null) {
+            return;
+        }
+
+        $activatedAt = $block->activated_at;
+        $occurredAt = $event->event_time_device;
+
+        // A sale authored BEFORE the block opened (e.g. an offline receipt
+        // syncing late) is not a sale "during the count" — never flag it.
+        if ($activatedAt === null || $occurredAt->lessThan($activatedAt)) {
+            return;
+        }
+
+        /** @var InventoryCounting|null $locked */
+        $locked = InventoryCounting::query()
+            ->whereKey($block->id)
+            ->lockForUpdate()
+            ->first();
+
+        if ($locked === null) {
+            return;
+        }
+
+        $flags = $locked->late_sales_flags ?? [];
+        foreach ($flags as $flag) {
+            if ($flag['receipt_id'] === $receiptId) {
+                return;
+            }
+        }
+
+        $flags[] = [
+            'receipt_id' => $receiptId,
+            'occurred_at' => $occurredAt->toIso8601String(),
+        ];
+        $locked->late_sales_flags = $flags;
+        $locked->save();
     }
 
     /**

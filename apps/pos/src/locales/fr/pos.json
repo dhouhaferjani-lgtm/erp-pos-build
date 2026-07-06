@@ -272,6 +272,8 @@
   "stock": {
     "blocked": "Stock insuffisant dans cette agence (disponible : {{available}})",
     "warned": "Vente au-delà du stock de l'agence (disponible : {{available}})",
+    "countingBlocked": "Les ventes sont suspendues pendant l'inventaire {{number}} en cours",
+    "zoneCounting": "La zone « {{zone}} » est en cours de comptage — les ventes continuent",
     "incoming": "{{count}} en arrivage",
     "incomingFromTransfer": "En transfert depuis une agence",
     "incomingOnOrder": "En commande (achat)",

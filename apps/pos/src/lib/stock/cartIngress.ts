@@ -19,13 +19,46 @@ import type { POSProduct, POSProductVariant } from '@/types/product';
 import type { CartItem, SelectedModifier } from '@/types/cart';
 import { bcsub } from '@/lib/decimal';
 import { useCartStore } from '@/stores/cartStore';
+import { useTerminalStore } from '@/stores/terminalStore';
 import { gateStockForAdd, formatAvailableQty, type StockGateResult } from './stockGate';
+
+/**
+ * Live inventory counting task C2 — zone-count advisory. A zone/shelf count
+ * never hard-blocks (sales don't declare shelves), so we surface a soft,
+ * one-time-per-count warning toast when the cashier is selling while a zone at
+ * this location is being counted. Deduped per counting-number for the lifetime
+ * of the module (page session) so it informs without spamming every add.
+ */
+const shownZoneAdvisories = new Set<string>();
+
+function surfaceZoneCountingAdvisory(): void {
+  const advisories = useTerminalStore.getState().terminal?.counting_zone_advisories ?? [];
+  for (const advisory of advisories) {
+    const key = advisory.counting_number ?? advisory.zone_name;
+    if (shownZoneAdvisories.has(key)) {
+      continue;
+    }
+    shownZoneAdvisories.add(key);
+    toast.warning(i18n.t('pos:stock.zoneCounting', { zone: advisory.zone_name }));
+  }
+}
 
 /** Quantity scale — ALWAYS pass explicitly (decimal.ts defaults to 3). */
 const QTY_SCALE = 4;
 
 function surfaceGateToast(result: StockGateResult): void {
   if (!result.ok) {
+    // Live inventory counting task C2 — a device-enforced sales block reads
+    // differently from a stock-out: it is about a count in progress, not
+    // availability, and carries no `available` quantity.
+    if ('blockedByCounting' in result) {
+      toast.error(
+        i18n.t('pos:stock.countingBlocked', {
+          number: result.countingNumber ?? '',
+        }),
+      );
+      return;
+    }
     toast.error(
       i18n.t('pos:stock.blocked', { available: formatAvailableQty(result.available) }),
     );
@@ -70,6 +103,7 @@ export async function addItemGated(
   } else {
     cart.addItem(product, options.selectedModifiers, options.variant);
   }
+  surfaceZoneCountingAdvisory();
   return true;
 }
 
@@ -138,5 +172,6 @@ export async function updateQuantityGated(
   }
 
   useCartStore.getState().updateQuantity(itemId, newQuantity);
+  surfaceZoneCountingAdvisory();
   return true;
 }

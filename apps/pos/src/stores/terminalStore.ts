@@ -62,6 +62,27 @@ export interface Terminal {
    * the stock gate treats an absent value as 'block' (fail-safe for retail).
    */
   pos_stock_policy?: PosStockPolicy;
+  /**
+   * Live inventory counting task C2 — device-enforced sales blocking. When a
+   * `block_sales` stock count covering this terminal's location is active
+   * (count_1_in_progress .. pending_review), the server stamps this so the
+   * cart gate can HARD-refuse every add until the count finalizes. Null (the
+   * common case) = no active block. Optional so cached pre-C2 payloads decode.
+   */
+  active_counting_block?: {
+    counting_id: string;
+    counting_number: string | null;
+    started_at: string | null;
+  } | null;
+  /**
+   * Live inventory counting task C2 — soft zone-count advisories. Sales don't
+   * declare shelves, so a zone count never hard-blocks; it surfaces an advisory
+   * ("Zone X being counted") only. Empty/absent = none.
+   */
+  counting_zone_advisories?: Array<{
+    zone_name: string;
+    counting_number: string | null;
+  }>;
   max_discount_percent?: number;
   allow_line_discounts?: boolean;
   allow_transaction_discounts?: boolean;
@@ -985,6 +1006,12 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
         && stillCurrent.allow_line_discounts === fresh.allow_line_discounts
         && stillCurrent.allow_transaction_discounts === fresh.allow_transaction_discounts
         && stillCurrent.pos_stock_policy === fresh.pos_stock_policy
+        // Live inventory counting task C2 — a block opening/closing or a zone
+        // advisory change MUST re-persist so the cart gate + banner react.
+        && JSON.stringify(stillCurrent.active_counting_block ?? null)
+          === JSON.stringify(fresh.active_counting_block ?? null)
+        && JSON.stringify(stillCurrent.counting_zone_advisories ?? [])
+          === JSON.stringify(fresh.counting_zone_advisories ?? [])
       ) {
         return;
       }

@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Resources;
 
 use App\Modules\Company\Application\Services\LocationStockPolicyResolver;
 use App\Modules\Company\Domain\Enums\PosStockPolicy;
+use App\Modules\Inventory\Application\Services\CountingBlockService;
 use App\Modules\POS\Domain\Terminal;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -50,6 +51,30 @@ final class TerminalResource extends JsonResource
 
                 return (new LocationStockPolicyResolver)->resolve($location)->value;
             }, PosStockPolicy::Block->value),
+            // Live inventory counting task C2: device-enforced sales blocking +
+            // soft zone advisories, resolved per the terminal's location. Gated
+            // on `location` being eager-loaded (same discipline as
+            // `pos_stock_policy` above) so list endpoints that don't hydrate the
+            // relation don't trigger a per-terminal counting lookup; the POS
+            // device terminal payload always loads it. `CountingBlockService`
+            // is a pure domain function (no deps), instantiated directly like
+            // `LocationStockPolicyResolver`.
+            'active_counting_block' => $this->whenLoaded('location', function () {
+                $block = (new CountingBlockService)->activeBlockFor((string) $this->location->id);
+
+                if ($block === null) {
+                    return null;
+                }
+
+                return [
+                    'counting_id' => $block->id,
+                    'counting_number' => $block->counting_number,
+                    'started_at' => $block->activated_at?->toISOString(),
+                ];
+            }, null),
+            'counting_zone_advisories' => $this->whenLoaded('location', function () {
+                return (new CountingBlockService)->zoneAdvisoriesFor((string) $this->location->id);
+            }, []),
             'location' => $this->whenLoaded('location', function () {
                 return [
                     'id' => $this->location->id,
