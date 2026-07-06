@@ -365,7 +365,7 @@
       "vatNumber": "VAT Number",
       "posEnabled": "Enable Point of Sale",
       "onboardingMode": "Onboarding mode",
-      "onboardingModeHint": "Allow selling before the first count is finished. While on, the location's effective POS stock policy is forced to Off (sell below zero allowed) — turn it off once the opening count is complete.",
+      "onboardingModeHint": "Allow selling before the first count is finished. While on, the location's effective POS stock policy is forced to Off (sell below zero allowed) — turn it off once the opening count is complete. Your first stock count of a product while this is on is posted as its opening balance (quantity and cost basis).",
       "posStockPolicyOverride": "POS stock policy override",
       "posStockPolicyOverrideHint": "Overrides the company's stock policy for this location only. Ignored while onboarding mode is on.",
       "policyOverrideOptions": {
