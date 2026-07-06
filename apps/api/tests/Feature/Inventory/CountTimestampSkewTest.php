@@ -306,4 +306,80 @@ class CountTimestampSkewTest extends TestCase
         $this->assertFalse($this->item->is_flagged);
         $this->assertNull($this->item->flag_reasons);
     }
+
+    public function test_malformed_timestamp_format_returns_422_validation_error(): void
+    {
+        $serverNow = Carbon::parse('2026-07-06 12:00:00', 'UTC');
+        Carbon::setTestNow($serverNow);
+
+        // Test malformed non-ISO-8601 formats.
+        $malformedFormats = [
+            'notadate',
+            '07/06/2026 10:00',
+            '2026-07-06 10:00:00', // SPACE separator instead of T
+            '2026-07-06T10:00:00', // No timezone/offset
+        ];
+
+        foreach ($malformedFormats as $malformed) {
+            $response = $this->submit([
+                'quantity' => 98,
+                'counted_at_device' => $malformed,
+            ]);
+
+            $response->assertStatus(422);
+            $response->assertJsonStructure([
+                'error' => [
+                    'code',
+                    'message',
+                    'errors' => [
+                        'counted_at_device',
+                    ],
+                ],
+            ]);
+            $this->assertNotEmpty($response->json('error.errors.counted_at_device'), "Expected validation error for counted_at_device");
+        }
+    }
+
+    public function test_iso8601_with_non_utc_offset_accepted_and_converts_to_utc_correctly(): void
+    {
+        $serverNow = Carbon::parse('2026-07-06 12:00:00', 'UTC');
+        Carbon::setTestNow($serverNow);
+
+        // Device at +02:00 offset (e.g., CEST); the device's local time is 14:00,
+        // equivalent to 12:00 UTC. The device's clock is 5 minutes behind server.
+        $countedAtDeviceOffset = Carbon::parse('2026-07-06T13:55:00+02:00'); // 11:55 UTC
+        $deviceNowOffset = Carbon::parse('2026-07-06T13:55:00+02:00'); // 11:55 UTC (device thinks it's accurate)
+
+        $response = $this->submit([
+            'quantity' => 98,
+            'counted_at_device' => $countedAtDeviceOffset->toIso8601String(),
+            'device_now' => $deviceNowOffset->toIso8601String(),
+        ]);
+
+        $response->assertStatus(200);
+
+        $this->item->refresh();
+
+        // Verify the device_at field was parsed and stored correctly in UTC.
+        $this->assertNotNull($this->item->count_1_device_at);
+        $expected = Carbon::parse('2026-07-06 11:55:00', 'UTC');
+        $actual = $this->item->count_1_device_at;
+        $this->assertTrue(
+            $actual->equalTo($expected),
+            "counted_at_device should be converted and stored as UTC. Expected: {$expected->toIso8601String()}, Got: {$actual->toIso8601String()}"
+        );
+
+        // Skew math: server_now (12:00 UTC) - device_now (11:55 UTC) = 5 min correction.
+        // Estimate = counted_at_device (11:55 UTC) + 5 min = 12:00 UTC.
+        $expectedEstimate = Carbon::parse('2026-07-06 12:00:00', 'UTC');
+        $this->assertNotNull($this->item->count_1_at_estimate);
+        $this->assertTrue(
+            $this->item->count_1_at_estimate->equalTo($expectedEstimate),
+            'Skew math should apply UTC conversion correctly: estimate should be corrected to 12:00 UTC'
+        );
+
+        // Skew is exactly 5 minutes, so should not flag (threshold is > 5 min).
+        $this->assertFalse($this->item->is_flagged);
+        $this->assertNull($this->item->flag_reasons);
+    }
 }

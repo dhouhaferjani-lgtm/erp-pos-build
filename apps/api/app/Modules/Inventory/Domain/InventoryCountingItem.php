@@ -281,11 +281,12 @@ class InventoryCountingItem extends Model
         $this->$qtyColumn = $quantity;
         $this->$atColumn = $serverNow;
         $this->$notesColumn = $notes;
-        $this->$deviceAtColumn = $countedAtDevice;
+        // Convert device timestamp to UTC for consistent storage
+        $this->$deviceAtColumn = $countedAtDevice !== null ? $countedAtDevice->setTimezone('UTC') : null;
 
         if ($countedAtDevice !== null && $deviceNow !== null) {
             $skewSeconds = $serverNow->getTimestamp() - $deviceNow->getTimestamp();
-            $this->$estimateColumn = $countedAtDevice->copy()->addSeconds($skewSeconds);
+            $this->$estimateColumn = $countedAtDevice->copy()->addSeconds($skewSeconds)->setTimezone('UTC');
 
             if (abs($skewSeconds) > self::CLOCK_SKEW_TOLERANCE_SECONDS) {
                 $this->flagClockSkew();
