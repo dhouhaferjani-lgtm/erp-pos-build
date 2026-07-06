@@ -65,6 +65,24 @@ class LoyaltyPartnerController extends Controller
             return response()->json(['error' => ['message' => 'No active loyalty program']], 422);
         }
 
+        // The provisioning path dedupes by (tenant, phone) and re-points an
+        // existing member to the incoming partner. That is intended for the POS
+        // attach flow (phone comes from the customer record = member identity),
+        // but here the phone is cashier/admin-TYPED — a typo would silently
+        // hijack another partner's loyalty member (balance + PII). Refuse the
+        // cross-member collision before provisioning; a phone already bound to
+        // THIS partner still flows through (idempotent re-enroll).
+        $existing = LoyaltyMember::withTrashed()
+            ->where('tenant_id', $tenantId)
+            ->where('phone', LoyaltyMember::normalizePhone($data['phone']))
+            ->first();
+        if ($existing !== null && ! $this->isBoundToPartner($existing, $partnerId)) {
+            return response()->json(
+                ['error' => ['message' => 'Phone number already belongs to another loyalty member']],
+                409,
+            );
+        }
+
         $member = $this->memberProvisioning->findOrCreateMember(
             $tenantId,
             $partnerId,
@@ -92,6 +110,17 @@ class LoyaltyPartnerController extends Controller
             ->where('id', $partnerId)
             ->where('tenant_id', $tenantId)
             ->exists();
+    }
+
+    /**
+     * A member is "bound to" this partner when the partner owns it via customer_id
+     * or via the polymorphic partner anchor — the two ways provisioning records
+     * partner ownership. Any other member sharing the phone is a foreign card.
+     */
+    private function isBoundToPartner(LoyaltyMember $member, string $partnerId): bool
+    {
+        return $member->customer_id === $partnerId
+            || ($member->loyaltyable_type === 'partner' && $member->loyaltyable_id === $partnerId);
     }
 
     private function summarize(?LoyaltyMember $member): PartnerLoyaltySummaryData

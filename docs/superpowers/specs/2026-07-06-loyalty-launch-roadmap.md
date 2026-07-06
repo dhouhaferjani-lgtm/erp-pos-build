@@ -108,8 +108,14 @@ Without an active program EVERY earn/balance/enroll call silently no-ops.
   per [[project_loyalty_pos_offline]] owner decision). **Known risk to surface
   in review**: `findOrCreateMember` re-points an existing member on phone match
   (phone = identity, by design); a cashier-typed wrong phone can re-point
-  another customer's member. Accepted for launch (same semantics as attach-time
-  auto-enroll); revisit with a collision-confirm UX post-launch.
+  another customer's member. **Resolved (tenancy review 2026-07-06)**: the
+  boss-app partner-enroll endpoint (`POST /loyalty/partners/{id}/enroll`) now
+  refuses cross-member phone collisions with **409** before provisioning — a
+  typed phone already bound to a *different* partner is rejected instead of
+  hijacking that member's balance/PII; a phone bound to this same partner still
+  flows through (idempotent re-enroll). The POS attach-time re-point semantics
+  are unchanged (accepted for launch — there phone comes from the customer
+  record, not free-typed). Revisit with a collision-confirm UX post-launch.
 - Tests: permission matrix feature test (cashier CAN enroll via both POS and
   partner-enroll endpoints, CANNOT hit `loyalty.manage` surfaces); Vitest for the
   badge affordance states.

@@ -185,6 +185,58 @@ final class LoyaltyPartnerControllerTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_enroll_409s_when_phone_belongs_to_another_partners_member(): void
+    {
+        Sanctum::actingAs($this->userA);
+
+        // Member already bound to partner A via a shared phone.
+        $partnerA = $this->insertPartner($this->tenantA, $this->companyA, 'Amina');
+        $memberA = $this->createMember($this->tenantA, '+21620123456', $partnerA);
+
+        // A different partner B tries to enroll with the SAME phone (cashier typo).
+        $partnerB = $this->insertPartner($this->tenantA, $this->companyA, 'Bilel');
+        $this->createProgram($this->tenantA);
+
+        $response = $this->postJson("/api/v1/loyalty/partners/{$partnerB}/enroll", [
+            'phone' => '+216 20 123 456',
+        ]);
+
+        $response->assertStatus(409);
+        $response->assertJsonPath('error.message', 'Phone number already belongs to another loyalty member');
+
+        // The existing member stays bound to partner A; nothing re-pointed to B.
+        $memberA->refresh();
+        self::assertSame($partnerA, $memberA->customer_id);
+        self::assertSame($partnerA, $memberA->loyaltyable_id);
+        self::assertSame(0, LoyaltyMember::where('tenant_id', $this->tenantA->id)
+            ->where('customer_id', $partnerB)->count());
+        self::assertSame(0, Enrollment::where('member_id', $memberA->id)->count());
+    }
+
+    public function test_enroll_succeeds_when_phone_matches_own_member(): void
+    {
+        Sanctum::actingAs($this->userA);
+
+        $partnerA = $this->insertPartner($this->tenantA, $this->companyA, 'Amina');
+        $member = $this->createMember($this->tenantA, '+21620123456', $partnerA);
+        $this->createProgram($this->tenantA);
+
+        // Re-enrolling the SAME partner with its own phone is idempotent, not a collision.
+        $response = $this->postJson("/api/v1/loyalty/partners/{$partnerA}/enroll", [
+            'phone' => '+216 20 123 456',
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.is_member', true);
+        $response->assertJsonPath('data.member_id', $member->id);
+        $response->assertJsonCount(1, 'data.enrollments');
+
+        self::assertSame(
+            1,
+            LoyaltyMember::where('tenant_id', $this->tenantA->id)->where('customer_id', $partnerA)->count(),
+        );
+    }
+
     public function test_endpoints_require_loyalty_enroll_permission(): void
     {
         $noPermUser = User::factory()->create(['tenant_id' => $this->tenantA->id]);
