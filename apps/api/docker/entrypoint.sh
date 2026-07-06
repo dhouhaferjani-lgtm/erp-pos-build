@@ -144,6 +144,22 @@ else
         echo "  Tenant migrations: [completed with per-tenant errors - check logs]"
     fi
 
+    # Sync the canonical role/permission catalog across all tenant databases.
+    # OPT-IN (SYNC_PERMISSIONS_ON_BOOT=true): RolesAndPermissionsSeeder uses
+    # syncPermissions, which resets BUILT-IN roles to the canonical set — safe
+    # on staging, but a product decision for production tenants that may have
+    # customized built-in roles. Closes the recurring "new permission missing
+    # on existing tenants -> 403" gap (uom.view 2026-06; loyalty.enroll 2026-07).
+    if [ "$SYNC_PERMISSIONS_ON_BOOT" = "true" ]; then
+        echo ""
+        echo "Syncing role/permission catalog across tenant databases (direct -> $DIRECT_DB_HOST)..."
+        if DB_HOST="$DIRECT_DB_HOST" php artisan tenants:seed --class='Database\Seeders\RolesAndPermissionsSeeder'; then
+            echo "  Permission sync: [completed]"
+        else
+            echo "  Permission sync: [completed with per-tenant errors - check logs]"
+        fi
+    fi
+
     # Flush the shared Spatie permission cache (key spatie.permission.cache,
     # default/redis store, 24h TTL) so role/permission grants applied out of
     # band to existing tenants take effect immediately after deploy instead of
