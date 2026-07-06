@@ -9,6 +9,7 @@ use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
+use App\Modules\Inventory\Domain\Exceptions\OverlappingCountingException;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingEvent;
@@ -25,6 +26,26 @@ use Illuminate\Support\Facades\DB;
  */
 class InventoryCountingService
 {
+    /**
+     * Statuses considered "active" for the overlap guard: from count_1 start
+     * through pending_review (inclusive). Deliberately NOT
+     * InventoryCounting::scopeActive() / CountingStatus::isActive(), which
+     * only cover the *InProgress cases and would miss a counting sitting in
+     * count_N_completed or pending_review — both still hold an unresolved
+     * claim on their items' stock grain.
+     *
+     * @var list<CountingStatus>
+     */
+    private const ACTIVE_OVERLAP_STATUSES = [
+        CountingStatus::Count1InProgress,
+        CountingStatus::Count1Completed,
+        CountingStatus::Count2InProgress,
+        CountingStatus::Count2Completed,
+        CountingStatus::Count3InProgress,
+        CountingStatus::Count3Completed,
+        CountingStatus::PendingReview,
+    ];
+
     public function __construct(
         private readonly CountingReconciliationService $reconciliationService,
     ) {}
@@ -242,6 +263,8 @@ class InventoryCountingService
             $this->createAssignments($counting);
 
             if ($activateImmediately) {
+                $this->assertNoOverlappingActiveCounting($counting);
+
                 $counting->transitionTo(CountingStatus::Count1InProgress);
 
                 $assignment = $counting->assignments()
@@ -278,6 +301,8 @@ class InventoryCountingService
         }
 
         DB::transaction(function () use ($counting, $user): void {
+            $this->assertNoOverlappingActiveCounting($counting);
+
             $counting->transitionTo(CountingStatus::Count1InProgress);
 
             // Start assignment for count 1
@@ -567,6 +592,12 @@ class InventoryCountingService
             );
         }
 
+        // Re-validate the overlap guard at finalize time: the counting was
+        // clear of conflicts at activation, but another counting may have
+        // since become active over the same stock grain (e.g. via a
+        // different activation path, or an unexpected item added mid-flight).
+        $this->assertNoOverlappingActiveCounting($counting);
+
         DB::transaction(function () use ($counting, $user): void {
             // Freeze each auto-resolved item's replay boundary before the
             // finalize event fires (the queued listener reads final_qty_as_of to
@@ -714,6 +745,54 @@ class InventoryCountingService
             completedBy: (string) $user->id,
             completedAt: now()->toIso8601String(),
         ));
+    }
+
+    /**
+     * Guard against a counting being active (or finalizing) while any of its
+     * items overlap another counting's items on
+     * `(product_id, location_id, variant_id)` — null-variant-aware: a
+     * NULL-variant row on both sides is treated as the same grain, but a
+     * NULL-variant row never matches a specific-variant row for the same
+     * product/location. Countings in a non-active status (draft, scheduled,
+     * finalized, cancelled) never conflict.
+     *
+     * @throws OverlappingCountingException
+     */
+    private function assertNoOverlappingActiveCounting(InventoryCounting $counting): void
+    {
+        $activeStatusValues = array_map(
+            static fn (CountingStatus $status): string => $status->value,
+            self::ACTIVE_OVERLAP_STATUSES,
+        );
+
+        $conflict = DB::table('inventory_counting_items as a')
+            ->join('inventory_counting_items as b', function ($join): void {
+                $join->on('a.product_id', '=', 'b.product_id')
+                    ->on('a.location_id', '=', 'b.location_id')
+                    ->where(function ($nested): void {
+                        $nested->whereColumn('a.variant_id', '=', 'b.variant_id')
+                            ->orWhere(function ($bothNull): void {
+                                $bothNull->whereNull('a.variant_id')->whereNull('b.variant_id');
+                            });
+                    });
+            })
+            ->join('inventory_countings as c', 'b.counting_id', '=', 'c.id')
+            ->where('a.counting_id', $counting->id)
+            ->where('b.counting_id', '!=', $counting->id)
+            ->where('c.company_id', $counting->company_id)
+            ->whereIn('c.status', $activeStatusValues)
+            ->select(['b.counting_id as conflicting_counting_id', 'a.product_id', 'a.location_id', 'a.variant_id'])
+            ->first();
+
+        if ($conflict !== null) {
+            throw new OverlappingCountingException(
+                $counting->id,
+                (string) $conflict->conflicting_counting_id,
+                (string) $conflict->product_id,
+                (string) $conflict->location_id,
+                $conflict->variant_id !== null ? (string) $conflict->variant_id : null,
+            );
+        }
     }
 
     /**
