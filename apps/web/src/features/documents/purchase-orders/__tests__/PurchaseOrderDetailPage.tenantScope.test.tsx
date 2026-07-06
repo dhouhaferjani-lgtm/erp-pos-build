@@ -115,6 +115,7 @@ vi.mock('../../hooks', () => ({
   useDownloadPdf: () => ({ isPending: false, mutate: vi.fn() }),
   usePreviewPdf: () => ({ isPending: false, mutate: vi.fn() }),
   usePrintPdf: () => ({ isPending: false, mutate: vi.fn() }),
+  useRevertDocument: () => ({ isPending: false, mutate: vi.fn() }),
   useSendDocumentEmail: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 
@@ -299,7 +300,7 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'receive-goods' }))
     await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+      await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.saveAndPost' }))
     })
 
     await waitFor(() => {
@@ -352,7 +353,7 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
     const quantityInput = await screen.findByLabelText(/purchaseOrders.receive.quantity Stock/)
     await userEvent.clear(quantityInput)
     await userEvent.type(quantityInput, '2.50')
-    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.saveAndPost' }))
 
     await waitFor(() => {
       expect(mockAxiosPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {
@@ -367,7 +368,7 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
     render(<PurchaseOrderDetailPage />, { wrapper: wrapper(createClient()) })
 
     await userEvent.click(await screen.findByRole('button', { name: 'receive-goods' }))
-    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.saveAndPost' }))
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('Goods received: GRN-2026-0031')
@@ -423,7 +424,7 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
     ).length
 
     await userEvent.click(await screen.findByRole('button', { name: 'receive-goods' }))
-    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.saveAndPost' }))
 
     await waitFor(() => {
       receiptStatusFetches = mockApiGet.mock.calls.filter(
@@ -459,11 +460,11 @@ describe('PurchaseOrderDetailPage tenant scope', () => {
     render(<PurchaseOrderDetailPage />, { wrapper: wrapper(createClient()) })
 
     await userEvent.click(await screen.findByRole('button', { name: 'receive-goods' }))
-    expect(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'purchaseOrders.receive.saveAndPost' })).toBeDisabled()
 
     await userEvent.type(await screen.findByLabelText(/purchaseOrders.receive.batchNumber Stock/), 'LOT-2026-A')
     await userEvent.type(screen.getByLabelText(/purchaseOrders.receive.expiryDate Stock/), '2027-03-31')
-    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.submit' }))
+    await userEvent.click(screen.getByRole('button', { name: 'purchaseOrders.receive.saveAndPost' }))
 
     await waitFor(() => {
       expect(mockAxiosPost).toHaveBeenCalledWith('/purchase-orders/po-1/receive', {

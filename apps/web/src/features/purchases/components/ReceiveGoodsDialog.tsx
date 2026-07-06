@@ -15,6 +15,7 @@ export interface ReceiveBatchPayload {
 
 export interface ReceiveGoodsRequest {
   quantities: Record<string, string>
+  save_as_draft?: boolean
   free_quantities?: Record<string, string>
   received_unit_prices?: Record<string, string>
   price_override_reason?: string
@@ -175,12 +176,7 @@ export function ReceiveGoodsDialog({
     }))
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!canSubmit) {
-      return
-    }
-
+  function buildRequest(saveAsDraft: boolean): ReceiveGoodsRequest {
     const quantities: Record<string, string> = {}
     const freeQuantities: Record<string, string> = {}
     const receivedUnitPrices: Record<string, string> = {}
@@ -212,15 +208,29 @@ export function ReceiveGoodsDialog({
       }
     })
 
-    onConfirm({
+    return {
       quantities,
+      ...(saveAsDraft ? { save_as_draft: true } : {}),
       ...(Object.keys(freeQuantities).length > 0 ? { free_quantities: freeQuantities } : {}),
       ...(Object.keys(receivedUnitPrices).length > 0 ? { received_unit_prices: receivedUnitPrices } : {}),
       ...(Object.keys(receivedUnitPrices).length > 0 && priceOverrideReason.trim() !== ''
         ? { price_override_reason: priceOverrideReason.trim() }
         : {}),
       ...(Object.keys(batches).length > 0 ? { batches } : {}),
-    })
+    }
+  }
+
+  function submitRequest(saveAsDraft: boolean) {
+    if (!canSubmit) {
+      return
+    }
+
+    onConfirm(buildRequest(saveAsDraft))
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    submitRequest(false)
   }
 
   function unitPrice(line: ReceivableLine): string {
@@ -392,8 +402,16 @@ export function ReceiveGoodsDialog({
           <Button type="button" variant="secondary" onClick={onClose}>
             {t('common:cancel')}
           </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!canSubmit}
+            onClick={() => { submitRequest(true) }}
+          >
+            {isLoading ? t('common:status.loading') : t('purchaseOrders.receive.saveDraft')}
+          </Button>
           <Button type="submit" disabled={!canSubmit}>
-            {isLoading ? t('common:status.loading') : t('purchaseOrders.receive.submit')}
+            {isLoading ? t('common:status.loading') : t('purchaseOrders.receive.saveAndPost')}
           </Button>
         </div>
       </form>

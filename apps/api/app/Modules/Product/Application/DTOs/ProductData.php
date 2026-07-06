@@ -9,6 +9,7 @@ use App\Modules\Catalog\Application\DTOs\ProductMediaData;
 use App\Modules\Product\Domain\Enums\PricingMode;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\CurrencyScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -141,8 +142,8 @@ class ProductData extends Data
     private static function stockQuantity(Product $product): ?string
     {
         $value = $product->getAttribute('stock_quantity');
-        if ($value !== null) {
-            return bcadd((string) $value, '0', 4);
+        if (is_scalar($value) && is_numeric((string) $value)) {
+            return CurrencyScale::bcformatStrict((string) $value, 4);
         }
 
         if ($product->relationLoaded('stockLevels')) {

@@ -102,6 +102,21 @@ export interface Document {
   // Lines (may be eager-loaded)
   lines?: DocumentLineData[]
 
+  goods_receipts?: {
+    id: string
+    receipt_number: string | null
+    status: string
+    received_at: string | null
+    external_reference: string | null
+  }[]
+
+  supplier_invoices?: {
+    id: string
+    document_number: string | null
+    status: string
+    total: string | null
+  }[]
+
   created_at: string
   updated_at: string
 }

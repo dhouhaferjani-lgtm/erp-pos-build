@@ -79,6 +79,19 @@ class PurchaseOrderServiceTest extends TestCase
         $this->assertNotNull($confirmedPO->confirmed_by);
     }
 
+    public function test_confirm_accepts_explicit_actor_id(): void
+    {
+        $purchaseOrder = $this->createDraftPurchaseOrder(['document_number' => 'PO-2025-ACTOR']);
+        $actor = User::factory()->create([
+            'tenant_id' => $this->tenant->id,
+        ]);
+
+        $confirmedPO = $this->service->confirm($purchaseOrder, $actor->id);
+
+        $this->assertEquals(DocumentStatus::Confirmed, $confirmedPO->status);
+        $this->assertSame($actor->id, $confirmedPO->confirmed_by);
+    }
+
     public function test_allocates_landed_costs_on_confirm(): void
     {
         // Arrange

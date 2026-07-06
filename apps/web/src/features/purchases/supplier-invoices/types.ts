@@ -40,6 +40,7 @@ export interface SupplierInvoiceListItem {
   status: SupplierInvoiceStatus
   match_status: SupplierInvoiceMatchStatus
   has_source_document: boolean
+  pending_receipt?: boolean
 }
 
 /** Cursor-based pagination meta (matches backend cursorPaginate). */
@@ -61,7 +62,9 @@ export interface SupplierInvoiceListResponse {
 
 export interface SupplierInvoiceLine {
   id: string
-  source_line_id: string
+  source_line_id: string | null
+  product_id?: string | null
+  variant_id?: string | null
   quantity: string
   unit_price: string
   vat_rate: string
@@ -72,6 +75,14 @@ export interface SupplierInvoiceLine {
 export interface SourcePurchaseOrder {
   id: string
   number: string
+}
+
+export interface ConsumedReceipt {
+  id: string
+  receipt_number: string | null
+  status: string
+  received_at: string | null
+  external_reference: string | null
 }
 
 export interface PerLineMatch {
@@ -108,13 +119,17 @@ export interface SupplierInvoiceDetail {
   /** Maps to external_document_number column via supplier_reference key. */
   supplier_reference: string | null
   currency: string
+  balance_due?: string | null
   total: string
   status: SupplierInvoiceStatus
   match_status: SupplierInvoiceMatchStatus
   /** Present in detail response (not has_source_document — use source_purchase_order instead). */
   source_document_id: string | null
+  pending_receipt?: boolean
   lines: SupplierInvoiceLine[]
   source_purchase_order: SourcePurchaseOrder | null
+  source_purchase_orders?: SourcePurchaseOrder[]
+  consumed_receipts?: ConsumedReceipt[]
   match: InvoiceMatch
   attachments: DocumentAttachment[]
   posted_at: string | null
@@ -125,25 +140,47 @@ export interface SupplierInvoiceDetail {
 // ── Create payload ─────────────────────────────────────────────────────────
 
 export interface CreateSupplierInvoiceLinePayload {
-  source_line_id: string
+  source_line_id?: string
+  product_id?: string
+  variant_id?: string | null
   /** qty scale: max 4 decimal places as string */
   quantity: string
   /** money scale: max 3 decimal places as string */
   unit_price: string
   /** percent scale: max 2 decimal places as string */
   vat_rate: string
+  batch?: {
+    batch_number: string
+    expiry_date: string
+    manufacturing_date?: string
+  }
 }
 
 export interface CreateSupplierInvoicePayload {
   partner_id: string
-  source_document_id: string
+  source_document_id?: string
   source_document_ids?: string[]
   currency: string
   issue_date: string
   due_date?: string
   supplier_reference?: string
   notes?: string
+  pending_receipt?: boolean
+  invoice_first_delivered?: boolean
+  location_id?: string
+  idempotency_key?: string
+  external_reference?: string
+  external_date?: string
   lines: CreateSupplierInvoiceLinePayload[]
+}
+
+export interface LinkSupplierInvoiceReceiptLinePayload {
+  invoice_line_id: string
+  receipt_line_id: string
+}
+
+export interface LinkSupplierInvoiceReceiptsPayload {
+  links: LinkSupplierInvoiceReceiptLinePayload[]
 }
 
 // ── 422 error shape for blocked post ──────────────────────────────────────
@@ -156,12 +193,19 @@ export interface PostBlockError {
 // ── Payment payload (reuses existing POST /payments endpoint) ──────────────
 
 export interface RecordPaymentPayload {
-  document_id: string
+  document_id?: string
   amount: string
   currency: string
   payment_method_id: string
+  repository_id?: string
+  partner_id?: string
   payment_date: string
   reference?: string
+  notes?: string
+  allocations?: {
+    document_id: string
+    amount: string
+  }[]
 }
 
 // ── Create prefill reads ──────────────────────────────────────────────────
@@ -220,6 +264,8 @@ export interface SupplierInvoiceListParams {
   date_to?: string
   /** Free-text search over document number and supplier (partner) name. */
   search?: string
+  /** "1" filters invoices that still need receipt association. */
+  pending_receipt?: '1'
   /** Cursor token for the next/previous page (cursor-based pagination). */
   cursor?: string
 }

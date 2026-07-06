@@ -40,6 +40,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:documents.view')
         ->name('documents.index');
 
+    Route::post('/documents/{document}/revert', [DocumentController::class, 'revert'])
+        ->whereUuid('document')
+        ->middleware('can:documents.update')
+        ->name('documents.revert');
+
     Route::get('/documents/{document}', [DocumentController::class, 'showAny'])
         ->middleware('can:documents.view')
         ->name('documents.show');

@@ -19,16 +19,22 @@ final class ProcurementPresetTest extends TestCase
                 'bill_control_mode' => BillControlMode::Received->value,
                 'match_mode' => MatchMode::ThreeWay->value,
                 'match_enforcement' => MatchEnforcement::Block->value,
+                'allow_receipt_first' => false,
+                'allow_invoice_first' => false,
             ],
             ProcurementPreset::Standard->value => [
                 'bill_control_mode' => BillControlMode::Received->value,
                 'match_mode' => MatchMode::ThreeWay->value,
                 'match_enforcement' => MatchEnforcement::Warn->value,
+                'allow_receipt_first' => true,
+                'allow_invoice_first' => false,
             ],
             ProcurementPreset::Leger->value => [
                 'bill_control_mode' => BillControlMode::Received->value,
                 'match_mode' => MatchMode::TwoWay->value,
                 'match_enforcement' => MatchEnforcement::Warn->value,
+                'allow_receipt_first' => true,
+                'allow_invoice_first' => true,
             ],
         ], ProcurementPreset::values());
     }

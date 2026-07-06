@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
@@ -11,10 +15,6 @@ use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Media\Domain\Media\MediaAsset;
 use App\Modules\Media\Domain\Media\MediaAttachment;
-use App\Modules\Company\Domain\Company;
-use App\Modules\Company\Domain\Location;
-use App\Modules\Company\Domain\UserCompanyMembership;
-use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;

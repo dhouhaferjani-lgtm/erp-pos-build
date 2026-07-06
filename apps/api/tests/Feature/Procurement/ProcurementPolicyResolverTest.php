@@ -44,16 +44,16 @@ final class ProcurementPolicyResolverTest extends TestCase
     // -------------------------------------------------------------------------
 
     /**
-     * Seed a Pharmacy tenant + company; return the company ID.
+     * Seed a tenant + company; return the company ID.
      */
-    private function seedPharmacyCompany(): string
+    private function seedPharmacyCompany(Vertical $vertical = Vertical::Pharmacy): string
     {
         $tenant = Tenant::create([
             'name' => 'Procurement Test Tenant',
             'slug' => 'procurement-test-'.uniqid(),
             'status' => TenantStatus::Active,
             'plan' => SubscriptionPlan::Professional,
-            'vertical' => Vertical::Pharmacy,
+            'vertical' => $vertical,
         ]);
 
         $company = Company::create([
@@ -81,6 +81,32 @@ final class ProcurementPolicyResolverTest extends TestCase
         $this->assertSame(BillControlMode::Received, $policy->bill_control_mode);
         $this->assertSame(MatchMode::ThreeWay, $policy->match_mode);
         $this->assertSame(MatchEnforcement::Warn, $policy->match_enforcement);
+    }
+
+    public function test_missing_policy_row_fails_closed_for_entry_point_toggles_regardless_of_vertical(): void
+    {
+        foreach ([Vertical::Pharmacy, Vertical::Mechanic] as $vertical) {
+            $policy = $this->resolver->forCompany($this->seedPharmacyCompany($vertical));
+
+            $this->assertFalse($policy->allowsReceiptFirst());
+            $this->assertFalse($policy->allowsInvoiceFirst());
+            $this->assertTrue($policy->requiresInvoiceFirstApproval());
+        }
+    }
+
+    public function test_old_shape_policy_object_uses_fail_closed_entry_point_defaults(): void
+    {
+        $policy = new ProcurementPolicy([
+            'bill_control_mode' => BillControlMode::Received,
+            'match_mode' => MatchMode::ThreeWay,
+            'match_enforcement' => MatchEnforcement::Warn,
+            'variance_tolerance_percent' => '2.00',
+            'variance_tolerance_max_amount' => '1.000',
+        ]);
+
+        $this->assertFalse($policy->allowsReceiptFirst());
+        $this->assertFalse($policy->allowsInvoiceFirst());
+        $this->assertTrue($policy->requiresInvoiceFirstApproval());
     }
 
     // -------------------------------------------------------------------------

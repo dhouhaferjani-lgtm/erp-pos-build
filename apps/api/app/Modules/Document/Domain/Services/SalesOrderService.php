@@ -8,11 +8,9 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Document\Domain\Events\SalesOrderCancelled;
 use App\Modules\Document\Domain\Events\SalesOrderConfirmed;
 use App\Modules\Document\Domain\Events\SalesOrderConfirmedV2;
 use App\Modules\Inventory\Application\Services\StockReservationService;
-use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +39,7 @@ final class SalesOrderService
     public function __construct(
         private readonly StockReservationService $stockReservationService,
         private readonly TaxCalculationService $taxCalculationService,
+        private readonly DocumentPostingService $documentPostingService,
     ) {}
 
     /**
@@ -216,43 +215,7 @@ final class SalesOrderService
             throw new \DomainException('Posted sales orders cannot be cancelled. Use credit notes instead.');
         }
 
-        return DB::transaction(function () use ($salesOrder, $reason, $cancelledBy): Document {
-            $this->cancelAndReleaseStock($salesOrder, $reason, $cancelledBy);
-
-            /** @var Document */
-            return $salesOrder->fresh(['lines']);
-        });
-    }
-
-    /**
-     * Cancel sales order and release all stock reservations.
-     */
-    private function cancelAndReleaseStock(Document $salesOrder, string $reason, ?string $cancelledBy): void
-    {
-        $cancelledAt = now();
-        $cancelledBy = $cancelledBy ?? auth()->id();
-
-        // Release all stock reservations for this sales order, scoped to the
-        // sales order's own tenant + company (api.inventory.033).
-        $releasedCount = $this->stockReservationService->releaseBySource(
-            sourceType: ReservationSource::SalesOrder,
-            sourceId: $salesOrder->id,
-            reason: ReleaseReason::Cancelled,
-            releasedBy: (string) $cancelledBy,
-            expectedTenantId: $salesOrder->tenant_id,
-            expectedCompanyId: $salesOrder->company_id,
-        );
-
-        // Update sales order status
-        $salesOrder->update([
-            'status' => DocumentStatus::Cancelled,
-            'cancelled_at' => $cancelledAt,
-            'cancelled_by' => $cancelledBy,
-            'cancellation_reason' => $reason,
-        ]);
-
-        // Dispatch event for audit trail
-        $this->dispatchCancelledEvent($salesOrder, $reason, $cancelledAt->toIso8601String());
+        return $this->documentPostingService->cancel($salesOrder, $reason, $cancelledBy);
     }
 
     /**
@@ -292,23 +255,6 @@ final class SalesOrderService
             lines: $reservationsV2,
             confirmedBy: (string) $salesOrder->confirmed_by,
             confirmedAt: $confirmedAt,
-        ));
-    }
-
-    /**
-     * Dispatch the SalesOrderCancelled event for audit trail.
-     */
-    private function dispatchCancelledEvent(Document $salesOrder, string $reason, string $cancelledAt): void
-    {
-        event(new SalesOrderCancelled(
-            salesOrderId: $salesOrder->id,
-            tenantId: $salesOrder->tenant_id,
-            companyId: $salesOrder->company_id,
-            documentNumber: $salesOrder->document_number,
-            partnerId: $salesOrder->partner_id,
-            cancellationReason: $reason,
-            cancelledBy: (string) $salesOrder->cancelled_by,
-            cancelledAt: $cancelledAt,
         ));
     }
 }

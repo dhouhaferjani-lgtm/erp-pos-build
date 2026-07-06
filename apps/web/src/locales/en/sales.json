@@ -197,6 +197,9 @@
     "attachments": "Attachments",
     "confirmTitle": "Confirm Document",
     "confirmMessage": "Are you sure you want to confirm this document? Once confirmed, it cannot be edited.",
+    "revertToDraft": "Revert to draft",
+    "revertToDraftTitle": "Revert to draft",
+    "revertToDraftMessage": "Are you sure you want to revert this document to draft?",
     "types": {
       "quote": "Quote",
       "quotation": "Quotation",
@@ -237,6 +240,7 @@
       "confirmed": "Document confirmed",
       "cancelled": "Document cancelled",
       "posted": "Document posted",
+      "revertedToDraft": "Document reverted to draft",
       "goodsReceived": "Goods received",
       "goodsReceivedWithReceipt": "Goods received under {{receiptNumber}}"
     },
@@ -260,8 +264,8 @@
     "freeQuantity": "Free qty",
     "unitPrice": "Unit Price",
     "priceEntryMode": {
-      "unit": "PU",
-      "total": "Total"
+      "unit": "PU HT",
+      "total": "Total HT"
     },
     "effectiveUnitCost": "Effective unit cost: {{amount}}",
     "bonusSavings": "Bonus savings: {{amount}}",
@@ -361,7 +365,9 @@
       "priceOverrideReason": "Price override reason",
       "batchNumber": "Batch number",
       "expiryDate": "Expiry date",
-      "submit": "Receive"
+      "submit": "Receive",
+      "saveDraft": "Save draft",
+      "saveAndPost": "Save and post"
     },
     "receiptStatus": {
       "not_received": "Not Received",

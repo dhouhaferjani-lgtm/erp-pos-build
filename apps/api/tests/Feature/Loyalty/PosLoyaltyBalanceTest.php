@@ -7,16 +7,19 @@ namespace Tests\Feature\Loyalty;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Loyalty\Domain\Entities\EarningRule;
+use App\Modules\Loyalty\Domain\Entities\Enrollment;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyProgram;
+use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
-use Spatie\Permission\PermissionRegistrar;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 final class PosLoyaltyBalanceTest extends TestCase
@@ -24,7 +27,9 @@ final class PosLoyaltyBalanceTest extends TestCase
     use RefreshDatabase;
 
     private Tenant $tenant;
+
     private Company $company;
+
     private User $user;
 
     protected function setUp(): void
@@ -44,9 +49,9 @@ final class PosLoyaltyBalanceTest extends TestCase
     private function activeProgram(string $rate = '2'): LoyaltyProgram
     {
         $program = LoyaltyProgram::factory()->create(['tenant_id' => $this->tenant->id, 'status' => ProgramStatus::Active]);
-        \App\Modules\Loyalty\Domain\Entities\EarningRule::factory()->create([
+        EarningRule::factory()->create([
             'program_id' => $program->id,
-            'rule_type' => \App\Modules\Loyalty\Domain\Enums\EarningRuleType::Spend,
+            'rule_type' => EarningRuleType::Spend,
             'reward_value' => $rate,
             'is_active' => true,
             'conditions' => [],
@@ -92,7 +97,7 @@ final class PosLoyaltyBalanceTest extends TestCase
 
         self::assertSame(1, LoyaltyMember::where('tenant_id', $this->tenant->id)->where('loyaltyable_id', $partnerId)->count());
         $memberId = LoyaltyMember::where('tenant_id', $this->tenant->id)->where('loyaltyable_id', $partnerId)->value('id');
-        self::assertSame(1, \App\Modules\Loyalty\Domain\Entities\Enrollment::where('member_id', $memberId)->count());
+        self::assertSame(1, Enrollment::where('member_id', $memberId)->count());
     }
 
     public function test_no_phone_returns_not_enrolled_and_creates_nothing(): void

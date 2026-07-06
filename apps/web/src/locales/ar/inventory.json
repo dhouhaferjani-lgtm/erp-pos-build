@@ -1,7 +1,71 @@
 {
   "goodsReceipt": {
     "successMessage": "تم استلام البضائع بنجاح",
-    "successMessageWithReceipt": "تم استلام البضائع بنجاح ضمن {{receiptNumber}}"
+    "successMessageWithReceipt": "تم استلام البضائع بنجاح ضمن {{receiptNumber}}",
+    "tabs": {
+      "drafts": "المسودات"
+    },
+    "status": {
+      "draft": "مسودة",
+      "pending": "قيد الانتظار",
+      "partial": "جزئي",
+      "received": "مستلم"
+    },
+    "emptyDrafts": "لا توجد مسودات إيصال استلام",
+    "linesSummary": "{{count}} سطور",
+    "actions": {
+      "postDraft": "ترحيل",
+      "deleteDraft": "حذف"
+    },
+    "confirm": {
+      "postDraft": "هل تريد ترحيل مسودة إيصال الاستلام؟ سيؤدي ذلك إلى تحديث المخزون ومتوسط التكلفة المرجح.",
+      "deleteDraft": "هل تريد حذف مسودة إيصال الاستلام؟"
+    },
+    "messages": {
+      "draftPosted": "تم ترحيل مسودة إيصال الاستلام",
+      "draftDeleted": "تم حذف مسودة إيصال الاستلام"
+    },
+    "draftSaved": "تم حفظ مسودة إيصال الاستلام",
+    "printGrn": "طباعة إيصال الاستلام"
+  },
+  "entryExitNotes": {
+    "title": "أذونات الدخول والخروج",
+    "subtitle": "{{count}} إذن مسجل",
+    "filters": {
+      "in": "دخول",
+      "out": "خروج"
+    },
+    "direction": {
+      "in": "دخول",
+      "out": "خروج",
+      "flat": "بدون تغيير مخزون"
+    },
+    "columns": {
+      "direction": "الاتجاه",
+      "source": "المصدر",
+      "location": "الموقع",
+      "lines": "السطور",
+      "actor": "المستخدم",
+      "date": "التاريخ"
+    },
+    "sourceTypes": {
+      "goods_receipt": "إيصال استلام",
+      "delivery_note": "إذن تسليم",
+      "stock_transfer": "تحويل مخزون",
+      "adjustment_batch": "تسوية"
+    },
+    "empty": {
+      "title": "لا توجد أذونات دخول أو خروج",
+      "description": "ستظهر الأذونات هنا عند تسجيل حركات المخزون."
+    }
+  },
+  "hub": {
+    "cards": {
+      "entryExitNotes": {
+        "title": "أذونات الدخول والخروج",
+        "description": "مراجعة أذونات حركات المخزون المجمعة"
+      }
+    }
   },
   "barcodeLookup": {
     "placeholder": "امسح الرمز الشريطي أو اكتبه…",

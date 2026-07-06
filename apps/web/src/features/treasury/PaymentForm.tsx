@@ -79,6 +79,16 @@ interface Invoice {
   amount_residual?: number
 }
 
+interface SupplierInvoice {
+  id: string
+  number?: string
+  document_number?: string
+  partner?: Partner
+  partner_id?: string
+  total: string
+  balance_due?: string | null
+}
+
 interface PaymentFormData {
   amount: string
   payment_method_id: string
@@ -241,6 +251,7 @@ export function PaymentForm() {
   const invoiceId = searchParams.get('invoice')
   const purchaseOrderId = searchParams.get('purchase_order')
   const deliveryNoteId = searchParams.get('delivery_note')
+  const supplierInvoiceId = searchParams.get('supplier_invoice')
   const [showPartnerModal, setShowPartnerModal] = useState(false)
   const [showRepositoryModal, setShowRepositoryModal] = useState(false)
   const [withholdingEnabled, setWithholdingEnabled] = useState(false)
@@ -310,6 +321,17 @@ export function PaymentForm() {
     enabled: !!deliveryNoteId && tenantId !== null && companyId !== null,
   })
 
+  // Fetch supplier invoice data if supplier invoice ID is provided
+  const { data: supplierInvoiceData } = useQuery({
+    queryKey: tenantScopedKey(['supplier-invoice', supplierInvoiceId]),
+    queryFn: async () => {
+      if (!supplierInvoiceId) return null
+      const response = await api.get<{ data: SupplierInvoice }>(`/supplier-invoices/${supplierInvoiceId}`)
+      return response.data.data
+    },
+    enabled: !!supplierInvoiceId && tenantId !== null && companyId !== null,
+  })
+
   // Pre-fill form when document data is loaded
   useEffect(() => {
     if (invoiceData) {
@@ -348,8 +370,20 @@ export function PaymentForm() {
           dnNumber: deliveryNoteData.document_number
         }),
       })
+    } else if (supplierInvoiceData) {
+      const supplierInvoiceNumber = supplierInvoiceData.document_number ?? supplierInvoiceData.number ?? ''
+      reset({
+        amount: supplierInvoiceData.balance_due || supplierInvoiceData.total,
+        payment_method_id: '',
+        partner_id: supplierInvoiceData.partner_id ?? supplierInvoiceData.partner?.id ?? '',
+        payment_date: new Date().toISOString().split('T')[0],
+        reference: supplierInvoiceNumber,
+        notes: t('treasury:payments.form.paymentForSupplierInvoice', {
+          invoiceNumber: supplierInvoiceNumber,
+        }),
+      })
     }
-  }, [invoiceData, purchaseOrderData, deliveryNoteData, reset, t])
+  }, [invoiceData, purchaseOrderData, deliveryNoteData, supplierInvoiceData, reset])
 
   // Fetch payment methods
   const { data: paymentMethodsData } = useQuery({
@@ -454,6 +488,7 @@ export function PaymentForm() {
       !invoiceId &&
       !purchaseOrderId &&
       !deliveryNoteId &&
+      !supplierInvoiceId &&
       tenantId !== null &&
       companyId !== null,
   })
@@ -464,6 +499,7 @@ export function PaymentForm() {
     !invoiceId &&
     !purchaseOrderId &&
     !deliveryNoteId &&
+    !supplierInvoiceId &&
     openInvoices.length > 0
   )
 
@@ -480,7 +516,7 @@ export function PaymentForm() {
         transaction_type: withholdingTransactionType || undefined,
       })
     }
-  }, [selectedPartnerId, paymentAmount, withholdingTransactionType])
+  }, [selectedPartnerId, paymentAmount, withholdingTransactionType, currency])
 
   const withholdingPreview = withholdingPreviewMutation.data
   const paymentAmountValue = paymentAmount || '0'
@@ -503,6 +539,14 @@ export function PaymentForm() {
         : String(invoiceData.amount_residual)
 
       return buildSingleDocumentAllocation(invoiceId, paymentAmountValue, amountResidual)
+    }
+
+    if (supplierInvoiceId && supplierInvoiceData) {
+      return buildSingleDocumentAllocation(
+        supplierInvoiceId,
+        paymentAmountValue,
+        supplierInvoiceData.balance_due || supplierInvoiceData.total,
+      )
     }
 
     if (!canAllocateOpenInvoices || !isPositiveAmount(paymentAmountValue)) {
@@ -624,6 +668,9 @@ export function PaymentForm() {
         deliveryNoteId
           ? queryClient.invalidateQueries({ queryKey: tenantScopedKey(['delivery-note', deliveryNoteId]) })
           : Promise.resolve(),
+        supplierInvoiceId
+          ? queryClient.invalidateQueries({ queryKey: tenantScopedKey(['supplier-invoice', supplierInvoiceId]) })
+          : Promise.resolve(),
         queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('invoices', tenantId, companyId) }),
         queryClient.invalidateQueries({ predicate: scopedNamespacePredicate('open-invoices', tenantId, companyId) }),
       ])
@@ -644,6 +691,8 @@ export function PaymentForm() {
       void navigate(`/purchases/orders/${purchaseOrderId}`)
     } else if (deliveryNoteId) {
       void navigate(`/inventory/delivery-notes/${deliveryNoteId}`)
+    } else if (supplierInvoiceId) {
+      void navigate(`/purchases/supplier-invoices/${supplierInvoiceId}`)
     } else {
       void navigate('/treasury/payments')
     }
@@ -653,12 +702,30 @@ export function PaymentForm() {
     createMutation.mutate(data)
   }
 
+  const backTo = invoiceId
+    ? `/sales/invoices/${invoiceId}`
+    : purchaseOrderId
+      ? `/purchases/orders/${purchaseOrderId}`
+      : deliveryNoteId
+        ? `/inventory/delivery-notes/${deliveryNoteId}`
+        : supplierInvoiceId
+          ? `/purchases/supplier-invoices/${supplierInvoiceId}`
+          : '/treasury/payments'
+
+  const documentTitle = invoiceData
+    ? t('treasury:payments.newForInvoice', { invoiceNumber: invoiceData.document_number })
+    : supplierInvoiceData
+      ? t('treasury:payments.newForSupplierInvoice', {
+          invoiceNumber: supplierInvoiceData.document_number ?? supplierInvoiceData.number ?? '',
+        })
+      : t('treasury:payments.new')
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link
-          to={invoiceId ? `/sales/invoices/${invoiceId}` : '/treasury/payments'}
+          to={backTo}
           className={cn(
             'inline-flex items-center gap-2 text-sm',
             textColors.tertiary,
@@ -669,9 +736,7 @@ export function PaymentForm() {
           {t('common:back')}
         </Link>
         <h1 className={cn('text-2xl font-bold', textColors.primary)}>
-          {invoiceData
-            ? t('treasury:payments.newForInvoice', { invoiceNumber: invoiceData.document_number })
-            : t('treasury:payments.new')}
+          {documentTitle}
         </h1>
       </div>
 

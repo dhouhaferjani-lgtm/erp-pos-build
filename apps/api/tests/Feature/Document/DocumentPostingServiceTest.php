@@ -5,14 +5,24 @@ declare(strict_types=1);
 namespace Tests\Feature\Document;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
+use App\Modules\Inventory\Domain\Enums\ReleaseReason;
+use App\Modules\Inventory\Domain\Enums\ReservationSource;
+use App\Modules\Inventory\Domain\GoodsReceipt;
+use App\Modules\Inventory\Domain\GoodsReceiptLine;
+use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockReservation;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -254,6 +264,202 @@ class DocumentPostingServiceTest extends TestCase
         $this->postingService->cancel($confirmedInvoice);
     }
 
+    public function test_revert_confirmed_quote_to_draft(): void
+    {
+        Event::fake([InvoicePosted::class, InvoiceCancelled::class]);
+        $quote = $this->createConfirmedDocument(DocumentType::Quote);
+
+        $reverted = $this->postingService->revert($quote);
+
+        $this->assertEquals(DocumentStatus::Draft, $reverted->status);
+        $this->assertNull($reverted->confirmed_at);
+        $this->assertNull($reverted->confirmed_by);
+        Event::assertNotDispatched(InvoicePosted::class);
+        Event::assertNotDispatched(InvoiceCancelled::class);
+    }
+
+    public function test_revert_purchase_order_rejects_existing_receipt_lines(): void
+    {
+        $po = $this->createConfirmedDocument(DocumentType::PurchaseOrder);
+        $poLine = $this->addLine($po);
+        $receipt = GoodsReceipt::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'purchase_order_id' => $po->id,
+            'receipt_number' => 'GRN-REVERT-001',
+            'status' => GoodsReceiptStatus::Posted,
+            'received_at' => now(),
+        ]);
+        GoodsReceiptLine::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'goods_receipt_id' => $receipt->id,
+            'po_line_id' => $poLine->id,
+            'product_id' => $poLine->product_id,
+            'received_qty' => '1.0000',
+            'free_qty' => '0.0000',
+            'landed_unit_cost' => '1.000000',
+            'accrual_unit_cost' => '1.000000',
+            'effective_unit_cost' => '1.000000',
+            'quantity_invoiced' => '0.0000',
+            'free_quantity_invoiced' => '0.0000',
+        ]);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('PURCHASE_ORDER_HAS_RECEIPTS');
+
+        $this->postingService->revert($po);
+    }
+
+    public function test_revert_purchase_order_rejects_draft_receipt_lines(): void
+    {
+        $po = $this->createConfirmedDocument(DocumentType::PurchaseOrder);
+        $poLine = $this->addLine($po);
+        $receipt = GoodsReceipt::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'purchase_order_id' => $po->id,
+            'receipt_number' => null,
+            'status' => GoodsReceiptStatus::Draft,
+            'received_at' => now(),
+        ]);
+        GoodsReceiptLine::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'goods_receipt_id' => $receipt->id,
+            'po_line_id' => $poLine->id,
+            'product_id' => $poLine->product_id,
+            'received_qty' => '1.0000',
+            'free_qty' => '0.0000',
+            'landed_unit_cost' => '1.000000',
+            'accrual_unit_cost' => '1.000000',
+            'effective_unit_cost' => '1.000000',
+            'quantity_invoiced' => '0.0000',
+            'free_quantity_invoiced' => '0.0000',
+        ]);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('PURCHASE_ORDER_HAS_RECEIPTS');
+
+        $this->postingService->revert($po);
+    }
+
+    public function test_revert_clean_purchase_order_to_draft(): void
+    {
+        $po = $this->createConfirmedDocument(DocumentType::PurchaseOrder);
+        $po->forceFill([
+            'confirmed_at' => now(),
+            'confirmed_by' => 'user-1',
+        ])->save();
+        $this->addLine($po);
+
+        $reverted = $this->postingService->revert($po);
+
+        $this->assertEquals(DocumentStatus::Draft, $reverted->status);
+        $this->assertNull($reverted->confirmed_at);
+        $this->assertNull($reverted->confirmed_by);
+    }
+
+    public function test_revert_sales_order_releases_active_reservations(): void
+    {
+        $location = Location::factory()->create([
+            'company_id' => $this->company->id,
+        ]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $salesOrder = $this->createConfirmedDocument(DocumentType::SalesOrder);
+        $line = DocumentLine::create([
+            'document_id' => $salesOrder->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'line_number' => 1,
+            'description' => $product->name,
+            'quantity' => '2.0000',
+            'unit_price' => '10.000',
+            'line_total' => '20.000',
+            'allocated_costs' => '0.000000',
+        ]);
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '5.0000',
+            'reserved' => '2.0000',
+        ]);
+        $reservation = StockReservation::create([
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '2.0000',
+            'source_type' => ReservationSource::SalesOrder,
+            'source_id' => $salesOrder->id,
+            'source_line_id' => $line->id,
+            'priority' => 0,
+        ]);
+
+        $reverted = $this->postingService->revert($salesOrder);
+
+        $this->assertEquals(DocumentStatus::Draft, $reverted->status);
+        $this->assertNotNull($reservation->fresh()?->released_at);
+        $this->assertSame(ReleaseReason::OrderModified, $reservation->fresh()?->release_reason);
+        $this->assertSame('0.0000', (string) StockLevel::query()->firstOrFail()->reserved);
+    }
+
+    public function test_revert_purchase_order_rejects_supplier_invoice_source_links(): void
+    {
+        $po = $this->createConfirmedDocument(DocumentType::PurchaseOrder);
+        $this->createConfirmedDocument(DocumentType::SupplierInvoice)->update([
+            'source_document_id' => $po->id,
+        ]);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('PURCHASE_ORDER_HAS_SUPPLIER_INVOICES');
+
+        $this->postingService->revert($po);
+    }
+
+    public function test_revert_purchase_order_rejects_supplier_invoice_payload_links(): void
+    {
+        $po = $this->createConfirmedDocument(DocumentType::PurchaseOrder);
+        $this->createConfirmedDocument(DocumentType::SupplierInvoice)->update([
+            'payload' => [
+                'supplier_invoice' => [
+                    'source_document_ids' => [$po->id],
+                ],
+            ],
+        ]);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('PURCHASE_ORDER_HAS_SUPPLIER_INVOICES');
+
+        $this->postingService->revert($po);
+    }
+
+    public function test_revert_purchase_order_rejects_rfq_awarded_purchase_order(): void
+    {
+        $rfq = $this->createConfirmedDocument(DocumentType::PurchaseQuoteRequest);
+        $po = $this->createConfirmedDocument(DocumentType::PurchaseOrder);
+        $po->update(['source_document_id' => $rfq->id]);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('PURCHASE_ORDER_FROM_RFQ');
+
+        $this->postingService->revert($po);
+    }
+
+    public function test_revert_rejects_delivery_note(): void
+    {
+        $deliveryNote = $this->createConfirmedDocument(DocumentType::DeliveryNote);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('DOCUMENT_REVERT_NOT_SUPPORTED');
+
+        $this->postingService->revert($deliveryNote);
+    }
+
     public function test_different_companies_have_separate_chains(): void
     {
         Event::fake([InvoicePosted::class]);
@@ -307,6 +513,25 @@ class DocumentPostingServiceTest extends TestCase
             'subtotal' => '100.00',
             'tax_amount' => '20.00',
             'total' => '120.00',
+        ]);
+    }
+
+    private function addLine(Document $document): DocumentLine
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        return DocumentLine::create([
+            'document_id' => $document->id,
+            'product_id' => $product->id,
+            'line_number' => 1,
+            'description' => $product->name,
+            'quantity' => '1.0000',
+            'unit_price' => '1.000',
+            'line_total' => '1.000',
+            'allocated_costs' => '0.000000',
         ]);
     }
 }

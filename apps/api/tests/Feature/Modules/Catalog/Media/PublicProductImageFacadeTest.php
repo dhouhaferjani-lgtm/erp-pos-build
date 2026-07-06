@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Modules\Catalog\Media;
 
 use App\Enums\Vertical;
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
@@ -12,8 +14,6 @@ use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Media\Domain\Media\MediaAsset;
 use App\Modules\Media\Domain\Media\MediaAttachment;
-use App\Modules\Company\Domain\Company;
-use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;

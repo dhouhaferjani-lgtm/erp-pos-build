@@ -35,6 +35,7 @@ final class ReceiveGoodsRequest extends FormRequest
             'received_unit_prices' => $canEditPrice ? ['sometimes', 'array'] : ['prohibited'],
             'received_unit_prices.*' => ['numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
             'price_override_reason' => ['nullable', 'string', 'max:255'],
+            'save_as_draft' => ['sometimes', 'boolean'],
         ];
     }
 }

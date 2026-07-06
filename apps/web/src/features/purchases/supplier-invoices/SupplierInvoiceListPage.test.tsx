@@ -226,6 +226,33 @@ describe('SupplierInvoiceListPage — filtering', () => {
       )
     })
   })
+
+  it('passes pending receipt filter to API', async () => {
+    renderWithProviders(<SupplierInvoiceListPage />)
+
+    const pendingSelect = screen.getByTestId('filter-pending-receipt')
+    fireEvent.change(pendingSelect, { target: { value: '1' } })
+
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith(
+        '/supplier-invoices',
+        expect.objectContaining({ params: expect.objectContaining({ pending_receipt: '1' }) })
+      )
+    })
+  })
+})
+
+describe('SupplierInvoiceListPage — pending receipts', () => {
+  it('renders a pending receipt badge on invoice-first drafts', async () => {
+    mockApiGet.mockResolvedValue(makeListResponse([makeInvoice({ pending_receipt: true })]))
+    renderWithProviders(<SupplierInvoiceListPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pending-receipt-badge-inv-1')).toHaveTextContent(
+        'purchases:supplierInvoices.pendingReceipt.badge'
+      )
+    })
+  })
 })
 
 describe('SupplierInvoiceListPage — empty state', () => {

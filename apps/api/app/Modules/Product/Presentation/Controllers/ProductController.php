@@ -756,13 +756,17 @@ class ProductController extends Controller
             }
         }
 
+        $requiresBatchTracking = array_key_exists('requires_batch_tracking', $validated)
+            ? (bool) $validated['requires_batch_tracking']
+            : (bool) $wasBatchTracked;
+
         // Update product core fields. Exclude pricing intent fields from blind
         // mass-assign; they are handled authoritatively by ProductPricingIntentService
         // after the base update.
         $base = Arr::except($validated, ['pricing_mode', 'target_margin_override', 'minimum_margin_override', 'sale_price']);
         $productModel->update($base);
 
-        if (! $wasBatchTracked && $productModel->requires_batch_tracking) {
+        if (! $wasBatchTracked && $requiresBatchTracking) {
             $this->backfillDefaultBatchesForExistingStock($productModel, $company->tenant_id);
         }
 

@@ -19,6 +19,7 @@ import type {
   SupplierInvoiceDetail,
   SupplierInvoiceListParams,
   CreateSupplierInvoicePayload,
+  LinkSupplierInvoiceReceiptsPayload,
   DuplicateSupplierInvoiceReferenceResult,
   DocumentAttachment,
   RecordPaymentPayload,
@@ -100,6 +101,23 @@ function supplierInvoiceAttachmentsInvalidationPredicate(
   }
 }
 
+function scopedNamespacePredicate(
+  namespace: string,
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return (
+      Array.isArray(k) &&
+      k.length >= 3 &&
+      k[0] === namespace &&
+      k[k.length - 2] === tenantId &&
+      k[k.length - 1] === companyId
+    )
+  }
+}
+
 // ── List ───────────────────────────────────────────────────────────────────
 
 /**
@@ -123,6 +141,7 @@ export function useSupplierInvoiceList(params: SupplierInvoiceListParams) {
       if (params.date_from) cleanParams['date_from'] = params.date_from
       if (params.date_to) cleanParams['date_to'] = params.date_to
       if (params.search) cleanParams['search'] = params.search
+      if (params.pending_receipt) cleanParams['pending_receipt'] = params.pending_receipt
       if (params.cursor) cleanParams['cursor'] = params.cursor
 
       const response = await api.get<SupplierInvoiceListResponse>('/supplier-invoices', {
@@ -371,6 +390,23 @@ export function usePostSupplierInvoice(id: string) {
   })
 }
 
+export function useLinkSupplierInvoiceReceipts(id: string) {
+  const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
+  return useMutation({
+    mutationFn: (payload: LinkSupplierInvoiceReceiptsPayload) =>
+      apiPost<SupplierInvoiceDetail>(`/supplier-invoices/${id}/link-receipts`, payload),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(tenantScopedKey([...supplierInvoiceKeys.detail(id)]), updated)
+      void queryClient.invalidateQueries({
+        predicate: supplierInvoiceListInvalidationPredicate(tenantId, companyId),
+      })
+    },
+  })
+}
+
 // ── Attachments ────────────────────────────────────────────────────────────
 
 export function useSupplierInvoiceAttachments(documentId: string) {
@@ -440,11 +476,6 @@ export function downloadAttachment(documentId: string, attachmentId: string, fil
 
 /**
  * Record a supplier payment via POST /payments.
- *
- * ASSUMPTION (2026-06-26): Payment endpoint is gated on the C4 Codex re-review.
- * The UI shows the "Record Payment" button on posted invoices but the mutation
- * calls the existing single-payment supplier path. Confirm C4 ships before
- * enabling this in production.
  */
 export function useRecordSupplierPayment(invoiceId: string) {
   const queryClient = useQueryClient()
@@ -457,6 +488,9 @@ export function useRecordSupplierPayment(invoiceId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         predicate: supplierInvoiceDetailInvalidationPredicate(invoiceId, tenantId, companyId),
+      })
+      void queryClient.invalidateQueries({
+        predicate: scopedNamespacePredicate('payments', tenantId, companyId),
       })
     },
   })

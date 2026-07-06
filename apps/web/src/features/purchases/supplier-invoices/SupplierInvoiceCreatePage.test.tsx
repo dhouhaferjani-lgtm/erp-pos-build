@@ -15,6 +15,8 @@ import type {
 const mutateAsync = vi.hoisted(() => vi.fn())
 const uploadAttachmentMutateAsync = vi.hoisted(() => vi.fn())
 const navigate = vi.hoisted(() => vi.fn())
+const mockHasPermission = vi.hoisted(() => vi.fn(() => true))
+const mockPolicyAllowsInvoiceFirst = vi.hoisted(() => ({ value: true }))
 
 const receiptLines = vi.hoisted<PurchaseOrderReceiptLine[]>(() => [
   {
@@ -90,7 +92,52 @@ vi.mock('@/components/molecules/pickers', () => ({
       supplier-picker
     </button>
   ),
+  ProductPicker: ({
+    onChange,
+    testId,
+  }: {
+    onChange: (next: { id: string; sku: string; name: string; requires_batch_tracking?: boolean }) => void
+    testId?: string
+  }) => (
+    <button
+      type="button"
+      data-testid={testId ?? 'product-picker'}
+      onClick={() => {
+        onChange({
+          id: testId?.includes('1') === true ? 'product-manual-2' : 'product-manual-1',
+          sku: testId?.includes('1') === true ? 'SKU-2' : 'SKU-1',
+          name: testId?.includes('1') === true ? 'Second product' : 'First product',
+          requires_batch_tracking: testId?.includes('batch') === true,
+        })
+      }}
+    >
+      product-picker
+    </button>
+  ),
 }))
+
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
+}))
+
+vi.mock('@/lib/api', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      get: vi.fn((url: string) => {
+        if (url === '/procurement-policies') {
+          return Promise.resolve({ data: { data: { allow_invoice_first: mockPolicyAllowsInvoiceFirst.value } } })
+        }
+        if (url === '/locations') {
+          return Promise.resolve({ data: { data: [{ id: 'location-1', name: 'Main Warehouse' }] } })
+        }
+        return Promise.resolve({ data: { data: [] } })
+      }),
+    },
+  }
+})
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -117,6 +164,8 @@ let SupplierInvoiceCreatePage: React.ComponentType<Record<string, never>>
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  mockHasPermission.mockReturnValue(true)
+  mockPolicyAllowsInvoiceFirst.value = true
   receiptLines.splice(0, receiptLines.length, {
     id: 'receipt-line-1',
     receipt_number: 'GRN-2026-0031',
@@ -157,6 +206,121 @@ beforeEach(async () => {
 })
 
 describe('SupplierInvoiceCreatePage', () => {
+  it('submits a pending receipt invoice without source documents', async () => {
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    fireEvent.click(screen.getByTestId('supplier-picker'))
+    fireEvent.click(await screen.findByTestId('invoice-first-pending'))
+    fireEvent.click(screen.getByTestId('manual-line-product-picker-0'))
+    fireEvent.change(screen.getByTestId('manual-line-quantity-0'), { target: { value: '3.0000' } })
+    fireEvent.change(screen.getByTestId('manual-line-unit-price-0'), { target: { value: '8.125' } })
+    fireEvent.change(screen.getByTestId('manual-line-vat-rate-0'), { target: { value: '0.00' } })
+
+    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        partner_id: 'supplier-1',
+        currency: 'TND',
+        issue_date: new Date().toISOString().slice(0, 10),
+        pending_receipt: true,
+        lines: [
+          {
+            product_id: 'product-manual-1',
+            quantity: '3.0000',
+            unit_price: '8.125',
+            vat_rate: '0.00',
+          },
+        ],
+      })
+    })
+  })
+
+  it('submits a delivered invoice-first payload with delivery metadata', async () => {
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    fireEvent.click(screen.getByTestId('supplier-picker'))
+    fireEvent.click(await screen.findByTestId('invoice-first-delivered'))
+    await screen.findByText('Main Warehouse')
+    fireEvent.change(await screen.findByTestId('invoice-first-location-id'), { target: { value: 'location-1' } })
+    fireEvent.change(screen.getByTestId('invoice-first-external-reference'), { target: { value: 'BL-7781' } })
+    fireEvent.change(screen.getByTestId('invoice-first-external-date'), { target: { value: '2026-07-06' } })
+    fireEvent.click(screen.getByTestId('manual-line-product-picker-0'))
+    fireEvent.change(screen.getByTestId('manual-line-quantity-0'), { target: { value: '2.0000' } })
+    fireEvent.change(screen.getByTestId('manual-line-unit-price-0'), { target: { value: '4.500' } })
+    fireEvent.change(screen.getByTestId('manual-line-vat-rate-0'), { target: { value: '19.00' } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('save-supplier-invoice')).not.toBeDisabled()
+    })
+    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        partner_id: 'supplier-1',
+        currency: 'TND',
+        issue_date: new Date().toISOString().slice(0, 10),
+        invoice_first_delivered: true,
+        location_id: 'location-1',
+        idempotency_key: expect.stringMatching(/^supplier-invoice-delivered-/),
+        external_reference: 'BL-7781',
+        external_date: '2026-07-06',
+        lines: [
+          {
+            product_id: 'product-manual-1',
+            quantity: '2.0000',
+            unit_price: '4.500',
+            vat_rate: '19.00',
+          },
+        ],
+      })
+    })
+  })
+
+  it('submits multiple invoice-first rows selected from product pickers', async () => {
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    fireEvent.click(screen.getByTestId('supplier-picker'))
+    fireEvent.click(await screen.findByTestId('invoice-first-pending'))
+    fireEvent.click(screen.getByTestId('manual-line-product-picker-0'))
+    fireEvent.change(screen.getByTestId('manual-line-quantity-0'), { target: { value: '3.0000' } })
+    fireEvent.change(screen.getByTestId('manual-line-unit-price-0'), { target: { value: '8.125' } })
+    fireEvent.click(screen.getByTestId('add-manual-line'))
+    fireEvent.click(screen.getByTestId('manual-line-product-picker-1'))
+    fireEvent.change(screen.getByTestId('manual-line-quantity-1'), { target: { value: '4.0000' } })
+    fireEvent.change(screen.getByTestId('manual-line-unit-price-1'), { target: { value: '9.125' } })
+
+    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+        pending_receipt: true,
+        lines: [
+          expect.objectContaining({ product_id: 'product-manual-1', quantity: '3.0000', unit_price: '8.125' }),
+          expect.objectContaining({ product_id: 'product-manual-2', quantity: '4.0000', unit_price: '9.125' }),
+        ],
+      }))
+    })
+  })
+
+  it('hides invoice-first fork when policy or permission is missing', async () => {
+    mockPolicyAllowsInvoiceFirst.value = false
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('invoice-first-pending')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('invoice-first-delivered')).not.toBeInTheDocument()
+    })
+  })
+
   it('prefills matchable receipt quantity and submits a single-PO string payload', async () => {
     renderWithProviders(<SupplierInvoiceCreatePage />, {
       route: '/purchases/supplier-invoices/new?po=po-1',

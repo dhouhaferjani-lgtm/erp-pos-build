@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature\Inventory;
 
 use App\Enums\Vertical;
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
@@ -24,6 +26,7 @@ use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -164,6 +167,112 @@ final class GoodsReceiptLedgerWriteTest extends TestCase
     }
 
     #[Test]
+    public function create_draft_persists_uncosted_receipt_lines_without_side_effects(): void
+    {
+        $product = $this->createProduct('GRL-DRAFT', 'Draft Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '10.0000', 'free_quantity' => '2.0000', 'unit_price' => '5.000', 'landed_unit_cost' => '5.000000'],
+        ]);
+        $line = $po->lines->first();
+
+        $draft = app(GoodsReceiptService::class)->createDraft(
+            $po,
+            [$line->id => '4.0000'],
+            [],
+            [$line->id => '1.0000'],
+            [$line->id => '5.200'],
+            'Delivery note unit price',
+            $this->user->id,
+        );
+
+        $this->assertSame(GoodsReceiptStatus::Draft, $draft->status);
+        $this->assertNull($draft->receipt_number);
+        $this->assertSame($this->user->id, $draft->received_by);
+
+        $draftLine = GoodsReceiptLine::query()->where('goods_receipt_id', $draft->id)->sole();
+        $this->assertSame('4.0000', (string) $draftLine->received_qty);
+        $this->assertSame('1.0000', (string) $draftLine->free_qty);
+        $this->assertSame('5.200', (string) $draftLine->received_unit_price);
+        $this->assertNull($draftLine->landed_unit_cost);
+        $this->assertNull($draftLine->accrual_unit_cost);
+        $this->assertNull($draftLine->effective_unit_cost);
+        $this->assertNull($draftLine->movement_id);
+        $this->assertNull($draftLine->free_movement_id);
+        $this->assertSame('Delivery note unit price', $draftLine->price_override_reason);
+
+        $this->assertSame(0, StockMovement::query()->count());
+        $this->assertSame('0.0000', (string) $line->fresh()->quantity_received);
+        $this->assertSame('0.0000', (string) $line->fresh()->free_quantity_received);
+    }
+
+    #[Test]
+    public function post_draft_assigns_grn_and_applies_existing_paid_and_free_side_effects(): void
+    {
+        // Seed real GL accounts so the GoodsReceived listener can post GR-IR —
+        // without them it swallows the failure and the GR-IR pin below would
+        // assert against a silently-empty journal (the exact drift scenario).
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->user->givePermissionTo('goods-receipt.edit-price');
+        $product = $this->createProduct('GRL-DRAFT-POST', 'Draft Post Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '10.0000', 'free_quantity' => '2.0000', 'unit_price' => '5.000', 'landed_unit_cost' => '5.000000'],
+        ]);
+        $line = $po->lines->first();
+        $service = app(GoodsReceiptService::class);
+
+        $draft = $service->createDraft(
+            $po,
+            [$line->id => '4.0000'],
+            [],
+            [$line->id => '1.0000'],
+            [$line->id => '5.200'],
+            'Delivery note unit price',
+            $this->user->id,
+        );
+
+        $posted = $service->post($draft, $this->user->id);
+
+        $this->assertSame($draft->id, $posted->id);
+        $this->assertSame(GoodsReceiptStatus::Posted, $posted->status);
+        $this->assertMatchesRegularExpression('/^GRN-\d{4}-0001$/', (string) $posted->receipt_number);
+
+        $postedLine = GoodsReceiptLine::query()->where('goods_receipt_id', $posted->id)->sole();
+        $this->assertNotNull($postedLine->movement_id);
+        $this->assertNotNull($postedLine->free_movement_id);
+        $this->assertSame('5.200000', (string) $postedLine->landed_unit_cost);
+        $this->assertSame('5.200000', (string) $postedLine->accrual_unit_cost);
+        $this->assertSame('4.160000', (string) $postedLine->effective_unit_cost);
+        $this->assertSame($this->user->id, $postedLine->price_override_by);
+        $this->assertNotNull($postedLine->price_override_at);
+        $this->assertSame('5.000000', (string) $postedLine->price_override_old_basis);
+        $this->assertSame('Delivery note unit price', $postedLine->price_override_reason);
+
+        $movements = StockMovement::query()->orderBy('created_at')->orderBy('id')->get();
+        $this->assertCount(2, $movements);
+        $this->assertSame('1.0000', (string) $movements[0]->quantity);
+        $this->assertSame('0.000000', (string) $movements[0]->unit_cost);
+        $this->assertSame('4.0000', (string) $movements[1]->quantity);
+        $this->assertSame('5.200000', (string) $movements[1]->unit_cost);
+
+        $freshLine = $line->fresh();
+        $this->assertSame('4.0000', (string) $freshLine->quantity_received);
+        $this->assertSame('1.0000', (string) $freshLine->free_quantity_received);
+        $this->assertSame('5.200000', (string) $freshLine->accrual_unit_cost);
+
+        // GR-IR contract pin (documented Wave 3 deviation): the paid movement gets a
+        // journal entry; the free movement (zero amount) legitimately gets NONE —
+        // GeneralLedgerService early-returns on amount <= 0, never zero-value entries.
+        $this->assertDatabaseHas('journal_entries', [
+            'source_type' => 'goods_receipt',
+            'source_id' => $postedLine->movement_id,
+        ]);
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'goods_receipt',
+            'source_id' => $postedLine->free_movement_id,
+        ]);
+    }
+
+    #[Test]
     public function partial_receipts_create_one_header_per_receive_call(): void
     {
         $product = $this->createProduct('GRL-PARTIAL', 'Ledger Partial Product');
@@ -283,6 +392,208 @@ final class GoodsReceiptLedgerWriteTest extends TestCase
         $response->assertOk();
         $response->assertJsonPath('meta.goods_receipt.receipt_number', fn (string $number): bool => str_starts_with($number, 'GRN-'));
         $response->assertJsonPath('meta.goods_receipt.id', GoodsReceipt::query()->sole()->id);
+    }
+
+    #[Test]
+    public function receive_endpoint_can_save_a_draft_without_posting_stock(): void
+    {
+        $product = $this->createProduct('GRL-DRAFT-ENDPOINT', 'Ledger Draft Endpoint Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '3.0000', 'free_quantity' => '0.0000', 'unit_price' => '9.000', 'landed_unit_cost' => '9.000000'],
+        ]);
+        $line = $po->lines->first();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/purchase-orders/{$po->id}/receive", [
+                'quantities' => [$line->id => '3.0000'],
+                'save_as_draft' => true,
+            ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.goods_receipt.status', GoodsReceiptStatus::Draft->value);
+        $response->assertJsonPath('meta.goods_receipt.receipt_number', null);
+        $this->assertSame(0, StockMovement::query()->count());
+        $this->assertSame('0.0000', (string) $line->fresh()->quantity_received);
+    }
+
+    #[Test]
+    public function post_draft_endpoint_posts_the_receipt(): void
+    {
+        $product = $this->createProduct('GRL-DRAFT-ENDPOINT-POST', 'Ledger Draft Endpoint Post Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '3.0000', 'free_quantity' => '0.0000', 'unit_price' => '9.000', 'landed_unit_cost' => '9.000000'],
+        ]);
+        $line = $po->lines->first();
+        $draft = app(GoodsReceiptService::class)->createDraft(
+            $po,
+            [$line->id => '3.0000'],
+            [],
+            [],
+            [],
+            null,
+            $this->user->id,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/goods-receipts/{$draft->id}/post");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.status', GoodsReceiptStatus::Posted->value);
+        $response->assertJsonPath('data.receipt_number', fn (string $number): bool => str_starts_with($number, 'GRN-'));
+        $this->assertSame('3.0000', (string) $line->fresh()->quantity_received);
+    }
+
+    #[Test]
+    public function posting_a_stale_draft_that_would_over_receive_throws(): void
+    {
+        // Two drafts each claim the full remaining quantity; the first post consumes
+        // it, so the second post's re-validation (reading CURRENT counters inside
+        // the cost lock) must reject the now-stale draft. pgsql caveat: the truly
+        // concurrent variant needs FOR UPDATE semantics SQLite cannot exercise.
+        $product = $this->createProduct('GRL-STALE', 'Stale Draft Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '10.0000', 'free_quantity' => '0.0000', 'unit_price' => '5.000', 'landed_unit_cost' => '5.000000'],
+        ]);
+        $line = $po->lines->first();
+        $service = app(GoodsReceiptService::class);
+
+        // Partial quantities: the first post leaves the PO Confirmed (7 of 10),
+        // so the second post reaches the counter re-validation (7 > remaining 3)
+        // rather than the earlier PO-status guard.
+        $draftA = $service->createDraft($po, [$line->id => '7.0000'], [], [], [], null, $this->user->id);
+        $draftB = $service->createDraft($po, [$line->id => '7.0000'], [], [], [], null, $this->user->id);
+
+        $service->post($draftA, $this->user->id);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('Cannot receive more than ordered');
+
+        $service->post($draftB, $this->user->id);
+    }
+
+    #[Test]
+    public function goods_receipt_endpoints_return_404_for_other_company_receipts(): void
+    {
+        $product = $this->createProduct('GRL-XCOMPANY', 'Cross Company Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '5.0000', 'free_quantity' => '0.0000', 'unit_price' => '7.000', 'landed_unit_cost' => '7.000000'],
+        ]);
+        $line = $po->lines->first();
+        $draft = app(GoodsReceiptService::class)->createDraft(
+            $po,
+            [$line->id => '2.0000'],
+            [],
+            [],
+            [],
+            null,
+            $this->user->id,
+        );
+
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Company',
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $otherCompany->id,
+            'role' => MembershipRole::Admin,
+        ]);
+
+        // Acting inside company B (real X-Company-Id header → CompanyContextMiddleware),
+        // company A's draft must be invisible on every endpoint.
+        $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $otherCompany->id)
+            ->getJson("/api/v1/goods-receipts/{$draft->id}")
+            ->assertNotFound();
+        $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $otherCompany->id)
+            ->postJson("/api/v1/goods-receipts/{$draft->id}/post")
+            ->assertNotFound();
+        $this->actingAs($this->user, 'sanctum')
+            ->withHeader('X-Company-Id', $otherCompany->id)
+            ->deleteJson("/api/v1/goods-receipts/{$draft->id}")
+            ->assertNotFound();
+
+        $this->assertNotNull($draft->fresh());
+        $this->assertSame(GoodsReceiptStatus::Draft, $draft->fresh()?->status);
+    }
+
+    #[Test]
+    public function goods_receipt_index_can_count_drafts_for_the_workbench(): void
+    {
+        $product = $this->createProduct('GRL-DRAFT-INDEX', 'Ledger Draft Index Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '5.0000', 'free_quantity' => '0.0000', 'unit_price' => '9.000', 'landed_unit_cost' => '9.000000'],
+        ]);
+        $line = $po->lines->first();
+
+        $draft = app(GoodsReceiptService::class)->createDraft(
+            $po,
+            [$line->id => '2.0000'],
+            [],
+            [],
+            [],
+            null,
+            $this->user->id,
+        );
+        app(GoodsReceiptService::class)->receiveGoods($po, [$line->id => '1.0000'], [], [], [], null, $this->user->id);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/goods-receipts?status=draft&per_page=10');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.total', 1);
+        $response->assertJsonPath('data.0.id', $draft->id);
+        $response->assertJsonPath('data.0.status', GoodsReceiptStatus::Draft->value);
+    }
+
+    #[Test]
+    public function delete_draft_endpoint_removes_uncosted_receipt_lines(): void
+    {
+        $product = $this->createProduct('GRL-DRAFT-ENDPOINT-DELETE', 'Ledger Draft Endpoint Delete Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '3.0000', 'free_quantity' => '0.0000', 'unit_price' => '9.000', 'landed_unit_cost' => '9.000000'],
+        ]);
+        $line = $po->lines->first();
+        $draft = app(GoodsReceiptService::class)->createDraft(
+            $po,
+            [$line->id => '2.0000'],
+            [],
+            [],
+            [],
+            null,
+            $this->user->id,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->deleteJson("/api/v1/goods-receipts/{$draft->id}");
+
+        $response->assertNoContent();
+        $this->assertDatabaseMissing('goods_receipts', ['id' => $draft->id]);
+        $this->assertDatabaseMissing('goods_receipt_lines', ['goods_receipt_id' => $draft->id]);
+        $this->assertSame('0.0000', (string) $line->fresh()->quantity_received);
+    }
+
+    #[Test]
+    public function delete_draft_endpoint_rejects_posted_receipts(): void
+    {
+        $product = $this->createProduct('GRL-DRAFT-ENDPOINT-POSTED', 'Ledger Draft Endpoint Posted Product');
+        $po = $this->createConfirmedPurchaseOrder([
+            ['product' => $product, 'quantity' => '3.0000', 'free_quantity' => '0.0000', 'unit_price' => '9.000', 'landed_unit_cost' => '9.000000'],
+        ]);
+        $line = $po->lines->first();
+        $posted = app(GoodsReceiptService::class)->receiveGoods($po, [$line->id => '2.0000'], [], [], [], null, $this->user->id)->receipt;
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->deleteJson("/api/v1/goods-receipts/{$posted->id}");
+
+        $response->assertUnprocessable();
+        $this->assertDatabaseHas('goods_receipts', ['id' => $posted->id]);
+        $this->assertSame('2.0000', (string) $line->fresh()->quantity_received);
     }
 
     /**

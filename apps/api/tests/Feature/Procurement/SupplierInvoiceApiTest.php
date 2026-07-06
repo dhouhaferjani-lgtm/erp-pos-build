@@ -13,6 +13,7 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -28,8 +29,13 @@ use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
+use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
+use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Procurement\Application\DTOs\StandaloneReceiptInput;
+use App\Modules\Procurement\Application\DTOs\StandaloneReceiptLineInput;
+use App\Modules\Procurement\Application\StandaloneReceiptService;
 use App\Modules\Procurement\Domain\Enums\BillControlMode;
 use App\Modules\Procurement\Domain\Enums\MatchEnforcement;
 use App\Modules\Procurement\Domain\Enums\MatchMode;
@@ -42,10 +48,16 @@ use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
+use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
+use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentAllocation;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -205,6 +217,125 @@ final class SupplierInvoiceApiTest extends TestCase
                 ],
             ],
         ];
+    }
+
+    private function enableInvoiceFirst(bool $requiresApproval = true): void
+    {
+        ProcurementPolicy::query()
+            ->where('company_id', $this->company->id)
+            ->update([
+                'allow_invoice_first' => true,
+                'invoice_first_requires_approval' => $requiresApproval,
+            ]);
+    }
+
+    private function enableReceiptFirst(): void
+    {
+        ProcurementPolicy::query()
+            ->where('company_id', $this->company->id)
+            ->update(['allow_receipt_first' => true]);
+    }
+
+    private function createLocation(string $code): Location
+    {
+        return Location::create([
+            'company_id' => $this->company->id,
+            'code' => $code,
+            'name' => $code.' warehouse',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => false,
+        ]);
+    }
+
+    private function createProduct(string $sku, bool $requiresBatchTracking = false): Product
+    {
+        return Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => $sku,
+            'name' => $sku.' product',
+            'type' => ProductType::Part,
+            'is_active' => true,
+            'is_physical' => true,
+            'requires_batch_tracking' => $requiresBatchTracking,
+            'cost_price' => '0.000000',
+            'last_purchase_cost' => '0.000000',
+        ]);
+    }
+
+    /**
+     * @return array{Document, GoodsReceipt}
+     */
+    /**
+     * @param  array{batch_number: string, expiry_date: string, manufacturing_date?: string}|null  $batch
+     * @return array{Document, GoodsReceipt}
+     */
+    private function createPostedStandaloneReceipt(Product $product, Location $location, string $key, string $qty, string $unitPrice, ?array $batch = null): array
+    {
+        $result = app(StandaloneReceiptService::class)->execute(new StandaloneReceiptInput(
+            companyId: $this->company->id,
+            supplierId: $this->supplier->id,
+            locationId: $location->id,
+            actorId: $this->user->id,
+            idempotencyKey: $key,
+            source: 'standalone_receipt',
+            externalReference: 'BL-'.$key,
+            externalDate: '2026-07-05',
+            postImmediately: true,
+            lines: [
+                new StandaloneReceiptLineInput(
+                    productId: $product->id,
+                    variantId: null,
+                    quantity: $qty,
+                    freeQuantity: '0.0000',
+                    unitPrice: $unitPrice,
+                    batch: $batch,
+                ),
+            ],
+        ));
+
+        return [$result->purchaseOrder, $result->receipt];
+    }
+
+    private function createPosterWithoutInvoiceFirstApproval(): User
+    {
+        $poster = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Supplier Invoice Poster',
+            'email' => 'si-poster@test.example',
+            'password' => bcrypt('secret'),
+            'status' => UserStatus::Active,
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $poster->id,
+            'company_id' => $this->company->id,
+            'role' => 'accountant',
+        ]);
+        $poster->givePermissionTo('documents.update');
+
+        return $poster;
+    }
+
+    private function createDocumentsUpdateUser(string $email): User
+    {
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Documents Writer',
+            'email' => $email,
+            'password' => bcrypt('secret'),
+            'status' => UserStatus::Active,
+        ]);
+
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $this->company->id,
+            'role' => 'accountant',
+        ]);
+
+        $user->givePermissionTo('documents.update');
+
+        return $user;
     }
 
     // -------------------------------------------------------------------------
@@ -524,6 +655,709 @@ final class SupplierInvoiceApiTest extends TestCase
         $this->assertJsonValidationErrors($response, ['source_document_ids.0']);
     }
 
+    public function test_store_invoice_first_delivered_creates_receipt_and_links_invoice_lines_to_auto_po_lines(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst();
+        $location = $this->createLocation('SI-IF-WH');
+        $product = $this->createProduct('SI-IF-PRODUCT');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'invoice_first_delivered' => true,
+                'location_id' => $location->id,
+                'idempotency_key' => 'invoice-first-delivered-001',
+                'external_reference' => 'BL-IF-001',
+                'external_date' => '2026-07-05',
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '2.0000',
+                    'unit_price' => '12.345',
+                    'vat_rate' => '0.00',
+                ]],
+            ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.status', DocumentStatus::Draft->value);
+        $response->assertJsonPath('data.match_status', SupplierInvoiceMatchStatus::Matched->value);
+
+        /** @var Document $autoPo */
+        $autoPo = Document::query()
+            ->where('type', DocumentType::PurchaseOrder)
+            ->where('company_id', $this->company->id)
+            ->sole();
+        $autoPo->load('lines');
+
+        $this->assertSame('invoice_first', $autoPo->payload['auto_generated']['source'] ?? null);
+        $this->assertSame(DocumentStatus::Received, $autoPo->status);
+        $this->assertSame('12.345', (string) $autoPo->lines[0]->unit_price);
+        $this->assertSame('12.345000', (string) $autoPo->lines[0]->landed_unit_cost);
+
+        /** @var GoodsReceipt $receipt */
+        $receipt = GoodsReceipt::query()->with('lines')->sole();
+        $this->assertSame(GoodsReceiptStatus::Posted, $receipt->status);
+        $this->assertSame($autoPo->id, $receipt->purchase_order_id);
+        $this->assertSame('BL-IF-001', $receipt->external_reference);
+        $this->assertSame('12.345000', (string) $receipt->lines[0]->accrual_unit_cost);
+        $this->assertNull($receipt->lines[0]->received_unit_price);
+
+        /** @var Document $invoice */
+        $invoice = Document::query()
+            ->where('type', DocumentType::SupplierInvoice)
+            ->where('company_id', $this->company->id)
+            ->with('lines')
+            ->sole();
+        $this->assertSame($autoPo->id, $invoice->source_document_id);
+        $this->assertSame([$autoPo->id], $invoice->payload['supplier_invoice']['source_document_ids'] ?? null);
+        $this->assertSame($autoPo->lines[0]->id, $invoice->lines[0]->source_line_id);
+        $this->assertSame($receipt->lines[0]->id, $invoice->lines[0]->matched_receipt_line_id);
+        $this->assertSame('12.345000', (string) $invoice->lines[0]->price_match_basis);
+    }
+
+    public function test_store_invoice_first_delivered_threads_batch_data_for_batch_tracked_products(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst();
+        $location = $this->createLocation('SI-IF-BATCH-WH');
+        $product = $this->createProduct('SI-IF-BATCH-PRODUCT', true);
+
+        $withoutBatch = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'invoice_first_delivered' => true,
+                'location_id' => $location->id,
+                'idempotency_key' => 'invoice-first-batch-missing-001',
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '2.0000',
+                    'unit_price' => '12.345',
+                    'vat_rate' => '0.00',
+                ]],
+            ]);
+
+        $withoutBatch->assertUnprocessable();
+
+        $withBatch = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'invoice_first_delivered' => true,
+                'location_id' => $location->id,
+                'idempotency_key' => 'invoice-first-batch-ok-001',
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '2.0000',
+                    'unit_price' => '12.345',
+                    'vat_rate' => '0.00',
+                    'batch' => [
+                        'batch_number' => 'IF-BATCH-001',
+                        'expiry_date' => '2027-07-05',
+                        'manufacturing_date' => '2026-07-01',
+                    ],
+                ]],
+            ]);
+
+        $withBatch->assertCreated();
+
+        $batch = Batch::query()
+            ->where('product_id', $product->id)
+            ->where('batch_number', 'IF-BATCH-001')
+            ->first();
+        $this->assertNotNull($batch);
+
+        $this->assertSame(1, DocumentLine::query()->where('batch_id', $batch->id)->count());
+    }
+
+    public function test_store_invoice_first_delivered_replay_returns_existing_invoice_without_duplicates(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst();
+        $location = $this->createLocation('SI-IF-IDEM-WH');
+        $product = $this->createProduct('SI-IF-IDEM-PRODUCT');
+
+        $payload = [
+            'partner_id' => $this->supplier->id,
+            'currency' => 'TND',
+            'issue_date' => '2026-07-05',
+            'invoice_first_delivered' => true,
+            'location_id' => $location->id,
+            'idempotency_key' => 'invoice-first-delivered-replay-001',
+            'lines' => [[
+                'product_id' => $product->id,
+                'quantity' => '2.0000',
+                'unit_price' => '12.345',
+                'vat_rate' => '0.00',
+            ]],
+        ];
+
+        $first = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/supplier-invoices', $payload);
+        $second = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/supplier-invoices', $payload);
+
+        $first->assertCreated();
+        $second->assertCreated();
+        $this->assertSame($first->json('data.id'), $second->json('data.id'));
+        $this->assertSame(1, Document::query()->where('type', DocumentType::SupplierInvoice)->where('company_id', $this->company->id)->count());
+        $this->assertSame(1, Document::query()->where('type', DocumentType::PurchaseOrder)->where('company_id', $this->company->id)->count());
+        $this->assertSame(1, GoodsReceipt::query()->where('company_id', $this->company->id)->count());
+    }
+
+    public function test_store_invoice_first_create_branches_require_pending_and_standalone_permissions(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst();
+        $location = $this->createLocation('SI-IF-PERM-WH');
+        $product = $this->createProduct('SI-IF-PERM-PRODUCT');
+        $writer = $this->createDocumentsUpdateUser('writer-si-permissions@test.example');
+
+        $normalPo = $this->createPoWithReceipt('1.0000', '5.000');
+        $normal = $this->actingAs($writer, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($normalPo[0], $normalPo[1], '1.0000', '5.000', '0.00'));
+        $normal->assertCreated();
+
+        $pendingPayload = [
+            'partner_id' => $this->supplier->id,
+            'currency' => 'TND',
+            'issue_date' => '2026-07-05',
+            'pending_receipt' => true,
+            'lines' => [[
+                'product_id' => $product->id,
+                'quantity' => '1.0000',
+                'unit_price' => '5.000',
+                'vat_rate' => '0.00',
+            ]],
+        ];
+        $deliveredPayload = [
+            'partner_id' => $this->supplier->id,
+            'currency' => 'TND',
+            'issue_date' => '2026-07-05',
+            'invoice_first_delivered' => true,
+            'location_id' => $location->id,
+            'idempotency_key' => 'invoice-first-permission-001',
+            'lines' => [[
+                'product_id' => $product->id,
+                'quantity' => '1.0000',
+                'unit_price' => '5.000',
+                'vat_rate' => '0.00',
+            ]],
+        ];
+
+        $this->actingAs($writer, 'sanctum')->postJson('/api/v1/supplier-invoices', $pendingPayload)->assertForbidden();
+        $this->actingAs($writer, 'sanctum')->postJson('/api/v1/supplier-invoices', $deliveredPayload)->assertForbidden();
+
+        $writer->givePermissionTo('supplier-invoices.create-pending');
+        $this->actingAs($writer, 'sanctum')->postJson('/api/v1/supplier-invoices', $pendingPayload)->assertCreated();
+        $this->actingAs($writer, 'sanctum')->postJson('/api/v1/supplier-invoices', $deliveredPayload)->assertForbidden();
+
+        $writer->givePermissionTo('goods-receipt.create-standalone');
+        $this->actingAs($writer, 'sanctum')->postJson('/api/v1/supplier-invoices', $deliveredPayload)->assertCreated();
+    }
+
+    public function test_post_invoice_first_delivered_posts_zero_ppv_gl_legs(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst(requiresApproval: true);
+        $location = $this->createLocation('SI-IF-GL-WH');
+        $product = $this->createProduct('SI-IF-GL-PRODUCT');
+
+        $store = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'invoice_first_delivered' => true,
+                'location_id' => $location->id,
+                'idempotency_key' => 'invoice-first-delivered-gl-001',
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '2.0000',
+                    'unit_price' => '10.000',
+                    'vat_rate' => '0.00',
+                ]],
+            ]);
+        $store->assertCreated();
+        $invoiceId = $store->json('data.id');
+        $this->assertNotNull($invoiceId);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoiceId}/post")
+            ->assertOk()
+            ->assertJsonPath('data.status', DocumentStatus::Posted->value);
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'supplier_invoice')
+            ->where('source_id', $invoiceId)
+            ->firstOrFail();
+        $entry->load('lines');
+
+        $grirAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::GoodsReceivedNotInvoiced);
+        $payableAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::SupplierPayable);
+        $ppvExpenseAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchasePriceVarianceExpense);
+        $ppvIncomeAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::PurchasePriceVarianceIncome);
+
+        $dr408 = $entry->lines->firstWhere('account_id', $grirAccount->id);
+        $this->assertNotNull($dr408);
+        $this->assertSame('20.000', $dr408->debit);
+        $this->assertSame('0.000', $dr408->credit);
+
+        $cr401 = $entry->lines->firstWhere('account_id', $payableAccount->id);
+        $this->assertNotNull($cr401);
+        $this->assertSame('0.000', $cr401->debit);
+        $this->assertSame('20.000', $cr401->credit);
+        $this->assertSame($this->supplier->id, $cr401->partner_id);
+
+        $this->assertNull($entry->lines->firstWhere('account_id', $ppvExpenseAccount->id));
+        $this->assertNull($entry->lines->firstWhere('account_id', $ppvIncomeAccount->id));
+    }
+
+    public function test_store_pending_receipt_supplier_invoice_persists_null_sources_and_post_is_blocked(): void
+    {
+        $this->enableInvoiceFirst();
+        $product = $this->createProduct('SI-PENDING-PRODUCT');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'pending_receipt' => true,
+                'supplier_reference' => 'FAC-PENDING-001',
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '3.0000',
+                    'unit_price' => '8.125',
+                    'vat_rate' => '0.00',
+                ]],
+            ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.status', DocumentStatus::Draft->value);
+        $response->assertJsonPath('data.match_status', SupplierInvoiceMatchStatus::Unmatched->value);
+        $response->assertJsonPath('data.source_document_id', null);
+        $response->assertJsonPath('data.pending_receipt', true);
+        $response->assertJsonPath('data.lines.0.source_line_id', null);
+
+        /** @var Document $invoice */
+        $invoice = Document::query()
+            ->where('type', DocumentType::SupplierInvoice)
+            ->where('company_id', $this->company->id)
+            ->with('lines')
+            ->sole();
+        $this->assertNull($invoice->source_document_id);
+        $this->assertSame([], $invoice->payload['supplier_invoice']['source_document_ids'] ?? null);
+        $this->assertTrue($invoice->payload['supplier_invoice']['pending_receipt'] ?? false);
+        $this->assertNull($invoice->lines[0]->source_line_id);
+        $this->assertNull($invoice->lines[0]->price_match_basis);
+        $this->assertNull($invoice->lines[0]->matched_receipt_line_id);
+
+        $listResponse = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/supplier-invoices?pending_receipt=1');
+
+        $listResponse->assertOk();
+        $listResponse->assertJsonPath('data.0.id', $invoice->id);
+        $listResponse->assertJsonPath('data.0.pending_receipt', true);
+
+        $postResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoice->id}/post");
+
+        $postResponse->assertUnprocessable();
+        $postResponse->assertJsonPath('error.message', 'PENDING_RECEIPT_UNLINKED');
+    }
+
+    public function test_store_pending_receipt_supplier_invoice_rejects_when_invoice_first_policy_is_disabled(): void
+    {
+        $product = $this->createProduct('SI-PENDING-POLICY-OFF');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'pending_receipt' => true,
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '1.0000',
+                    'unit_price' => '8.125',
+                    'vat_rate' => '0.00',
+                ]],
+            ]);
+
+        $this->assertApiValidationEnvelope($response);
+        $this->assertJsonValidationErrors($response, ['pending_receipt']);
+    }
+
+    public function test_link_receipts_clears_pending_invoice_and_stamps_match_snapshots(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst();
+        $this->enableReceiptFirst();
+        $location = $this->createLocation('SI-LINK-WH');
+        $product = $this->createProduct('SI-LINK-PRODUCT');
+        [$purchaseOrder, $receipt] = $this->createPostedStandaloneReceipt($product, $location, 'link-001', '3.0000', '8.125');
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'pending_receipt' => true,
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '3.0000',
+                    'unit_price' => '8.125',
+                    'vat_rate' => '0.00',
+                ]],
+            ]);
+        $storeResponse->assertCreated();
+
+        /** @var Document $invoice */
+        $invoice = Document::query()
+            ->where('type', DocumentType::SupplierInvoice)
+            ->where('company_id', $this->company->id)
+            ->with('lines')
+            ->latest('created_at')
+            ->firstOrFail();
+        $this->assertTrue($invoice->payload['supplier_invoice']['pending_receipt'] ?? false);
+        $this->assertNull($invoice->lines[0]->source_line_id);
+        $this->assertNull($invoice->lines[0]->price_match_basis);
+        $this->assertNull($invoice->lines[0]->matched_receipt_line_id);
+
+        $receipt->load('lines');
+        $linkResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoice->id}/link-receipts", [
+                'links' => [[
+                    'invoice_line_id' => $invoice->lines[0]->id,
+                    'receipt_line_id' => $receipt->lines[0]->id,
+                ]],
+            ]);
+
+        $linkResponse->assertOk();
+        $linkResponse->assertJsonPath('data.match_status', SupplierInvoiceMatchStatus::Matched->value);
+        $linkResponse->assertJsonPath('data.pending_receipt', false);
+
+        $invoice->refresh();
+        $invoice->load('lines');
+        $this->assertFalse($invoice->payload['supplier_invoice']['pending_receipt'] ?? true);
+        $this->assertSame($purchaseOrder->id, $invoice->source_document_id);
+        $this->assertSame([$purchaseOrder->id], $invoice->payload['supplier_invoice']['source_document_ids'] ?? null);
+        $this->assertSame($purchaseOrder->lines[0]->id, $invoice->lines[0]->source_line_id);
+        $this->assertSame('8.125000', (string) $invoice->lines[0]->price_match_basis);
+        $this->assertSame($receipt->lines[0]->id, $invoice->lines[0]->matched_receipt_line_id);
+        $this->assertSame(SupplierInvoiceMatchStatus::Matched, $invoice->match_status);
+    }
+
+    public function test_link_receipts_rejects_product_mismatch(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst();
+        $this->enableReceiptFirst();
+        $location = $this->createLocation('SI-LINK-MISMATCH-WH');
+        $invoiceProduct = $this->createProduct('SI-LINK-INVOICE-PRODUCT');
+        $receiptProduct = $this->createProduct('SI-LINK-RECEIPT-PRODUCT');
+        [, $receipt] = $this->createPostedStandaloneReceipt($receiptProduct, $location, 'link-mismatch-001', '3.0000', '8.125');
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'pending_receipt' => true,
+                'lines' => [[
+                    'product_id' => $invoiceProduct->id,
+                    'quantity' => '3.0000',
+                    'unit_price' => '8.125',
+                    'vat_rate' => '0.00',
+                ]],
+            ]);
+        $storeResponse->assertCreated();
+
+        /** @var Document $invoice */
+        $invoice = Document::query()
+            ->where('type', DocumentType::SupplierInvoice)
+            ->where('company_id', $this->company->id)
+            ->with('lines')
+            ->latest('created_at')
+            ->firstOrFail();
+        $receipt->load('lines');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoice->id}/link-receipts", [
+                'links' => [[
+                    'invoice_line_id' => $invoice->lines[0]->id,
+                    'receipt_line_id' => $receipt->lines[0]->id,
+                ]],
+            ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonPath('error.message', 'LINK_PRODUCT_MISMATCH');
+    }
+
+    public function test_link_receipts_requires_pending_draft_invoice(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableReceiptFirst();
+        $location = $this->createLocation('SI-LINK-NOT-PENDING-WH');
+        $product = $this->createProduct('SI-LINK-NOT-PENDING-PRODUCT');
+        [$po, $receipt] = $this->createPostedStandaloneReceipt($product, $location, 'link-not-pending-001', '3.0000', '8.125');
+        $po->load('lines');
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $po->lines[0], '3.0000', '8.125', '0.00'));
+        $storeResponse->assertCreated();
+
+        $invoice = Document::query()
+            ->where('type', DocumentType::SupplierInvoice)
+            ->where('company_id', $this->company->id)
+            ->with('lines')
+            ->latest('created_at')
+            ->firstOrFail();
+        $receipt->load('lines');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoice->id}/link-receipts", [
+                'links' => [[
+                    'invoice_line_id' => $invoice->lines[0]->id,
+                    'receipt_line_id' => $receipt->lines[0]->id,
+                ]],
+            ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonPath('error.message', 'LINK_NOT_PENDING');
+    }
+
+    public function test_partial_link_keeps_pending_receipt_until_all_lines_are_linked(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst();
+        $this->enableReceiptFirst();
+        $location = $this->createLocation('SI-LINK-PARTIAL-WH');
+        $firstProduct = $this->createProduct('SI-LINK-PARTIAL-A');
+        $secondProduct = $this->createProduct('SI-LINK-PARTIAL-B');
+        [, $firstReceipt] = $this->createPostedStandaloneReceipt($firstProduct, $location, 'link-partial-a', '3.0000', '8.125');
+        $this->createPostedStandaloneReceipt($secondProduct, $location, 'link-partial-b', '4.0000', '9.125');
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'pending_receipt' => true,
+                'lines' => [
+                    [
+                        'product_id' => $firstProduct->id,
+                        'quantity' => '3.0000',
+                        'unit_price' => '8.125',
+                        'vat_rate' => '0.00',
+                    ],
+                    [
+                        'product_id' => $secondProduct->id,
+                        'quantity' => '4.0000',
+                        'unit_price' => '9.125',
+                        'vat_rate' => '0.00',
+                    ],
+                ],
+            ]);
+        $storeResponse->assertCreated();
+
+        /** @var Document $invoice */
+        $invoice = Document::query()
+            ->where('type', DocumentType::SupplierInvoice)
+            ->where('company_id', $this->company->id)
+            ->with('lines')
+            ->latest('created_at')
+            ->firstOrFail();
+        $firstReceipt->load('lines');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoice->id}/link-receipts", [
+                'links' => [[
+                    'invoice_line_id' => $invoice->lines[0]->id,
+                    'receipt_line_id' => $firstReceipt->lines[0]->id,
+                ]],
+            ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.pending_receipt', true);
+
+        $invoice->refresh();
+        $invoice->load('lines');
+        $this->assertTrue($invoice->payload['supplier_invoice']['pending_receipt'] ?? false);
+        $this->assertNotNull($invoice->lines[0]->source_line_id);
+        $this->assertNull($invoice->lines[1]->source_line_id);
+    }
+
+    public function test_pending_link_receipts_then_post_consumes_receipt_and_clears_gr_ir(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst();
+        $this->enableReceiptFirst();
+        $location = $this->createLocation('SI-LINK-POST-WH');
+        $product = $this->createProduct('SI-LINK-POST-PRODUCT');
+        [$purchaseOrder, $receipt] = $this->createPostedStandaloneReceipt($product, $location, 'link-post-001', '3.0000', '8.125');
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'pending_receipt' => true,
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '3.0000',
+                    'unit_price' => '8.125',
+                    'vat_rate' => '0.00',
+                ]],
+            ]);
+        $storeResponse->assertCreated();
+
+        /** @var Document $invoice */
+        $invoice = Document::query()
+            ->where('type', DocumentType::SupplierInvoice)
+            ->where('company_id', $this->company->id)
+            ->with('lines')
+            ->latest('created_at')
+            ->firstOrFail();
+        $receipt->load('lines');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoice->id}/link-receipts", [
+                'links' => [[
+                    'invoice_line_id' => $invoice->lines[0]->id,
+                    'receipt_line_id' => $receipt->lines[0]->id,
+                ]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.pending_receipt', false);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoice->id}/post")
+            ->assertOk()
+            ->assertJsonPath('data.status', DocumentStatus::Posted->value);
+
+        $this->assertSame('3.0000', GoodsReceipt::query()->with('lines')->findOrFail($receipt->id)->lines[0]->quantity_invoiced);
+        $this->assertSame('3.0000', DocumentLine::query()->findOrFail($purchaseOrder->lines[0]->id)->quantity_invoiced);
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'supplier_invoice')
+            ->where('source_id', $invoice->id)
+            ->firstOrFail();
+        $entry->load('lines');
+
+        $debit = '0.000';
+        $credit = '0.000';
+        foreach ($entry->lines as $line) {
+            $debit = bcadd($debit, $line->debit, 3);
+            $credit = bcadd($credit, $line->credit, 3);
+        }
+        $this->assertSame('0.000', bcsub($debit, $credit, 3));
+
+        $grirAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::GoodsReceivedNotInvoiced);
+        $net408 = JournalLine::query()
+            ->where('company_id', $this->company->id)
+            ->where('account_id', $grirAccount->id)
+            ->selectRaw('COALESCE(SUM(credit), 0) - COALESCE(SUM(debit), 0) as net')
+            ->value('net');
+        $this->assertSame('0.000', number_format((float) $net408, 3, '.', ''));
+
+        $invoice->refresh();
+        $this->assertSame(DocumentStatus::Posted, $invoice->status);
+    }
+
+    public function test_post_invoice_first_supplier_invoice_requires_approval_permission_when_policy_requires_it(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst(requiresApproval: true);
+        $location = $this->createLocation('SI-APPROVAL-WH');
+        $product = $this->createProduct('SI-APPROVAL-PRODUCT');
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'invoice_first_delivered' => true,
+                'location_id' => $location->id,
+                'idempotency_key' => 'invoice-first-approval-001',
+                'external_reference' => 'BL-IF-APPROVAL-001',
+                'external_date' => '2026-07-05',
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '2.0000',
+                    'unit_price' => '10.000',
+                    'vat_rate' => '0.00',
+                ]],
+            ]);
+        $storeResponse->assertCreated();
+        $invoiceId = $storeResponse->json('data.id');
+        $this->assertNotNull($invoiceId);
+
+        $poster = $this->createPosterWithoutInvoiceFirstApproval();
+
+        $blocked = $this->actingAs($poster, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoiceId}/post");
+
+        $blocked->assertUnprocessable();
+        $blocked->assertJsonPath('error.message', 'INVOICE_FIRST_APPROVAL_REQUIRED');
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'supplier_invoice')->where('source_id', $invoiceId)->count());
+        /** @var Document $blockedInvoice */
+        $blockedInvoice = Document::query()->with('lines')->findOrFail($invoiceId);
+        $this->assertSame('0.0000', DocumentLine::query()->findOrFail($blockedInvoice->lines[0]->source_line_id)->quantity_invoiced);
+
+        $poster->givePermissionTo('supplier-invoices.approve-invoice-first');
+
+        $posted = $this->actingAs($poster, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoiceId}/post");
+
+        $posted->assertOk();
+        $posted->assertJsonPath('data.status', DocumentStatus::Posted->value);
+    }
+
+    public function test_post_invoice_first_missing_approval_permission_record_returns_domain_error(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $this->enableInvoiceFirst(requiresApproval: true);
+        $location = $this->createLocation('SI-APPROVAL-MISSING-WH');
+        $product = $this->createProduct('SI-APPROVAL-MISSING-PRODUCT');
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', [
+                'partner_id' => $this->supplier->id,
+                'currency' => 'TND',
+                'issue_date' => '2026-07-05',
+                'invoice_first_delivered' => true,
+                'location_id' => $location->id,
+                'idempotency_key' => 'invoice-first-missing-permission-record-001',
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '2.0000',
+                    'unit_price' => '10.000',
+                    'vat_rate' => '0.00',
+                ]],
+            ]);
+        $storeResponse->assertCreated();
+        $invoiceId = $storeResponse->json('data.id');
+        $this->assertNotNull($invoiceId);
+
+        Permission::query()
+            ->where('name', 'supplier-invoices.approve-invoice-first')
+            ->where('guard_name', 'sanctum')
+            ->delete();
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $poster = $this->createDocumentsUpdateUser('si-missing-approval-permission@test.example');
+
+        $response = $this->actingAs($poster, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$invoiceId}/post");
+
+        $response->assertUnprocessable();
+        $response->assertJsonPath('error.message', 'INVOICE_FIRST_APPROVAL_REQUIRED');
+    }
+
     // -------------------------------------------------------------------------
     // 2. post happy path: 200, status=posted, balanced JE exists
     // -------------------------------------------------------------------------
@@ -770,6 +1604,49 @@ final class SupplierInvoiceApiTest extends TestCase
         $this->assertArrayHasKey('quantity', $line);
         $this->assertArrayHasKey('unit_price', $line);
         $this->assertArrayHasKey('vat_rate', $line);
+    }
+
+    public function test_show_returns_balance_due_for_partially_paid_supplier_invoice(): void
+    {
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+
+        $storeResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '6.0000', '100.000', '0.00'));
+
+        $storeResponse->assertCreated();
+        $siId = $storeResponse->json('data.id');
+        $this->assertIsString($siId);
+
+        /** @var Document $supplierInvoice */
+        $supplierInvoice = Document::query()->findOrFail($siId);
+        $supplierInvoice->status = DocumentStatus::Posted;
+        $supplierInvoice->balance_due = '400.000';
+        $supplierInvoice->save();
+
+        $payment = Payment::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'amount' => '200.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+            'origin' => PaymentOrigin::WebAdmin,
+            'created_by' => $this->user->id,
+        ]);
+
+        PaymentAllocation::create([
+            'payment_id' => $payment->id,
+            'document_id' => $supplierInvoice->id,
+            'amount' => '200.000',
+        ]);
+
+        $showResponse = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/supplier-invoices/{$siId}");
+
+        $showResponse->assertOk();
+        $this->assertSame('400.000', $showResponse->json('data.balance_due'));
     }
 
     // -------------------------------------------------------------------------

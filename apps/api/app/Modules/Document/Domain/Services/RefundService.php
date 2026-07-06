@@ -15,23 +15,24 @@ class RefundService
 {
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly DocumentPostingService $documentPostingService,
     ) {}
 
     /**
      * Cancel an invoice (only if not posted or not paid)
      */
-    public function cancelInvoice(Document $invoice, string $reason): Document
+    public function cancelInvoice(Document $invoice, string $reason, ?string $actorId = null): Document
     {
         if ($invoice->type !== DocumentType::Invoice) {
             throw new \InvalidArgumentException('Document must be an invoice');
         }
 
         if ($invoice->status === DocumentStatus::Posted) {
-            throw new \RuntimeException('Cannot cancel posted invoice. Create a credit note instead.');
+            return $this->documentPostingService->cancel($invoice, $reason, $actorId);
         }
 
         if ($invoice->status === DocumentStatus::Paid) {
-            throw new \RuntimeException('Cannot cancel paid invoice. Issue a refund instead.');
+            throw new \DomainException('DOCUMENT_HAS_PAYMENTS');
         }
 
         return DB::transaction(function () use ($invoice, $reason): Document {
@@ -57,7 +58,7 @@ class RefundService
         }
 
         if ($creditNote->status === DocumentStatus::Posted) {
-            throw new \RuntimeException('Cannot cancel posted credit note');
+            return $this->documentPostingService->cancel($creditNote, $reason);
         }
 
         return DB::transaction(function () use ($creditNote, $reason): Document {
@@ -281,8 +282,11 @@ class RefundService
             return false;
         }
 
+        if ($invoice->status === DocumentStatus::Posted) {
+            return ! $this->documentPostingService->hasBlockingAllocations($invoice);
+        }
+
         return ! in_array($invoice->status, [
-            DocumentStatus::Posted,
             DocumentStatus::Paid,
             DocumentStatus::Cancelled,
         ], true);

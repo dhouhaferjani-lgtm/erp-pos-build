@@ -98,7 +98,10 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
     public function test_purchase_order_receipt_lines_return_only_uninvoiced_prefill_rows(): void
     {
         [$po, $poLine] = $this->createReceivedPurchaseOrder('PO-READ-001', '10.0000', '5.100');
-        $receipt = $this->createReceipt($po, 'GRN-READ-001');
+        $receipt = $this->createReceipt($po, 'GRN-READ-001', GoodsReceiptStatus::Posted, [
+            'external_reference' => 'BL-2026-8842',
+            'external_date' => '2026-07-05',
+        ]);
 
         $uninvoiced = $this->createReceiptLine($receipt, $poLine, [
             'received_qty' => '10.0000',
@@ -124,6 +127,8 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
         $response->assertJsonCount(1, 'data');
         $response->assertJsonPath('data.0.id', $uninvoiced->id);
         $response->assertJsonPath('data.0.receipt_number', 'GRN-READ-001');
+        $response->assertJsonPath('data.0.external_reference', 'BL-2026-8842');
+        $response->assertJsonPath('data.0.external_date', '2026-07-05');
         $response->assertJsonPath('data.0.product_id', $uninvoiced->product_id);
         $response->assertJsonPath('data.0.variant_id', null);
         $response->assertJsonPath('data.0.received_qty', '10.0000');
@@ -145,6 +150,26 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
             'free_qty' => '2.0000',
             'quantity_invoiced' => '10.0000',
             'free_quantity_invoiced' => '0.0000',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/purchase-orders/{$po->id}/receipt-lines?uninvoiced=1");
+
+        $response->assertOk();
+        $response->assertJsonCount(0, 'data');
+    }
+
+    public function test_purchase_order_receipt_lines_exclude_draft_receipts(): void
+    {
+        [$po, $poLine] = $this->createReceivedPurchaseOrder('PO-DRAFT-PICKER-001', '10.0000', '5.100');
+
+        $this->createReceiptLine($this->createReceipt($po, null, GoodsReceiptStatus::Draft), $poLine, [
+            'received_qty' => '10.0000',
+            'quantity_invoiced' => '0.0000',
+            'received_unit_price' => null,
+            'landed_unit_cost' => null,
+            'accrual_unit_cost' => null,
+            'effective_unit_cost' => null,
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
@@ -194,6 +219,27 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
         $response->assertOk();
         $ids = collect($response->json('data'))->pluck('id')->all();
         $this->assertNotContains($freeOnlyPo->id, $ids);
+    }
+
+    public function test_purchase_order_index_has_uninvoiced_filter_ignores_draft_receipts(): void
+    {
+        [$draftOnlyPo, $draftOnlyLine] = $this->createReceivedPurchaseOrder('PO-DRAFT-INDEX-001', '10.0000', '8.000');
+
+        $this->createReceiptLine($this->createReceipt($draftOnlyPo, null, GoodsReceiptStatus::Draft), $draftOnlyLine, [
+            'received_qty' => '10.0000',
+            'quantity_invoiced' => '0.0000',
+            'received_unit_price' => null,
+            'landed_unit_cost' => null,
+            'accrual_unit_cost' => null,
+            'effective_unit_cost' => null,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/purchase-orders?partner_id={$this->supplier->id}&status=received&has_uninvoiced=1");
+
+        $response->assertOk();
+        $ids = collect($response->json('data'))->pluck('id')->all();
+        $this->assertNotContains($draftOnlyPo->id, $ids);
     }
 
     public function test_duplicate_reference_check_warns_for_same_company_partner_and_reference(): void
@@ -288,17 +334,24 @@ final class SupplierInvoiceCreationReadApiTest extends TestCase
         return [$po, $line];
     }
 
-    private function createReceipt(Document $po, string $number): GoodsReceipt
-    {
+    /**
+     * @param  array<string, string|null>  $overrides
+     */
+    private function createReceipt(
+        Document $po,
+        ?string $number,
+        GoodsReceiptStatus $status = GoodsReceiptStatus::Posted,
+        array $overrides = [],
+    ): GoodsReceipt {
         return GoodsReceipt::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'purchase_order_id' => $po->id,
             'receipt_number' => $number,
-            'status' => GoodsReceiptStatus::Posted,
+            'status' => $status,
             'received_at' => now(),
             'received_by' => $this->user->id,
-        ]);
+        ] + $overrides);
     }
 
     /**

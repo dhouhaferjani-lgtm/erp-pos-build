@@ -9,6 +9,7 @@ import {
   XCircle,
   AlertTriangle,
   ChevronRight,
+  Link2,
 } from 'lucide-react'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { SearchInput } from '../../../components/molecules/SearchInput/SearchInput'
@@ -145,7 +146,7 @@ export function SupplierInvoiceListPage() {
             className="w-full sm:w-96"
           />
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {/* Status filter */}
           <div>
             <label className={tokens.label.base} htmlFor="filter-status">
@@ -214,6 +215,26 @@ export function SupplierInvoiceListPage() {
               value={params.date_from ?? ''}
               onChange={(e) => { handleFilterChange('date_from', e.target.value); }}
             />
+          </div>
+
+          <div>
+            <label className={tokens.label.base} htmlFor="filter-pending-receipt">
+              {t('purchases:supplierInvoices.filters.pendingReceipt')}
+            </label>
+            <select
+              id="filter-pending-receipt"
+              data-testid="filter-pending-receipt"
+              className={`${tokens.select.base} mt-1`}
+              value={params.pending_receipt ?? ''}
+              onChange={(e) => { handleFilterChange('pending_receipt', e.target.value); }}
+            >
+              <option value="">
+                {t('purchases:supplierInvoices.filters.pendingReceiptPlaceholder')}
+              </option>
+              <option value="1">
+                {t('purchases:supplierInvoices.pendingReceipt.badge')}
+              </option>
+            </select>
           </div>
 
           {/* Date to */}
@@ -298,7 +319,18 @@ export function SupplierInvoiceListPage() {
               {invoices.map((invoice) => (
                 <tr key={invoice.id} className={tokens.table.rowHover}>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <span className={tokens.table.cellMonoBadge}>{invoice.number}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={tokens.table.cellMonoBadge}>{invoice.number}</span>
+                      {invoice.pending_receipt === true ? (
+                        <span
+                          data-testid={`pending-receipt-badge-${invoice.id}`}
+                          className={`${tokens.badge.base} ${tokens.badge.yellow}`}
+                        >
+                          <Link2 className="me-1 h-3 w-3" />
+                          {t('purchases:supplierInvoices.pendingReceipt.badge')}
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className={`whitespace-nowrap px-6 py-4 text-sm ${textColors.primary}`}>
                     {invoice.partner.name}

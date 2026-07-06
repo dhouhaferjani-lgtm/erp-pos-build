@@ -13,6 +13,7 @@ import {
   Layers,
   SlidersHorizontal,
   BookOpen,
+  ClipboardList,
   type LucideIcon,
 } from 'lucide-react'
 import { PageHeader } from '../../../components/molecules/PageHeader'
@@ -54,6 +55,13 @@ const baseCards: HubCardDef[] = [
     descriptionKey: 'hub.cards.stockMovements.description',
     icon: ArrowRightLeft,
     href: '/inventory/movements',
+    permissionModule: 'inventory',
+  },
+  {
+    titleKey: 'hub.cards.entryExitNotes.title',
+    descriptionKey: 'hub.cards.entryExitNotes.description',
+    icon: ClipboardList,
+    href: '/inventory/entry-exit-notes',
     permissionModule: 'inventory',
   },
   {

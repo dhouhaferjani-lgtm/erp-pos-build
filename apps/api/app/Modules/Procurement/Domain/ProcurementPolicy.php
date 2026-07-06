@@ -38,6 +38,9 @@ use Illuminate\Support\Carbon;
  * @property MatchEnforcement $match_enforcement
  * @property string $variance_tolerance_percent exact decimal string
  * @property string $variance_tolerance_max_amount exact decimal string
+ * @property bool $allow_receipt_first
+ * @property bool $allow_invoice_first
+ * @property bool $invoice_first_requires_approval
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tenant  $tenant
@@ -60,6 +63,9 @@ final class ProcurementPolicy extends Model
         'match_enforcement',
         'variance_tolerance_percent',
         'variance_tolerance_max_amount',
+        'allow_receipt_first',
+        'allow_invoice_first',
+        'invoice_first_requires_approval',
     ];
 
     /**
@@ -75,6 +81,9 @@ final class ProcurementPolicy extends Model
             // Stored as exact strings — NEVER cast to float
             'variance_tolerance_percent' => 'string',
             'variance_tolerance_max_amount' => 'string',
+            'allow_receipt_first' => 'boolean',
+            'allow_invoice_first' => 'boolean',
+            'invoice_first_requires_approval' => 'boolean',
         ];
     }
 
@@ -97,6 +106,12 @@ final class ProcurementPolicy extends Model
         $policy->match_enforcement = MatchEnforcement::Warn;
         $policy->variance_tolerance_percent = '2.00';
         $policy->variance_tolerance_max_amount = '1.000';
+        // Entry-point toggles are deliberately CLOSED here even though the row is
+        // labeled Standard: the missing-row default must fail closed (spec §3.2);
+        // the Standard PRESET only opens receipt-first when explicitly applied.
+        $policy->allow_receipt_first = false;
+        $policy->allow_invoice_first = false;
+        $policy->invoice_first_requires_approval = true;
 
         return $policy;
     }
@@ -115,10 +130,33 @@ final class ProcurementPolicy extends Model
                 'match_enforcement' => $defaultPolicy->match_enforcement->value,
                 'variance_tolerance_percent' => $defaultPolicy->variance_tolerance_percent,
                 'variance_tolerance_max_amount' => $defaultPolicy->variance_tolerance_max_amount,
+                'allow_receipt_first' => $defaultPolicy->allowsReceiptFirst(),
+                'allow_invoice_first' => $defaultPolicy->allowsInvoiceFirst(),
+                'invoice_first_requires_approval' => $defaultPolicy->requiresInvoiceFirstApproval(),
             ]
         );
     }
 
+    public function allowsReceiptFirst(): bool
+    {
+        return $this->booleanAttributeOrDefault('allow_receipt_first', false);
+    }
+
+    public function allowsInvoiceFirst(): bool
+    {
+        return $this->booleanAttributeOrDefault('allow_invoice_first', false);
+    }
+
+    public function requiresInvoiceFirstApproval(): bool
+    {
+        return $this->booleanAttributeOrDefault('invoice_first_requires_approval', true);
+    }
+
+    /**
+     * Presets map chain config only (spec §3.3): `invoice_first_requires_approval`
+     * is a control knob, NEVER preset-mapped — applying a preset must not loosen
+     * or tighten a hand-set approval requirement.
+     */
     public function applyPreset(ProcurementPreset $preset): self
     {
         return $this->forceFill(array_merge(
@@ -137,5 +175,20 @@ final class ProcurementPolicy extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class, 'company_id');
+    }
+
+    private function booleanAttributeOrDefault(string $attribute, bool $default): bool
+    {
+        if (! array_key_exists($attribute, $this->attributes)) {
+            return $default;
+        }
+
+        $value = $this->getAttribute($attribute);
+
+        if ($value === null) {
+            return $default;
+        }
+
+        return (bool) $value;
     }
 }

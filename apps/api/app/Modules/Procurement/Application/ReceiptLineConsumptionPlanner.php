@@ -28,6 +28,7 @@ final class ReceiptLineConsumptionPlanner
 
         /** @var GoodsReceiptLine $line */
         foreach (GoodsReceiptLine::query()
+            ->postedReceipts()
             ->where('po_line_id', $poLineId)
             ->orderBy('created_at')
             ->orderBy('id')

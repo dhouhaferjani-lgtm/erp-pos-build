@@ -270,7 +270,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   }, [])
 
   // Auto-save hook (works for both new and existing documents)
-  const { draftId: _draftId, isSaving, lastSavedAt, autosavePending, autosaveFailed } = useDraftAutoSave(
+  const { draftId, isSaving, lastSavedAt, autosavePending, autosaveFailed } = useDraftAutoSave(
     draftData,
     {
       enabled: true,
@@ -463,6 +463,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
 
   const isSubmitInProgress =
     isSubmitting || createMutation.isPending || updateMutation.isPending
+  const docId = id || draftId || ''
+  const additionalCostsDisabled = isEditing ? document?.status !== 'draft' : false
 
   if (isEditing && isLoading) {
     return (
@@ -627,11 +629,11 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
           {...(effectiveType ? { documentType: effectiveType } : {})}
         />
 
-        {/* Additional Costs (Purchase Orders only - after document is created) */}
-        {effectiveType === 'purchase_order' && isEditing && id && (
+        {/* Additional Costs (Purchase Orders only - after document has an autosaved draft id) */}
+        {effectiveType === 'purchase_order' && docId && (
           <PurchaseOrderAdditionalCosts
-            documentId={id}
-            disabled={document?.status !== 'draft'}
+            documentId={docId}
+            disabled={additionalCostsDisabled}
             currency={currentCompany?.currency ?? 'TND'}
           />
         )}
