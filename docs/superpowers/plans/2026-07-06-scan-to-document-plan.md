@@ -87,15 +87,24 @@ Migration columns (tenant DB): `id uuid pk`, `tenant_id uuid`, `company_id uuid`
 `extraction jsonb nullable`, `confidence_summary jsonb nullable`, `suggestions jsonb nullable`,
 `committed_type string(40) nullable`, `committed_id uuid nullable`, `error jsonb nullable`,
 `created_by uuid`, `timestampsTz`. Indexes: `(company_id,status)`, `(company_id,kind,created_at)`;
-**unique `(company_id, checksum)`** (duplicate-upload guard).
+duplicate-upload guard = **PARTIAL unique index** (raw statement in the migration):
+`CREATE UNIQUE INDEX ux_document_ingestions_company_checksum ON document_ingestions (company_id, checksum) WHERE status NOT IN ('rejected','failed')`
+— rejected/failed rows must NOT block a re-upload of the same file (adversarial review B2; the
+grain is company_id, matching all other scoping here).
 
-Allowed transitions exactly: Uploaded→[Extracting], Extracting→[NeedsReview,Failed],
+Allowed transitions exactly: Uploaded→[Extracting], **Extracting→[Extracting,NeedsReview,Failed]**
+(self-transition = Horizon retry of a job that died mid-extraction; adversarial review M3),
 Failed→[Extracting], NeedsReview→[Committing,Rejected], Committing→[Committed,NeedsReview].
-(Committing→NeedsReview is the crash/failure recovery path.)
+(Committing→NeedsReview is the in-request failure path; crash recovery in Committing is handled
+at the endpoint — Task 7.)
+Also create `Providers/DocumentIngestionServiceProvider.php` (routes via `loadRoutesFrom` — copy
+`ProcurementServiceProvider.php:28`) and register it in `bootstrap/providers.php` (review minor 2).
 
 - [ ] Step 1: failing test — create ingestion via factory, assert `transitionTo(Extracting)` ok,
-  `transitionTo(Committed)` from Uploaded throws `InvalidIngestionTransition`, and the full happy
-  path Uploaded→Extracting→NeedsReview→Committing→Committed persists each status.
+  `transitionTo(Committed)` from Uploaded throws `InvalidIngestionTransition`, the full happy
+  path Uploaded→Extracting→NeedsReview→Committing→Committed persists each status,
+  Extracting→Extracting is ALLOWED (retry re-entry), and a rejected row does not block inserting a
+  second row with the same `(company_id, checksum)` while a needs_review row does (partial index).
 - [ ] Step 2: `php artisan test tests/Feature/DocumentIngestion/IngestionStateMachineTest.php` → FAIL (class not found)
 - [ ] Step 3: implement enums + migration + model (`transitionTo` checks `allowedNext()`, saves).
 - [ ] Step 4: rerun → PASS. PHPStan the new dir.
@@ -150,21 +159,37 @@ All monetary/qty `value`s are strings. `from()` must reject non-string numeric l
 - Create: `app/Modules/DocumentIngestion/Presentation/routes.php` (+ register in the module/route bootstrap the same way `Modules/Procurement/Presentation/routes.php` is registered)
 - Create: `Presentation/Controllers/DocumentIngestionController.php`, `Requests/StoreDocumentIngestionRequest.php`
 - Create: `Application/Services/IngestionService.php`
-- Test: `tests/Feature/DocumentIngestion/IngestionUploadTest.php`, `tests/Feature/Console/HorizonQueueCoverageTest.php` (existing — will fail until horizon.php updated if job exists; keep green)
+- Test: `tests/Feature/DocumentIngestion/IngestionUploadTest.php`, `tests/Unit/Config/HorizonQueueCoverageTest.php` (existing — exact path per review minor 1; keep green)
 
 **Interfaces (Produces):**
 ```php
 final class IngestionService {
-  public function __construct(private readonly MediaServiceInterface $media /* Shared contract */) {}
-  public function createFromUpload(string $tenantId, string $companyId, string $userId, UploadedFile $file, DocumentKind $kind): DocumentIngestion; // sha256 checksum; 422 IngestionDuplicateException on (company, checksum) unique hit; creates MediaAsset (owner=DocumentIngestion, type Document/Image by mime) then row; dispatches ExtractDocumentJob (Task 4)
+  // NOT the Shared MediaServiceInterface — its attachUpload() returns MediaAttachmentView with NO
+  // asset id (adversarial review M4). Follow the ProductImageImportService.php:259-275 precedent:
+  public function __construct(
+    private readonly MediaUploadService $uploadService,      // Media module public service
+    private readonly MediaAttachmentService $attachmentService,
+  ) {}
+  public function createFromUpload(string $tenantId, string $companyId, string $userId, UploadedFile $file, DocumentKind $kind): DocumentIngestion;
+  // flow: PRE-GENERATE the ingestion uuid → sha256 checksum → duplicate check (422
+  // IngestionDuplicateException when a non-rejected/failed row matches (company_id, checksum)) →
+  // MediaUploadService::upload(tenantId, MediaOwnerType::DocumentIngestion, $preGeneratedId, file,
+  // $userId, assetType by mime (Document for pdf, Image otherwise),
+  // config('media.documents.allowed_mime_types')) → MediaAttachmentService::attach($asset->id,
+  // MediaOwnerType::DocumentIngestion, $preGeneratedId, …) → create the row with media_asset_id =
+  // $asset->id → dispatch ExtractDocumentJob (Task 4).
   public function reject(DocumentIngestion $i, string $userId): DocumentIngestion;
+  public function reExtract(DocumentIngestion $i): DocumentIngestion; // allowed ONLY in Failed|NeedsReview → transition to Extracting + re-dispatch job (review B2)
 }
 ```
 Routes (`/api/v1`, middleware `['api','auth:sanctum',SetPermissionsTeam::class]`):
 `POST /document-ingestions` (`can:document-ingestions.create`, multipart `file` + `kind` in
 `DocumentKind` values, max size per `config/media.php`), `GET /document-ingestions` (`can:…view`,
-paginated, filters `status`,`kind`), `GET /document-ingestions/{id}` (`can:…view`),
-`POST /document-ingestions/{id}/reject` (`can:…reject`). `{id}` validated `Str::isUuid()`.
+paginated, filters `status`,`kind`), `GET /document-ingestions/{id}` (`can:…view` — the detail
+payload MUST include `source_url` = `MediaUrlResolver::forAttachment(...)` signed relative URL,
+60-min TTL; the review UI iframe cannot send a bearer token, review M4),
+`POST /document-ingestions/{id}/extract` (`can:…create`, throttle 6/min, Failed|NeedsReview only —
+review B2), `POST /document-ingestions/{id}/reject` (`can:…reject`). `{id}` validated `Str::isUuid()`.
 
 - [ ] Step 1: failing tests — upload png → 201 with `status=uploaded`, MediaAsset row exists with
   owner type `DOCUMENT_INGESTION`; duplicate same-bytes upload → 422 envelope; missing permission
@@ -191,12 +216,16 @@ interface ExtractionClientInterface {
   /** @throws ExtractionFailedException */
   public function extract(string $fileContents, string $mimeType, DocumentKind $kind, ExtractionHints $hints): ExtractionResultData;
 }
+final class ExtractionHints { // plain readonly DTO next to the interface (review minor 3)
+  public function __construct(public readonly string $languageHint = 'fr', public readonly ?string $currencyHint = null) {}
+}
 final class ExtractDocumentJob implements ShouldQueue { // onQueue('ingestion')
   public function __construct(public readonly string $tenantId, public readonly string $companyId, public readonly string $ingestionId) {}
 }
 ```
-Job flow: initialize tenancy for `$tenantId` (copy the pattern from an existing tenant-aware job,
-e.g. the Media `GenerateRenditions` job), load ingestion, transition Uploaded/Failed→Extracting,
+Job flow: initialize tenancy via `BindsTenantContext::withTenantContext()` (trait
+`app/Jobs/Concerns/BindsTenantContext.php`, used by Media `GenerateRenditions.php:31-73`), load
+ingestion, transition Uploaded/Failed/Extracting→Extracting (self-transition allowed — retry re-entry, review M3),
 read file from `Storage::disk('s3')`, call client, store `extraction` + `confidence_summary` +
 `provider`/`provider_model`, run reconciler + suggestions (Tasks 5) then →NeedsReview; on
 exception → Failed with structured `error` (`{code, message}`), rethrow-safe (job retries: 2).
@@ -232,7 +261,15 @@ final class MatchSuggestionService {
   public function suggest(DocumentIngestion $i, ExtractionResultData $r): SuggestionsData;
   // supplier: exact vat_number → normalized-name exact (lower/trim/strip legal suffixes via PartiesRowMapper-style normalization) → ILIKE '%name%' top 5
   // product per line: sku exact → barcode exact → cross_references/oem_numbers contains supplierRef
-  // invoice kind extras: open POs for supplier; uninvoiced receipt lines (quantity_received - quantity_invoiced > 0) for supplier — reuse the existing matcher/query helpers (SupplierInvoiceMatcher::matchableQty semantics), do NOT reimplement FIFO
+  // invoice kind extras: open POs for supplier; uninvoiced RECEIPT lines for supplier — matchable
+  // window is computed on the RECEIPT line via ReceiptLineConsumptionPlanner::matchableQty
+  // (paid: received_qty − quantity_invoiced; free tracked SEPARATELY as free_qty −
+  // free_quantity_invoiced — free-only lines are NOT paid-invoice suggestions). Reuse the
+  // planner/matcher helpers; do NOT hand-roll a PO-column subtraction (inventory-review MINOR).
+  // The existing uninvoiced query is PER-PO only (PurchaseOrderController.php:880-911,
+  // whereColumn('received_qty','>','quantity_invoiced')) — write a NEW per-supplier variant with
+  // the same semantics. Each receipt-line candidate DTO must carry po_line_id AND receipt_line_id
+  // AND uninvoiced qty AND unit price (the FE builds sourceLineId from po_line_id — review minor 7).
 }
 final class SuggestionsData extends Data { … supplier candidates [{id,name,vat,score:string}], per-line product candidates, po/receipt-line candidates … }
 ```
@@ -284,6 +321,36 @@ client; tests pass a stub returning recorded tool-use blocks from
 
 ## Wave S3 — committers (apps/api)
 
+### Task 7-pre: Close the StandaloneReceiptService idempotency crash window (inventory BLOCKER)
+
+**Files:**
+- Modify: `app/Modules/Procurement/Application/StandaloneReceiptService.php`
+- Test: `tests/Feature/Procurement/StandaloneReceiptIdempotencyRecoveryTest.php`
+
+Pre-existing bug the scan committer would inherit (inventory design review 2026-07-06, BLOCKER):
+the `goods_receipt_id` idempotency-row update (`StandaloneReceiptService.php:144-150`) happens
+OUTSIDE the receipt-post transaction (:116-137). Crash between them leaves
+`{purchase_order_id set, goods_receipt_id NULL}` with a live posted receipt; replay then falls
+through `existingResult` (:342), re-enters receipt creation, over-receive throws, and
+`compensateFailedReceiptCreation` (:367-382) cancels the PO + deletes the key → the NEXT attempt
+double-moves stock. Fix all three legs:
+1. Move the `goods_receipt_id` write into the same DB transaction that posts the receipt.
+2. In `existingResult`: when `goods_receipt_id` is NULL but a **posted** `GoodsReceipt` exists for
+   `purchase_order_id`, heal the row (write the id) and return that receipt — never re-receive.
+3. In `compensateFailedReceiptCreation`: refuse to cancel the PO / delete the key when a posted
+   receipt exists for the PO (log + rethrow instead).
+
+- [ ] Step 1: failing test — post a standalone receipt via the service, then manually NULL the
+  key row's `goods_receipt_id` (simulate the crash), call `execute` again with the same key:
+  assert SAME receipt id returned, PO still Confirmed, exactly ONE receipt + one set of stock
+  movements, key row healed. Second test: force a receipt-creation failure after a posted receipt
+  exists (same PO) and assert compensation does NOT cancel the PO.
+- [ ] Step 2: run BY PATH → FAIL (current code double-receives / cancels)
+- [ ] Step 3: implement the three legs.
+- [ ] Step 4: run BY PATH → PASS; also rerun the existing standalone-receipt + idempotency test
+  paths (`grep -rl StandaloneReceipt tests/Feature | xargs -I{} php artisan test {}`).
+- [ ] Step 5: commit `fix(procurement): close standalone-receipt idempotency crash window (replay double-receive)`
+
 ### Task 7: Commit endpoint + registry + `SupplierDeliveryNoteCommitter`
 
 **Files:**
@@ -298,27 +365,69 @@ client; tests pass a stub returning recorded tool-use blocks from
 interface IngestionCommitterInterface { public function supports(DocumentKind $kind): bool;
   public function commit(DocumentIngestion $i, ReviewedPayloadData $payload, string $actorId): CommitResultData; }
 final class ReviewedPayloadData extends Data {
-  public string $supplierId; public ?string $locationId; // BL: required
-  public ?string $reference; public ?string $documentDate;
-  /** @var list<ReviewedLineData> */ public array $lines; // productId, ?variantId, quantity, ?unitPrice, ?freeQuantity, ?batch{batch_number,expiry_date}, ?sourceLineId (invoice kind, Task 8)
-  public ?string $currency; public ?bool $pendingReceipt; // invoice kind fork flag
+  public string $supplierId; public ?string $locationId; // BL kind: required (FormRequest conditional)
+  public ?string $reference; public ?string $documentDate; // invoice kind: BOTH required (issue_date!)
+  /** @var list<ReviewedLineData> */ public array $lines;
+  // ReviewedLineData: productId, ?variantId, quantity(string), ?unitPrice(string — REQUIRED for
+  // invoice kind, optional for BL), ?vatRate(string ≤2dp — REQUIRED for invoice kind; treasury
+  // B-1: CreateSupplierInvoiceService reads quantity/unit_price/vat_rate by direct array access,
+  // missing vat_rate = bcmul ValueError 500), ?freeQuantity, ?batch{batch_number,expiry_date},
+  // ?sourceLineId (invoice kind: the PO line id — mapping grain is PO line, FIFO within it)
+  public ?string $currency; // invoice kind: REQUIRED (service reads it unguarded)
+  public ?bool $pendingReceipt; // invoice kind fork flag
 }
 final class CommitResultData extends Data { public string $committedType; public string $committedId; public ?string $goodsReceiptNumber; }
 ```
 FormRequest rules: uuids validated + **tenant/company-scope re-validated in the committer**
 (scoped `findOrFail` on partner/product/variant/location — api.document.045 class); qty ≤4dp,
-money ≤3dp regex ceilings; lines min 1. Controller: transition NeedsReview→Committing, call
-registry→committer inside try; success → set `committed_type='goods_receipt'`,
-`committed_id`, →Committed; failure → →NeedsReview + rethrow (the shipped idempotency
-delete-on-compensation makes retry safe). Committer asserts `$actor` has
-`goods-receipt.create-standalone` (Gate::forUser) — policy check happens inside the service.
+money ≤3dp, percent ≤2dp regex ceilings; lines min 1.
+
+Controller commit semantics (adversarial review M1/M2/minor-6 — implement EXACTLY this):
+1. **Atomic claim**: `UPDATE document_ingestions SET status='committing' WHERE id=? AND status IN
+   ('needs_review','committing')` — 0 affected rows → if the row is `Committed`, return 200 with
+   the stored `committed_*` (endpoint-level idempotency); else 409. A plain
+   `transitionTo` load-check-save race would let two clicks create two SIs.
+2. Committer runs; it must stamp `committed_type`/`committed_id` on the ingestion row **inside the
+   same DB transaction that creates the target record** (SI committer wraps
+   `CreateSupplierInvoiceService::create` + the stamp in one `DB::transaction`; BL committer stamps
+   right after `execute` returns — its replay is covered by the procurement idempotency key).
+3. Success → flip to `Committed`. In-request failure → flip back to `needs_review` + rethrow.
+4. Crash recovery: because step 1 accepts `committing` rows, a re-driven commit after a crash
+   either finds `committed_*` already stamped (finish: flip to Committed, return it) or re-runs
+   the committer (BL: idempotency-key replay returns the same receipt — requires Task 7-pre, a
+   hard prerequisite of this task; SI: the stamp is atomic with the create, so absence = safe to re-run).
+Committer asserts `$actor` has `goods-receipt.create-standalone` (Gate::forUser) — policy check
+happens inside the service.
+
+Inventory-review deltas (2026-07-06 — all mandatory):
+- **Batch requiredness:** for every line whose matched product `requires_batch_tracking`, the
+  committer requires `batch{batch_number, expiry_date}` and rejects with a clean per-line 422
+  (never let `GoodsReceiptService`'s DomainException surface as a 500). There is NO default-expiry
+  fallback on the receive path; a BL with no printed expiry is rejected with a message telling the
+  user to enter it from the physical goods. Parapharmacy = every product, so this is the main path.
+- **Price positivity:** resolve each paid line's price as: extracted BL price, else
+  `product.purchase_price`; if the result is null/zero/negative → per-line 422
+  (`LINE_PRICE_REQUIRED`). NEVER pass `'0'` or null into `StandaloneReceiptLineInput::unitPrice`
+  (zero-cost purchase would silently bias WAC downward; null throws in bcformatStrict).
+- **Nullable mapping:** `freeQuantity` defaults `'0'`; `StandaloneReceiptLineInput` fields are
+  non-nullable strings.
+- **Synchronous constraint:** the commit MUST stay a synchronous HTTP request —
+  `WeightedAverageCostService` uses no-arg `getScale()` which throws off-request. Never move the
+  committer onto a queue.
+- **Currency:** the receipt is booked in company currency (auto-PO ignores payload currency);
+  the review UI must not imply the extracted currency is honored on the BL path.
 
 - [ ] Step 1: failing feature test — seed policy `allow_receipt_first=true`, batch-tracked product;
   build a NeedsReview BL ingestion (factory w/ extraction fixture); commit payload with batch →
   201, `goods_receipts` row Posted with GRN number, stock movement exists, auto-PO created,
-  ingestion Committed with `committed_type='goods_receipt'`; replay same commit → same
-  receipt id (idempotent), no double stock; policy false → 422/403 domain error; missing
-  standalone permission → 403; cross-company product id → 404/422 (scoped).
+  ingestion Committed with `committed_type='goods_receipt'`; replayed `POST {id}/commit` on the
+  now-Committed row → 200 with the SAME stored `committed_id` (endpoint idempotency, review
+  minor-6), no double stock; a row forced to `committing` (simulated crash) re-driven with the same
+  payload → completes to Committed with ONE receipt; policy false → 422/403 domain error; missing
+  standalone permission → 403; cross-company product id → 404/422 (scoped); batch-tracked line
+  WITHOUT batch/expiry → per-line 422 (not 500); line with no extracted price AND null
+  `purchase_price` → per-line 422 `LINE_PRICE_REQUIRED`; free-quantity-only line passes with
+  `freeQuantity` set and never sends null/zero `unitPrice` for paid qty.
 - [ ] Step 2: run BY PATH → FAIL
 - [ ] Step 3: implement registry + committer + endpoint.
 - [ ] Step 4: run BY PATH → PASS. PHPStan.
@@ -332,16 +441,22 @@ delete-on-compensation makes retry safe). Committer asserts `$actor` has
 - Test: `tests/Feature/DocumentIngestion/CommitSupplierInvoiceTest.php`
 
 **Interfaces:**
-- Consumes: `CreateSupplierInvoiceService::create(array $validated, string $tenantId, string $companyId): Document` — build `$validated` exactly like `SupplierInvoiceController::store` does (read it first): `source_document_ids[]` = unique PO ids derived from the mapped receipt lines' POs; per line `source_line_id` = the PO line id behind the mapped receipt line; `pending_receipt=true` fork skips mapping (policy `allowsInvoiceFirst()` enforced by the service). Duplicate guard: same check the shipped `duplicate-reference` endpoint uses (grep `duplicateReference` in `SupplierInvoiceController`) → committer throws domain 422 `DUPLICATE_SUPPLIER_REFERENCE` when `(partner_id, supplier_reference)` already exists.
-- Produces: `CommitResultData{committedType:'supplier_invoice', committedId:<document uuid>}` ; SI left in Draft (posting stays on the existing SI surface).
+- Consumes: `CreateSupplierInvoiceService::create(array $validated, string $tenantId, string $companyId): Document` — build `$validated` exactly like `SupplierInvoiceController::store` does (read it first). REQUIRED keys the service reads by direct array access (treasury B-1): header `currency`, `partner_id`, `issue_date`; per line `quantity`, `unit_price`, `vat_rate` — the FormRequest must make unitPrice/vatRate/currency/documentDate mandatory when `kind=supplier_invoice`. `source_document_ids[]` = unique PO ids from the mapped PO lines; per line `source_line_id` = the PO line id (mapping grain = PO line; FIFO consumes receipt lines within it — documented limitation, spec §8c). `pending_receipt=true` fork skips mapping.
+- **Authz/validation parity (treasury M-2/M-4, adversarial M5)** — the committer bypasses the controller and FormRequest, and **the service itself trusts `$validated` blindly** (raw `partner_id` into `Document::create` at `CreateSupplierInvoiceService.php:120-124`; **unscoped** `DocumentLine::find($sourceLineId)` at `:154`). The committer MUST therefore: (a) `Gate::forUser($actor)->authorize('supplier-invoices.create-pending')` on the pending fork; (b) scoped-`findOrFail` the partner (company/tenant scope, partner type Supplier); (c) resolve every `sourceLineId` through a company-scoped query joined to its parent document; (d) **derive `source_document_ids` server-side from those PO lines' documents** — never accept client-sent PO ids — and assert each is a PurchaseOrder, not Cancelled, partner matches `supplierId`, currency matches; (e) map `documentDate→issue_date`, `reference→supplier_reference`. Test each guard, including a cross-company `sourceLineId` → 404/422 case.
+- **Duplicate guard (treasury M-3, race-proof):** inside the commit DB transaction, `SELECT pg_advisory_xact_lock(hashtext(?))` with key `"si-ref:{companyId}:{supplierId}:{reference}"`, then query for an existing supplier-invoice Document with same `(company_id, partner_id, external_document_number)` → domain 422 `DUPLICATE_SUPPLIER_REFERENCE` if found. (No schema change tonight; partial unique index = morning follow-up after data audit.)
+- Produces: `CommitResultData{committedType:'supplier_invoice', committedId:<document uuid>}` ; SI left in Draft (no GL at create — confirmed; posting stays on the existing SI surface; `balance_due` only materializes at post).
 
 - [ ] Step 1: failing tests — (a) receipts fork: post a standalone receipt (real service), build
-  invoice ingestion, payload maps line→that receipt's PO line, commit → Draft SI with
-  `source_document_ids` = [auto-PO], match snapshot present, receipt line consumption visible via
-  matcher, ingestion Committed; (b) pending fork: policy `allow_invoice_first=true`, payload
-  `pendingReceipt=true`, no mapping → Draft SI with `payload.supplier_invoice.pending_receipt=true`,
-  match status Unmatched; policy false → domain error; (c) duplicate supplier_reference → 422;
-  (d) actor without `supplier-invoices.create-pending` on pending fork → 403.
+  invoice ingestion, payload maps line→that receipt's PO line WITH vat_rate/unit_price/currency/
+  issue_date, commit → Draft SI with `source_document_ids` = [auto-PO], match snapshot present,
+  receipt line consumption visible via matcher, ingestion Committed; (b) pending fork: policy
+  `allow_invoice_first=true`, payload `pendingReceipt=true`, no mapping → Draft SI with
+  `payload.supplier_invoice.pending_receipt=true`, match status Unmatched; policy false → domain
+  error; (c) duplicate `(partner, external_document_number)` on second commit → 422
+  `DUPLICATE_SUPPLIER_REFERENCE` (and the advisory-lock path is exercised); (d) actor without
+  `supplier-invoices.create-pending` on pending fork → 403 (committer-level, not route);
+  (e) cross-field guards: source PO of another supplier → 422; `source_line_id` not in source POs
+  → 422; cancelled PO → 422; (f) missing vat_rate on invoice kind → FormRequest 422 (NOT a 500).
 - [ ] Step 2: run BY PATH → FAIL
 - [ ] Step 3: implement.
 - [ ] Step 4: run BY PATH → PASS; also rerun Task 7 test path (registry regression). PHPStan + Pint on the module.
@@ -362,7 +477,13 @@ Key points: multipart upload via the project's axios instance (`api.post(..., fo
 how an existing upload does it, e.g. document attachments); list = paginated `{data,meta}` so use
 `api.get` + `response.data`; poll list with `refetchInterval: 5000` while any row is
 `uploaded|extracting`; status chips tokenized; all keys `tenantScopedKey(['document-ingestions',…])`;
-i18n namespace `documentIngestions` (3-place i18n.ts wiring).
+i18n namespace `documentIngestions` (3-place i18n.ts wiring **+ create the locale JSON files for
+en, fr AND ar** — add them to this task's file list; review minor 8).
+**REQUIRED (review M6):** add the four `document-ingestions.view/create/commit/reject` keys to the
+hardcoded `PERMISSIONS` map in `apps/web/src/hooks/usePermissions.ts`, mirroring the roles granted
+in `RolesAndPermissionsSeeder` — without this, `RequirePermission permission="document-ingestions.view"`
+is a TypeScript compile error (the `Permission` type derives from that map), and a cast would
+silently deny at runtime.
 
 - [ ] Step 1: failing Vitest — list renders fixture rows with status chips + kind labels; upload dialog validates kind required and file size; posts FormData (mock api module).
 - [ ] Step 2: `pnpm vitest run src/features/document-ingestions` → FAIL
@@ -381,9 +502,14 @@ supplier suggestions dropdown (explicit "create supplier" navigates to partner c
 per-line product picker seeded with suggestions; BL kind → location picker + batch/expiry inputs
 (required only when matched product is batch-tracked — field comes from product suggestion
 payload); invoice kind → delivered/not-delivered fork; delivered shows receipt-line mapping table
-(uninvoiced suggestions), not-delivered sets `pendingReceipt`. All money/qty via
-`MoneyInput`/`QuantityInput` (string values). Commit → POST payload → success routes to the
-committed receipt/SI page; error envelope surfaced (no swallowed 422s). Reject with confirm dialog.
+(uninvoiced suggestions), not-delivered sets `pendingReceipt`. **Invoice kind: editable per-line
+VAT-rate input, prefilled from extraction `taxRate`, else from the matched product's tax rate —
+mandatory before commit (review B1: the SI service 500s without it); header currency + document
+date mandatory.** The source viewer loads `source_url` from the detail payload (signed relative
+URL — do NOT try to iframe an authed endpoint). A "Relancer l'extraction" button calls
+`POST {id}/extract` on `failed` rows. All money/qty via `MoneyInput`/`QuantityInput` (string
+values). Commit → POST payload → success routes to the committed receipt/SI page; error envelope
+surfaced (no swallowed 422s). Reject with confirm dialog.
 
 - [ ] Step 1: failing Vitest — renders extraction fixture with 2 flagged fields highlighted; BL fixture shows location+batch inputs; commit builds the exact `ReviewedPayloadData` shape (assert mock call arg: strings, sourceLineId mapping); 422 from commit renders server message.
 - [ ] Step 2: vitest BY PATH → FAIL
@@ -406,6 +532,8 @@ committed receipt/SI page; error envelope surfaced (no swallowed 422s). Reject w
 §4 module/state machine→T1; §4 DTOs→T2; §11 media/queue/perms + §12 upload/list/reject→T3;
 §5 client + §11 tenancy-job→T4; §6 reconcile + §7 suggest→T5; §5 erp-ml→T6; §8a→T7; §8b+§8c→T8;
 §10 UI→T9-T10; §9 mobile→NOT in plan (separate handover, owner-run); §13 waves match. Checksum
-duplicate guard (§8c) lands in T3 (unique index) + T8 (SI reference guard). Residency/cost: env
-provider + checksum cache noted in T4/T6 (cache = extraction stored on row; re-extract endpoint
-deferred — YAGNI for MVP, the job retry covers transient failures).
+duplicate guard (§8c) lands in T1 (partial unique index — rejected/failed carved out) + T8 (SI
+reference guard). Re-extract endpoint (§12) RESTORED in T3 after adversarial review B2 (a
+transient erp-ml outage or wrong-kind upload must never permanently brick a document). Adversarial
+review 2026-07-06 (B1-B2, M1-M6, 8 minors) + treasury + inventory design reviews are all folded
+into the task texts above — reviewer gates at merge time should re-verify M1/M2/M5 in code.

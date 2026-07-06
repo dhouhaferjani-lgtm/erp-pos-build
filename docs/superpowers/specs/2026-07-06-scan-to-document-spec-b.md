@@ -68,7 +68,9 @@ New hexagonal module `Modules/DocumentIngestion`.
   `ExtractionResultData` DTO; `confidence_summary` JSONB; `suggestions` JSONB (match candidates,
   typed DTO); `committed_type` + `committed_id` (SI document id **or** goods-receipt id — receipts
   are not documents, so a bare documents-FK is wrong; use a type discriminator, no polymorphic DB FK);
-  `checksum` (sha256 of source file, **unique per tenant** — duplicate-upload guard);
+  `checksum` (sha256 of source file, **unique per company via a PARTIAL index excluding
+  rejected/failed rows** — duplicate-upload guard that never bricks a re-upload after a reject or
+  extraction failure);
   `error` JSONB nullable; `created_by`; timestamps.
 - State machine enforced in Domain: `Uploaded → Extracting → NeedsReview → Committing → Committed`,
   `Extracting → Failed` (retryable), `NeedsReview → Rejected`. `Committing` is new vs parent spec:
@@ -134,8 +136,20 @@ an invoice never moves stock directly.
   `freeQuantity`, `unitPrice` (strings), `?batch{batch_number, expiry_date}` where the product is
   batch-tracked (parapharmacy!). Header: `locationId` from review UI; **`externalReference` = BL
   number, `externalDate` = delivery date** (fields already exist on the DTO).
-- **Price source order:** BL line price if extracted → else current product purchase price.
-  Review UI shows which source each line uses (owner to confirm the fallback default).
+- **Price source order:** BL line price if extracted → else `product.purchase_price`. If neither
+  yields a POSITIVE price, the line is rejected (per-line 422) — a zero/null cost must never reach
+  the receipt (WAC would blend a zero-cost purchase; inventory design review 2026-07-06). Review
+  UI shows which source each line uses and prompts for a price on rejected lines (owner to
+  confirm the fallback default).
+- **Batch/expiry are hard-required** for lines whose matched product is batch-tracked (no
+  default-expiry fallback exists on the receive path; parapharmacy = all products). Clean per-line
+  422 with guidance to read the lot/expiry off the physical goods.
+- **Receipt is booked in company currency** (auto-PO ignores extracted currency); commit stays a
+  synchronous HTTP request (WAC scale resolution is request-context-only).
+- **Prerequisite fix (inventory BLOCKER):** the shipped `StandaloneReceiptService` has a crash
+  window where an interrupted commit can double-receive on replay (idempotency row updated outside
+  the post transaction + compensation cancels POs with live posted receipts). Plan Task 7-pre
+  closes it before the committer ships.
 - Policy + authz: service already gates on `allowsReceiptFirst()` (fail-closed) and the route
   permission is `goods-receipt.create-standalone`; the committer asserts the same permission for
   the acting user before calling (never trust the UI).
@@ -161,8 +175,34 @@ an invoice never moves stock directly.
   `InvoiceFirstOrchestrator::createDelivered`, is intentionally NOT exposed in the scan review UI
   for MVP: a scanned invoice for goods that arrived undocumented should be handled by scanning the
   BL first or by the delivered fork in the normal SI form — one less path to test tomorrow.)
-- SI duplicate guard: reuse the shipped `supplier-invoices/{...}/duplicate-reference` check —
-  committer rejects commit when an SI with the same `(partner_id, supplier_reference)` exists.
+- SI duplicate guard: the shipped `duplicate-reference` check is a read-only GET with **no DB
+  uniqueness behind it** (treasury design review 2026-07-06) — and two distinct ingestions of the
+  same invoice (photo + PDF = different checksums) bypass the §4 checksum guard. The committer
+  therefore takes a `pg_advisory_xact_lock` keyed on hash(company|partner|reference) inside the
+  commit transaction, re-checks for an existing SI with the same
+  `(company_id, external_document_number, partner_id)`, and rejects with
+  `DUPLICATE_SUPPLIER_REFERENCE`. A partial unique index is a morning follow-up (needs an
+  existing-data audit first — shipped index is non-unique by design).
+- **Receipt-mapping grain (documented limitation, treasury M-1):** `CreateSupplierInvoiceService`
+  accepts `source_line_id` = PO line only; receipt-line consumption within a PO line is **FIFO by
+  construction** (`ReceiptLineConsumptionPlanner`). The review UI therefore maps invoice lines to
+  **PO lines** (showing their receipt context), not to individual receipt lines; when one PO line
+  has multiple receipts at divergent costs, FIFO picks the basis. Acceptable for MVP (matches the
+  shipped manual SI-creation surface, which has the same grain); per-receipt-line pinning would be
+  a matcher change — out of scope.
+- **Committer authz/validation parity (treasury M-2/M-4):** the committer bypasses
+  `SupplierInvoiceController` and `CreateSupplierInvoiceRequest`, so it must itself re-assert
+  `supplier-invoices.create-pending` on the pending fork AND replicate the FormRequest's
+  cross-field guards (each source PO exists, belongs to the supplier, currency matches, every
+  `source_line_id` belongs to one of the source POs, PO not cancelled).
+- **Required commit fields for invoice kind (treasury B-1):** the service reads per-line
+  `quantity`, `unit_price`, `vat_rate` and header `currency`, `partner_id`, `issue_date` by direct
+  array access — all are REQUIRED in the reviewed payload for invoice kind (extraction captures
+  `taxRate`; review UI must carry it through, defaulting from the matched product's tax rate when
+  the scan is unreadable).
+- **Draft-SI visibility (treasury MINOR):** `balance_due` is persisted only at post — a committed
+  scanned invoice is a Draft, invisible to payment surfaces until posted from the SI page. This is
+  the intended flow (posting keeps DOA/approval in one place); say so in the review UI success state.
 - Posting stays manual/existing: the committer creates the SI **draft** and returns it; the user
   posts from the SI surface (keeps DOA/approval semantics in one place).
 
