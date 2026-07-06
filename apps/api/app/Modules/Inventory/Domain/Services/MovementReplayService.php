@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Domain\Services;
 
 use App\Modules\Inventory\Domain\InventoryScale;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +37,8 @@ final class MovementReplayService
      * rows) becomes the canonical zero string rather than PHP null, and any
      * driver-returned numeric type is forced through bcmath rather than a
      * float cast.
+     *
+     * @return numeric-string signed delta at InventoryScale::QUANTITY_SCALE (may be negative)
      */
     public function signedDelta(
         string $productId,
@@ -111,6 +114,6 @@ final class MovementReplayService
      */
     private function boundary(CarbonInterface $instant): string
     {
-        return \Carbon\CarbonImmutable::instance($instant)->utc()->format('Y-m-d H:i:s');
+        return CarbonImmutable::instance($instant)->utc()->format('Y-m-d H:i:s');
     }
 }

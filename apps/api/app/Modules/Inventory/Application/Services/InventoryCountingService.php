@@ -13,8 +13,10 @@ use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingEvent;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
+use App\Modules\Inventory\Domain\InventoryScale;
 use App\Modules\Inventory\Domain\StockLevel;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -527,11 +529,15 @@ class InventoryCountingService
         $userId = (string) $user->id;
 
         DB::transaction(function () use ($item, $quantity, $notes, $userId): void {
+            $now = now();
             $item->final_qty = $quantity;
             $item->resolution_method = ItemResolutionMethod::ManualOverride;
             $item->resolution_notes = $notes;
             $item->resolved_by_user_id = $userId;
-            $item->resolved_at = now();
+            $item->resolved_at = $now;
+            // Replay boundary for a manual override is fixed to resolved_at — the
+            // override request carries no count timestamp of its own (B3 §1).
+            $item->final_qty_as_of = $now;
             $item->is_flagged = true;
             $item->flag_reason = 'manual_override';
             $item->save();
@@ -562,6 +568,22 @@ class InventoryCountingService
         }
 
         DB::transaction(function () use ($counting, $user): void {
+            // Freeze each auto-resolved item's replay boundary before the
+            // finalize event fires (the queued listener reads final_qty_as_of to
+            // choose the replay path vs the legacy delta path). Manual overrides
+            // already stamped their own as-of at override time.
+            foreach ($counting->items as $item) {
+                if ($item->final_qty_as_of !== null) {
+                    continue;
+                }
+
+                $asOf = $this->resolveFinalQtyAsOf($item);
+                if ($asOf !== null) {
+                    $item->final_qty_as_of = Carbon::instance($asOf);
+                    $item->save();
+                }
+            }
+
             // Finalize the counting
             $counting->transitionTo(CountingStatus::Finalized);
 
@@ -590,6 +612,43 @@ class InventoryCountingService
                 );
             });
         });
+    }
+
+    /**
+     * Resolve the replay boundary (`final_qty_as_of`) for an auto-resolved item:
+     * the skew-corrected estimate of the count that produced `final_qty`.
+     *
+     * The lowest-numbered count whose value equals `final_qty` supplies the
+     * boundary. When counters agree (or all match theoretical) any agreeing
+     * count yields the same replay result — no net movement can sit between two
+     * agreeing counts — so the earliest is a safe, deterministic choice. Manual
+     * overrides never reach here (they stamp resolved_at at override time).
+     * Returns null when no count matches, which routes the item to the legacy
+     * delta path.
+     */
+    private function resolveFinalQtyAsOf(InventoryCountingItem $item): ?CarbonInterface
+    {
+        if ($item->resolution_method === ItemResolutionMethod::ManualOverride) {
+            return $item->resolved_at;
+        }
+
+        $finalQty = $item->final_qty;
+        if ($finalQty === null) {
+            return null;
+        }
+
+        foreach ([1, 2, 3] as $phase) {
+            /** @var numeric-string|null $qty */
+            $qty = $item->{"count_{$phase}_qty"};
+            /** @var CarbonInterface|null $estimate */
+            $estimate = $item->{"count_{$phase}_at_estimate"};
+
+            if ($qty !== null && $estimate !== null && bccomp((string) $qty, (string) $finalQty, InventoryScale::QUANTITY_SCALE) === 0) {
+                return $estimate;
+            }
+        }
+
+        return null;
     }
 
     /**
