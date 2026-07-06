@@ -8,10 +8,12 @@ use App\Modules\Loyalty\Application\Services\EarningProcessingService;
 use App\Modules\Loyalty\Domain\Entities\Enrollment;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
+use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Events\ReceiptCompleted;
 use App\Modules\POS\Domain\Receipt;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 
 /**
  * Listens for receipt completion and awards loyalty points
@@ -28,6 +30,14 @@ final class EarnPointsOnReceiptCompleted implements ShouldQueue
         // Load receipt first to get contact_id
         $receipt = Receipt::with('lines.product')->find($event->receiptId);
         if ($receipt === null) {
+            return;
+        }
+
+        // Earn-eligibility guard (mirrors PosCoreReceiptProjection::earnLoyaltyPoints
+        // at :872): only a real, non-training Sale receipt may earn. This listener
+        // is the live earn path for server-authored receipts (e.g. the exchange
+        // flow) — refunds/voids/returns and training receipts earn nothing.
+        if ($receipt->receipt_type !== ReceiptType::Sale || $receipt->is_training) {
             return;
         }
 
@@ -72,12 +82,12 @@ final class EarnPointsOnReceiptCompleted implements ShouldQueue
                 'product_id' => $line->product_id,
                 'category_id' => $line->product->category_id ?? null,
                 'quantity' => $line->quantity,
-                'price' => (float) $line->unit_price,
+                'price' => (string) $line->unit_price,
             ];
         }
 
         $transactionData = [
-            'amount' => (float) $event->totalAmount,
+            'amount' => $event->totalAmount,
             'currency' => $event->currency,
             'items' => $items,
             'timestamp' => $receipt->posted_at ?? now(),
@@ -92,6 +102,20 @@ final class EarnPointsOnReceiptCompleted implements ShouldQueue
                     sourceId: $event->receiptId,
                     description: "POS receipt #{$receipt->receipt_number}",
                 );
+            } catch (InvalidArgumentException $e) {
+                // earnPoints() throws InvalidArgumentException for BOTH the
+                // already-earned duplicate AND enrollment-not-found. Only the
+                // duplicate is the idempotent replay/double-fire we swallow —
+                // discriminate by message (mirrors SaleEarningService::earnForSale).
+                // Anything else falls through to the loud-log branch.
+                if (str_contains($e->getMessage(), 'already earned')) {
+                    continue;
+                }
+                Log::error('Failed to earn loyalty points on receipt completion', [
+                    'receipt_id' => $event->receiptId,
+                    'enrollment_id' => $enrollment->id,
+                    'error' => $e->getMessage(),
+                ]);
             } catch (\Throwable $e) {
                 Log::error('Failed to earn loyalty points on receipt completion', [
                     'receipt_id' => $event->receiptId,

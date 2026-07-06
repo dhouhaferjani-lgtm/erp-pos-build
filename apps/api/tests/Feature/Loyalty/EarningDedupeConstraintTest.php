@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Loyalty;
 
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Contact\Domain\Contact;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Loyalty\Application\Listeners\EarnPointsOnReceiptCompleted;
 use App\Modules\Loyalty\Application\Services\EarningProcessingService;
 use App\Modules\Loyalty\Domain\Entities\EarningRule;
 use App\Modules\Loyalty\Domain\Entities\Enrollment;
@@ -14,8 +19,16 @@ use App\Modules\Loyalty\Domain\Enums\EarningRuleType;
 use App\Modules\Loyalty\Domain\Enums\EnrollmentStatus;
 use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Enums\TransactionType;
+use App\Modules\POS\Domain\Enums\FiscalStatus;
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
+use App\Modules\POS\Domain\Events\ReceiptCompleted;
+use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptLine;
+use App\Modules\POS\Domain\Terminal;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use PDOException;
@@ -206,5 +219,222 @@ final class EarningDedupeConstraintTest extends TestCase
         // Metadata still carries the refs (audit intact).
         self::assertSame('pos_receipt', $row->metadata['source_type'] ?? null);
         self::assertSame($sourceId, $row->metadata['source_id'] ?? null);
+    }
+
+    // --- Task 8 (LB-4): quiet + rule-19-clean listener + earn-eligibility guard ---
+
+    /**
+     * @return array{0: Company, 1: Location, 2: Terminal, 3: User}
+     */
+    private function createReceiptScaffold(string $tenantId): array
+    {
+        $company = Company::factory()->create(['tenant_id' => $tenantId]);
+        $location = Location::factory()->create(['company_id' => $company->id]);
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $tenantId,
+            'company_id' => $company->id,
+            'location_id' => $location->id,
+        ]);
+        $cashier = User::factory()->create(['tenant_id' => $tenantId]);
+
+        return [$company, $location, $terminal, $cashier];
+    }
+
+    private function createContact(string $tenantId, string $companyId): Contact
+    {
+        // NOTE: 'id' is deliberately NOT in Contact::$fillable, so a mass-assigned
+        // 'id' is silently dropped and HasUuids generates a fresh one — return the
+        // model and read ->id back rather than trying to pin a pre-chosen UUID.
+        return Contact::create([
+            'tenant_id' => $tenantId,
+            'company_id' => $companyId,
+            'first_name' => 'Jane',
+            'last_name' => 'Doe-'.Str::random(6),
+            'email' => 'contact-'.Str::uuid().'@example.com',
+            'is_active' => true,
+        ]);
+    }
+
+    /**
+     * @param  array{0: Company, 1: Location, 2: Terminal, 3: User}  $scaffold
+     */
+    private function createReceiptFor(
+        string $tenantId,
+        array $scaffold,
+        string $contactId,
+        string $total,
+        ReceiptType $receiptType = ReceiptType::Sale,
+        bool $isTraining = false,
+        ?string $originalReceiptId = null,
+        ?ReturnReason $returnReason = null,
+    ): Receipt {
+        [$company, $location, $terminal, $cashier] = $scaffold;
+
+        return Receipt::factory()
+            ->withTotal($total, '0.000')
+            ->create([
+                'tenant_id' => $tenantId,
+                'company_id' => $company->id,
+                'location_id' => $location->id,
+                'terminal_id' => $terminal->id,
+                'cashier_id' => $cashier->id,
+                'contact_id' => $contactId,
+                'currency' => 'TND',
+                'receipt_type' => $receiptType,
+                'is_training' => $isTraining,
+                'training_flag' => $isTraining,
+                'original_receipt_id' => $originalReceiptId,
+                'return_reason' => $returnReason,
+                'fiscal_status' => FiscalStatus::Fiscalized,
+            ]);
+    }
+
+    private function createReceiptLine(Receipt $receipt, string $unitPrice, string $lineTotal): ReceiptLine
+    {
+        return ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => null,
+            'product_code' => 'PROD-001',
+            'product_name' => 'Widget A',
+            'quantity' => '1.0000',
+            'unit' => 'pcs',
+            'unit_price' => $unitPrice,
+            'line_total' => $lineTotal,
+            'tax_rate' => '0.00',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+        ]);
+    }
+
+    private function listener(): EarnPointsOnReceiptCompleted
+    {
+        return app(EarnPointsOnReceiptCompleted::class);
+    }
+
+    public function test_listener_does_not_log_error_and_does_not_double_earn_on_duplicate_receipt(): void
+    {
+        $tenantId = (string) Str::uuid();
+        $scaffold = $this->createReceiptScaffold($tenantId);
+        $contact = $this->createContact($tenantId, $scaffold[0]->id);
+        $program = $this->seedActiveSpendProgram($tenantId, '1');
+        $enrollment = $this->enrollContactMember($tenantId, $program->id, $contact->id);
+
+        $receipt = $this->createReceiptFor($tenantId, $scaffold, $contact->id, '10.000');
+        $this->createReceiptLine($receipt, '10.000', '10.000');
+
+        // Pre-existing earn for this exact receipt (simulates the fiscal
+        // projection having already earned it, or a redelivered queue job).
+        $this->service()->earnPoints(
+            $enrollment->id,
+            ['amount' => '10.000', 'currency' => 'TND'],
+            'pos_receipt',
+            $receipt->id,
+        );
+
+        $event = new ReceiptCompleted(
+            receiptId: $receipt->id,
+            tenantId: $tenantId,
+            companyId: $scaffold[0]->id,
+            customerId: null,
+            totalAmount: '10.000',
+            currency: 'TND',
+        );
+
+        Log::spy();
+
+        $this->listener()->handle($event);
+
+        Log::shouldNotHaveReceived('error');
+
+        self::assertSame(
+            1,
+            Transaction::query()
+                ->where('enrollment_id', $enrollment->id)
+                ->where('transaction_type', TransactionType::Earn)
+                ->count(),
+        );
+    }
+
+    public function test_listener_earns_fresh_receipt_with_exact_bcmath_string_amount(): void
+    {
+        $tenantId = (string) Str::uuid();
+        $scaffold = $this->createReceiptScaffold($tenantId);
+        $contact = $this->createContact($tenantId, $scaffold[0]->id);
+        $program = $this->seedActiveSpendProgram($tenantId, '1');
+        $enrollment = $this->enrollContactMember($tenantId, $program->id, $contact->id);
+
+        $receipt = $this->createReceiptFor($tenantId, $scaffold, $contact->id, '25.500');
+        $this->createReceiptLine($receipt, '25.500', '25.500');
+
+        $event = new ReceiptCompleted(
+            receiptId: $receipt->id,
+            tenantId: $tenantId,
+            companyId: $scaffold[0]->id,
+            customerId: null,
+            totalAmount: '25.500',
+            currency: 'TND',
+        );
+
+        Log::spy();
+
+        $this->listener()->handle($event);
+
+        Log::shouldNotHaveReceived('error');
+
+        $transaction = Transaction::query()
+            ->where('enrollment_id', $enrollment->id)
+            ->where('transaction_type', TransactionType::Earn)
+            ->where('source_type', 'pos_receipt')
+            ->where('source_id', $receipt->id)
+            ->firstOrFail();
+
+        self::assertSame('25.500', $transaction->amount);
+    }
+
+    public function test_listener_earns_nothing_for_a_non_sale_receipt(): void
+    {
+        $tenantId = (string) Str::uuid();
+        $scaffold = $this->createReceiptScaffold($tenantId);
+        $contact = $this->createContact($tenantId, $scaffold[0]->id);
+        $program = $this->seedActiveSpendProgram($tenantId, '1');
+        $enrollment = $this->enrollContactMember($tenantId, $program->id, $contact->id);
+
+        // Original sale receipt the return references (FK + CHECK constraint).
+        $originalSale = $this->createReceiptFor($tenantId, $scaffold, $contact->id, '25.500');
+        $this->createReceiptLine($originalSale, '25.500', '25.500');
+
+        $returnReceipt = $this->createReceiptFor(
+            $tenantId,
+            $scaffold,
+            $contact->id,
+            '-25.500',
+            receiptType: ReceiptType::Return,
+            originalReceiptId: $originalSale->id,
+            returnReason: ReturnReason::CustomerChangedMind,
+        );
+
+        $event = new ReceiptCompleted(
+            receiptId: $returnReceipt->id,
+            tenantId: $tenantId,
+            companyId: $scaffold[0]->id,
+            customerId: null,
+            totalAmount: '-25.500',
+            currency: 'TND',
+        );
+
+        Log::spy();
+
+        $this->listener()->handle($event);
+
+        Log::shouldNotHaveReceived('error');
+
+        self::assertSame(
+            0,
+            Transaction::query()
+                ->where('enrollment_id', $enrollment->id)
+                ->where('transaction_type', TransactionType::Earn)
+                ->count(),
+        );
     }
 }

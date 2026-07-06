@@ -16,10 +16,13 @@ use InvalidArgumentException;
 
 /**
  * Credits loyalty points for a completed POS sale using the existing
- * points-per-money-unit Spend rule. Relocates the (retired)
- * EarnPointsOnReceiptCompleted listener logic behind the cross-module
- * contract, reading the buyer from the sealed sale snapshot and passing
- * money as strings (rule 19). Best-effort: never throws to the caller.
+ * points-per-money-unit Spend rule. Invoked behind the cross-module
+ * contract by PosCoreReceiptProjection for device-authored sales, reading
+ * the buyer from the sealed sale snapshot and passing money as strings
+ * (rule 19). EarnPointsOnReceiptCompleted is NOT retired — it remains the
+ * live earn path for server-authored receipts (e.g. the exchange flow),
+ * listening directly for the ReceiptCompleted domain event. Best-effort:
+ * never throws to the caller.
  */
 final readonly class SaleEarningService implements LoyaltyEarningContract
 {
