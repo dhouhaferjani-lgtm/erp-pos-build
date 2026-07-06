@@ -12,6 +12,8 @@
       "statusPlaceholder": "جميع الحالات",
       "matchStatus": "حالة المطابقة",
       "matchStatusPlaceholder": "جميع الحالات",
+      "pendingReceipt": "ربط الاستلام",
+      "pendingReceiptPlaceholder": "كل الفواتير",
       "dateFrom": "من",
       "dateTo": "إلى"
     },
@@ -90,7 +92,16 @@
       "rematched": "تم تحديث حالة المطابقة",
       "paymentRecorded": "تم تسجيل الدفع بنجاح",
       "attachmentUploaded": "تم رفع المرفق",
-      "attachmentDeleted": "تم حذف المرفق"
+      "attachmentDeleted": "تم حذف المرفق",
+      "receiptsLinked": "تم حفظ ربط الاستلام"
+    },
+    "pendingReceipt": {
+      "badge": "بانتظار الاستلام",
+      "detail": "لا يمكن ترحيل هذه الفاتورة حتى يتم ربط البضاعة المستلمة.",
+      "linkTitle": "ربط الاستلامات",
+      "linkDescription": "أدخل سطر الاستلام المرحل لكل سطر فاتورة.",
+      "linkAction": "ربط الاستلامات",
+      "receiptLineId": "سطر الاستلام للكمية {{quantity}}"
     },
     "create": {
       "title": "فاتورة مورد جديدة",
@@ -116,6 +127,21 @@
       "linkedPOs": "أوامر الشراء المرتبطة: {{numbers}}",
       "crossSupplierTooltip": "اختر بنود استلام من مورد واحد.",
       "selectReceiptPo": "اختيار استلامات {{number}}",
+      "entryMode": {
+        "title": "مسار الإدخال",
+        "description": "اختر ما إذا كانت الفاتورة مرتبطة باستلامات قائمة أو تبدأ مسار الاستلام.",
+        "pending": "البضاعة غير مستلمة",
+        "delivered": "البضاعة مستلمة",
+        "receipts": "استلامات قائمة"
+      },
+      "invoiceFirst": {
+        "location": "موقع الاستلام",
+        "externalReference": "مرجع التسليم",
+        "externalDate": "تاريخ التسليم"
+      },
+      "manualLine": {
+        "productId": "معرف المنتج"
+      },
       "columns": {
         "product": "المنتج",
         "received": "مُستلم",

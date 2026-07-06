@@ -19,6 +19,7 @@ import type {
   SupplierInvoiceDetail,
   SupplierInvoiceListParams,
   CreateSupplierInvoicePayload,
+  LinkSupplierInvoiceReceiptsPayload,
   DuplicateSupplierInvoiceReferenceResult,
   DocumentAttachment,
   RecordPaymentPayload,
@@ -123,6 +124,7 @@ export function useSupplierInvoiceList(params: SupplierInvoiceListParams) {
       if (params.date_from) cleanParams['date_from'] = params.date_from
       if (params.date_to) cleanParams['date_to'] = params.date_to
       if (params.search) cleanParams['search'] = params.search
+      if (params.pending_receipt) cleanParams['pending_receipt'] = params.pending_receipt
       if (params.cursor) cleanParams['cursor'] = params.cursor
 
       const response = await api.get<SupplierInvoiceListResponse>('/supplier-invoices', {
@@ -362,6 +364,23 @@ export function usePostSupplierInvoice(id: string) {
   return useMutation({
     mutationFn: () =>
       apiPost<SupplierInvoiceDetail>(`/supplier-invoices/${id}/post`, {}),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(tenantScopedKey([...supplierInvoiceKeys.detail(id)]), updated)
+      void queryClient.invalidateQueries({
+        predicate: supplierInvoiceListInvalidationPredicate(tenantId, companyId),
+      })
+    },
+  })
+}
+
+export function useLinkSupplierInvoiceReceipts(id: string) {
+  const queryClient = useQueryClient()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
+  return useMutation({
+    mutationFn: (payload: LinkSupplierInvoiceReceiptsPayload) =>
+      apiPost<SupplierInvoiceDetail>(`/supplier-invoices/${id}/link-receipts`, payload),
     onSuccess: (updated) => {
       queryClient.setQueryData(tenantScopedKey([...supplierInvoiceKeys.detail(id)]), updated)
       void queryClient.invalidateQueries({

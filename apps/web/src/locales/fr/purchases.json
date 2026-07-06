@@ -12,6 +12,8 @@
       "statusPlaceholder": "Tous les statuts",
       "matchStatus": "Statut de rapprochement",
       "matchStatusPlaceholder": "Tous les statuts",
+      "pendingReceipt": "Association réception",
+      "pendingReceiptPlaceholder": "Toutes les factures",
       "dateFrom": "Du",
       "dateTo": "Au"
     },
@@ -90,7 +92,16 @@
       "rematched": "Statut de rapprochement mis à jour",
       "paymentRecorded": "Paiement enregistré avec succès",
       "attachmentUploaded": "Pièce jointe envoyée",
-      "attachmentDeleted": "Pièce jointe supprimée"
+      "attachmentDeleted": "Pièce jointe supprimée",
+      "receiptsLinked": "Réceptions associées"
+    },
+    "pendingReceipt": {
+      "badge": "Réception en attente",
+      "detail": "Cette facture ne peut pas être comptabilisée avant l'association des marchandises reçues.",
+      "linkTitle": "Associer des réceptions",
+      "linkDescription": "Renseignez la ligne de réception validée pour chaque ligne de facture.",
+      "linkAction": "Associer les réceptions",
+      "receiptLineId": "Ligne de réception pour {{quantity}}"
     },
     "create": {
       "title": "Nouvelle facture fournisseur",
@@ -116,6 +127,21 @@
       "linkedPOs": "BC liés : {{numbers}}",
       "crossSupplierTooltip": "Sélectionnez des réceptions d'un seul fournisseur.",
       "selectReceiptPo": "Sélectionner les réceptions de {{number}}",
+      "entryMode": {
+        "title": "Mode de saisie",
+        "description": "Choisissez si la facture est liée à des réceptions existantes ou démarre le flux de réception.",
+        "pending": "Marchandises non reçues",
+        "delivered": "Marchandises livrées",
+        "receipts": "Réceptions existantes"
+      },
+      "invoiceFirst": {
+        "location": "Emplacement de réception",
+        "externalReference": "Référence livraison",
+        "externalDate": "Date livraison"
+      },
+      "manualLine": {
+        "productId": "ID produit"
+      },
       "columns": {
         "product": "Produit",
         "received": "Reçu",

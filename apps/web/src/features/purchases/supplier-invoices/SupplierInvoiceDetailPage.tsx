@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -13,16 +13,21 @@ import {
   AlertTriangle,
   XCircle,
   AlertCircle,
+  Link2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { EntityLink } from '../../../components/molecules/EntityLink'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { formatCurrency, formatQuantity } from '../../../lib/decimal'
 import type { SupplierInvoiceMatchStatus } from './types'
+import { usePermissions } from '@/hooks/usePermissions'
 import {
   useSupplierInvoiceDetail,
   usePostSupplierInvoice,
   useRematchSupplierInvoice,
+  useLinkSupplierInvoiceReceipts,
+  useOpenPurchaseOrdersForSupplier,
+  usePurchaseOrderReceiptLinesForSupplierInvoice,
   useUploadAttachment,
   useDeleteAttachment,
   downloadAttachment,
@@ -48,12 +53,21 @@ function MatchIcon({ status }: { status: SupplierInvoiceMatchStatus }) {
 export function SupplierInvoiceDetailPage() {
   const { t } = useTranslation(['common', 'purchases'])
   const { id = '' } = useParams<{ id: string }>()
+  const { hasPermission } = usePermissions()
 
   const { data: invoice, isLoading } = useSupplierInvoiceDetail(id)
   const postMutation = usePostSupplierInvoice(id)
   const rematchMutation = useRematchSupplierInvoice(id)
+  const linkReceiptsMutation = useLinkSupplierInvoiceReceipts(id)
   const uploadMutation = useUploadAttachment(id)
   const deleteMutation = useDeleteAttachment(id)
+  const [receiptLineLinks, setReceiptLineLinks] = useState<Record<string, string>>({})
+  const canLinkReceipts = hasPermission('supplier-invoices.link-receipts')
+  const openPurchaseOrdersQuery = useOpenPurchaseOrdersForSupplier(invoice?.partner.id ?? '')
+  const supplierReceiptLinesQuery = usePurchaseOrderReceiptLinesForSupplierInvoice(
+    (openPurchaseOrdersQuery.data ?? []).map((po) => po.id),
+    invoice?.pending_receipt === true && canLinkReceipts,
+  )
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const paymentDialogRef = useRef<HTMLDialogElement>(null)
@@ -78,7 +92,14 @@ export function SupplierInvoiceDetailPage() {
 
   const isPosted = invoice.status === 'posted' || invoice.status === 'paid'
   const isQtyBlocked = invoice.match_status === 'qty_blocked'
-  const postDisabled = isQtyBlocked
+  const hasPendingReceipt = invoice.pending_receipt === true
+  const postDisabled = isQtyBlocked || hasPendingReceipt
+  const pendingReceiptLinks = invoice.lines
+    .map((line) => ({
+      invoice_line_id: line.id,
+      receipt_line_id: (receiptLineLinks[line.id] ?? '').trim(),
+    }))
+    .filter((link) => link.receipt_line_id !== '')
 
   function handlePost() {
     postMutation.mutate(undefined, {
@@ -100,6 +121,23 @@ export function SupplierInvoiceDetailPage() {
         toast.success(t('purchases:supplierInvoices.toast.rematched'))
       },
     })
+  }
+
+  function handleLinkReceipts() {
+    linkReceiptsMutation.mutate(
+      { links: pendingReceiptLinks },
+      {
+        onSuccess: () => {
+          toast.success(t('purchases:supplierInvoices.toast.receiptsLinked'))
+        },
+        onError: (err: unknown) => {
+          const message =
+            (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error
+              ?.message ?? t('common:errors.unexpected')
+          toast.error(message)
+        },
+      },
+    )
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -202,6 +240,16 @@ export function SupplierInvoiceDetailPage() {
           </div>
         )}
 
+        {!isPosted && hasPendingReceipt && (
+          <div
+            data-testid="pending-receipt-banner"
+            className={`${tokens.alert.base} ${tokens.alert.warning}`}
+          >
+            <AlertTriangle className="inline me-2 h-4 w-4" />
+            {t('purchases:supplierInvoices.pendingReceipt.detail')}
+          </div>
+        )}
+
         {/* Invoice meta */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
@@ -266,6 +314,66 @@ export function SupplierInvoiceDetailPage() {
           </div>
         )}
       </div>
+
+      {hasPendingReceipt && !isPosted && canLinkReceipts ? (
+        <div className={`${tokens.card.base} space-y-4`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className={tokens.heading.section}>
+                {t('purchases:supplierInvoices.pendingReceipt.linkTitle')}
+              </h2>
+              <p className={`mt-1 text-sm ${textColors.tertiary}`}>
+                {t('purchases:supplierInvoices.pendingReceipt.linkDescription')}
+              </p>
+            </div>
+            <button
+              type="button"
+              data-testid="link-receipts"
+              disabled={pendingReceiptLinks.length === 0 || linkReceiptsMutation.isPending}
+              onClick={handleLinkReceipts}
+              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+            >
+              <Link2 className="me-2 h-4 w-4" />
+              {t('purchases:supplierInvoices.pendingReceipt.linkAction')}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {invoice.lines.map((line) => (
+              <div key={line.id}>
+                <label className={tokens.label.base} htmlFor={`link-receipt-line-id-${line.id}`}>
+                  {t('purchases:supplierInvoices.pendingReceipt.receiptLineId', {
+                    quantity: formatQuantity(line.quantity),
+                  })}
+                </label>
+                <select
+                  id={`link-receipt-line-id-${line.id}`}
+                  data-testid={`link-receipt-line-selector-${line.id}`}
+                  className={tokens.select.base}
+                  value={receiptLineLinks[line.id] ?? ''}
+                  onChange={(event) => {
+                    setReceiptLineLinks((current) => ({
+                      ...current,
+                      [line.id]: event.target.value,
+                    }))
+                  }}
+                >
+                  <option value="">{t('purchases:supplierInvoices.pendingReceipt.selectReceiptLine')}</option>
+                  {(supplierReceiptLinesQuery.data ?? [])
+                    .filter((receiptLine) => (
+                      (line.product_id === undefined || line.product_id === null || receiptLine.product_id === line.product_id)
+                      && (line.variant_id === undefined || line.variant_id === receiptLine.variant_id)
+                    ))
+                    .map((receiptLine) => (
+                      <option key={receiptLine.id} value={receiptLine.id}>
+                        {receiptLine.receipt_number} · {formatQuantity(receiptLine.received_qty)}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* Invoice Lines */}
       <div className={tokens.card.base}>

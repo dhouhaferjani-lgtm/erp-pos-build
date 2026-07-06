@@ -8,7 +8,7 @@
  * 4. Per-line match table renders ordered/received/invoiced/matchable/price_variance columns
  */
 
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -18,15 +18,23 @@ import type { SupplierInvoiceDetail } from './types'
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
 const mockApiGet = vi.hoisted(() => vi.fn())
+const mockApiPost = vi.hoisted(() => vi.fn())
+const mockApiRawGet = vi.hoisted(() => vi.fn())
+const mockHasPermission = vi.hoisted(() => vi.fn(() => true))
 
 vi.mock('../../../lib/api', async () => {
   const actual = await vi.importActual<typeof import('../../../lib/api')>('../../../lib/api')
   return {
     ...actual,
     apiGet: mockApiGet,
-    api: { ...actual.api, get: vi.fn() },
+    apiPost: mockApiPost,
+    api: { ...actual.api, get: mockApiRawGet },
   }
 })
+
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
+}))
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -144,8 +152,43 @@ let SupplierInvoiceDetailPage: React.ComponentType<Record<string, never>>
 beforeEach(async () => {
   vi.clearAllMocks()
   setTenant()
+  mockHasPermission.mockReturnValue(true)
   // apiGet returns unwrapped data
-  mockApiGet.mockResolvedValue(makeDetail())
+  mockApiGet.mockImplementation((url: string) => {
+    if (url.includes('/receipt-lines')) {
+      return Promise.resolve([
+        {
+          id: 'receipt-line-1',
+          receipt_number: 'GRN-2026-0031',
+          external_reference: 'BL-31',
+          external_date: '2026-07-05',
+          product_id: 'product-1',
+          variant_id: null,
+          received_qty: '10.0000',
+          free_qty: '0.0000',
+          quantity_invoiced: '4.0000',
+          free_quantity_invoiced: '0.0000',
+          accrual_unit_cost: '5.200000',
+          received_unit_price: '5.200',
+          po_line_id: 'po-line-1',
+        },
+      ])
+    }
+    return Promise.resolve(makeDetail())
+  })
+  mockApiRawGet.mockResolvedValue({
+    data: {
+      data: [
+        {
+          id: 'po-1',
+          document_number: 'PO-2026-001',
+          currency: 'TND',
+          total: '1500.000',
+        },
+      ],
+    },
+  })
+  mockApiPost.mockResolvedValue(makeDetail({ pending_receipt: false }))
   const mod = await import('./SupplierInvoiceDetailPage')
   SupplierInvoiceDetailPage = mod.SupplierInvoiceDetailPage
 })
@@ -198,6 +241,64 @@ describe('SupplierInvoiceDetailPage — Post action', () => {
       const btn = screen.getByTestId('btn-post')
       // Not blocking on FE (policy is server-side), just surface the state
       expect(btn).toBeInTheDocument()
+    })
+  })
+
+  it('disables posting while receipt association is pending', async () => {
+    mockApiGet.mockResolvedValue(makeDetail({ pending_receipt: true, match_status: 'unmatched' }))
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('btn-post')).toBeDisabled()
+      expect(screen.getByTestId('pending-receipt-banner')).toHaveTextContent(
+        'purchases:supplierInvoices.pendingReceipt.detail'
+      )
+    })
+  })
+})
+
+describe('SupplierInvoiceDetailPage — receipt linking', () => {
+  it('links pending invoice lines to receipt lines', async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url.includes('/receipt-lines')) {
+        return Promise.resolve([
+          {
+            id: 'receipt-line-1',
+            receipt_number: 'GRN-2026-0031',
+            product_id: 'product-1',
+            variant_id: null,
+            received_qty: '10.0000',
+            free_qty: '0.0000',
+            quantity_invoiced: '4.0000',
+            free_quantity_invoiced: '0.0000',
+            accrual_unit_cost: '5.200000',
+            received_unit_price: '5.200',
+            po_line_id: 'po-line-1',
+          },
+        ])
+      }
+      return Promise.resolve(makeDetail({ pending_receipt: true, match_status: 'unmatched' }))
+    })
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await screen.findByText(/GRN-2026-0031/)
+    fireEvent.change(await screen.findByTestId('link-receipt-line-selector-line-1'), {
+      target: { value: 'receipt-line-1' },
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('link-receipts')).not.toBeDisabled()
+    })
+    fireEvent.click(screen.getByTestId('link-receipts'))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/supplier-invoices/inv-detail-1/link-receipts', {
+        links: [
+          {
+            invoice_line_id: 'line-1',
+            receipt_line_id: 'receipt-line-1',
+          },
+        ],
+      })
     })
   })
 })

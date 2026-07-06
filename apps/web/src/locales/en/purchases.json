@@ -12,6 +12,8 @@
       "statusPlaceholder": "All statuses",
       "matchStatus": "Match Status",
       "matchStatusPlaceholder": "All match statuses",
+      "pendingReceipt": "Receipt association",
+      "pendingReceiptPlaceholder": "All invoices",
       "dateFrom": "From",
       "dateTo": "To"
     },
@@ -90,7 +92,16 @@
       "rematched": "Match status updated",
       "paymentRecorded": "Payment recorded successfully",
       "attachmentUploaded": "Attachment uploaded",
-      "attachmentDeleted": "Attachment deleted"
+      "attachmentDeleted": "Attachment deleted",
+      "receiptsLinked": "Receipt links saved"
+    },
+    "pendingReceipt": {
+      "badge": "Pending receipt",
+      "detail": "This invoice cannot be posted until its received goods are associated.",
+      "linkTitle": "Associate receipts",
+      "linkDescription": "Enter the posted receipt line for each invoice line to clear the pending state.",
+      "linkAction": "Associate receipts",
+      "receiptLineId": "Receipt line for {{quantity}}"
     },
     "create": {
       "title": "New Supplier Invoice",
@@ -116,6 +127,21 @@
       "linkedPOs": "Linked POs: {{numbers}}",
       "crossSupplierTooltip": "Select receipt rows from one supplier.",
       "selectReceiptPo": "Select receipts from {{number}}",
+      "entryMode": {
+        "title": "Entry route",
+        "description": "Choose whether this invoice is linked to existing receipts or starts the receipt workflow.",
+        "pending": "Goods not received",
+        "delivered": "Goods delivered",
+        "receipts": "Existing receipts"
+      },
+      "invoiceFirst": {
+        "location": "Receiving location",
+        "externalReference": "Delivery reference",
+        "externalDate": "Delivery date"
+      },
+      "manualLine": {
+        "productId": "Product ID"
+      },
       "columns": {
         "product": "Product",
         "received": "Received",
