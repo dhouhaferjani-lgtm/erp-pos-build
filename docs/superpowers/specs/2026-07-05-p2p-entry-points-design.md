@@ -266,7 +266,9 @@ consistent (receipt without SI is real goods; user retries SI creation from the 
 
 Generic concept = **read-model projection over `stock_movements`** grouped by polymorphic
 reference (GoodsReceipt, DeliveryNote Document, StockTransfer, adjustment batch):
-direction (`MovementType.isInbound()`), source label, location, lines, actor, timestamp.
+direction derived from the quantity_before/after delta (`StockMovement::directionForRow`
+— amended during W6 review: `MovementType.isInbound()` misclassifies negative
+Adjustments), source label, location, lines, actor, timestamp.
 - **v1:** `GET /entry-exit-notes` read endpoint (paginated, filters: direction, location,
   date range, source type) + simple list page (Inventaire section) + **GRN print template**
   `goods_receipt.blade.php` (bon de réception: GRN, supplier, BL ref/date, lines,
