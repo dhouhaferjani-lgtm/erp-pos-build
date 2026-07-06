@@ -311,6 +311,7 @@ class RolesAndPermissionsSeeder extends Seeder
             // Loyalty
             'loyalty.view',
             'loyalty.manage',
+            'loyalty.enroll', // narrow enrollment right — cashiers enroll by default, owner 2026-07-05
 
             // CRM / Contacts
             'contacts.view',
@@ -480,7 +481,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'menus.view', 'menus.manage',
             'promotions.view', 'promotions.manage',
             'coupons.view', 'coupons.manage',
-            'loyalty.view', 'loyalty.manage',
+            'loyalty.view', 'loyalty.manage', 'loyalty.enroll',
             'contacts.view', 'contacts.create', 'contacts.update', 'contacts.delete',
             'marketplace.browse', 'marketplace.order', 'marketplace.view_orders',
             'catalog_cart.view', 'catalog_cart.create', 'catalog_cart.convert_po', 'catalog_cart.convert_so',
@@ -524,6 +525,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'work-orders.view',
             'pos.operate_terminal', 'pos.audit_sync', 'pos.manage_shifts', 'pos.generate_z_report', 'pos.view_receipts',
             'pos.tolerance.apply',
+            'loyalty.enroll',
             'pos_orders.view', 'pos_orders.create', 'pos_orders.update',
             'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',
             'batches.view',
