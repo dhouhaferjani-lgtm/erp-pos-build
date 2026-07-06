@@ -21,6 +21,7 @@ use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Inventory\ReceiptLineGuardInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 
@@ -30,7 +31,7 @@ use Illuminate\Support\Facades\DB;
  * This service manages the receiving of goods from purchase orders,
  * including partial receipts, WAC updates, and stock level changes.
  */
-final class GoodsReceiptService
+final class GoodsReceiptService implements ReceiptLineGuardInterface
 {
     private const int QUANTITY_SCALE = 4;
 

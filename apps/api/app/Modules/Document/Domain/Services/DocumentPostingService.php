@@ -15,12 +15,12 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
-use App\Modules\Inventory\Application\Services\GoodsReceiptService;
-use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Shared\Contracts\Inventory\ReceiptLineGuardInterface;
+use App\Shared\Contracts\Inventory\ReservationReleaserInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -46,8 +46,8 @@ final class DocumentPostingService
 
     public function __construct(
         private readonly FiscalHashService $hashService,
-        private readonly StockReservationService $stockReservationService,
-        private readonly GoodsReceiptService $goodsReceiptService,
+        private readonly ReservationReleaserInterface $reservationReleaser,
+        private readonly ReceiptLineGuardInterface $receiptLineGuard,
     ) {}
 
     /**
@@ -182,10 +182,10 @@ final class DocumentPostingService
             $cancelledAt = now();
             $cancelledBy = $actorId ?? (auth()->id() !== null ? (string) auth()->id() : null);
 
-            $this->stockReservationService->releaseBySource(
-                sourceType: ReservationSource::SalesOrder,
+            $this->reservationReleaser->releaseReservationsForSource(
+                sourceType: ReservationSource::SalesOrder->value,
                 sourceId: $salesOrder->id,
-                reason: ReleaseReason::Cancelled,
+                reason: ReleaseReason::Cancelled->value,
                 releasedBy: $cancelledBy,
                 expectedTenantId: $salesOrder->tenant_id,
                 expectedCompanyId: $salesOrder->company_id,
@@ -290,10 +290,10 @@ final class DocumentPostingService
                 );
             }
 
-            $this->stockReservationService->releaseBySource(
-                sourceType: ReservationSource::SalesOrder,
+            $this->reservationReleaser->releaseReservationsForSource(
+                sourceType: ReservationSource::SalesOrder->value,
                 sourceId: $salesOrder->id,
-                reason: ReleaseReason::OrderModified,
+                reason: ReleaseReason::OrderModified->value,
                 releasedBy: $actorId,
                 expectedTenantId: $salesOrder->tenant_id,
                 expectedCompanyId: $salesOrder->company_id,
@@ -327,7 +327,7 @@ final class DocumentPostingService
                 }
             }
 
-            if ($this->goodsReceiptService->poLineIdsWithReceipts($poLineIds) !== []) {
+            if ($this->receiptLineGuard->poLineIdsWithReceipts($poLineIds) !== []) {
                 throw new \DomainException('PURCHASE_ORDER_HAS_RECEIPTS');
             }
 
