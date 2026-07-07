@@ -10,6 +10,7 @@ use App\Modules\Inventory\Presentation\Controllers\EntryExitNoteController;
 use App\Modules\Inventory\Presentation\Controllers\GoodsReceiptController;
 use App\Modules\Inventory\Presentation\Controllers\InventoryCountingController;
 use App\Modules\Inventory\Presentation\Controllers\LocationNodeController;
+use App\Modules\Inventory\Presentation\Controllers\ProductPlacementController;
 use App\Modules\Inventory\Presentation\Controllers\StockLevelController;
 use App\Modules\Inventory\Presentation\Controllers\StockMovementController;
 use App\Modules\Inventory\Presentation\Controllers\StockReservationController;
@@ -308,4 +309,30 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/inventory/nodes/{node}/restore', [LocationNodeController::class, 'restore'])
         ->middleware('can:inventory.adjust')
         ->name('inventory-nodes.restore');
+
+    // Product placements on nodes (one LIVE placement per product+location;
+    // unassign = tombstone for offline delta sync)
+    Route::get('/inventory/nodes/{node}/products', [ProductPlacementController::class, 'products'])
+        ->middleware('can:inventory.view')
+        ->name('inventory-nodes.products');
+
+    Route::post('/inventory/nodes/{node}/assign-products', [ProductPlacementController::class, 'assignProducts'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-nodes.assign-products');
+
+    Route::delete('/inventory/nodes/{node}/products/{product}', [ProductPlacementController::class, 'unassignProduct'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-nodes.unassign-product');
+
+    Route::post('/inventory/placements/bulk-move', [ProductPlacementController::class, 'bulkMove'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-placements.bulk-move');
+
+    Route::get('/inventory/products/{product}/placements', [ProductPlacementController::class, 'productPlacements'])
+        ->middleware('can:inventory.view')
+        ->name('inventory-products.placements');
+
+    Route::put('/inventory/products/{product}/placements', [ProductPlacementController::class, 'setProductPlacement'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-products.placements.set');
 });
