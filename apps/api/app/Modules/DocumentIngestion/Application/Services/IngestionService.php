@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\DocumentIngestion\Application\Services;
 
 use App\Modules\DocumentIngestion\Domain\DocumentIngestion;
+use App\Modules\DocumentIngestion\Application\Jobs\ExtractDocumentJob;
 use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
 use App\Modules\DocumentIngestion\Domain\Enums\IngestionStatus;
 use App\Modules\Media\Application\Services\MediaAttachmentService;
@@ -84,6 +85,8 @@ final readonly class IngestionService
             'created_by' => $userId,
         ]);
 
+        ExtractDocumentJob::dispatch($tenantId, $companyId, $ingestion->id);
+
         return $ingestion;
     }
 
@@ -113,6 +116,9 @@ final readonly class IngestionService
             $ingestion->save();
         }
 
-        return $ingestion->refresh();
+        $fresh = $ingestion->refresh();
+        ExtractDocumentJob::dispatch($fresh->tenant_id, $fresh->company_id, $fresh->id);
+
+        return $fresh;
     }
 }

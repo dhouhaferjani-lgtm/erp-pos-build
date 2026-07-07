@@ -146,4 +146,9 @@ return [
         'circuit_breaker_cooldown' => 30,
     ],
 
+    'erp_ml' => [
+        'url' => env('ERP_ML_URL', 'http://127.0.0.1:8002'),
+        'service_token' => env('ERP_ML_SERVICE_TOKEN'),
+    ],
+
 ];

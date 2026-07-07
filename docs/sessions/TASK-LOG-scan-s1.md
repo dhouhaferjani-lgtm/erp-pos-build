@@ -243,3 +243,97 @@ $ cd apps/api && php artisan test tests/Unit/DocumentIngestion/ExtractionResultD
 
 Deviations:
 - `ExtractDocumentJob` dispatch is deferred to Task 4, where the plan explicitly creates the job and client contract. Task 3 endpoints create/upload/reject/list/detail and move re-extractable rows to `extracting`; Task 4 will add the actual queued extraction dispatch.
+
+## Task 4: ExtractionClient contract + ExtractDocumentJob
+
+Files created/modified:
+- `apps/api/app/Shared/Contracts/ExtractionClientInterface.php`
+- `apps/api/app/Shared/Contracts/ExtractionHints.php`
+- `apps/api/app/Shared/Contracts/ExtractionFailedException.php`
+- `apps/api/app/Modules/DocumentIngestion/Infrastructure/ErpMlExtractionClient.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/Jobs/ExtractDocumentJob.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/Services/IngestionService.php`
+- `apps/api/app/Modules/DocumentIngestion/Providers/DocumentIngestionServiceProvider.php`
+- `apps/api/config/services.php`
+- `apps/api/tests/Feature/DocumentIngestion/ExtractDocumentJobTest.php`
+- `apps/api/tests/Unit/DocumentIngestion/ErpMlExtractionClientTest.php`
+- `docs/sessions/TASK-LOG-scan-s1.md`
+
+Test commands and outputs:
+
+```text
+$ cd apps/api && php artisan test tests/Feature/DocumentIngestion/ExtractDocumentJobTest.php
+
+An error occurred inside PHPUnit.
+
+Message:  Interface "App\Shared\Contracts\ExtractionClientInterface" not found
+Location: /Users/houssamr/Projects/syneriva/apps/erp.scan-to-doc/apps/api/tests/Feature/DocumentIngestion/ExtractDocumentJobTest.php:164
+```
+
+```text
+$ cd apps/api && php artisan test tests/Unit/DocumentIngestion/ErpMlExtractionClientTest.php
+
+   FAIL  Tests\Unit\DocumentIngestion\ErpMlExtractionClientTest
+  ⨯ successful response returns extraction result data                   0.36s
+  ⨯ malformed success response throws extraction failed exception        0.05s
+  ⨯ server error throws extraction failed exception                      0.05s
+  ⨯ unauthorized response throws extraction failed exception             0.04s
+
+  First failure: Class "App\Modules\DocumentIngestion\Infrastructure\ErpMlExtractionClient" not found
+```
+
+```text
+$ cd apps/api && php artisan test tests/Feature/DocumentIngestion/ExtractDocumentJobTest.php
+
+   PASS  Tests\Feature\DocumentIngestion\ExtractDocumentJobTest
+  ✓ job is dispatched on ingestion queue                                 1.68s
+  ✓ happy path persists extraction and moves to needs review             0.34s
+  ✓ client failure marks ingestion failed with structured error and rethrows 0.28s
+
+  Tests:    3 passed (8 assertions)
+  Duration: 2.34s
+```
+
+```text
+$ cd apps/api && php artisan test tests/Unit/DocumentIngestion/ErpMlExtractionClientTest.php
+
+   PASS  Tests\Unit\DocumentIngestion\ErpMlExtractionClientTest
+  ✓ successful response returns extraction result data                   0.36s
+  ✓ malformed success response throws extraction failed exception        0.05s
+  ✓ server error throws extraction failed exception                      0.04s
+  ✓ unauthorized response throws extraction failed exception             0.04s
+
+  Tests:    4 passed (7 assertions)
+  Duration: 0.55s
+```
+
+Regression paths rerun:
+
+```text
+$ cd apps/api && php artisan test tests/Feature/DocumentIngestion/IngestionUploadTest.php
+
+   PASS  Tests\Feature\DocumentIngestion\IngestionUploadTest
+  Tests:    8 passed (32 assertions)
+  Duration: 6.39s
+```
+
+```text
+$ cd apps/api && php artisan test tests/Unit/Config/HorizonQueueCoverageTest.php
+
+   PASS  Tests\Unit\Config\HorizonQueueCoverageTest
+  Tests:    2 passed (8 assertions)
+  Duration: 0.70s
+```
+
+```text
+$ cd apps/api && ./vendor/bin/phpstan analyse app/Modules/DocumentIngestion --debug
+
+/Users/houssamr/Projects/syneriva/apps/erp.scan-to-doc/apps/api/app/Modules/DocumentIngestion/Application/Jobs/ExtractDocumentJob.php
+/Users/houssamr/Projects/syneriva/apps/erp.scan-to-doc/apps/api/app/Modules/DocumentIngestion/Infrastructure/ErpMlExtractionClient.php
+
+ [OK] No errors
+```
+
+Deviations:
+- Task 4 stores `provider='erp_ml'` and `provider_model=null` because `ExtractionClientInterface::extract()` returns only `ExtractionResultData` per the plan signature. The erp-ml response provider/model are validated by the client boundary but not surfaced through the interface yet.
+- Reconciler and suggestions are not invoked in the job until Task 5 creates those services.
