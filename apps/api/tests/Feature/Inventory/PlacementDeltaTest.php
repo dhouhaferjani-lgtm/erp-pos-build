@@ -181,6 +181,43 @@ final class PlacementDeltaTest extends TestCase
         $this->assertCount(2, $result['rows']);
     }
 
+    /**
+     * Malformed sync input must 422, never 500 (review IMPORTANT-3): a
+     * poison cursor persisted on a device would otherwise become a permanent
+     * sync wall on the primary mobile sync path. Covers (a) cursor without
+     * the ts|uuid shape, (b) non-uuid cursor id (PG 22P02 on the uuid
+     * column), (c) unparseable cursor timestamp, (d) unparseable
+     * sync_high_watermark.
+     */
+    public function test_malformed_cursor_returns_422_not_500(): void
+    {
+        $validUuid = '11111111-1111-1111-1111-111111111111';
+
+        foreach ([
+            'garbage-no-pipe',
+            '2026-07-07T00:00:00+00:00|not-a-uuid',
+            'not-a-date|'.$validUuid,
+            'garbage|also-garbage',
+        ] as $cursor) {
+            $response = $this->actingAs($this->user)->getJson('/api/v1/inventory/placements?'.http_build_query([
+                'location_id' => $this->location->id,
+                'cursor' => $cursor,
+            ]));
+
+            $this->assertSame(422, $response->getStatusCode(), "cursor '{$cursor}' must 422, got {$response->getStatusCode()}");
+        }
+    }
+
+    public function test_malformed_sync_high_watermark_returns_422_not_500(): void
+    {
+        $response = $this->actingAs($this->user)->getJson('/api/v1/inventory/placements?'.http_build_query([
+            'location_id' => $this->location->id,
+            'sync_high_watermark' => 'not-a-timestamp',
+        ]));
+
+        $this->assertSame(422, $response->getStatusCode());
+    }
+
     public function test_invalid_location_id_returns_422(): void
     {
         $this->actingAs($this->user)

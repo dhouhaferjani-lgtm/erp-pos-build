@@ -14,6 +14,7 @@ use App\Modules\Inventory\Presentation\Requests\AssignProductsRequest;
 use App\Modules\Inventory\Presentation\Requests\BulkMovePlacementsRequest;
 use App\Modules\Inventory\Presentation\Requests\SetProductPlacementRequest;
 use App\Modules\Product\Domain\Product;
+use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -192,8 +193,16 @@ class ProductPlacementController extends Controller
 
         $limit = min(1000, max(1, (int) $request->query('limit', 500)));
 
+        // Malformed sync input must 422, never 500 (review IMPORTANT-3): a
+        // poison cursor persisted on a device must not become a permanent
+        // sync wall, and a non-uuid cursor id would 22P02 on the PG uuid
+        // column.
         $hwmParam = $request->query('sync_high_watermark');
-        $hwm = is_string($hwmParam) && $hwmParam !== '' ? Carbon::parse($hwmParam) : now();
+        $hwm = now();
+
+        if (is_string($hwmParam) && $hwmParam !== '') {
+            $hwm = $this->parseWireTimestamp($hwmParam, 'sync_high_watermark');
+        }
 
         $query = ProductPlacement::query()
             ->withTrashed()
@@ -205,9 +214,13 @@ class ProductPlacementController extends Controller
 
         $cursor = $request->query('cursor');
 
-        if (is_string($cursor) && str_contains($cursor, '|')) {
+        if (is_string($cursor) && $cursor !== '') {
+            abort_unless(str_contains($cursor, '|'), 422, 'cursor must be "<iso8601>|<uuid>".');
+
             [$cursorTs, $cursorId] = explode('|', $cursor, 2);
-            $cursorTime = Carbon::parse($cursorTs);
+            abort_unless(Str::isUuid($cursorId), 422, 'cursor id must be a uuid.');
+
+            $cursorTime = $this->parseWireTimestamp($cursorTs, 'cursor');
             $query->where(function ($outer) use ($cursorTime, $cursorId): void {
                 $outer->where('updated_at', '>', $cursorTime)
                     ->orWhere(function ($inner) use ($cursorTime, $cursorId): void {
@@ -234,6 +247,16 @@ class ProductPlacementController extends Controller
             'next_cursor' => $nextCursor,
             'sync_high_watermark' => $hwm->toIso8601String(),
         ]);
+    }
+
+    /** Parse a wire timestamp defensively: garbage → 422, never a 500. */
+    private function parseWireTimestamp(string $value, string $field): Carbon
+    {
+        try {
+            return Carbon::parse($value);
+        } catch (InvalidFormatException) {
+            abort(422, "Invalid {$field} timestamp.");
+        }
     }
 
     private function locationMismatch(InvalidArgumentException $e): JsonResponse
