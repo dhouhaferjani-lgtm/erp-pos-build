@@ -288,6 +288,62 @@ final class CommitDeliveryNoteTest extends TestCase
         $this->assertSame('2.0000', (string) $line->free_qty);
     }
 
+    #[Test]
+    public function it_refuses_commit_when_reconciliation_is_inconsistent(): void
+    {
+        $product = $this->product('BL-RECON-BAD', purchasePrice: '5.000');
+        $ingestion = $this->ingestion(confidenceSummary: [
+            'average_confidence' => 0.98,
+            'low_confidence_fields' => [],
+            'reconciliation' => ['consistent' => false, 'flags' => ['totals_mismatch']],
+        ]);
+
+        $this->actingAs($this->actor, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$ingestion->id}/commit", $this->payload($product, reference: 'BL-RECON-001'))
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'COMMIT_FAILED');
+
+        $this->assertSame(IngestionStatus::NeedsReview, $ingestion->refresh()->status);
+        $this->assertSame(0, GoodsReceipt::query()->count());
+    }
+
+    #[Test]
+    public function it_refuses_commit_when_reconciliation_has_unparseable_field_flags(): void
+    {
+        $product = $this->product('BL-RECON-FLAG', purchasePrice: '5.000');
+        $ingestion = $this->ingestion(confidenceSummary: [
+            'average_confidence' => 0.98,
+            'low_confidence_fields' => [],
+            'reconciliation' => ['consistent' => true, 'flags' => ['field_unparseable:lines.0.quantity']],
+        ]);
+
+        $this->actingAs($this->actor, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$ingestion->id}/commit", $this->payload($product, reference: 'BL-RECON-002'))
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'COMMIT_FAILED');
+
+        $this->assertSame(IngestionStatus::NeedsReview, $ingestion->refresh()->status);
+        $this->assertSame(0, GoodsReceipt::query()->count());
+    }
+
+    #[Test]
+    public function it_refuses_commit_when_the_reconciliation_block_is_absent(): void
+    {
+        $product = $this->product('BL-RECON-NONE', purchasePrice: '5.000');
+        $ingestion = $this->ingestion(confidenceSummary: [
+            'average_confidence' => 0.98,
+            'low_confidence_fields' => [],
+        ]);
+
+        $this->actingAs($this->actor, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$ingestion->id}/commit", $this->payload($product, reference: 'BL-RECON-003'))
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'COMMIT_FAILED');
+
+        $this->assertSame(IngestionStatus::NeedsReview, $ingestion->refresh()->status);
+        $this->assertSame(0, GoodsReceipt::query()->count());
+    }
+
     private function user(string $email): User
     {
         return User::create([
@@ -333,8 +389,13 @@ final class CommitDeliveryNoteTest extends TestCase
         ]);
     }
 
-    private function ingestion(IngestionStatus $status = IngestionStatus::NeedsReview): DocumentIngestion
-    {
+    /**
+     * @param  array<string, mixed>|null  $confidenceSummary  null = well-formed consistent summary
+     */
+    private function ingestion(
+        IngestionStatus $status = IngestionStatus::NeedsReview,
+        ?array $confidenceSummary = null,
+    ): DocumentIngestion {
         $asset = MediaAsset::create([
             'tenant_id' => $this->tenant->id,
             'type' => MediaAssetType::Document,
@@ -357,7 +418,7 @@ final class CommitDeliveryNoteTest extends TestCase
             'media_asset_id' => $asset->id,
             'checksum' => hash('sha256', Str::uuid()->toString()),
             'extraction' => ['doc_kind' => 'supplier_delivery_note'],
-            'confidence_summary' => [
+            'confidence_summary' => $confidenceSummary ?? [
                 'average_confidence' => 0.98,
                 'low_confidence_fields' => [],
                 'reconciliation' => ['consistent' => true, 'flags' => []],

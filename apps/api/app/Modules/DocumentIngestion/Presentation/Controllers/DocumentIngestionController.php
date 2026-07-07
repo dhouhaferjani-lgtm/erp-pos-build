@@ -378,6 +378,11 @@ final class DocumentIngestionController extends Controller
         ];
     }
 
+    /**
+     * Commit gate over the extraction reconciliation verdict. Fails CLOSED:
+     * an absent or malformed reconciliation block refuses the commit — never
+     * assume consistency that was not positively asserted by the reconciler.
+     */
     private function assertReviewOnlyFlagsAreAbsent(DocumentIngestion $ingestion): void
     {
         $summary = $ingestion->confidence_summary;
@@ -385,21 +390,23 @@ final class DocumentIngestionController extends Controller
             ? $summary['reconciliation']
             : null;
 
-        $consistent = is_array($reconciliation) ? ($reconciliation['consistent'] ?? true) : true;
-        $flags = is_array($reconciliation) && is_array($reconciliation['flags'] ?? null)
-            ? $reconciliation['flags']
-            : [];
-
-        $hasUnparseable = false;
-        foreach ($flags as $flag) {
-            if (is_string($flag) && str_starts_with($flag, 'field_unparseable:')) {
-                $hasUnparseable = true;
-                break;
-            }
+        if ($reconciliation === null) {
+            throw new \DomainException('This ingestion has no extraction reconciliation result; re-extract it before committing.');
         }
 
-        if ($consistent === false || $hasUnparseable) {
+        if (($reconciliation['consistent'] ?? null) !== true) {
             throw new \DomainException('This ingestion has reconciliation flags that require manual review before commit.');
+        }
+
+        $flags = $reconciliation['flags'] ?? null;
+        if (! is_array($flags)) {
+            throw new \DomainException('This ingestion has a malformed reconciliation result; re-extract it before committing.');
+        }
+
+        foreach ($flags as $flag) {
+            if (is_string($flag) && str_starts_with($flag, 'field_unparseable:')) {
+                throw new \DomainException('This ingestion has reconciliation flags that require manual review before commit.');
+            }
         }
     }
 }
