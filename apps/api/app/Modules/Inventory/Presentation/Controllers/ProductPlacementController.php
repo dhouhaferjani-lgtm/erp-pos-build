@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -168,6 +169,71 @@ class ProductPlacementController extends Controller
         }
 
         return response()->json(['data' => ProductPlacementDto::fromModel($placement)]);
+    }
+
+    /**
+     * Delta sync for mobile (spec §4.4 — DEFINED contract): server-issued
+     * sync_high_watermark + (updated_at, id) tuple cursor; rows include
+     * tombstones (deleted_at). The client persists the cursor only after the
+     * final page (next_cursor = null) and carries sync_high_watermark across
+     * pages of one run. Timestamps are ISO 8601 on the wire; comparisons bind
+     * Carbon instances so each driver formats them natively (never a raw ISO
+     * string against a TEXT column — repo rule 20).
+     */
+    public function delta(Request $request): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+
+        $locationId = (string) $request->query('location_id', '');
+        abort_unless(Str::isUuid($locationId), 422, 'A valid location_id query parameter is required.');
+
+        // 404s if the location doesn't belong to the current company.
+        Location::query()->where('company_id', $company->id)->findOrFail($locationId);
+
+        $limit = min(1000, max(1, (int) $request->query('limit', 500)));
+
+        $hwmParam = $request->query('sync_high_watermark');
+        $hwm = is_string($hwmParam) && $hwmParam !== '' ? Carbon::parse($hwmParam) : now();
+
+        $query = ProductPlacement::query()
+            ->withTrashed()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('location_id', $locationId)
+            ->where('updated_at', '<=', $hwm)
+            ->orderBy('updated_at')
+            ->orderBy('id');
+
+        $cursor = $request->query('cursor');
+
+        if (is_string($cursor) && str_contains($cursor, '|')) {
+            [$cursorTs, $cursorId] = explode('|', $cursor, 2);
+            $cursorTime = Carbon::parse($cursorTs);
+            $query->where(function ($outer) use ($cursorTime, $cursorId): void {
+                $outer->where('updated_at', '>', $cursorTime)
+                    ->orWhere(function ($inner) use ($cursorTime, $cursorId): void {
+                        $inner->where('updated_at', $cursorTime)->where('id', '>', $cursorId);
+                    });
+            });
+        }
+
+        $rows = $query->with('product')->limit($limit + 1)->get();
+        $hasMore = $rows->count() > $limit;
+        $page = $rows->take($limit);
+
+        /** @var ProductPlacement|null $last */
+        $last = $page->last();
+        $nextCursor = $hasMore && $last !== null
+            ? ['updated_at' => $last->updated_at?->toIso8601String(), 'id' => $last->id]
+            : null;
+
+        return response()->json([
+            'data' => $page
+                ->map(fn (ProductPlacement $placement): ProductPlacementDto => ProductPlacementDto::fromModel($placement))
+                ->values()
+                ->all(),
+            'next_cursor' => $nextCursor,
+            'sync_high_watermark' => $hwm->toIso8601String(),
+        ]);
     }
 
     private function locationMismatch(InvalidArgumentException $e): JsonResponse

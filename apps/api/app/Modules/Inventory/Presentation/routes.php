@@ -324,6 +324,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:inventory.adjust')
         ->name('inventory-nodes.unassign-product');
 
+    // Delta sync (mobile): tuple cursor + server high-water-mark + tombstones.
+    // Registered BEFORE bulk-move for readability; distinct paths, no clash.
+    Route::get('/inventory/placements', [ProductPlacementController::class, 'delta'])
+        ->middleware('can:inventory.view')
+        ->name('inventory-placements.delta');
+
     Route::post('/inventory/placements/bulk-move', [ProductPlacementController::class, 'bulkMove'])
         ->middleware('can:inventory.adjust')
         ->name('inventory-placements.bulk-move');
