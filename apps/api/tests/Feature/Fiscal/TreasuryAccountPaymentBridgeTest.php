@@ -104,6 +104,7 @@ final class TreasuryAccountPaymentBridgeTest extends TestCase
             'code' => 'DRAWER-1',
             'name' => 'Drawer 1',
             'account_id' => $this->cashAccount->id,
+            'gl_account_id' => $this->cashAccount->id,
             'is_active' => true,
         ]);
 
@@ -361,6 +362,40 @@ final class TreasuryAccountPaymentBridgeTest extends TestCase
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('payment_repository_account_not_found');
+
+        try {
+            $this->bridge()->apply($event);
+        } finally {
+            $this->assertSame(0, Payment::query()->count());
+            $this->assertSame(0, $this->allocationService->callCount());
+        }
+    }
+
+    public function test_bridge_falls_back_to_repository_gl_account_when_account_id_is_null(): void
+    {
+        $this->repository->forceFill([
+            'account_id' => null,
+            'gl_account_id' => $this->cashAccount->id,
+        ])->save();
+        $event = $this->storeAccountPaymentFiscalEvent();
+
+        $this->bridge()->apply($event);
+
+        $payment = Payment::query()->firstOrFail();
+        $this->assertSame($this->repository->id, $payment->repository_id);
+        $this->assertSame(1, $this->allocationService->callCount());
+    }
+
+    public function test_bridge_fails_loud_when_repository_account_and_gl_account_are_null(): void
+    {
+        $this->repository->forceFill([
+            'account_id' => null,
+            'gl_account_id' => null,
+        ])->save();
+        $event = $this->storeAccountPaymentFiscalEvent();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('payment_repository_missing_account_id');
 
         try {
             $this->bridge()->apply($event);

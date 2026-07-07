@@ -19,6 +19,12 @@ Schedule::command('fiscal:lock-expired-periods')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Schedule: Retry exhausted/dead-lettered fiscal projections every 15 minutes
+Schedule::command('fiscal:retry-projections --limit=100')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Schedule: Fraud pattern detection daily at 2:00 AM
 Schedule::command('fraud:detect')
     ->dailyAt('02:00')

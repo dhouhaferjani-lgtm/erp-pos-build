@@ -213,7 +213,8 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
             throw $this->invariant($event, 'payment_repository_not_found:repository_id='.$view->payment->repositoryId);
         }
 
-        if ($repository->account_id === null) {
+        $accountId = $repository->account_id ?? $repository->gl_account_id;
+        if ($accountId === null) {
             throw $this->invariant($event, 'payment_repository_missing_account_id:repository_id='.$repository->id);
         }
 
@@ -221,7 +222,7 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
             ->where('tenant_id', $event->tenant_id)
             ->where('company_id', $event->company_id)
             ->where('is_active', true)
-            ->whereKey($repository->account_id)
+            ->whereKey($accountId)
             ->exists();
 
         if (! $accountExists) {
@@ -230,7 +231,7 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
                 'payment_repository_account_not_found:repository_id='.
                     $repository->id.
                     ':account_id='.
-                    $repository->account_id,
+                    $accountId,
             );
         }
 

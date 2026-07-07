@@ -79,6 +79,7 @@ class PaymentRepositoryController extends Controller
             'account_id' => ['nullable', 'uuid'],
             'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
         ]);
+        $validated = $this->defaultAccountIdToGlAccountId($validated);
 
         $repository = PaymentRepository::create([
             'tenant_id' => $tenantId,
@@ -138,6 +139,11 @@ class PaymentRepositoryController extends Controller
             'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
             'is_active' => ['sometimes', 'boolean'],
         ]);
+        $validated = $this->defaultAccountIdToGlAccountId(
+            $validated,
+            $repository->gl_account_id,
+            $repository->account_id,
+        );
 
         $repository->update($validated);
 
@@ -223,6 +229,31 @@ class PaymentRepositoryController extends Controller
                 'repository_name' => $repository->name,
             ],
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function defaultAccountIdToGlAccountId(
+        array $attributes,
+        ?string $existingGlAccountId = null,
+        ?string $existingAccountId = null,
+    ): array
+    {
+        if (array_key_exists('account_id', $attributes) || $existingAccountId !== null) {
+            return $attributes;
+        }
+
+        $glAccountId = array_key_exists('gl_account_id', $attributes)
+            ? $attributes['gl_account_id']
+            : $existingGlAccountId;
+
+        if (is_string($glAccountId) && $glAccountId !== '') {
+            $attributes['account_id'] = $glAccountId;
+        }
+
+        return $attributes;
     }
 
     /**

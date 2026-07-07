@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Treasury;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -15,7 +16,9 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\Migrations\Migration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use ReflectionMethod;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -122,6 +125,74 @@ class PaymentRepositoryTest extends TestCase
         ]);
     }
 
+    public function test_tenant_backfill_migration_copies_gl_account_to_missing_account_id(): void
+    {
+        $account = Account::factory()->asset()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '101',
+            'name' => 'Cash',
+            'is_active' => true,
+        ]);
+
+        $repository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH_GL',
+            'name' => 'Cash With GL',
+            'type' => 'cash_register',
+            'account_id' => null,
+            'gl_account_id' => $account->id,
+            'is_active' => true,
+        ]);
+
+        $withoutGl = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH_NO_GL',
+            'name' => 'Cash Without GL',
+            'type' => 'cash_register',
+            'account_id' => null,
+            'gl_account_id' => null,
+            'is_active' => true,
+        ]);
+
+        $migration = $this->paymentRepositoryAccountBackfillMigration();
+        $migrationUp = new ReflectionMethod($migration, 'up');
+        $migrationUp->invoke($migration);
+        $migrationUp->invoke($migration);
+
+        $this->assertSame($account->id, $repository->refresh()->account_id);
+        $this->assertNull($withoutGl->refresh()->account_id);
+    }
+
+    public function test_create_repository_defaults_account_id_to_gl_account_id_when_omitted(): void
+    {
+        $account = Account::factory()->asset()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '102',
+            'name' => 'POS Cash',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payment-repositories', [
+            'code' => 'CASH_GL_DEFAULT',
+            'name' => 'Cash GL Default',
+            'type' => 'cash_register',
+            'gl_account_id' => $account->id,
+        ]);
+
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('payment_repositories', [
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH_GL_DEFAULT',
+            'account_id' => $account->id,
+            'gl_account_id' => $account->id,
+        ]);
+    }
+
     public function test_can_create_bank_account_with_details(): void
     {
         $response = $this->actingAs($this->user)->postJson('/api/v1/payment-repositories', [
@@ -201,6 +272,43 @@ class PaymentRepositoryTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonPath('data.name', 'Main Cash Register (Updated)');
+    }
+
+    public function test_update_repository_preserves_distinct_stored_account_id_when_account_id_is_omitted(): void
+    {
+        $b2bAccount = Account::factory()->asset()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '411',
+            'name' => 'Customer Receivable',
+            'is_active' => true,
+        ]);
+        $posAccount = Account::factory()->asset()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '101',
+            'name' => 'POS Cash',
+            'is_active' => true,
+        ]);
+        $repository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH_SPLIT',
+            'name' => 'Split Cash Register',
+            'type' => 'cash_register',
+            'account_id' => $b2bAccount->id,
+            'gl_account_id' => $posAccount->id,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->user)->patchJson("/api/v1/payment-repositories/{$repository->id}", [
+            'name' => 'Renamed Split Cash Register',
+        ]);
+
+        $response->assertStatus(200);
+        $fresh = $repository->refresh();
+        $this->assertSame($b2bAccount->id, $fresh->account_id);
+        $this->assertSame($posAccount->id, $fresh->gl_account_id);
     }
 
     public function test_can_show_single_repository(): void
@@ -305,5 +413,17 @@ class PaymentRepositoryTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonCount(0, 'data');
+    }
+
+    private function paymentRepositoryAccountBackfillMigration(): Migration
+    {
+        $matches = glob(database_path('migrations/tenant/*_backfill_payment_repository_account_ids.php'));
+        $this->assertIsArray($matches);
+        $this->assertCount(1, $matches, 'Expected exactly one tenant backfill migration for payment repository account ids.');
+
+        $migration = require $matches[0];
+        $this->assertInstanceOf(Migration::class, $migration);
+
+        return $migration;
     }
 }
