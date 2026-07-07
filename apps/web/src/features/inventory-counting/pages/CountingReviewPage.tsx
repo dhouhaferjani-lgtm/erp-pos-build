@@ -83,7 +83,7 @@ export function CountingReviewPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-3">
-              {t('counting.review.title')} #{counting.uuid.slice(0, 8)}
+              {t('counting.review.title')} #{counting.id.slice(0, 8)}
               <CountingStatusBadge status={counting.status} />
             </h1>
             <p className="text-gray-500">{t('counting.review.description')}</p>

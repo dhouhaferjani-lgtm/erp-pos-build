@@ -250,7 +250,7 @@ class InventoryCountingController extends Controller
                 'count2User',
                 'count3User',
                 'createdBy',
-                'assignments',
+                'assignments.user',
                 'items.product',
                 'items.location',
             ])
@@ -507,6 +507,27 @@ class InventoryCountingController extends Controller
                 'name' => $counting->createdBy->name,
             ] : null,
         ];
+
+        if ($counting->relationLoaded('assignments')) {
+            $data['assignments'] = $counting->assignments->map(fn ($assignment) => [
+                'id' => $assignment->id,
+                'user' => [
+                    'id' => $assignment->user->id,
+                    'name' => $assignment->user->name,
+                ],
+                'count_number' => $assignment->count_number,
+                'status' => $assignment->status->value,
+                'assigned_at' => $assignment->assigned_at->toIso8601String(),
+                'started_at' => $assignment->started_at?->toIso8601String(),
+                'completed_at' => $assignment->completed_at?->toIso8601String(),
+                'deadline' => $assignment->deadline?->toIso8601String(),
+                'total_items' => $assignment->total_items,
+                'counted_items' => $assignment->counted_items,
+                'progress_percentage' => $assignment->total_items > 0
+                    ? (int) round($assignment->counted_items / $assignment->total_items * 100)
+                    : 0,
+            ])->all();
+        }
 
         if ($includeItems && $counting->relationLoaded('items')) {
             $data['items'] = $counting->items->map(fn ($item) => [

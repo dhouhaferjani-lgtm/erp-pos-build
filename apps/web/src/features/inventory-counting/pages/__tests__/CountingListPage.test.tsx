@@ -48,8 +48,8 @@ function renderPage() {
 const mockCountingData = {
   data: [
     {
-      id: 1,
-      uuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      // Real list payload shape: `id` is a UUID string and there is no `uuid` alias.
+      id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       scope_type: 'product',
       title: null,
       status: 'count_1_in_progress',

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain;
 
-use App\Models\User;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\CountingExecutionMode;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;

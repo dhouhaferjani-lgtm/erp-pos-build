@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain;
 
-use App\Models\User;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Identity\Domain\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;

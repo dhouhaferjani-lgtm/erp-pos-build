@@ -75,9 +75,9 @@ function makeReconciliation(items: ReconciliationItem[]): ReconciliationData {
 beforeEach(() => {
   h.setOpeningCostMutate.mockReset()
   h.finalizeMutate.mockReset()
+  // Real detail payload shape: the API emits `id` only (no `uuid` alias).
   h.countingDetail = {
     id: '77777777-7777-4777-8777-777777777777',
-    uuid: '77777777-7777-4777-8777-777777777777',
     status: 'pending_review',
   }
   h.reconciliation = makeReconciliation([makeItem()])

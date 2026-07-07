@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain;
 
-use App\Models\User;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\AssignmentStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;

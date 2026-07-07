@@ -90,7 +90,7 @@ export function CountingDetailPage() {
             <h1 className="text-2xl font-bold">
               {t(`counting.scopeTypes.${counting.scope_type}`)} {t('counting.count')}{' '}
               <span className="text-gray-500 font-mono text-lg">
-                #{counting.uuid.slice(0, 8)}
+                #{counting.id.slice(0, 8)}
               </span>
             </h1>
             <CountingStatusBadge status={counting.status} />
@@ -209,11 +209,11 @@ export function CountingDetailPage() {
               {t('counting.detail.assignments')}
             </h2>
 
-            {counting.assignments.length === 0 ? (
+            {(counting.assignments ?? []).length === 0 ? (
               <p className="text-gray-500">{t('counting.detail.noAssignments')}</p>
             ) : (
               <div className="space-y-3">
-                {counting.assignments.map((assignment) => (
+                {(counting.assignments ?? []).map((assignment) => (
                   <div
                     key={assignment.id}
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"

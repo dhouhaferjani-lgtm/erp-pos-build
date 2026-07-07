@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain;
 
-use App\Models\User;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Product\Domain\Product;

@@ -66,7 +66,7 @@ export interface CountingAssignment {
 
 export interface InventoryCounting {
   id: string
-  uuid: string
+  uuid?: string
   company_id: number
   scope_type: CountingScopeType
   scope_filters: Record<string, unknown>
@@ -90,7 +90,7 @@ export interface InventoryCounting {
   count_3_user: CountingUser | null
   created_by: CountingUser
 
-  assignments: CountingAssignment[]
+  assignments?: CountingAssignment[]
   progress: CountingProgress
 
   items_count?: number

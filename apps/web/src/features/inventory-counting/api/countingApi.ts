@@ -52,8 +52,8 @@ export const countingApi = {
     const queryString = params.toString()
     const url = queryString ? `${BASE_URL}?${queryString}` : BASE_URL
 
-    const response = await api.get<{ data: PaginatedResponse<InventoryCounting> }>(url)
-    return response.data.data
+    const response = await api.get<PaginatedResponse<InventoryCounting>>(url)
+    return response.data
   },
 
   // Detail
