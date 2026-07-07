@@ -8,6 +8,7 @@ use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\NodeCode;
 use App\Modules\Inventory\Domain\ProductPlacement;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -196,6 +197,103 @@ final class LocationNodeService
 
             $node->restore();
         });
+    }
+
+    /**
+     * Upsert a product's live placement at a location (write algorithm of
+     * spec §3.2): lock the live (product, location) row; if present move it
+     * (UPDATE node_id), else INSERT a fresh live row — the partial unique
+     * (product_id, location_id) WHERE deleted_at IS NULL permits any number
+     * of tombstones alongside the single live row.
+     *
+     * @throws InvalidArgumentException when the node is not in $locationId
+     */
+    public function assignProduct(string $tenantId, string $productId, string $locationId, string $nodeId): ProductPlacement
+    {
+        return DB::transaction(function () use ($tenantId, $productId, $locationId, $nodeId): ProductPlacement {
+            /** @var LocationNode $node */
+            $node = LocationNode::query()->findOrFail($nodeId);
+
+            if ($node->location_id !== $locationId) {
+                throw new InvalidArgumentException("Node {$nodeId} is not in location {$locationId}.");
+            }
+
+            /** @var ProductPlacement|null $live */
+            $live = ProductPlacement::query()
+                ->where('product_id', $productId)
+                ->where('location_id', $locationId)
+                ->lockForUpdate()
+                ->first();
+
+            if ($live !== null) {
+                $live->update(['node_id' => $nodeId]);
+
+                return $live->refresh();
+            }
+
+            return ProductPlacement::create([
+                'tenant_id' => $tenantId,
+                'product_id' => $productId,
+                'location_id' => $locationId,
+                'node_id' => $nodeId,
+            ]);
+        });
+    }
+
+    /**
+     * Tombstone the product's live placement at a location (spec §3.2).
+     * No-op when there is no live placement.
+     */
+    public function unassignProduct(string $productId, string $locationId): void
+    {
+        $now = now();
+
+        ProductPlacement::query()
+            ->where('product_id', $productId)
+            ->where('location_id', $locationId)
+            ->update([
+                'deleted_at' => $now,
+                'updated_at' => $now,
+            ]);
+    }
+
+    /**
+     * Move a batch of products onto one target node (same-location placements
+     * only — each write revalidates through assignProduct).
+     *
+     * @param  list<string>  $productIds
+     */
+    public function bulkMove(string $tenantId, array $productIds, string $targetNodeId): void
+    {
+        /** @var LocationNode $target */
+        $target = LocationNode::query()->findOrFail($targetNodeId);
+
+        foreach ($productIds as $productId) {
+            $this->assignProduct($tenantId, $productId, $target->location_id, $targetNodeId);
+        }
+    }
+
+    /**
+     * Live placements in a node, paginated, optionally filtered by product
+     * name/SKU.
+     *
+     * @return LengthAwarePaginator<int, ProductPlacement>
+     */
+    public function listNodeProducts(string $nodeId, ?string $search, int $perPage): LengthAwarePaginator
+    {
+        return ProductPlacement::query()
+            ->inNode($nodeId)
+            ->with('product')
+            ->when($search !== null && $search !== '', function ($query) use ($search): void {
+                $like = mb_strtolower($search);
+                $query->whereHas('product', function ($product) use ($like): void {
+                    $product->whereRaw('LOWER(name) LIKE ?', ['%'.$like.'%'])
+                        ->orWhereRaw('LOWER(sku) LIKE ?', ['%'.$like.'%']);
+                });
+            })
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->paginate($perPage);
     }
 
     /**
