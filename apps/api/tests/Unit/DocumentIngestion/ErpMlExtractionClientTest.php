@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Unit\DocumentIngestion;
 
+use App\Modules\DocumentIngestion\Application\Contracts\ExtractionFailedException;
+use App\Modules\DocumentIngestion\Application\Contracts\ExtractionHints;
 use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
 use App\Modules\DocumentIngestion\Infrastructure\ErpMlExtractionClient;
-use App\Shared\Contracts\ExtractionFailedException;
-use App\Shared\Contracts\ExtractionHints;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;

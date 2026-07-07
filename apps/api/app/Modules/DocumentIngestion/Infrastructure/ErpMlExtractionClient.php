@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\DocumentIngestion\Infrastructure;
 
+use App\Modules\DocumentIngestion\Application\Contracts\ExtractionClientInterface;
+use App\Modules\DocumentIngestion\Application\Contracts\ExtractionFailedException;
+use App\Modules\DocumentIngestion\Application\Contracts\ExtractionHints;
+use App\Modules\DocumentIngestion\Application\Contracts\ExtractionResponse;
 use App\Modules\DocumentIngestion\Application\DTO\ExtractionResultData;
 use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
-use App\Shared\Contracts\ExtractionClientInterface;
-use App\Shared\Contracts\ExtractionFailedException;
-use App\Shared\Contracts\ExtractionHints;
-use App\Shared\Contracts\ExtractionResponse;
 use Illuminate\Support\Facades\Http;
 
 final class ErpMlExtractionClient implements ExtractionClientInterface

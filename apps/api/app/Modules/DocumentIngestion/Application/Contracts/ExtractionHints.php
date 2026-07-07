@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Shared\Contracts;
+namespace App\Modules\DocumentIngestion\Application\Contracts;
 
 final readonly class ExtractionHints
 {
