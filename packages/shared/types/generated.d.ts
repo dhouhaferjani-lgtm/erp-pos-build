@@ -831,6 +831,13 @@ price_override_reason: string | null;
 created_at: string;
 updated_at: string;
 };
+export type ReplayAuditDto = {
+windowFrom: string;
+windowTo: string;
+replayedDelta: string;
+onHandAtApply: string;
+expectedAtApply: string;
+};
 export type StockLevelData = {
 id: string;
 product_id: string;
@@ -871,7 +878,8 @@ updated_at: string;
 declare namespace App.Modules.Inventory.Domain.Enums {
 export type AssignmentStatus = 'pending' | 'in_progress' | 'completed' | 'overdue';
 export type CountingExecutionMode = 'parallel' | 'sequential';
-export type CountingScopeType = 'product_location' | 'product' | 'location' | 'category' | 'full_inventory';
+export type CountingItemFlagReason = 'basket_window' | 'negative_at_apply' | 'clock_skew' | 'pending_opening_cost' | 'normalized_agreement';
+export type CountingScopeType = 'product_location' | 'product' | 'location' | 'category' | 'full_inventory' | 'zone';
 export type CountingStatus = 'draft' | 'scheduled' | 'count_1_in_progress' | 'count_1_completed' | 'count_2_in_progress' | 'count_2_completed' | 'count_3_in_progress' | 'count_3_completed' | 'pending_review' | 'finalized' | 'cancelled';
 export type GoodsReceiptStatus = 'draft' | 'posted';
 export type ItemResolutionMethod = 'pending' | 'auto_all_match' | 'auto_counters_agree' | 'third_count_decisive' | 'manual_override';
