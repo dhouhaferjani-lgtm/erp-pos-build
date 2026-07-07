@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\DocumentIngestion\Application\Committers;
 
 use App\Modules\Catalog\Domain\Entities\ProductVariant;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\DocumentIngestion\Application\Contracts\IngestionCommitterInterface;
 use App\Modules\DocumentIngestion\Application\DTO\CommitResultData;
@@ -19,7 +20,9 @@ use App\Modules\Procurement\Application\DTOs\StandaloneReceiptInput;
 use App\Modules\Procurement\Application\DTOs\StandaloneReceiptLineInput;
 use App\Modules\Procurement\Application\StandaloneReceiptService;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Gate;
 
@@ -27,6 +30,7 @@ final readonly class SupplierDeliveryNoteCommitter implements IngestionCommitter
 {
     public function __construct(
         private StandaloneReceiptService $standaloneReceiptService,
+        private CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function supports(DocumentKind $kind): bool
@@ -53,6 +57,11 @@ final readonly class SupplierDeliveryNoteCommitter implements IngestionCommitter
             ->where('company_id', $ingestion->company_id)
             ->findOrFail($payload->locationId);
 
+        // Explicit entity currency for scale resolution — committers can run
+        // outside a bound CompanyContext, so a no-arg getScale() would throw.
+        $company = Company::query()->findOrFail($ingestion->company_id);
+        $moneyScale = $this->scaleResolver->getScale((string) $company->currency);
+
         $result = $this->standaloneReceiptService->execute(new StandaloneReceiptInput(
             companyId: $ingestion->company_id,
             supplierId: $payload->supplierId,
@@ -63,7 +72,7 @@ final readonly class SupplierDeliveryNoteCommitter implements IngestionCommitter
             externalReference: $payload->reference,
             externalDate: $payload->documentDate,
             postImmediately: true,
-            lines: $this->lines($ingestion, $payload),
+            lines: $this->lines($ingestion, $payload, $moneyScale),
         ));
 
         return new CommitResultData(
@@ -76,17 +85,17 @@ final readonly class SupplierDeliveryNoteCommitter implements IngestionCommitter
     /**
      * @return list<StandaloneReceiptLineInput>
      */
-    private function lines(DocumentIngestion $ingestion, ReviewedPayloadData $payload): array
+    private function lines(DocumentIngestion $ingestion, ReviewedPayloadData $payload, int $moneyScale): array
     {
         $lines = [];
         foreach ($payload->lines as $index => $line) {
-            $lines[] = $this->line($ingestion, $line, $index);
+            $lines[] = $this->line($ingestion, $line, $index, $moneyScale);
         }
 
         return $lines;
     }
 
-    private function line(DocumentIngestion $ingestion, ReviewedLineData $line, int $index): StandaloneReceiptLineInput
+    private function line(DocumentIngestion $ingestion, ReviewedLineData $line, int $index, int $moneyScale): StandaloneReceiptLineInput
     {
         $product = Product::query()
             ->where('tenant_id', $ingestion->tenant_id)
@@ -111,28 +120,30 @@ final readonly class SupplierDeliveryNoteCommitter implements IngestionCommitter
             );
         }
 
-        $unitPrice = $this->unitPrice($product, $line, $index);
+        $unitPrice = $this->unitPrice($product, $line, $index, $moneyScale);
 
         return new StandaloneReceiptLineInput(
             productId: $product->id,
             variantId: $variantId,
-            quantity: CurrencyScale::bcformatStrict($line->quantity, 4),
-            freeQuantity: CurrencyScale::bcformatStrict($line->freeQuantity, 4),
+            quantity: CurrencyScale::bcformatStrict($line->quantity, QuantityScale::SCALE),
+            freeQuantity: CurrencyScale::bcformatStrict($line->freeQuantity, QuantityScale::SCALE),
             unitPrice: $unitPrice,
             batch: $line->batch?->toReceiptArray(),
         );
     }
 
-    private function unitPrice(Product $product, ReviewedLineData $line, int $index): string
+    private function unitPrice(Product $product, ReviewedLineData $line, int $index, int $moneyScale): string
     {
         $candidate = $line->unitPrice ?? $product->purchase_price;
-        $paidQuantity = CurrencyScale::bcformatStrict($line->quantity, 4);
+        $paidQuantity = CurrencyScale::bcformatStrict($line->quantity, QuantityScale::SCALE);
 
-        $candidatePrice = $candidate !== null ? CurrencyScale::bcformatStrict((string) $candidate, 3) : null;
+        $candidatePrice = $candidate !== null ? CurrencyScale::bcformatStrict((string) $candidate, $moneyScale) : null;
 
-        if ($candidatePrice === null || bccomp($candidatePrice, '0', 3) <= 0) {
-            if (bccomp($paidQuantity, '0', 4) === 0) {
-                return '0.001';
+        if ($candidatePrice === null || bccomp($candidatePrice, '0', $moneyScale) <= 0) {
+            if (bccomp($paidQuantity, '0', QuantityScale::SCALE) === 0) {
+                // Free-only line: smallest positive currency unit at the
+                // resolved scale (price is inert — multiplied by paid qty 0).
+                return bcdiv('1', bcpow('10', (string) $moneyScale, 0), $moneyScale);
             }
 
             $this->throwValidation(

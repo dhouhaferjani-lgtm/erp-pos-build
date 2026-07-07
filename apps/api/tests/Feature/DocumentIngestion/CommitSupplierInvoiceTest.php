@@ -15,6 +15,8 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\SupplierInvoiceMatchStatus;
+use App\Modules\DocumentIngestion\Application\Committers\SupplierInvoiceCommitter;
+use App\Modules\DocumentIngestion\Application\DTO\ReviewedPayloadData;
 use App\Modules\DocumentIngestion\Domain\DocumentIngestion;
 use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
 use App\Modules\DocumentIngestion\Domain\Enums\IngestionStatus;
@@ -41,6 +43,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Spatie\Permission\PermissionRegistrar;
@@ -92,6 +95,7 @@ final class CommitSupplierInvoiceTest extends TestCase
             'document-ingestions.commit',
             'goods-receipt.create-standalone',
             'supplier-invoices.create-pending',
+            'documents.update',
         ]);
 
         UserCompanyMembership::create([
@@ -226,6 +230,69 @@ final class CommitSupplierInvoiceTest extends TestCase
             ->postJson("/api/v1/document-ingestions/{$this->ingestion()->id}/commit", $this->payload($product, $poLine->id, reference: 'INV-CANCELLED-PO'))
             ->assertUnprocessable()
             ->assertJsonPath('error.code', 'COMMIT_FAILED');
+    }
+
+    #[Test]
+    public function receipt_mapped_commit_requires_documents_update_permission(): void
+    {
+        $product = $this->product('SI-PERM', '10.000');
+        [$purchaseOrder] = $this->createPostedStandaloneReceipt($product, 'si-perm-receipt');
+        $poLine = $purchaseOrder->lines->firstOrFail();
+
+        $limited = $this->user('commit-si-no-doc-update@test.example');
+        $limited->givePermissionTo([
+            'document-ingestions.commit',
+            'supplier-invoices.create-pending',
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $limited->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
+        ]);
+
+        $this->actingAs($limited, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$this->ingestion()->id}/commit", $this->payload($product, $poLine->id, reference: 'INV-PERM-001'))
+            ->assertForbidden();
+
+        $this->assertSame(0, Document::query()->where('type', DocumentType::SupplierInvoice)->count());
+    }
+
+    #[Test]
+    public function it_normalizes_the_supplier_reference_once_for_store_and_duplicate_guard(): void
+    {
+        // Off-HTTP path (no TrimStrings middleware): the committer itself must
+        // normalize the reference so the stored value and the duplicate-guard
+        // lookup can never diverge.
+        $product = $this->product('SI-TRIM', '10.000');
+        $committer = app(SupplierInvoiceCommitter::class);
+
+        $paddedPayload = ReviewedPayloadData::fromArray($this->payload(
+            $product,
+            sourceLineId: null,
+            reference: '  INV-TRIM-001  ',
+            pendingReceipt: true,
+        ));
+
+        $result = $committer->commit($this->ingestion(), $paddedPayload, $this->actor->id);
+
+        $invoice = Document::query()->findOrFail($result->committedId);
+        $this->assertSame('INV-TRIM-001', $invoice->external_document_number);
+
+        $trimmedPayload = ReviewedPayloadData::fromArray($this->payload(
+            $product,
+            sourceLineId: null,
+            reference: 'INV-TRIM-001',
+            pendingReceipt: true,
+        ));
+
+        try {
+            $committer->commit($this->ingestion(), $trimmedPayload, $this->actor->id);
+            $this->fail('Expected the duplicate-reference guard to reject the trimmed reference.');
+        } catch (HttpResponseException $exception) {
+            $response = $exception->getResponse();
+            $this->assertSame(422, $response->getStatusCode());
+            $this->assertStringContainsString('DUPLICATE_SUPPLIER_REFERENCE', (string) $response->getContent());
+        }
     }
 
     #[Test]

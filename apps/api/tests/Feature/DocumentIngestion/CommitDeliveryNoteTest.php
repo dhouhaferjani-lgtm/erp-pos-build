@@ -286,6 +286,17 @@ final class CommitDeliveryNoteTest extends TestCase
         $line = $receipt->lines->firstOrFail();
         $this->assertSame('0.0000', (string) $line->received_qty);
         $this->assertSame('2.0000', (string) $line->free_qty);
+
+        // The free movement must be booked at unit cost 0 — free units enter
+        // stock at no cost and dilute the weighted average cost.
+        $movement = StockMovement::query()->sole();
+        $this->assertSame('2.0000', (string) $movement->quantity);
+        $this->assertSame('0.000000', (string) $movement->unit_cost);
+        $this->assertSame('0.000000', (string) $movement->total_cost);
+
+        $product->refresh();
+        $this->assertSame('0.000000', (string) $product->cost_price);
+        $this->assertSame('0.000000', (string) $product->last_purchase_cost);
     }
 
     #[Test]

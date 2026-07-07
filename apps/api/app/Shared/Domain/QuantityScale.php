@@ -13,6 +13,12 @@ namespace App\Shared\Domain;
  */
 final class QuantityScale
 {
+    /**
+     * Canonical storage scale for quantities (decimal(N,4) - precision contract).
+     * Quantity scale is a domain constant, not currency-dependent.
+     */
+    public const int SCALE = 4;
+
     /** Supported rounding method identifiers. */
     public const HALF_UP = 'half_up';
 

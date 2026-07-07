@@ -41,6 +41,11 @@ final readonly class SupplierInvoiceCommitter implements IngestionCommitterInter
         $pendingReceipt = $payload->pendingReceipt === true;
         if ($pendingReceipt) {
             Gate::forUser($actor)->authorize('supplier-invoices.create-pending');
+        } else {
+            // Symmetry with POST /supplier-invoices (can:documents.update):
+            // the ingestion commit must not become a privilege bypass for
+            // receipt-mapped supplier-invoice creation.
+            Gate::forUser($actor)->authorize('documents.update');
         }
 
         Partner::query()
@@ -51,18 +56,23 @@ final readonly class SupplierInvoiceCommitter implements IngestionCommitterInter
 
         $this->assertInvoiceRequiredFields($payload);
 
-        return DB::transaction(function () use ($ingestion, $payload, $pendingReceipt): CommitResultData {
+        // Normalize ONCE so the stored supplier_reference and the
+        // duplicate-guard lookup can never diverge (e.g. off-HTTP callers
+        // that bypass the TrimStrings middleware).
+        $supplierReference = $this->normalizedReference($payload->reference);
+
+        return DB::transaction(function () use ($ingestion, $payload, $pendingReceipt, $supplierReference): CommitResultData {
             $sourceDocuments = $pendingReceipt ? [] : $this->sourceDocuments($ingestion, $payload);
             $sourceDocumentIds = array_keys($sourceDocuments);
 
-            $this->guardDuplicateReference($ingestion, $payload);
+            $this->guardDuplicateReference($ingestion, $payload->supplierId, $supplierReference);
 
             $document = $this->createSupplierInvoiceService->create([
                 'partner_id' => $payload->supplierId,
                 'source_document_ids' => $sourceDocumentIds,
                 'currency' => $payload->currency,
                 'issue_date' => $payload->documentDate,
-                'supplier_reference' => $payload->reference,
+                'supplier_reference' => $supplierReference,
                 'pending_receipt' => $pendingReceipt,
                 'lines' => $this->lines($ingestion, $payload, $sourceDocuments, $pendingReceipt),
             ], $ingestion->tenant_id, $ingestion->company_id);
@@ -213,13 +223,28 @@ final readonly class SupplierInvoiceCommitter implements IngestionCommitterInter
         ];
     }
 
-    private function guardDuplicateReference(DocumentIngestion $ingestion, ReviewedPayloadData $payload): void
+    /**
+     * Trim the supplier reference; an empty-after-trim reference becomes null
+     * so a whitespace-only reference is never stored or duplicate-guarded.
+     */
+    private function normalizedReference(?string $reference): ?string
     {
-        if ($payload->reference === null || trim($payload->reference) === '') {
+        if ($reference === null) {
+            return null;
+        }
+
+        $trimmed = trim($reference);
+
+        return $trimmed === '' ? null : $trimmed;
+    }
+
+    private function guardDuplicateReference(DocumentIngestion $ingestion, string $supplierId, ?string $reference): void
+    {
+        if ($reference === null) {
             return;
         }
 
-        $lockKey = sprintf('si-ref:%s:%s:%s', $ingestion->company_id, $payload->supplierId, trim($payload->reference));
+        $lockKey = sprintf('si-ref:%s:%s:%s', $ingestion->company_id, $supplierId, $reference);
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement('SELECT pg_advisory_xact_lock(hashtext(?))', [$lockKey]);
         }
@@ -228,8 +253,8 @@ final readonly class SupplierInvoiceCommitter implements IngestionCommitterInter
             ->where('tenant_id', $ingestion->tenant_id)
             ->where('company_id', $ingestion->company_id)
             ->where('type', DocumentType::SupplierInvoice)
-            ->where('partner_id', $payload->supplierId)
-            ->where('external_document_number', trim($payload->reference))
+            ->where('partner_id', $supplierId)
+            ->where('external_document_number', $reference)
             ->exists();
 
         if ($exists) {
