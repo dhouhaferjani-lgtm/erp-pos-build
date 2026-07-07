@@ -1,0 +1,56 @@
+{
+  "doc_kind": "supplier_delivery_note",
+  "pages": 1,
+  "supplier": {
+    "name": {
+      "value": "PHARMA DISTRIBUTION FRANCE",
+      "confidence": 0.97
+    },
+    "vat_number": {
+      "value": "FR12345678901",
+      "confidence": 0.95
+    }
+  },
+  "header": {
+    "number": {
+      "value": "BL-2026-441",
+      "confidence": 0.96
+    },
+    "delivery_date": {
+      "value": "2026-07-02",
+      "confidence": 0.94
+    },
+    "po_reference": {
+      "value": "PO-2026-088",
+      "confidence": 0.87
+    }
+  },
+  "lines": [
+    {
+      "description": {
+        "value": "Doliprane 1000mg boîte 8 comprimés",
+        "confidence": 0.93
+      },
+      "supplier_ref": {
+        "value": "DOL1000-8",
+        "confidence": 0.90
+      },
+      "quantity": {
+        "value": "10.0000",
+        "confidence": 0.96
+      },
+      "unit_price": null,
+      "tax_rate": null,
+      "line_total": null,
+      "batch_number": {
+        "value": "B260701",
+        "confidence": 0.88
+      },
+      "expiry_date": {
+        "value": "2028-06-30",
+        "confidence": 0.87
+      }
+    }
+  ],
+  "totals_consistent": true
+}
