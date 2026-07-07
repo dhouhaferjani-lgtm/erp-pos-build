@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\DocumentIngestion\Application\Services;
 
 use App\Modules\DocumentIngestion\Application\Committers\SupplierDeliveryNoteCommitter;
+use App\Modules\DocumentIngestion\Application\Committers\SupplierInvoiceCommitter;
 use App\Modules\DocumentIngestion\Application\Contracts\IngestionCommitterInterface;
 use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
 
@@ -15,9 +16,11 @@ final readonly class IngestionCommitterRegistry
      */
     private array $committers;
 
-    public function __construct(SupplierDeliveryNoteCommitter $deliveryNoteCommitter)
-    {
-        $this->committers = [$deliveryNoteCommitter];
+    public function __construct(
+        SupplierDeliveryNoteCommitter $deliveryNoteCommitter,
+        SupplierInvoiceCommitter $supplierInvoiceCommitter,
+    ) {
+        $this->committers = [$deliveryNoteCommitter, $supplierInvoiceCommitter];
     }
 
     public function for(DocumentKind $kind): IngestionCommitterInterface
