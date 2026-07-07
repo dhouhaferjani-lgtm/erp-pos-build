@@ -161,6 +161,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Inventory Counting Routes
     // ==========================================
 
+    // Onboarding worklist (C3): negative-on-hand / no-stock-row products at a
+    // location still pending count, for the onboarding-mode review screen.
+    Route::get('/inventory/onboarding-worklist', [InventoryCountingController::class, 'onboardingWorklist'])
+        ->middleware('can:inventory.view')
+        ->name('inventory.onboarding-worklist');
+
     // Dashboard
     Route::get('/inventory/countings/dashboard', [InventoryCountingController::class, 'dashboard'])
         ->middleware('can:inventory.view')
@@ -260,6 +266,13 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/inventory/countings/items/{item}/override', [CountingItemController::class, 'override'])
         ->middleware('can:inventory.adjust')
         ->name('inventory-countings.items.override');
+
+    // Opening-cost backfill for onboarding lines (D3). Route params are
+    // uuid-guarded so a non-uuid never reaches a uuid PK probe (PG 22P02 → 500).
+    Route::patch('/inventory/countings/{counting}/items/{item}/opening-cost', [CountingItemController::class, 'setOpeningCost'])
+        ->whereUuid(['counting', 'item'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-countings.items.opening-cost');
 
     // ==========================================
     // Zones — shelf/section labels for count scoping + product placement

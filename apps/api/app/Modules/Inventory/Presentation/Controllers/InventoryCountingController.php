@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Presentation\Controllers;
 
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\InventoryCounting;
+use App\Modules\Inventory\Domain\InventoryScale;
 use App\Modules\Inventory\Presentation\Requests\ActivateCountingRequest;
 use App\Modules\Inventory\Presentation\Requests\AddProductToCountingRequest;
 use App\Modules\Inventory\Presentation\Requests\CreateCountingRequest;
@@ -20,6 +23,8 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class InventoryCountingController extends Controller
@@ -28,6 +33,120 @@ class InventoryCountingController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly InventoryCountingService $countingService,
     ) {}
+
+    /**
+     * Onboarding worklist (C3): active-catalog products at a location that
+     * still need attention before the location can safely exit onboarding —
+     * negative on-hand, or no `stock_levels` row at all — excluding any
+     * product already given a submitted count (any count_N_qty populated) in
+     * an active or finalized counting at that location.
+     */
+    public function onboardingWorklist(Request $request): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        /** @var array{location_id: string} $validated */
+        $validated = Validator::make(
+            ['location_id' => $request->query('location_id')],
+            ['location_id' => ['required', 'bail', 'uuid']],
+        )->validate();
+
+        $locationId = $validated['location_id'];
+
+        $location = Location::query()->forCompany($companyId)->find($locationId);
+
+        if ($location === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'LOCATION_NOT_FOUND',
+                    'message' => 'Location not found for the current company.',
+                ],
+            ], 404);
+        }
+
+        $countedProductIds = DB::table('inventory_counting_items')
+            ->join('inventory_countings', 'inventory_countings.id', '=', 'inventory_counting_items.counting_id')
+            ->where('inventory_counting_items.location_id', $locationId)
+            ->whereNotIn('inventory_countings.status', [
+                CountingStatus::Draft->value,
+                CountingStatus::Scheduled->value,
+                CountingStatus::Cancelled->value,
+            ])
+            ->where(function ($query): void {
+                $query->whereNotNull('inventory_counting_items.count_1_qty')
+                    ->orWhereNotNull('inventory_counting_items.count_2_qty')
+                    ->orWhereNotNull('inventory_counting_items.count_3_qty');
+            })
+            ->select('inventory_counting_items.product_id');
+
+        $query = DB::table('products')
+            ->where('products.company_id', $companyId)
+            ->where('products.is_active', true)
+            ->leftJoin('stock_levels', function ($join) use ($locationId): void {
+                $join->on('stock_levels.product_id', '=', 'products.id')
+                    ->where('stock_levels.location_id', $locationId)
+                    ->whereNull('stock_levels.variant_id');
+            })
+            ->where(function ($q): void {
+                $q->where('stock_levels.quantity', '<', 0)
+                    ->orWhereNull('stock_levels.id');
+            })
+            ->whereNotIn('products.id', $countedProductIds)
+            ->select([
+                'products.id as product_id',
+                'products.name as name',
+                'products.sku as sku',
+                'stock_levels.quantity as on_hand',
+            ])
+            ->orderBy('products.name');
+
+        $products = $query->paginate((int) $request->input('per_page', 15));
+
+        /** @var Collection<int, \stdClass> $productRows */
+        $productRows = $products->getCollection();
+
+        /** @var list<string> $productIds */
+        $productIds = $productRows->pluck('product_id')->all();
+
+        /** @var array<string, string> $lastSoldByProduct */
+        $lastSoldByProduct = DB::table('stock_movements')
+            ->where('location_id', $locationId)
+            ->where('reason', MovementReason::POSSale->value)
+            ->whereIn('product_id', $productIds)
+            ->selectRaw('product_id, MAX(occurred_at) as last_sold_at')
+            ->groupBy('product_id')
+            ->pluck('last_sold_at', 'product_id')
+            ->all();
+
+        $data = $productRows->map(function (\stdClass $row) use ($lastSoldByProduct): array {
+            /** @var string $productId */
+            $productId = $row->product_id;
+            /** @var string|null $lastSoldAt */
+            $lastSoldAt = $lastSoldByProduct[$productId] ?? null;
+
+            /** @var numeric-string $onHandRaw */
+            $onHandRaw = (string) ($row->on_hand ?? '0');
+            $onHand = bcadd($onHandRaw, '0', InventoryScale::QUANTITY_SCALE);
+
+            return [
+                'product_id' => $productId,
+                'name' => $row->name,
+                'sku' => $row->sku,
+                'on_hand' => $onHand,
+                'last_sold_at' => $lastSoldAt !== null ? Carbon::parse($lastSoldAt)->toIso8601String() : null,
+            ];
+        })->all();
+
+        return response()->json([
+            'data' => $data,
+            'meta' => [
+                'current_page' => $products->currentPage(),
+                'last_page' => $products->lastPage(),
+                'per_page' => $products->perPage(),
+                'total' => $products->total(),
+            ],
+        ]);
+    }
 
     /**
      * Dashboard summary.
