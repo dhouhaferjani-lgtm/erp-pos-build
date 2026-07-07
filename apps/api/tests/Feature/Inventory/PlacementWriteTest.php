@@ -11,6 +11,8 @@ use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\ProductPlacement;
 use App\Modules\Product\Domain\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Tests\TestCase;
 use Tests\Traits\SeedsPlacementFixtures;
@@ -76,6 +78,51 @@ final class PlacementWriteTest extends TestCase
         $this->assertSame($this->nodeB->id, $again->node_id);
         $this->assertSame(1, ProductPlacement::query()->where('product_id', $this->product->id)->count());
         $this->assertSame(2, ProductPlacement::withTrashed()->where('product_id', $this->product->id)->count());
+    }
+
+    /**
+     * Race safety (review IMPORTANT-2): lockForUpdate() cannot lock a row
+     * that doesn't exist yet, so two concurrent FIRST-TIME assigns for the
+     * same (product, location) can both take the insert branch; the partial
+     * unique then rejects the loser. The service must recover by re-entering
+     * the update branch — not surface a 500. Simulated deterministically:
+     * a DB listener plants the "concurrent" row immediately after the
+     * service's live-row SELECT executes.
+     */
+    public function test_concurrent_first_assign_recovers_via_update_branch(): void
+    {
+        $injected = false;
+
+        DB::listen(function ($query) use (&$injected): void {
+            if ($injected) {
+                return;
+            }
+
+            $sql = strtolower($query->sql);
+
+            if (str_starts_with(ltrim($sql), 'select')
+                && str_contains($sql, 'product_placements')
+                && str_contains($sql, 'product_id')) {
+                $injected = true;
+
+                // The "other request" wins the insert race.
+                DB::table('product_placements')->insert([
+                    'id' => (string) Str::uuid(),
+                    'tenant_id' => $this->tenant->id,
+                    'product_id' => $this->product->id,
+                    'location_id' => $this->location->id,
+                    'node_id' => $this->nodeA->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        });
+
+        $placement = $this->service->assignProduct($this->tenant->id, $this->product->id, $this->location->id, $this->nodeB->id);
+
+        $this->assertTrue($injected, 'collision row must have been planted');
+        $this->assertSame($this->nodeB->id, $placement->node_id, 'loser must recover by moving the winner row');
+        $this->assertSame(1, ProductPlacement::query()->where('product_id', $this->product->id)->count());
     }
 
     public function test_assign_to_node_in_other_location_throws(): void

@@ -9,6 +9,7 @@ use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\NodeCode;
 use App\Modules\Inventory\Domain\ProductPlacement;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -206,6 +207,14 @@ final class LocationNodeService
      * (product_id, location_id) WHERE deleted_at IS NULL permits any number
      * of tombstones alongside the single live row.
      *
+     * Race safety (review IMPORTANT-2): lockForUpdate() cannot lock a row
+     * that doesn't exist yet, so two concurrent first-time assigns can both
+     * take the insert branch. The insert runs in a nested transaction
+     * (SAVEPOINT — required on Postgres, where a unique violation aborts the
+     * surrounding transaction); on a unique-violation loss the loser rolls
+     * back to the savepoint and re-enters the update branch against the
+     * winner's row.
+     *
      * @throws InvalidArgumentException when the node is not in $locationId
      */
     public function assignProduct(string $tenantId, string $productId, string $locationId, string $nodeId): ProductPlacement
@@ -218,12 +227,7 @@ final class LocationNodeService
                 throw new InvalidArgumentException("Node {$nodeId} is not in location {$locationId}.");
             }
 
-            /** @var ProductPlacement|null $live */
-            $live = ProductPlacement::query()
-                ->where('product_id', $productId)
-                ->where('location_id', $locationId)
-                ->lockForUpdate()
-                ->first();
+            $live = $this->lockLivePlacement($productId, $locationId);
 
             if ($live !== null) {
                 $live->update(['node_id' => $nodeId]);
@@ -231,13 +235,43 @@ final class LocationNodeService
                 return $live->refresh();
             }
 
-            return ProductPlacement::create([
-                'tenant_id' => $tenantId,
-                'product_id' => $productId,
-                'location_id' => $locationId,
-                'node_id' => $nodeId,
-            ]);
+            try {
+                // Nested transaction = SAVEPOINT: a unique-violation loss
+                // rolls back only the insert, keeping the outer transaction
+                // usable for the recovery path below.
+                return DB::transaction(fn (): ProductPlacement => ProductPlacement::create([
+                    'tenant_id' => $tenantId,
+                    'product_id' => $productId,
+                    'location_id' => $locationId,
+                    'node_id' => $nodeId,
+                ]));
+            } catch (UniqueConstraintViolationException) {
+                // A concurrent first-time assign won the insert race — its
+                // live row now exists, so the update branch applies.
+                /** @var ProductPlacement $winner */
+                $winner = ProductPlacement::query()
+                    ->where('product_id', $productId)
+                    ->where('location_id', $locationId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $winner->update(['node_id' => $nodeId]);
+
+                return $winner->refresh();
+            }
         });
+    }
+
+    private function lockLivePlacement(string $productId, string $locationId): ?ProductPlacement
+    {
+        /** @var ProductPlacement|null $live */
+        $live = ProductPlacement::query()
+            ->where('product_id', $productId)
+            ->where('location_id', $locationId)
+            ->lockForUpdate()
+            ->first();
+
+        return $live;
     }
 
     /**
