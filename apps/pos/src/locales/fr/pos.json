@@ -933,6 +933,7 @@
   "customer": {
     "attach": "Client",
     "detach": "Retirer le client",
+    "accountAndDeposit": "Compte & dépôt",
     "modalTitle": "Client",
     "attached": "Rattaché",
     "amount": "Montant",

@@ -933,6 +933,7 @@
   "customer": {
     "attach": "Customer",
     "detach": "Remove customer",
+    "accountAndDeposit": "Account & deposit",
     "modalTitle": "Customer",
     "attached": "Attached",
     "amount": "Amount",
