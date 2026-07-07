@@ -315,15 +315,19 @@ final class LocationNodeService
      */
     public function listNodeProducts(string $nodeId, ?string $search, int $perPage): LengthAwarePaginator
     {
-        $like = $search !== null && $search !== '' ? mb_strtolower($search) : null;
+        // Escape LIKE wildcards in the user-supplied term so '%'/'_' match
+        // literally (review MINOR); backslash first, then the wildcards.
+        $like = $search !== null && $search !== ''
+            ? addcslashes(mb_strtolower($search), '\\%_')
+            : null;
 
         return ProductPlacement::query()
             ->inNode($nodeId)
             ->with('product')
             ->when($like !== null, function ($query) use ($like): void {
                 $query->whereHas('product', function ($product) use ($like): void {
-                    $product->whereRaw('LOWER(name) LIKE ?', ['%'.$like.'%'])
-                        ->orWhereRaw('LOWER(sku) LIKE ?', ['%'.$like.'%']);
+                    $product->whereRaw("LOWER(name) LIKE ? ESCAPE '\\'", ['%'.$like.'%'])
+                        ->orWhereRaw("LOWER(sku) LIKE ? ESCAPE '\\'", ['%'.$like.'%']);
                 });
             })
             ->orderBy('created_at')

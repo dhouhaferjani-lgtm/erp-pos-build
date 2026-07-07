@@ -50,7 +50,14 @@ class CreateCountingRequest extends FormRequest
             'scope_filters.location_ids.*' => ['string', ScopedExists::company('locations', $company->id)],
             'scope_filters.location_id' => ['sometimes', 'string', ScopedExists::company('locations', $company->id)],
             'scope_filters.zone_ids' => ['sometimes', 'array'],
-            'scope_filters.zone_ids.*' => ['string', 'uuid', ScopedExists::tenant('location_nodes', $company->tenant_id)],
+            // Soft-delete-aware exists (review MINOR): a tombstoned node id
+            // must fail here, not only in validateZonesBelongToLocation.
+            'scope_filters.zone_ids.*' => [
+                'string',
+                'uuid',
+                Rule::exists('location_nodes', 'id')
+                    ->where(fn ($query) => $query->where('tenant_id', $company->tenant_id)->whereNull('deleted_at')),
+            ],
 
             // Include zero/negative/no-stock-row active products (opt-in; defaults
             // to true when the target location is in onboarding mode). Set on the

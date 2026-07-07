@@ -21,6 +21,7 @@ use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\ProductPlacement;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Presentation\Requests\CreateCountingRequest;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -28,6 +29,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Validator;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -548,5 +550,38 @@ final class ZoneScopedCountingTest extends TestCase
 
         // The blind counter-view must still never leak theoretical_qty.
         $this->assertStringNotContainsString('theoretical_qty', $counterViewResponse->getContent());
+    }
+
+    /**
+     * Review MINOR: the zone_ids exists-rule itself must reject tombstoned
+     * nodes so the defense isn't single-layered (previously only
+     * validateZonesBelongToLocation — which needs location_id present —
+     * caught them).
+     */
+    public function test_zone_ids_rule_rejects_tombstoned_nodes_at_rule_level(): void
+    {
+        $zone = $this->makeZone('TDZ');
+        $this->zoneService->softDeleteSubtree($zone);
+
+        $request = new CreateCountingRequest(app(CompanyContext::class));
+        $rules = $request->rules();
+
+        $validator = Validator::make(
+            ['scope_filters' => ['zone_ids' => [$zone->id]]],
+            ['scope_filters.zone_ids.*' => $rules['scope_filters.zone_ids.*']],
+        );
+
+        $this->assertTrue(
+            $validator->errors()->has('scope_filters.zone_ids.0'),
+            'tombstoned node id must fail the exists rule itself',
+        );
+
+        // a live node still passes the same rule
+        $live = $this->makeZone('LVZ');
+        $validator = Validator::make(
+            ['scope_filters' => ['zone_ids' => [$live->id]]],
+            ['scope_filters.zone_ids.*' => $rules['scope_filters.zone_ids.*']],
+        );
+        $this->assertFalse($validator->errors()->has('scope_filters.zone_ids.0'));
     }
 }

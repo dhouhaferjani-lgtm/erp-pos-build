@@ -9,6 +9,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Inventory\Application\Services\LocationNodeService;
 use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Modules\Inventory\Presentation\Requests\CreateNodeRequest;
+use App\Modules\Inventory\Presentation\Requests\MoveNodeRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
 use Tests\TestCase;
@@ -114,6 +115,40 @@ final class NodeRequestValidationTest extends TestCase
 
         $liveParent = $this->service->createNode($this->tenant->id, $this->location->id, null, LocationNodeType::Zone, 'Live', 'L1');
         $this->assertSame([], $this->validateCreate(['parent_id' => $liveParent->id] + $this->validPayload()));
+    }
+
+    /**
+     * Review MINOR: MoveNodeRequest's parent_id exists-rule must be tenant
+     * scoped (parity with BulkMovePlacementsRequest/SetProductPlacementRequest)
+     * so a foreign tenant's node id can never satisfy validation.
+     */
+    public function test_move_request_rejects_parent_from_other_tenant(): void
+    {
+        $originalCompany = $this->company;
+
+        // Foreign tenant with its own live node.
+        $this->seedTenantAndCompany();
+        $foreignLocation = $this->seedLocationForCompany('WH-FRN-01', 'Foreign Warehouse');
+        $foreignNode = $this->service->createNode($this->tenant->id, $foreignLocation->id, null, LocationNodeType::Zone, 'Foreign', 'F1');
+
+        // Back to the original company context.
+        $this->company = $originalCompany;
+        app(CompanyContext::class)->setCompanyId($originalCompany->id);
+
+        $request = new MoveNodeRequest(app(CompanyContext::class));
+        $errors = Validator::make(['parent_id' => $foreignNode->id], $request->rules())->errors()->toArray();
+
+        $this->assertArrayHasKey('parent_id', $errors, 'foreign-tenant parent_id must fail validation');
+    }
+
+    public function test_move_request_accepts_live_same_tenant_parent_and_null(): void
+    {
+        $parent = $this->service->createNode($this->tenant->id, $this->location->id, null, LocationNodeType::Zone, 'Parent', 'P1');
+
+        $request = new MoveNodeRequest(app(CompanyContext::class));
+
+        $this->assertSame([], Validator::make(['parent_id' => $parent->id], $request->rules())->errors()->toArray());
+        $this->assertSame([], Validator::make(['parent_id' => null], $request->rules())->errors()->toArray());
     }
 
     public function test_location_from_other_company_fails(): void

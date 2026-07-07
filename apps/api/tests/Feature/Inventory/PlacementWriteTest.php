@@ -147,6 +147,34 @@ final class PlacementWriteTest extends TestCase
         $this->assertSame(0, ProductPlacement::query()->inNode($this->nodeA->id)->count());
     }
 
+    /**
+     * Review MINOR: the search term is user input inside a LIKE — '%' and
+     * '_' must match literally, not as wildcards.
+     */
+    public function test_list_node_products_search_escapes_like_wildcards(): void
+    {
+        $percent = $this->seedProductForCompany('ESC-PCT', 'Widget 100%');
+        $plain = $this->seedProductForCompany('ESC-PLN', 'Widget 100x');
+        $underscore = $this->seedProductForCompany('ESC-UND', 'Gad_get');
+        $letter = $this->seedProductForCompany('ESC-LTR', 'Gadxget');
+
+        foreach ([$percent, $plain, $underscore, $letter] as $product) {
+            $this->service->assignProduct($this->tenant->id, $product->id, $this->location->id, $this->nodeA->id);
+        }
+
+        $pctHits = $this->service->listNodeProducts($this->nodeA->id, '100%', 10);
+        $this->assertSame(1, $pctHits->total(), "'%' must match literally");
+        /** @var ProductPlacement $hit */
+        $hit = $pctHits->items()[0];
+        $this->assertSame($percent->id, $hit->product_id);
+
+        $usHits = $this->service->listNodeProducts($this->nodeA->id, 'Gad_get', 10);
+        $this->assertSame(1, $usHits->total(), "'_' must match literally");
+        /** @var ProductPlacement $usHit */
+        $usHit = $usHits->items()[0];
+        $this->assertSame($underscore->id, $usHit->product_id);
+    }
+
     public function test_list_node_products_paginates_and_searches(): void
     {
         $productTwo = $this->seedProductForCompany('PLW-GADGET', 'Placement Gadget');
