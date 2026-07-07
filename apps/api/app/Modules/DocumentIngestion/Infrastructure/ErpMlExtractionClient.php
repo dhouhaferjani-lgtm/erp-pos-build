@@ -9,6 +9,7 @@ use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
 use App\Shared\Contracts\ExtractionClientInterface;
 use App\Shared\Contracts\ExtractionFailedException;
 use App\Shared\Contracts\ExtractionHints;
+use App\Shared\Contracts\ExtractionResponse;
 use Illuminate\Support\Facades\Http;
 
 final class ErpMlExtractionClient implements ExtractionClientInterface
@@ -18,7 +19,7 @@ final class ErpMlExtractionClient implements ExtractionClientInterface
         string $mimeType,
         DocumentKind $kind,
         ExtractionHints $hints,
-    ): ExtractionResultData {
+    ): ExtractionResponse {
         $url = rtrim((string) config('services.erp_ml.url', 'http://127.0.0.1:8002'), '/');
         $token = (string) config('services.erp_ml.service_token', '');
 
@@ -52,8 +53,14 @@ final class ErpMlExtractionClient implements ExtractionClientInterface
         try {
             /** @var array<string, mixed> $result */
             $result = $json['result'];
+            $provider = is_string($json['provider'] ?? null) ? $json['provider'] : 'erp_ml';
+            $model = is_string($json['model'] ?? null) ? $json['model'] : null;
 
-            return ExtractionResultData::from($result);
+            return new ExtractionResponse(
+                result: ExtractionResultData::from($result),
+                provider: $provider,
+                model: $model,
+            );
         } catch (\Throwable $exception) {
             throw new ExtractionFailedException(
                 'erp-ml extraction returned invalid extraction data: '.$exception->getMessage(),

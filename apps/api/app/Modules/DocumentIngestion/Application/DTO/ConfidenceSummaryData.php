@@ -14,18 +14,20 @@ final class ConfidenceSummaryData extends Data
      * @param  list<string>  $lowConfidenceFields
      */
     public function __construct(
-        public float $averageConfidence,
+        public ?float $averageConfidence,
         public array $lowConfidenceFields,
+        public ReconciliationData $reconciliation,
     ) {}
 
     /**
-     * @return array{average_confidence: float, low_confidence_fields: list<string>}
+     * @return array{average_confidence: float|null, low_confidence_fields: list<string>, reconciliation: array{consistent: bool, flags: list<string>}}
      */
     public function toArray(): array
     {
         return [
             'average_confidence' => $this->averageConfidence,
             'low_confidence_fields' => $this->lowConfidenceFields,
+            'reconciliation' => $this->reconciliation->toArray(),
         ];
     }
 }

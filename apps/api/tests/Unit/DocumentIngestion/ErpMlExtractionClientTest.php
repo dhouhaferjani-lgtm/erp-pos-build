@@ -27,15 +27,17 @@ final class ErpMlExtractionClientTest extends TestCase
             ], 200),
         ]);
 
-        $result = (new ErpMlExtractionClient())->extract(
+        $response = (new ErpMlExtractionClient)->extract(
             '%PDF bytes',
             'application/pdf',
             DocumentKind::SupplierInvoice,
             new ExtractionHints(languageHint: 'fr', currencyHint: 'TND'),
         );
 
-        $this->assertSame('supplier_invoice', $result->docKind);
-        $this->assertCount(3, $result->lines);
+        $this->assertSame('supplier_invoice', $response->result->docKind);
+        $this->assertCount(3, $response->result->lines);
+        $this->assertSame('claude', $response->provider);
+        $this->assertSame('claude-haiku', $response->model);
 
         Http::assertSent(function (Request $request): bool {
             return $request->url() === 'http://erp-ml.test/api/v1/extract'
@@ -51,7 +53,7 @@ final class ErpMlExtractionClientTest extends TestCase
 
         $this->expectException(ExtractionFailedException::class);
 
-        (new ErpMlExtractionClient())->extract('bytes', 'application/pdf', DocumentKind::SupplierInvoice, new ExtractionHints());
+        (new ErpMlExtractionClient)->extract('bytes', 'application/pdf', DocumentKind::SupplierInvoice, new ExtractionHints);
     }
 
     public function test_server_error_throws_extraction_failed_exception(): void
@@ -62,7 +64,7 @@ final class ErpMlExtractionClientTest extends TestCase
 
         $this->expectException(ExtractionFailedException::class);
 
-        (new ErpMlExtractionClient())->extract('bytes', 'application/pdf', DocumentKind::SupplierInvoice, new ExtractionHints());
+        (new ErpMlExtractionClient)->extract('bytes', 'application/pdf', DocumentKind::SupplierInvoice, new ExtractionHints);
     }
 
     public function test_unauthorized_response_throws_extraction_failed_exception(): void
@@ -73,7 +75,7 @@ final class ErpMlExtractionClientTest extends TestCase
 
         $this->expectException(ExtractionFailedException::class);
 
-        (new ErpMlExtractionClient())->extract('bytes', 'application/pdf', DocumentKind::SupplierInvoice, new ExtractionHints());
+        (new ErpMlExtractionClient)->extract('bytes', 'application/pdf', DocumentKind::SupplierInvoice, new ExtractionHints);
     }
 
     /**

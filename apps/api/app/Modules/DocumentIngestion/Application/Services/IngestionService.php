@@ -13,6 +13,9 @@ use App\Modules\Media\Application\Services\MediaUploadService;
 use App\Modules\Media\Domain\Enums\MediaAssetType;
 use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
+use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\Media\MediaAttachment;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -32,7 +35,15 @@ final readonly class IngestionService
         DocumentKind $kind,
     ): DocumentIngestion {
         $ingestionId = (string) Str::uuid();
-        $checksum = hash('sha256', (string) file_get_contents($file->getRealPath()));
+        $path = $file->getRealPath();
+        if (! is_string($path)) {
+            throw new \RuntimeException('Uploaded file path is unavailable.');
+        }
+
+        $checksum = hash_file('sha256', $path);
+        if ($checksum === false) {
+            throw new \RuntimeException('Uploaded file checksum could not be calculated.');
+        }
 
         $duplicateExists = DocumentIngestion::query()
             ->where('company_id', $companyId)
@@ -73,21 +84,59 @@ final readonly class IngestionService
             tenantId: $tenantId,
         );
 
-        /** @var DocumentIngestion $ingestion */
-        $ingestion = DocumentIngestion::create([
-            'id' => $ingestionId,
-            'tenant_id' => $tenantId,
-            'company_id' => $companyId,
-            'kind' => $kind,
-            'status' => IngestionStatus::Uploaded,
-            'media_asset_id' => $asset->id,
-            'checksum' => $checksum,
-            'created_by' => $userId,
-        ]);
+        try {
+            /** @var DocumentIngestion $ingestion */
+            $ingestion = DocumentIngestion::create([
+                'id' => $ingestionId,
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'kind' => $kind,
+                'status' => IngestionStatus::Uploaded,
+                'media_asset_id' => $asset->id,
+                'checksum' => $checksum,
+                'created_by' => $userId,
+            ]);
+        } catch (QueryException $exception) {
+            if (! $this->isDuplicateChecksumViolation($exception)) {
+                throw $exception;
+            }
+
+            $this->cleanupRaceMedia($tenantId, $ingestionId, $asset->id);
+
+            throw ValidationException::withMessages([
+                'file' => ['A non-rejected document ingestion already exists for this file.'],
+            ]);
+        }
 
         ExtractDocumentJob::dispatch($tenantId, $companyId, $ingestion->id);
 
         return $ingestion;
+    }
+
+    private function isDuplicateChecksumViolation(QueryException $exception): bool
+    {
+        $sqlState = $exception->errorInfo[0] ?? null;
+        $message = $exception->getMessage();
+
+        return (($sqlState === '23505' || $exception->getCode() === '23505')
+            && str_contains($message, 'ux_document_ingestions_company_checksum'))
+            || (($sqlState === '23000' || $exception->getCode() === '23000')
+                && str_contains($message, 'document_ingestions.company_id')
+                && str_contains($message, 'document_ingestions.checksum'));
+    }
+
+    private function cleanupRaceMedia(string $tenantId, string $ingestionId, string $assetId): void
+    {
+        MediaAttachment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('owner_type', MediaOwnerType::DocumentIngestion)
+            ->where('owner_id', $ingestionId)
+            ->delete();
+
+        MediaAsset::query()
+            ->where('tenant_id', $tenantId)
+            ->where('id', $assetId)
+            ->delete();
     }
 
     public function reject(DocumentIngestion $ingestion, string $userId): DocumentIngestion
@@ -109,11 +158,16 @@ final readonly class IngestionService
             throw new \DomainException('Only failed or reviewable ingestions can be re-extracted.');
         }
 
-        if ($ingestion->status === IngestionStatus::Failed) {
-            $ingestion->transitionTo(IngestionStatus::Extracting);
-        } else {
-            $ingestion->status = IngestionStatus::Extracting;
-            $ingestion->save();
+        $updated = DocumentIngestion::query()
+            ->whereKey($ingestion->id)
+            ->whereIn('status', [IngestionStatus::Failed->value, IngestionStatus::NeedsReview->value])
+            ->update([
+                'status' => IngestionStatus::Extracting->value,
+                'updated_at' => now(),
+            ]);
+
+        if ($updated !== 1) {
+            throw new \DomainException('Only failed or reviewable ingestions can be re-extracted.');
         }
 
         $fresh = $ingestion->refresh();

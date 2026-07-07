@@ -728,8 +728,9 @@ export type SupplierInvoiceMatchStatus = 'unmatched' | 'matched' | 'price_varian
 }
 declare namespace App.Modules.DocumentIngestion.Application.DTO {
 export type ConfidenceSummaryData = {
-averageConfidence: number;
+averageConfidence: number | null;
 lowConfidenceFields: Array<any>;
+reconciliation: App.Modules.DocumentIngestion.Application.DTO.ReconciliationData;
 };
 export type ExtractedFieldData = {
 value: string;

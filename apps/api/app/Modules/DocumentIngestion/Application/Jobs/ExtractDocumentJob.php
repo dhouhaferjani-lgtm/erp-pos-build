@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\DocumentIngestion\Application\Jobs;
 
 use App\Jobs\Concerns\BindsTenantContext;
+use App\Modules\Company\Domain\Company;
+use App\Modules\DocumentIngestion\Application\DTO\ConfidenceSummaryData;
 use App\Modules\DocumentIngestion\Application\DTO\ExtractedFieldData;
 use App\Modules\DocumentIngestion\Application\DTO\ExtractedLineData;
 use App\Modules\DocumentIngestion\Application\DTO\ExtractionResultData;
+use App\Modules\DocumentIngestion\Application\DTO\ReconciliationData;
 use App\Modules\DocumentIngestion\Application\Services\ExtractionReconciler;
 use App\Modules\DocumentIngestion\Application\Services\MatchSuggestionService;
 use App\Modules\DocumentIngestion\Domain\DocumentIngestion;
@@ -58,6 +61,11 @@ final class ExtractDocumentJob implements ShouldQueue
                 ->where('id', $this->ingestionId)
                 ->firstOrFail();
 
+            $company = Company::query()
+                ->where('tenant_id', $this->tenantId)
+                ->where('id', $this->companyId)
+                ->firstOrFail();
+
             $this->markExtracting($ingestion);
 
             try {
@@ -71,23 +79,23 @@ final class ExtractDocumentJob implements ShouldQueue
                     throw new ExtractionFailedException('Source file is missing from object storage.', 'SOURCE_FILE_MISSING');
                 }
 
-                $result = $client->extract(
+                $response = $client->extract(
                     $contents,
                     (string) $asset->mime_type,
                     $ingestion->kind,
                     new ExtractionHints(languageHint: 'fr'),
                 );
+                $result = $response->result;
 
-                $reconciliation = $reconciler->reconcile($result);
+                $reconciliation = $reconciler->reconcile($result, (string) $company->currency);
                 $suggestions = $matchSuggestionService->suggest($ingestion, $result);
-                $confidenceSummary = $this->confidenceSummary($result);
-                $confidenceSummary['reconciliation'] = $reconciliation->toArray();
+                $confidenceSummary = $this->confidenceSummary($result, $reconciliation);
 
                 $ingestion->fill([
-                    'provider' => 'erp_ml',
-                    'provider_model' => null,
+                    'provider' => $response->provider,
+                    'provider_model' => $response->model,
                     'extraction' => $result->toArray(),
-                    'confidence_summary' => $confidenceSummary,
+                    'confidence_summary' => $confidenceSummary->toArray(),
                     'suggestions' => $suggestions->toArray(),
                     'error' => null,
                 ]);
@@ -129,10 +137,7 @@ final class ExtractDocumentJob implements ShouldQueue
         }
     }
 
-    /**
-     * @return array{average_confidence: float|null, low_confidence_fields: list<string>}
-     */
-    private function confidenceSummary(ExtractionResultData $result): array
+    private function confidenceSummary(ExtractionResultData $result, ReconciliationData $reconciliation): ConfidenceSummaryData
     {
         $confidences = [];
         $low = [];
@@ -153,10 +158,11 @@ final class ExtractDocumentJob implements ShouldQueue
             }
         }
 
-        return [
-            'average_confidence' => $confidences === [] ? null : array_sum($confidences) / count($confidences),
-            'low_confidence_fields' => $low,
-        ];
+        return new ConfidenceSummaryData(
+            averageConfidence: $confidences === [] ? null : array_sum($confidences) / count($confidences),
+            lowConfidenceFields: $low,
+            reconciliation: $reconciliation,
+        );
     }
 
     /**

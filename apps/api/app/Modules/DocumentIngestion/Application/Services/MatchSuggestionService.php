@@ -19,6 +19,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Procurement\Application\ReceiptLineConsumptionPlanner;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 
@@ -51,6 +52,7 @@ final readonly class MatchSuggestionService
     private function supplierCandidates(DocumentIngestion $ingestion, ExtractionResultData $result): array
     {
         $vatNumber = $this->fieldValue($result->supplier['vat_number'] ?? null);
+        $normalizedVatNumber = $vatNumber === null ? null : $this->normalizeVatNumber($vatNumber);
         $name = $this->fieldValue($result->supplier['name'] ?? null);
         $normalizedName = $name === null ? null : $this->normalizeName($name);
 
@@ -67,7 +69,7 @@ final readonly class MatchSuggestionService
             $matchedBy = null;
             $score = null;
 
-            if ($vatNumber !== null && $supplier->vat_number === $vatNumber) {
+            if ($normalizedVatNumber !== null && $this->normalizeVatNumber((string) $supplier->vat_number) === $normalizedVatNumber) {
                 $matchedBy = 'vat_number';
                 $score = '1.000';
             } elseif ($normalizedName !== null && $this->normalizeName($supplier->name) === $normalizedName) {
@@ -89,58 +91,52 @@ final readonly class MatchSuggestionService
             }
         }
 
-        usort($candidates, static fn (array $a, array $b): int => bccomp($b['score'], $a['score'], 3)); // precision-ok: rank score fixed at 3dp, not money/quantity
+        usort($candidates, static fn (array $a, array $b): int => self::compareScore($b['score'], $a['score']));
 
         return array_slice($candidates, 0, 5);
     }
 
     /**
-     * @return list<array{id: string, name: string, sku: string|null, barcode: string|null, requires_batch_tracking: bool, matched_by: string, score: string}>
+     * @return list<array{id: string, name: string, sku: string|null, barcode: string|null, requires_batch_tracking: bool, matched_by: string, score: numeric-string}>
      */
     private function productCandidates(DocumentIngestion $ingestion, ExtractedLineData $line): array
     {
         $supplierRef = $this->fieldValue($line->supplierRef);
         $description = $this->fieldValue($line->description);
 
-        /** @var Collection<int, Product> $products */
-        $products = Product::query()
-            ->where('tenant_id', $ingestion->tenant_id)
-            ->where('company_id', $ingestion->company_id)
-            ->where('is_active', true)
-            ->get();
-
         $candidates = [];
-        foreach ($products as $product) {
-            $matchedBy = null;
-            $score = null;
-
-            if ($supplierRef !== null && $product->sku === $supplierRef) {
-                $matchedBy = 'sku';
-                $score = '1.000';
-            } elseif ($supplierRef !== null && $product->barcode === $supplierRef) {
-                $matchedBy = 'barcode';
-                $score = '0.950';
-            } elseif ($supplierRef !== null && $this->containsReference($product, $supplierRef)) {
-                $matchedBy = 'supplier_ref';
-                $score = '0.850';
-            } elseif ($description !== null && Str::contains(Str::lower($product->name), Str::lower($description))) {
-                $matchedBy = 'name_like';
-                $score = '0.500';
-            }
-
-            if ($matchedBy !== null) {
-                $candidates[] = [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'sku' => $product->sku,
-                    'barcode' => $product->barcode,
-                    'requires_batch_tracking' => $product->requires_batch_tracking,
-                    'matched_by' => $matchedBy,
-                    'score' => $score,
-                ];
-            }
+        if ($supplierRef !== null) {
+            $candidates = array_merge(
+                $candidates,
+                $this->productRows($ingestion, static fn (Builder $query): Builder => $query->where('sku', $supplierRef), 'sku', '1.000'),
+                $this->productRows($ingestion, static fn (Builder $query): Builder => $query->where('barcode', $supplierRef), 'barcode', '0.950'),
+                $this->productRows(
+                    $ingestion,
+                    static fn (Builder $query): Builder => $query->where(
+                        static fn (Builder $nested): Builder => $nested
+                            ->whereJsonContains('oem_numbers', $supplierRef)
+                            ->orWhereJsonContains('cross_references', [['reference' => $supplierRef]])
+                    ),
+                    'supplier_ref',
+                    '0.850',
+                ),
+            );
         }
 
+        if ($description !== null) {
+            $like = '%'.$this->escapeLike(Str::lower($description)).'%';
+            $candidates = array_merge(
+                $candidates,
+                $this->productRows(
+                    $ingestion,
+                    static fn (Builder $query): Builder => $query->whereRaw('LOWER(name) LIKE ?', [$like]),
+                    'name_like',
+                    '0.500',
+                ),
+            );
+        }
+
+        $candidates = $this->dedupeProductCandidates($candidates);
         usort($candidates, static fn (array $a, array $b): int => bccomp($b['score'], $a['score'], 3)); // precision-ok: rank score fixed at 3dp, not money/quantity
 
         return array_slice($candidates, 0, 5);
@@ -195,6 +191,7 @@ final readonly class MatchSuggestionService
             ->where('company_id', $ingestion->company_id)
             ->postedReceipts()
             ->whereIn('goods_receipt_id', $receiptIds)
+            ->whereColumn('received_qty', '>', 'quantity_invoiced')
             ->latest('created_at')
             ->limit(20)
             ->get();
@@ -223,9 +220,9 @@ final readonly class MatchSuggestionService
      */
     private function purchaseOrderUnitPrice(GoodsReceiptLine $line): ?string
     {
-        $poLine = $line->poLine()->first();
+        $poLine = $line->poLine;
 
-        return $poLine === null ? null : $this->numericOrNull($poLine->unit_price);
+        return $this->numericOrNull($poLine->unit_price);
     }
 
     /**
@@ -240,21 +237,69 @@ final readonly class MatchSuggestionService
         return $value;
     }
 
-    private function containsReference(Product $product, string $supplierRef): bool
+    /**
+     * @param  callable(Builder<Product>): Builder<Product>  $predicate
+     * @param  numeric-string  $score
+     * @return list<array{id: string, name: string, sku: string|null, barcode: string|null, requires_batch_tracking: bool, matched_by: string, score: numeric-string}>
+     */
+    private function productRows(DocumentIngestion $ingestion, callable $predicate, string $matchedBy, string $score): array
     {
-        foreach ($product->oem_numbers ?? [] as $reference) {
-            if ($reference === $supplierRef) {
-                return true;
+        /** @var Collection<int, Product> $products */
+        $products = $predicate($this->productBaseQuery($ingestion))
+            ->limit(5)
+            ->get();
+
+        return array_values($products->map(static fn (Product $product): array => [
+            'id' => $product->id,
+            'name' => $product->name,
+            'sku' => $product->sku,
+            'barcode' => $product->barcode,
+            'requires_batch_tracking' => $product->requires_batch_tracking,
+            'matched_by' => $matchedBy,
+            'score' => $score,
+        ])->all());
+    }
+
+    /**
+     * @return Builder<Product>
+     */
+    private function productBaseQuery(DocumentIngestion $ingestion): Builder
+    {
+        return Product::query()
+            ->where('tenant_id', $ingestion->tenant_id)
+            ->where('company_id', $ingestion->company_id)
+            ->where('is_active', true);
+    }
+
+    /**
+     * @param  list<array{id: string, name: string, sku: string|null, barcode: string|null, requires_batch_tracking: bool, matched_by: string, score: numeric-string}>  $candidates
+     * @return list<array{id: string, name: string, sku: string|null, barcode: string|null, requires_batch_tracking: bool, matched_by: string, score: numeric-string}>
+     */
+    private function dedupeProductCandidates(array $candidates): array
+    {
+        $deduped = [];
+        foreach ($candidates as $candidate) {
+            $id = $candidate['id'];
+            if (! isset($deduped[$id]) || self::compareScore($candidate['score'], $deduped[$id]['score']) > 0) {
+                $deduped[$id] = $candidate;
             }
         }
 
-        foreach ($product->cross_references ?? [] as $reference) {
-            if ($reference['reference'] === $supplierRef) {
-                return true;
-            }
-        }
+        return array_values($deduped);
+    }
 
-        return false;
+    /**
+     * @param  numeric-string  $left
+     * @param  numeric-string  $right
+     */
+    private static function compareScore(string $left, string $right): int
+    {
+        return bccomp($left, $right, 3); // precision-ok: rank score fixed at 3dp, not money/quantity
+    }
+
+    private function escapeLike(string $value): string
+    {
+        return addcslashes($value, '%_\\');
     }
 
     private function normalizeName(string $name): string
@@ -269,6 +314,15 @@ final readonly class MatchSuggestionService
             ->trim();
 
         return $normalized->toString();
+    }
+
+    private function normalizeVatNumber(string $vatNumber): string
+    {
+        return Str::of($vatNumber)
+            ->ascii()
+            ->upper()
+            ->replaceMatches('/[^A-Z0-9]+/', '')
+            ->toString();
     }
 
     private function fieldValue(?ExtractedFieldData $field): ?string

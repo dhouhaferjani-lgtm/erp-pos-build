@@ -9,6 +9,7 @@ use App\Modules\DocumentIngestion\Application\DTO\ExtractionResultData;
 use App\Modules\DocumentIngestion\Application\DTO\ReconciliationData;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\QuantityScale;
 
 final readonly class ExtractionReconciler
 {
@@ -16,25 +17,36 @@ final readonly class ExtractionReconciler
         private CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
-    public function reconcile(ExtractionResultData $result, ?string $currencyCode = null): ReconciliationData
+    public function reconcile(ExtractionResultData $result, string $currencyCode): ReconciliationData
     {
-        $currency = $currencyCode ?? $this->fieldValue($result->header['currency'] ?? null);
+        $currency = trim($currencyCode);
         $scale = $this->scaleResolver->getScale($currency);
-        $flags = [];
+        $flags = $this->currencyFlags($result, $currency);
 
         foreach ($result->lines as $index => $line) {
             $lineNumber = $index + 1;
-            $quantity = $this->fieldValue($line->quantity);
+            $quantityValue = $this->fieldValue($line->quantity);
 
-            if ($quantity === null || $quantity === '') {
+            if ($quantityValue === null || $quantityValue === '') {
                 $flags[] = "line_{$lineNumber}_quantity_missing";
 
                 continue;
             }
 
+            $quantity = $this->normalizeNumber($quantityValue, "lines.{$index}.quantity", 'quantity', $flags);
+            if ($quantity === null) {
+                continue;
+            }
+
             if ($line->unitPrice !== null && $line->lineTotal !== null) {
-                $expected = $this->lineTotal($quantity, $line->unitPrice->value, $scale);
-                $actual = CurrencyScale::bcformatStrict($line->lineTotal->value, $scale);
+                $unitPrice = $this->normalizeNumber($line->unitPrice->value, "lines.{$index}.unit_price", 'money', $flags);
+                $lineTotal = $this->normalizeNumber($line->lineTotal->value, "lines.{$index}.line_total", 'money', $flags);
+                if ($unitPrice === null || $lineTotal === null) {
+                    continue;
+                }
+
+                $expected = $this->lineTotal($quantity, $unitPrice, $scale);
+                $actual = CurrencyScale::bcformatStrict($lineTotal, $scale);
 
                 if (bccomp($expected, $actual, $scale) !== 0) {
                     $flags[] = "line_{$lineNumber}_total_mismatch";
@@ -58,6 +70,23 @@ final readonly class ExtractionReconciler
     /**
      * @return list<string>
      */
+    private function currencyFlags(ExtractionResultData $result, string $currency): array
+    {
+        $extracted = $this->fieldValue($result->header['currency'] ?? null);
+        if ($extracted === null || $extracted === '') {
+            return [];
+        }
+
+        if (mb_strtoupper($extracted) === mb_strtoupper($currency)) {
+            return [];
+        }
+
+        return ['currency_mismatch'];
+    }
+
+    /**
+     * @return list<string>
+     */
     private function invoiceFlags(ExtractionResultData $result, int $scale): array
     {
         $flags = [];
@@ -67,22 +96,41 @@ final readonly class ExtractionReconciler
         $grandTotal = $this->fieldValue($result->header['grand_total'] ?? null);
 
         if ($subtotal !== null) {
+            $normalizedSubtotal = $this->normalizeNumber($subtotal, 'header.subtotal', 'money', $flags);
+            if ($normalizedSubtotal === null) {
+                $subtotal = null;
+            } else {
+                $subtotal = $normalizedSubtotal;
+            }
+
             $lineSum = CurrencyScale::bcformatStrict('0', $scale);
-            foreach ($result->lines as $line) {
+            foreach ($result->lines as $index => $line) {
                 if ($line->lineTotal === null) {
                     continue;
                 }
 
+                $lineTotal = $this->normalizeNumber($line->lineTotal->value, "lines.{$index}.line_total", 'money', $flags);
+                if ($lineTotal === null) {
+                    continue;
+                }
+
                 /** @var numeric-string $lineSum */
-                $lineSum = bcadd($lineSum, CurrencyScale::bcformatStrict($line->lineTotal->value, $scale), $scale);
+                $lineSum = bcadd($lineSum, CurrencyScale::bcformatStrict($lineTotal, $scale), $scale);
             }
 
-            if (bccomp($lineSum, CurrencyScale::bcformatStrict($subtotal, $scale), $scale) !== 0) {
+            if ($subtotal !== null && bccomp($lineSum, CurrencyScale::bcformatStrict($subtotal, $scale), $scale) !== 0) {
                 $flags[] = 'subtotal_mismatch';
             }
         }
 
         if ($subtotal !== null && $taxTotal !== null && $grandTotal !== null) {
+            $taxTotal = $this->normalizeNumber($taxTotal, 'header.tax_total', 'money', $flags);
+            $grandTotal = $this->normalizeNumber($grandTotal, 'header.grand_total', 'money', $flags);
+            $stampDuty = $stampDuty === null ? null : $this->normalizeNumber($stampDuty, 'header.stamp_duty', 'money', $flags);
+            if ($taxTotal === null || $grandTotal === null) {
+                return $flags;
+            }
+
             /** @var numeric-string $expected */
             $expected = bcadd(
                 CurrencyScale::bcformatStrict($subtotal, $scale),
@@ -108,9 +156,11 @@ final readonly class ExtractionReconciler
      */
     private function lineTotal(string $quantity, string $unitPrice, int $scale): string
     {
+        $formattedQuantity = QuantityScale::round($quantity, 4, QuantityScale::HALF_UP);
+
         /** @var numeric-string $total */
         $total = bcmul(
-            CurrencyScale::bcformatStrict($quantity, 4),
+            $formattedQuantity,
             CurrencyScale::bcformatStrict($unitPrice, $scale),
             $scale + 1,
         );
@@ -125,5 +175,27 @@ final readonly class ExtractionReconciler
         }
 
         return trim($field->value);
+    }
+
+    /**
+     * @param  list<string>  $flags
+     * @return numeric-string|null
+     */
+    private function normalizeNumber(string $value, string $path, string $kind, array &$flags): ?string
+    {
+        $normalized = preg_replace('/[\s\x{00A0}\x{202F}]+/u', '', trim($value));
+        $normalized = str_replace(',', '.', $normalized ?? '');
+        $pattern = $kind === 'quantity'
+            ? '/^\d+(?:\.\d{1,4})?$/'
+            : '/^-?\d+(?:\.\d{1,3})?$/';
+
+        if (preg_match($pattern, $normalized) !== 1) {
+            $flags[] = "field_unparseable:{$path}";
+
+            return null;
+        }
+
+        /** @var numeric-string $normalized */
+        return $normalized;
     }
 }

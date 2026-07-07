@@ -64,6 +64,17 @@ final class IngestionStateMachineTest extends TestCase
         $this->assertSame(IngestionStatus::Extracting, $ingestion->refresh()->status);
     }
 
+    public function test_needs_review_ingestion_can_be_reextracted(): void
+    {
+        $ingestion = $this->makeIngestion();
+
+        $ingestion->transitionTo(IngestionStatus::Extracting);
+        $ingestion->transitionTo(IngestionStatus::NeedsReview);
+        $ingestion->transitionTo(IngestionStatus::Extracting);
+
+        $this->assertSame(IngestionStatus::Extracting, $ingestion->refresh()->status);
+    }
+
     public function test_partial_unique_index_ignores_rejected_and_failed_rows_only(): void
     {
         $base = $this->makeIngestion(checksum: str_repeat('a', 64));
@@ -72,6 +83,12 @@ final class IngestionStateMachineTest extends TestCase
         $base->transitionTo(IngestionStatus::Rejected);
 
         $this->makeIngestion(company: $base->company, checksum: $base->checksum);
+
+        $failed = $this->makeIngestion(company: $base->company, checksum: str_repeat('c', 64));
+        $failed->transitionTo(IngestionStatus::Extracting);
+        $failed->transitionTo(IngestionStatus::Failed);
+
+        $this->makeIngestion(company: $base->company, checksum: $failed->checksum);
 
         $blocking = $this->makeIngestion(company: $base->company, checksum: str_repeat('b', 64));
         $blocking->transitionTo(IngestionStatus::Extracting);
@@ -84,7 +101,7 @@ final class IngestionStateMachineTest extends TestCase
 
     private function makeIngestion(?Company $company = null, ?string $checksum = null): DocumentIngestion
     {
-        $tenant = $company?->tenant ?? Tenant::factory()->create();
+        $tenant = $company !== null ? $company->tenant : Tenant::factory()->create();
         $company ??= Company::factory()->create(['tenant_id' => $tenant->id]);
         $user = User::factory()->create(['tenant_id' => $tenant->id]);
         $asset = MediaAsset::create([

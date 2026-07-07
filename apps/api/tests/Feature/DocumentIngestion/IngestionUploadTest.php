@@ -9,6 +9,8 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\DocumentIngestion\Application\Jobs\ExtractDocumentJob;
+use App\Modules\DocumentIngestion\Application\Services\IngestionService;
 use App\Modules\DocumentIngestion\Domain\DocumentIngestion;
 use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
 use App\Modules\DocumentIngestion\Domain\Enums\IngestionStatus;
@@ -30,6 +32,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -127,6 +130,79 @@ final class IngestionUploadTest extends TestCase
         $this->assertApiValidationErrors($response, ['file']);
     }
 
+    public function test_same_file_can_be_uploaded_after_rejected_ingestion(): void
+    {
+        $bytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=', true);
+        $this->assertIsString($bytes);
+
+        $this->actingAs($this->admin, 'sanctum')->post('/api/v1/document-ingestions', [
+            'kind' => DocumentKind::SupplierInvoice->value,
+            'file' => UploadedFile::fake()->createWithContent('invoice-a.png', $bytes),
+        ])->assertCreated();
+
+        DocumentIngestion::query()->firstOrFail()->forceFill(['status' => IngestionStatus::Rejected])->save();
+
+        $this->actingAs($this->admin, 'sanctum')->post('/api/v1/document-ingestions', [
+            'kind' => DocumentKind::SupplierInvoice->value,
+            'file' => UploadedFile::fake()->createWithContent('invoice-b.png', $bytes),
+        ])->assertCreated();
+    }
+
+    public function test_unique_race_during_upload_returns_validation_and_cleans_created_media(): void
+    {
+        $file = UploadedFile::fake()->createWithContent('race.pdf', '%PDF race');
+        $checksum = hash('sha256', '%PDF race');
+        $duplicateAsset = MediaAsset::create([
+            'tenant_id' => $this->tenant->id,
+            'type' => MediaAssetType::Document,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
+            'storage_disk' => 's3',
+            'storage_path' => 'ingestions/preexisting-race.pdf',
+            'original_filename' => 'race.pdf',
+            'mime_type' => 'application/pdf',
+            'file_size' => 9,
+            'checksum' => $checksum,
+            'uploaded_by' => $this->admin->id,
+        ]);
+
+        $insertedRace = false;
+        DocumentIngestion::creating(function (DocumentIngestion $ingestion) use (&$insertedRace, $checksum, $duplicateAsset): void {
+            if ($insertedRace || $ingestion->checksum !== $checksum) {
+                return;
+            }
+
+            $insertedRace = true;
+            DocumentIngestion::withoutEvents(function () use ($checksum, $duplicateAsset): void {
+                DocumentIngestion::create([
+                    'tenant_id' => $this->tenant->id,
+                    'company_id' => $this->company->id,
+                    'kind' => DocumentKind::SupplierInvoice,
+                    'status' => IngestionStatus::Uploaded,
+                    'media_asset_id' => $duplicateAsset->id,
+                    'checksum' => $checksum,
+                    'created_by' => $this->admin->id,
+                ]);
+            });
+        });
+
+        try {
+            app(IngestionService::class)->createFromUpload(
+                tenantId: $this->tenant->id,
+                companyId: $this->company->id,
+                userId: $this->admin->id,
+                file: $file,
+                kind: DocumentKind::SupplierInvoice,
+            );
+            $this->fail('Expected duplicate upload race to be converted to a validation exception.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('file', $exception->errors());
+        }
+
+        $this->assertSame(1, MediaAsset::query()->count());
+        $this->assertSame(0, MediaAttachment::query()->count());
+    }
+
     public function test_upload_requires_create_permission(): void
     {
         $limited = $this->user('limited@test.example');
@@ -176,6 +252,32 @@ final class IngestionUploadTest extends TestCase
         $this->assertStringContainsString('signature=', $sourceUrl);
     }
 
+    public function test_other_company_ingestion_is_not_found_for_detail_reject_and_extract(): void
+    {
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Document Ingestion Company',
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'status' => CompanyStatus::Active,
+        ]);
+        $other = $this->makeIngestion(status: IngestionStatus::NeedsReview, company: $otherCompany);
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->getJson("/api/v1/document-ingestions/{$other->id}")
+            ->assertNotFound();
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$other->id}/reject")
+            ->assertNotFound();
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$other->id}/extract")
+            ->assertNotFound();
+    }
+
     public function test_reject_flips_needs_review_and_conflicts_from_committed(): void
     {
         $needsReview = $this->makeIngestion(status: IngestionStatus::NeedsReview);
@@ -202,6 +304,45 @@ final class IngestionUploadTest extends TestCase
             ->assertJsonPath('data.status', IngestionStatus::Extracting->value);
     }
 
+    public function test_reextract_needs_review_ingestion_moves_back_to_extracting(): void
+    {
+        $needsReview = $this->makeIngestion(status: IngestionStatus::NeedsReview);
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$needsReview->id}/extract")
+            ->assertAccepted()
+            ->assertJsonPath('data.status', IngestionStatus::Extracting->value);
+    }
+
+    public function test_reextract_conflicts_for_committing_and_committed_ingestions(): void
+    {
+        $committing = $this->makeIngestion(status: IngestionStatus::Committing);
+        $committed = $this->makeIngestion(status: IngestionStatus::Committed);
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$committing->id}/extract")
+            ->assertStatus(409);
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$committed->id}/extract")
+            ->assertStatus(409);
+    }
+
+    public function test_double_reextract_dispatches_one_job(): void
+    {
+        $needsReview = $this->makeIngestion(status: IngestionStatus::NeedsReview);
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$needsReview->id}/extract")
+            ->assertAccepted();
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$needsReview->id}/extract")
+            ->assertStatus(409);
+
+        Queue::assertPushed(ExtractDocumentJob::class, 1);
+    }
+
     private function user(string $email): User
     {
         return User::create([
@@ -213,8 +354,9 @@ final class IngestionUploadTest extends TestCase
         ]);
     }
 
-    private function makeIngestion(IngestionStatus $status): DocumentIngestion
+    private function makeIngestion(IngestionStatus $status, ?Company $company = null): DocumentIngestion
     {
+        $company ??= $this->company;
         $asset = MediaAsset::create([
             'tenant_id' => $this->tenant->id,
             'type' => MediaAssetType::Document,
@@ -232,7 +374,7 @@ final class IngestionUploadTest extends TestCase
         /** @var DocumentIngestion $ingestion */
         $ingestion = DocumentIngestion::create([
             'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
+            'company_id' => $company->id,
             'kind' => DocumentKind::SupplierInvoice,
             'status' => $status,
             'media_asset_id' => $asset->id,

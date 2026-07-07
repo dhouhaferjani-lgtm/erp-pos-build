@@ -6,6 +6,7 @@ namespace Tests\Feature\DocumentIngestion;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\DocumentIngestion\Application\DTO\ExtractionResultData;
 use App\Modules\DocumentIngestion\Application\Jobs\ExtractDocumentJob;
 use App\Modules\DocumentIngestion\Application\Services\ExtractionReconciler;
@@ -25,6 +26,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\ExtractionClientInterface;
 use App\Shared\Contracts\ExtractionFailedException;
 use App\Shared\Contracts\ExtractionHints;
+use App\Shared\Contracts\ExtractionResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -51,7 +53,11 @@ final class ExtractDocumentJobTest extends TestCase
 
         $this->app->instance(
             ExtractionClientInterface::class,
-            new FakeExtractionClient(ExtractionResultData::from($this->fixture()))
+            new FakeExtractionClient(
+                ExtractionResultData::from($this->fixture()),
+                provider: 'claude',
+                model: 'claude-haiku',
+            )
         );
 
         (new ExtractDocumentJob($context['tenant']->id, $context['company']->id, $context['ingestion']->id))
@@ -65,10 +71,85 @@ final class ExtractDocumentJobTest extends TestCase
 
         $this->assertSame(IngestionStatus::NeedsReview, $fresh->status);
         $this->assertSame($this->fixture(), $fresh->extraction);
-        $this->assertSame('erp_ml', $fresh->provider);
-        $this->assertSame([], $fresh->confidence_summary['reconciliation']['flags']);
-        $this->assertSame([], $fresh->suggestions['supplier_candidates']);
-        $this->assertSame([], $fresh->suggestions['receipt_line_candidates']);
+        $this->assertSame('claude', $fresh->provider);
+        $this->assertSame('claude-haiku', $fresh->provider_model);
+        $confidenceSummary = $fresh->confidence_summary;
+        $suggestions = $fresh->suggestions;
+        $this->assertIsArray($confidenceSummary);
+        $this->assertIsArray($suggestions);
+        $reconciliation = $confidenceSummary['reconciliation'];
+        $this->assertIsArray($reconciliation);
+        $this->assertSame([], $reconciliation['flags']);
+        $this->assertSame([], $suggestions['supplier_candidates']);
+        $this->assertSame([], $suggestions['receipt_line_candidates']);
+    }
+
+    public function test_delivery_note_extraction_uses_company_currency_without_company_context(): void
+    {
+        Storage::fake('s3');
+        $context = $this->makeIngestion(DocumentKind::SupplierDeliveryNote);
+        app(CompanyContext::class)->clear();
+
+        $this->app->instance(
+            ExtractionClientInterface::class,
+            new FakeExtractionClient(ExtractionResultData::from($this->fixture('extraction_bl_fr.json')))
+        );
+
+        (new ExtractDocumentJob($context['tenant']->id, $context['company']->id, $context['ingestion']->id))
+            ->handle(
+                $this->app->make(ExtractionClientInterface::class),
+                $this->app->make(ExtractionReconciler::class),
+                $this->app->make(MatchSuggestionService::class),
+            );
+
+        $fresh = $context['ingestion']->refresh();
+
+        $this->assertSame(IngestionStatus::NeedsReview, $fresh->status);
+        $confidenceSummary = $fresh->confidence_summary;
+        $this->assertIsArray($confidenceSummary);
+        $reconciliation = $confidenceSummary['reconciliation'];
+        $this->assertIsArray($reconciliation);
+        $this->assertSame([], $reconciliation['flags']);
+        $this->assertNull($fresh->error);
+    }
+
+    public function test_unparseable_extracted_numbers_are_flagged_without_failing_the_document(): void
+    {
+        Storage::fake('s3');
+        $context = $this->makeIngestion(DocumentKind::SupplierDeliveryNote);
+        $payload = $this->fixture('extraction_bl_fr.json');
+
+        $payload['lines'][0]['unit_price'] = ['value' => 'N/A', 'confidence' => 0.82];
+        $payload['lines'][0]['line_total'] = ['value' => '10.000', 'confidence' => 0.82];
+        $payload['lines'][] = $payload['lines'][0];
+        $payload['lines'][1]['quantity']['value'] = '1.0000';
+        $payload['lines'][1]['unit_price'] = ['value' => '1 234,56', 'confidence' => 0.88];
+        $payload['lines'][1]['line_total'] = ['value' => '1234.560', 'confidence' => 0.88];
+
+        $this->app->instance(
+            ExtractionClientInterface::class,
+            new FakeExtractionClient(ExtractionResultData::from($payload))
+        );
+
+        (new ExtractDocumentJob($context['tenant']->id, $context['company']->id, $context['ingestion']->id))
+            ->handle(
+                $this->app->make(ExtractionClientInterface::class),
+                $this->app->make(ExtractionReconciler::class),
+                $this->app->make(MatchSuggestionService::class),
+            );
+
+        $fresh = $context['ingestion']->refresh();
+        $confidenceSummary = $fresh->confidence_summary;
+        $this->assertIsArray($confidenceSummary);
+        $reconciliation = $confidenceSummary['reconciliation'];
+        $this->assertIsArray($reconciliation);
+        $flags = $reconciliation['flags'];
+        $this->assertIsArray($flags);
+
+        $this->assertSame(IngestionStatus::NeedsReview, $fresh->status);
+        $this->assertContains('field_unparseable:lines.0.unit_price', $flags);
+        $this->assertNotContains('line_2_total_mismatch', $flags);
+        $this->assertNull($fresh->error);
     }
 
     public function test_client_failure_marks_ingestion_failed_with_structured_error_and_rethrows(): void
@@ -103,7 +184,7 @@ final class ExtractDocumentJobTest extends TestCase
     /**
      * @return array{tenant: Tenant, company: Company, ingestion: DocumentIngestion}
      */
-    private function makeIngestion(): array
+    private function makeIngestion(DocumentKind $kind = DocumentKind::SupplierInvoice): array
     {
         $tenant = Tenant::create([
             'name' => 'Extraction Tenant',
@@ -149,7 +230,7 @@ final class ExtractDocumentJobTest extends TestCase
         $ingestion = DocumentIngestion::create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
-            'kind' => DocumentKind::SupplierInvoice,
+            'kind' => $kind,
             'status' => IngestionStatus::Uploaded,
             'media_asset_id' => $asset->id,
             'checksum' => hash('sha256', 'source'),
@@ -162,9 +243,9 @@ final class ExtractDocumentJobTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function fixture(): array
+    private function fixture(string $name = 'extraction_invoice_fr.json'): array
     {
-        $json = file_get_contents(base_path('tests/Fixtures/document_ingestion/extraction_invoice_fr.json'));
+        $json = file_get_contents(base_path("tests/Fixtures/document_ingestion/{$name}"));
         $this->assertIsString($json);
 
         /** @var array<string, mixed> $decoded */
@@ -179,6 +260,8 @@ final class FakeExtractionClient implements ExtractionClientInterface
     public function __construct(
         private readonly ?ExtractionResultData $result,
         private readonly ?ExtractionFailedException $exception = null,
+        private readonly string $provider = 'erp_ml',
+        private readonly ?string $model = null,
     ) {}
 
     public function extract(
@@ -186,7 +269,7 @@ final class FakeExtractionClient implements ExtractionClientInterface
         string $mimeType,
         DocumentKind $kind,
         ExtractionHints $hints,
-    ): ExtractionResultData {
+    ): ExtractionResponse {
         if ($this->exception !== null) {
             throw $this->exception;
         }
@@ -195,6 +278,6 @@ final class FakeExtractionClient implements ExtractionClientInterface
             throw new ExtractionFailedException('missing fake result');
         }
 
-        return $this->result;
+        return new ExtractionResponse($this->result, $this->provider, $this->model);
     }
 }

@@ -23,7 +23,7 @@ enum IngestionStatus: string
             self::Uploaded => [self::Extracting],
             self::Extracting => [self::Extracting, self::NeedsReview, self::Failed],
             self::Failed => [self::Extracting],
-            self::NeedsReview => [self::Committing, self::Rejected],
+            self::NeedsReview => [self::Extracting, self::Committing, self::Rejected],
             self::Committing => [self::Committed, self::NeedsReview],
             self::Committed, self::Rejected => [],
         };
