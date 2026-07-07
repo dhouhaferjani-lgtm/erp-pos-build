@@ -57,6 +57,9 @@ class CreateCountingRequest extends FormRequest
             'include_zero_stock' => ['sometimes', 'boolean'],
             // Soft sales-advisory flag; rejected for zone scope (see below).
             'block_sales' => ['sometimes', 'boolean'],
+            // Basket-window guard for late in-flight sales; 0 disables it (a
+            // legitimate admin choice). Model default is 15 when omitted.
+            'ambiguity_window_minutes' => ['sometimes', 'integer', 'min:0', 'max:1440'],
 
             'execution_mode' => ['sometimes', Rule::enum(CountingExecutionMode::class)],
 

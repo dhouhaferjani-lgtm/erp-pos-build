@@ -76,6 +76,8 @@ class InventoryCountingService
                 'requires_count_2' => $data['requires_count_2'] ?? true,
                 'requires_count_3' => $data['requires_count_3'] ?? false,
                 'allow_unexpected_items' => $data['allow_unexpected_items'] ?? false,
+                'block_sales' => $data['block_sales'] ?? false,
+                'ambiguity_window_minutes' => $data['ambiguity_window_minutes'] ?? 15,
                 'count_1_user_id' => $data['count_1_user_id'],
                 'count_2_user_id' => $data['count_2_user_id'] ?? null,
                 'count_3_user_id' => $data['count_3_user_id'] ?? null,

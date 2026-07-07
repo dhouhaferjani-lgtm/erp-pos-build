@@ -257,6 +257,50 @@ final class ZoneScopedCountingTest extends TestCase
         $response->assertStatus(422);
     }
 
+    public function test_ambiguity_window_minutes_persists_when_provided(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::Location->value,
+            'scope_filters' => ['location_ids' => [$this->location->id]],
+            'ambiguity_window_minutes' => 30,
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $response->assertCreated();
+        $countingId = (string) $response->json('data.id');
+
+        $this->assertSame(30, InventoryCounting::query()->findOrFail($countingId)->ambiguity_window_minutes);
+    }
+
+    public function test_ambiguity_window_minutes_defaults_to_15_when_omitted(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::Location->value,
+            'scope_filters' => ['location_ids' => [$this->location->id]],
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $response->assertCreated();
+        $countingId = (string) $response->json('data.id');
+
+        $this->assertSame(15, InventoryCounting::query()->findOrFail($countingId)->ambiguity_window_minutes);
+    }
+
+    public function test_ambiguity_window_minutes_rejects_non_integer(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::Location->value,
+            'scope_filters' => ['location_ids' => [$this->location->id]],
+            'ambiguity_window_minutes' => 'abc',
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
     public function test_onboarding_full_count_includes_zero_and_negative_stock(): void
     {
         $this->location->onboarding_mode = true;
