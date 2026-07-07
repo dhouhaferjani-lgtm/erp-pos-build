@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\DocumentIngestion\Application\Exceptions\DuplicateDocumentException;
 use App\Modules\DocumentIngestion\Application\Jobs\ExtractDocumentJob;
 use App\Modules\DocumentIngestion\Application\Services\IngestionService;
 use App\Modules\DocumentIngestion\Domain\DocumentIngestion;
@@ -32,7 +33,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -128,6 +128,7 @@ final class IngestionUploadTest extends TestCase
         ]);
 
         $this->assertApiValidationErrors($response, ['file']);
+        $response->assertJsonPath('error.code', 'DUPLICATE_DOCUMENT');
     }
 
     public function test_same_file_can_be_uploaded_after_rejected_ingestion(): void
@@ -194,9 +195,9 @@ final class IngestionUploadTest extends TestCase
                 file: $file,
                 kind: DocumentKind::SupplierInvoice,
             );
-            $this->fail('Expected duplicate upload race to be converted to a validation exception.');
-        } catch (ValidationException $exception) {
-            $this->assertArrayHasKey('file', $exception->errors());
+            $this->fail('Expected duplicate upload race to be converted to a duplicate-document exception.');
+        } catch (DuplicateDocumentException $exception) {
+            $this->assertStringContainsString('already exists', $exception->getMessage());
         }
 
         $this->assertSame(1, MediaAsset::query()->count());

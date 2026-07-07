@@ -6,6 +6,7 @@ namespace App\Modules\DocumentIngestion\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\DocumentIngestion\Application\Exceptions\DuplicateDocumentException;
 use App\Modules\DocumentIngestion\Application\Services\IngestionService;
 use App\Modules\DocumentIngestion\Domain\DocumentIngestion;
 use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
@@ -41,13 +42,25 @@ final class DocumentIngestionController extends Controller
             abort(422);
         }
 
-        $ingestion = $this->service->createFromUpload(
-            tenantId: $company->tenant_id,
-            companyId: $company->id,
-            userId: $user->id,
-            file: $file,
-            kind: DocumentKind::from((string) $request->validated('kind')),
-        );
+        try {
+            $ingestion = $this->service->createFromUpload(
+                tenantId: $company->tenant_id,
+                companyId: $company->id,
+                userId: $user->id,
+                file: $file,
+                kind: DocumentKind::from((string) $request->validated('kind')),
+            );
+        } catch (DuplicateDocumentException $exception) {
+            // Typed code so clients (mobile scan capture) don't infer duplicates
+            // from validation-field presence; errors.file kept for back-compat.
+            return response()->json([
+                'error' => [
+                    'code' => 'DUPLICATE_DOCUMENT',
+                    'message' => $exception->getMessage(),
+                    'errors' => ['file' => [$exception->getMessage()]],
+                ],
+            ], 422);
+        }
 
         return response()->json(['data' => $this->resource($ingestion)], 201);
     }

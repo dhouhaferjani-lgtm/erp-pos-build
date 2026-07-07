@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\DocumentIngestion\Application\Services;
 
+use App\Modules\DocumentIngestion\Application\Exceptions\DuplicateDocumentException;
 use App\Modules\DocumentIngestion\Application\Jobs\ExtractDocumentJob;
 use App\Modules\DocumentIngestion\Domain\DocumentIngestion;
 use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
@@ -18,7 +19,6 @@ use App\Modules\Media\Domain\Media\MediaAttachment;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 
 final readonly class IngestionService
 {
@@ -52,9 +52,7 @@ final readonly class IngestionService
             ->exists();
 
         if ($duplicateExists) {
-            throw ValidationException::withMessages([
-                'file' => ['A non-rejected document ingestion already exists for this file.'],
-            ]);
+            throw new DuplicateDocumentException;
         }
 
         $mimeType = (string) $file->getMimeType();
@@ -103,9 +101,7 @@ final readonly class IngestionService
 
             $this->cleanupRaceMedia($tenantId, $ingestionId, $asset->id);
 
-            throw ValidationException::withMessages([
-                'file' => ['A non-rejected document ingestion already exists for this file.'],
-            ]);
+            throw new DuplicateDocumentException;
         }
 
         ExtractDocumentJob::dispatch($tenantId, $companyId, $ingestion->id);
