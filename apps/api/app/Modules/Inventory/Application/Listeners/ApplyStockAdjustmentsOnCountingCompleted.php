@@ -17,9 +17,11 @@ use App\Modules\Inventory\Domain\Services\FirstCountDetector;
 use App\Modules\Inventory\Domain\Services\MovementReplayService;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
@@ -90,6 +92,23 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 continue;
             }
 
+            // Idempotency guard (queue-retry double-apply defense). This listener
+            // is ShouldQueue with $tries=3; if item N throws after items 1..N-1
+            // committed, the WHOLE job replays. The replay path stamps
+            // `replay_audit` in the SAME transaction as its stock movement (see
+            // applyReplay), so a non-null marker proves this item already reached
+            // a terminal state on a prior attempt — posted OR flagged (flags carry
+            // an audit too). Re-running would re-sum the prior correction inside a
+            // fresh replay window and double-apply. Skip it.
+            if ($item->replay_audit !== null) {
+                Log::info('ApplyStockAdjustments: Skipping already-applied replay item (queue retry)', [
+                    'counting_id' => $event->countingId,
+                    'item_id' => $item->id,
+                ]);
+
+                continue;
+            }
+
             if ($this->applyReplay($item, $counting, $window)) {
                 $adjustedCount++;
             }
@@ -117,6 +136,34 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         $theoreticalQty = $item->theoretical_qty;
 
         if ($finalQty === null || $finalQty === $theoreticalQty) {
+            return false;
+        }
+
+        // Idempotency guard (queue-retry double-apply defense). The legacy path
+        // has no per-item marker column; its applied-marker IS the posted
+        // movement, keyed by reference `COUNTING:{number}`. Because one counting
+        // number is shared across all its lines, discriminate by
+        // (product, location, variant) so each line is checked independently.
+        // A hit means attempt 1 already posted this line's correction; re-running
+        // would apply `final − theoretical` a second time on top of the already
+        // corrected on-hand. Skip it.
+        $alreadyApplied = StockMovement::query()
+            ->where('product_id', $item->product_id)
+            ->where('location_id', $item->location_id)
+            ->when(
+                $item->variant_id !== null,
+                fn ($q) => $q->where('variant_id', $item->variant_id),
+                fn ($q) => $q->whereNull('variant_id'),
+            )
+            ->where('reference', $reference)
+            ->exists();
+
+        if ($alreadyApplied) {
+            Log::info('ApplyStockAdjustments: Skipping already-applied legacy item (existing COUNTING movement)', [
+                'item_id' => $item->id,
+                'reference' => $reference,
+            ]);
+
             return false;
         }
 
@@ -197,32 +244,42 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         /** @var numeric-string $finalQty */
         $finalQty = (string) $item->final_qty;
 
-        $audit = $this->stockAdjustmentService->applyCountResult(
-            productId: $item->product_id,
-            locationId: $item->location_id,
-            variantId: $item->variant_id,
-            finalQty: $finalQty,
-            finalQtyAsOf: $asOf,
-            ambiguityWindowMinutes: $window,
-            onboarding: $onboarding,
-            openingUnitCost: $openingUnitCost,
-        );
+        // Post the movement AND stamp the applied-marker (replay_audit) in ONE
+        // transaction. applyCountResult opens its own transaction; nesting it here
+        // makes its stock write a savepoint of THIS transaction, so the movement
+        // and the marker commit (or roll back) together. Without this, a crash
+        // between the movement commit and the marker save would leave a posted
+        // movement with no marker — and the queue retry (idempotency guard keys on
+        // replay_audit) would re-sum that movement in a fresh window and
+        // double-apply. This is the fix for the finalize double-apply blocker.
+        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty): bool {
+            $audit = $this->stockAdjustmentService->applyCountResult(
+                productId: $item->product_id,
+                locationId: $item->location_id,
+                variantId: $item->variant_id,
+                finalQty: $finalQty,
+                finalQtyAsOf: $asOf,
+                ambiguityWindowMinutes: $window,
+                onboarding: $onboarding,
+                openingUnitCost: $openingUnitCost,
+            );
 
-        // Null return means the negative-at-apply guard tripped (basket window
-        // was already excluded above) — nothing was posted; leave for review.
-        if ($audit === null) {
-            $this->flagItem($item, CountingItemFlagReason::NegativeAtApply, $asOf);
+            // Null return means the negative-at-apply guard tripped (basket window
+            // was already excluded above) — nothing was posted; leave for review.
+            if ($audit === null) {
+                $this->flagItem($item, CountingItemFlagReason::NegativeAtApply, $asOf);
 
-            return false;
-        }
+                return false;
+            }
 
-        /** @var numeric-string $expectedAtApply */
-        $expectedAtApply = $audit->expectedAtApply;
-        $item->expected_qty_at_apply = $expectedAtApply;
-        $item->replay_audit = $audit->toArray();
-        $item->save();
+            /** @var numeric-string $expectedAtApply */
+            $expectedAtApply = $audit->expectedAtApply;
+            $item->expected_qty_at_apply = $expectedAtApply;
+            $item->replay_audit = $audit->toArray();
+            $item->save();
 
-        return true;
+            return true;
+        });
     }
 
     /**

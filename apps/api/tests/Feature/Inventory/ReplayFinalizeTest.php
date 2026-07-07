@@ -365,4 +365,128 @@ final class ReplayFinalizeTest extends TestCase
         $this->assertNotNull($item->final_qty_as_of);
         $this->assertSame($estimate->toIso8601String(), $item->final_qty_as_of->toIso8601String());
     }
+
+    // Queue-retry idempotency (replay path): re-running handle() on the same
+    // finalized counting must NOT re-sum the already-posted correction. Without
+    // the marker guard the posted correction (occurred_at now₁ > T) falls inside
+    // the second attempt's replay window and inflates on-hand (17 → 39).
+    public function test_retry_does_not_double_apply_replay_item(): void
+    {
+        $t = CarbonImmutable::now()->subHours(3);
+        $this->setOnHand('-5.0000');
+        $this->movement('10.0000', '9.0000', $t->addMinutes(30));
+        $this->movement('9.0000', '8.0000', $t->addMinutes(60));
+        $this->movement('8.0000', '7.0000', $t->addMinutes(90));
+
+        $counting = $this->counting();
+        $item = $this->item($counting, '20.0000', $t);
+
+        // Attempt 1 — applies once, ends at 17.
+        $this->fire($counting);
+        $this->assertSame('17.0000', StockLevel::where('product_id', $this->product->id)->value('quantity'));
+
+        $item->refresh();
+        $this->assertNotNull($item->replay_audit);
+        $auditAfterFirst = $item->replay_audit;
+        $this->assertSame(1, StockMovement::where('product_id', $this->product->id)
+            ->where('reason', MovementReason::CountCorrection->value)->count());
+
+        // Attempt 2 — queue retry of the WHOLE job. Marker guard must skip.
+        $this->fire($counting);
+
+        $this->assertSame('17.0000', StockLevel::where('product_id', $this->product->id)->value('quantity'));
+        $this->assertSame(1, StockMovement::where('product_id', $this->product->id)
+            ->where('reason', MovementReason::CountCorrection->value)->count());
+        $item->refresh();
+        $this->assertSame($auditAfterFirst, $item->replay_audit);
+    }
+
+    // Queue-retry idempotency (legacy path): the applied-marker is the posted
+    // movement keyed by reference COUNTING:{number}; re-running must not apply
+    // final − theoretical a second time on top of the corrected on-hand.
+    public function test_retry_does_not_double_apply_legacy_item(): void
+    {
+        $this->setOnHand('10.0000');
+        $counting = $this->counting();
+        $reference = 'COUNTING:'.$counting->counting_number;
+        $this->item($counting, '12.0000', null, theoretical: '10.0000');
+
+        // Attempt 1 — legacy delta 12 − 10 = 2 → on-hand 12.
+        $this->fire($counting);
+        $this->assertSame('12.0000', StockLevel::where('product_id', $this->product->id)->value('quantity'));
+        $this->assertSame(1, StockMovement::where('product_id', $this->product->id)
+            ->where('reference', $reference)->count());
+
+        // Attempt 2 — retry. Existing-movement guard must skip.
+        $this->fire($counting);
+        $this->assertSame('12.0000', StockLevel::where('product_id', $this->product->id)->value('quantity'));
+        $this->assertSame(1, StockMovement::where('product_id', $this->product->id)
+            ->where('reference', $reference)->count());
+    }
+
+    // Partial-failure shape: item A applied on attempt 1 (marker + movement),
+    // item B not yet reached. The retry must skip A and post ONLY B.
+    public function test_partial_failure_retry_posts_only_unapplied_items(): void
+    {
+        $t = CarbonImmutable::now()->subHours(3);
+
+        // Product A — simulate a successful attempt-1 apply: on-hand already 17,
+        // marker stamped, its correction movement already posted.
+        $this->setOnHand('17.0000');
+        $counting = $this->counting();
+        $itemA = $this->item($counting, '20.0000', $t);
+        $itemA->replay_audit = [
+            'windowFrom' => $t->toIso8601String(),
+            'windowTo' => CarbonImmutable::now()->toIso8601String(),
+            'replayedDelta' => '0.0000',
+            'onHandAtApply' => '17.0000',
+            'expectedAtApply' => '17.0000',
+        ];
+        $itemA->expected_qty_at_apply = '17.0000';
+        $itemA->save();
+        $this->movement('0.0000', '17.0000', CarbonImmutable::now(), MovementType::Adjustment, MovementReason::CountCorrection);
+
+        // Product B — a second line NOT yet applied (replay_audit null).
+        $productB = Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'RPL-B-'.uniqid(),
+            'name' => 'Replay Product B',
+            'type' => ProductType::Part,
+            'is_active' => true,
+            'cost_price' => '1.000000',
+        ]);
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $productB->id,
+            'location_id' => $this->location->id,
+            'quantity' => '10.0000',
+            'reserved' => '0.0000',
+        ]);
+        $itemB = InventoryCountingItem::create([
+            'counting_id' => $counting->id,
+            'product_id' => $productB->id,
+            'location_id' => $this->location->id,
+            'theoretical_qty' => '0.0000',
+            'final_qty' => '15.0000',
+            'final_qty_as_of' => $t,
+            'resolution_method' => ItemResolutionMethod::AutoAllMatch,
+        ]);
+
+        // Retry the whole job.
+        $this->fire($counting);
+
+        // A untouched: on-hand 17, still exactly one correction, marker intact.
+        $this->assertSame('17.0000', StockLevel::where('product_id', $this->product->id)->value('quantity'));
+        $this->assertSame(1, StockMovement::where('product_id', $this->product->id)
+            ->where('reason', MovementReason::CountCorrection->value)->count());
+
+        // B now applied exactly once: on-hand 15, one correction, marker set.
+        $this->assertSame('15.0000', StockLevel::where('product_id', $productB->id)->value('quantity'));
+        $this->assertSame(1, StockMovement::where('product_id', $productB->id)
+            ->where('reason', MovementReason::CountCorrection->value)->count());
+        $itemB->refresh();
+        $this->assertNotNull($itemB->replay_audit);
+    }
 }
