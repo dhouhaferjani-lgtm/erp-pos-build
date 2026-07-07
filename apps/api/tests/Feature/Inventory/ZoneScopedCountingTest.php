@@ -411,4 +411,139 @@ final class ZoneScopedCountingTest extends TestCase
         $this->assertFalse($byProduct->has($noStock->id),
             'Outside onboarding, a product with no stock row is excluded.');
     }
+
+    /**
+     * C1 report fix 1: a mobile-created zone draft carries zone_ids/location_id
+     * in scope_filters but no product_ids — the item set is sourced from
+     * product_zone_assignments (see resolveCountingItemSeeds/zoneItemSeeds), so
+     * activateDraft must not reject it for lacking product_ids.
+     */
+    public function test_mobile_zone_draft_without_product_ids_activates_and_generates_items_from_assignments(): void
+    {
+        $zoneA = $this->makeZone('A');
+
+        $assigned1 = $this->makeProduct('MOB-ZONE-1');
+        $assigned2 = $this->makeProduct('MOB-ZONE-2');
+        $this->setStock($assigned1, '4.0000');
+        // $assigned2 deliberately has no stock row.
+
+        $this->zoneService->assignProduct($assigned1->id, $this->location->id, $zoneA->id);
+        $this->zoneService->assignProduct($assigned2->id, $this->location->id, $zoneA->id);
+
+        $draft = InventoryCounting::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'created_by_user_id' => $this->user->id,
+            'status' => CountingStatus::Draft,
+            'scope_type' => CountingScopeType::Zone,
+            // No product_ids at all — mobile zone drafts never carry them.
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => [$zoneA->id]],
+            'requires_count_2' => false,
+            'requires_count_3' => false,
+            'allow_unexpected_items' => true,
+            'count_1_user_id' => $this->user->id,
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/inventory/countings/{$draft->id}/activate-draft", [
+                'activate_immediately' => true,
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.status', CountingStatus::Count1InProgress->value);
+
+        $draft->refresh();
+        $items = $draft->items()->get()->keyBy('product_id');
+
+        $this->assertCount(2, $items, 'Zone draft must generate one item per product_zone_assignment.');
+        $this->assertTrue($items->has($assigned1->id));
+        $this->assertTrue($items->has($assigned2->id));
+        $this->assertSame('4.0000', (string) $items[$assigned1->id]->theoretical_qty);
+        $this->assertSame('0.0000', (string) $items[$assigned2->id]->theoretical_qty);
+    }
+
+    /**
+     * C1 report fix 1: a zone draft activation still requires zone_ids — an
+     * empty zone_ids list generates no items and must be rejected up front,
+     * mirroring CreateCountingRequest's zone scope rule.
+     */
+    public function test_zone_draft_without_zone_ids_is_rejected_on_activation(): void
+    {
+        $draft = InventoryCounting::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'created_by_user_id' => $this->user->id,
+            'status' => CountingStatus::Draft,
+            'scope_type' => CountingScopeType::Zone,
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => []],
+            'requires_count_2' => false,
+            'requires_count_3' => false,
+            'count_1_user_id' => $this->user->id,
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/inventory/countings/{$draft->id}/activate-draft");
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('zone', (string) $response->json('error'));
+    }
+
+    /**
+     * C1 report fix 2: block_sales, ambiguity_window_minutes and
+     * includes_zero_stock must be present on both the admin detail response
+     * and the counter-view response mobile polls — additive fields, no
+     * existing key removed/renamed.
+     */
+    public function test_session_responses_expose_block_sales_and_window_and_zero_stock_flags(): void
+    {
+        $zoneA = $this->makeZone('A');
+        $product = $this->makeProduct('MOB-SESSION');
+        $this->zoneService->assignProduct($product->id, $this->location->id, $zoneA->id);
+
+        $counting = InventoryCounting::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'created_by_user_id' => $this->user->id,
+            'status' => CountingStatus::Count1InProgress,
+            'scope_type' => CountingScopeType::Zone,
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => [$zoneA->id]],
+            'requires_count_2' => false,
+            'requires_count_3' => false,
+            'block_sales' => false,
+            'ambiguity_window_minutes' => 20,
+            'count_1_user_id' => $this->user->id,
+        ]);
+
+        InventoryCountingItem::create([
+            'counting_id' => $counting->id,
+            'product_id' => $product->id,
+            'location_id' => $this->location->id,
+            'theoretical_qty' => '0.0000',
+        ]);
+
+        $detailResponse = $this->actingAs($this->user)
+            ->getJson("/api/v1/inventory/countings/{$counting->id}");
+
+        $detailResponse->assertStatus(200);
+        $detailResponse->assertJsonStructure([
+            'data' => ['block_sales', 'ambiguity_window_minutes', 'includes_zero_stock'],
+        ]);
+        $this->assertFalse($detailResponse->json('data.block_sales'));
+        $this->assertSame(20, $detailResponse->json('data.ambiguity_window_minutes'));
+        $this->assertFalse($detailResponse->json('data.includes_zero_stock'));
+
+        $counterViewResponse = $this->actingAs($this->user)
+            ->getJson("/api/v1/inventory/countings/{$counting->id}/counter-view");
+
+        $counterViewResponse->assertStatus(200);
+        $counterViewResponse->assertJsonStructure([
+            'data' => ['counting' => ['block_sales', 'ambiguity_window_minutes', 'includes_zero_stock']],
+        ]);
+        $this->assertFalse($counterViewResponse->json('data.counting.block_sales'));
+        $this->assertSame(20, $counterViewResponse->json('data.counting.ambiguity_window_minutes'));
+        $this->assertFalse($counterViewResponse->json('data.counting.includes_zero_stock'));
+
+        // The blind counter-view must still never leak theoretical_qty.
+        $this->assertStringNotContainsString('theoretical_qty', $counterViewResponse->getContent());
+    }
 }

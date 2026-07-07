@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
+use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\InventoryCounting;
@@ -314,6 +315,9 @@ class InventoryCountingController extends Controller
                     'status' => $counting->status->value,
                     'instructions' => $counting->instructions,
                     'deadline' => $counting->scheduled_end?->toIso8601String(),
+                    'block_sales' => $counting->block_sales,
+                    'ambiguity_window_minutes' => $counting->ambiguity_window_minutes,
+                    'includes_zero_stock' => $counting->includes_zero_stock,
                 ],
                 'my_count_number' => $countNumber,
                 'items' => $transformedItems,
@@ -477,6 +481,9 @@ class InventoryCountingController extends Controller
             'requires_count_3' => $counting->requires_count_3,
             'allow_unexpected_items' => $counting->allow_unexpected_items,
             'instructions' => $counting->instructions,
+            'block_sales' => $counting->block_sales,
+            'ambiguity_window_minutes' => $counting->ambiguity_window_minutes,
+            'includes_zero_stock' => $counting->includes_zero_stock,
             'created_at' => $counting->created_at?->toIso8601String(),
             'activated_at' => $counting->activated_at?->toIso8601String(),
             'finalized_at' => $counting->finalized_at?->toIso8601String(),
@@ -822,12 +829,28 @@ class InventoryCountingController extends Controller
             ], 403);
         }
 
-        // Validate activation requirements
-        $productIds = $counting->scope_filters['product_ids'] ?? [];
-        if (count($productIds) === 0) {
-            return response()->json([
-                'error' => 'At least one product must be added before activation',
-            ], 422);
+        // Validate activation requirements. Only scopes whose item generation
+        // actually consumes scope_filters.product_ids (see
+        // InventoryCountingService::resolveCountingItemSeeds /
+        // getStockLevelsForScope) require it here — zone-scoped and
+        // catalog-sourced (location/category/full_inventory) countings
+        // generate items from product_zone_assignments or the active catalog
+        // and carry no product_ids at all.
+        if (in_array($counting->scope_type, [CountingScopeType::Product, CountingScopeType::ProductLocation], true)) {
+            $productIds = $counting->scope_filters['product_ids'] ?? [];
+            if (count($productIds) === 0) {
+                return response()->json([
+                    'error' => 'At least one product must be added before activation',
+                ], 422);
+            }
+        } elseif ($counting->scope_type === CountingScopeType::Zone) {
+            // Mirrors CreateCountingRequest's zone scope rule: zone_ids required.
+            $zoneIds = $counting->scope_filters['zone_ids'] ?? [];
+            if (count($zoneIds) === 0) {
+                return response()->json([
+                    'error' => 'At least one zone must be selected before activation',
+                ], 422);
+            }
         }
 
         if (! $counting->count_1_user_id) {
