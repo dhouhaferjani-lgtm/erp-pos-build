@@ -133,7 +133,7 @@ final class CommitDeliveryNoteTest extends TestCase
 
         $receiptId = (string) $response->json('data.committed_id');
         $receipt = GoodsReceipt::query()->with('lines')->findOrFail($receiptId);
-        $committed = $ingestion->fresh();
+        $committed = $ingestion->refresh();
 
         $this->assertSame(GoodsReceiptStatus::Posted, $receipt->status);
         $this->assertNotNull($receipt->receipt_number);
@@ -166,7 +166,7 @@ final class CommitDeliveryNoteTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('data.committed_type', 'goods_receipt');
 
-        $this->assertSame(IngestionStatus::Committed, $ingestion->fresh()->status);
+        $this->assertSame(IngestionStatus::Committed, $ingestion->refresh()->status);
         $this->assertSame(1, GoodsReceipt::query()->count());
         $this->assertSame(1, StockMovement::query()->count());
     }
@@ -251,8 +251,9 @@ final class CommitDeliveryNoteTest extends TestCase
 
         $response->assertCreated();
         $receipt = GoodsReceipt::query()->with('lines')->sole();
-        $this->assertSame('0.0000', (string) $receipt->lines[0]->received_qty);
-        $this->assertSame('2.0000', (string) $receipt->lines[0]->free_qty);
+        $line = $receipt->lines->firstOrFail();
+        $this->assertSame('0.0000', (string) $line->received_qty);
+        $this->assertSame('2.0000', (string) $line->free_qty);
     }
 
     private function user(string $email): User

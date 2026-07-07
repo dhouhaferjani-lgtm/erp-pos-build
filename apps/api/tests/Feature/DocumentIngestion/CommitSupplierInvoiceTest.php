@@ -144,12 +144,12 @@ final class CommitSupplierInvoiceTest extends TestCase
         $this->assertSame(DocumentType::SupplierInvoice, $invoice->type);
         $this->assertSame(DocumentStatus::Draft, $invoice->status);
         $this->assertSame($this->supplier->id, $invoice->partner_id);
-        $this->assertSame([$purchaseOrder->id], $invoice->payload['supplier_invoice']['source_document_ids']);
+        $this->assertSame([$purchaseOrder->id], ($invoice->payload ?? [])['supplier_invoice']['source_document_ids']);
         $this->assertSame(SupplierInvoiceMatchStatus::Matched, $invoice->match_status);
         $this->assertSame($poLine->id, $line->source_line_id);
         $this->assertSame($receiptLine->id, $line->matched_receipt_line_id);
         $this->assertNotNull($line->price_match_basis);
-        $this->assertSame(IngestionStatus::Committed, $ingestion->fresh()->status);
+        $this->assertSame(IngestionStatus::Committed, $ingestion->refresh()->status);
     }
 
     #[Test]
@@ -170,8 +170,8 @@ final class CommitSupplierInvoiceTest extends TestCase
             ->assertJsonPath('data.committed_type', 'supplier_invoice');
 
         $invoice = Document::query()->findOrFail((string) $response->json('data.committed_id'));
-        $this->assertSame([], $invoice->payload['supplier_invoice']['source_document_ids']);
-        $this->assertTrue($invoice->payload['supplier_invoice']['pending_receipt']);
+        $this->assertSame([], ($invoice->payload ?? [])['supplier_invoice']['source_document_ids']);
+        $this->assertTrue(($invoice->payload ?? [])['supplier_invoice']['pending_receipt']);
         $this->assertSame(SupplierInvoiceMatchStatus::Unmatched, $invoice->match_status);
 
         $limited = $this->user('commit-si-no-pending@test.example');
@@ -316,7 +316,7 @@ final class CommitSupplierInvoiceTest extends TestCase
             ],
         ));
 
-        return [$result->purchaseOrder->fresh(['lines']), $result->receipt->fresh(['lines'])];
+        return [$result->purchaseOrder->refresh()->load('lines'), $result->receipt->refresh()->load('lines')];
     }
 
     private function ingestion(): DocumentIngestion
