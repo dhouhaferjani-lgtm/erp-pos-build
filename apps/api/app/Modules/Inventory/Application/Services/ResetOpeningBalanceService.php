@@ -122,6 +122,8 @@ final class ResetOpeningBalanceService
                         'user_id' => $userId,
                         'is_historical' => true,
                         'reverses_movement_id' => $opening->id,
+                        // The reversal physically happens now (correction time).
+                        'occurred_at' => now(),
                     ]);
 
                     // 2. Update the stock level to zero (lock for update to serialize).

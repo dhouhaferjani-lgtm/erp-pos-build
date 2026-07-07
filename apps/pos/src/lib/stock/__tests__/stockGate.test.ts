@@ -70,6 +70,64 @@ beforeEach(() => {
   mocks.productGetState.mockReturnValue({ companyConfig: null });
 });
 
+function setCountingBlock(countingNumber: string | null): void {
+  mocks.terminalGetState.mockReturnValue({
+    terminal: {
+      id: 'term-1',
+      active_counting_block: {
+        counting_id: 'cnt-1',
+        counting_number: countingNumber,
+        started_at: '2026-07-06T09:00:00.000Z',
+      },
+    } as Terminal,
+  });
+}
+
+describe('gateStockForAdd — counting sales block (task C2)', () => {
+  it('active_counting_block present → hard refuse regardless of availability', async () => {
+    setCountingBlock('CNT-2026-001');
+    mocks.getEffectiveAvailable.mockImplementation(() => {
+      throw new Error('availability must not be consulted under a sales block');
+    });
+    mocks.getDatabase.mockImplementation(() => {
+      throw new Error('db must not be opened under a sales block');
+    });
+
+    const result = await gateStockForAdd(product(), null, '1', []);
+
+    expect(result).toEqual({
+      ok: false,
+      blockedByCounting: true,
+      countingNumber: 'CNT-2026-001',
+    });
+    expect(mocks.getEffectiveAvailable).not.toHaveBeenCalled();
+    expect(mocks.getDatabase).not.toHaveBeenCalled();
+  });
+
+  it('block wins over the Menu-module off short-circuit', async () => {
+    setCountingBlock('CNT-2026-002');
+    mocks.productGetState.mockReturnValue({
+      companyConfig: { company_id: 'co-1', all_enabled_modules: ['POS', 'Menu'] },
+    });
+
+    const result = await gateStockForAdd(product(), null, '1', []);
+
+    expect(result).toEqual({
+      ok: false,
+      blockedByCounting: true,
+      countingNumber: 'CNT-2026-002',
+    });
+  });
+
+  it('null counting_number is tolerated (label falls back downstream)', async () => {
+    setCountingBlock(null);
+
+    const result = await gateStockForAdd(product(), null, '1', []);
+
+    expect(result).toEqual({ ok: false, blockedByCounting: true, countingNumber: null });
+  });
+});
+
 describe('gateStockForAdd', () => {
   it('Menu-module tenant → PASS even with a stale terminal payload lacking the policy field (never consults availability)', async () => {
     // Codex final-review P1: a cached pre-deploy terminal payload has no

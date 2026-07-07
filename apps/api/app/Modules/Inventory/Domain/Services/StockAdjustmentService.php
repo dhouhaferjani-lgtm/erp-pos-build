@@ -8,6 +8,8 @@ use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Inventory\Application\DTOs\ReplayAuditDto;
+use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Events\ReservationCreated;
@@ -17,11 +19,14 @@ use App\Modules\Inventory\Domain\Events\ReservationReleasedV2;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
 use App\Modules\Inventory\Domain\Events\StockMovementRecordedV2;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
+use App\Modules\Inventory\Domain\InventoryScale;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\Domain\Exceptions\VariantRequiredException;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -48,10 +53,20 @@ final class StockAdjustmentService
      */
     private const COST_SCALE = 6;
 
+    /**
+     * Reference stamped on replay-based count-finalize movements. The counting
+     * number is not threaded through the fixed applyCountResult() signature; the
+     * item's replay_audit + expected_qty_at_apply carry the per-line trail.
+     */
+    private const COUNT_REPLAY_REFERENCE = 'COUNT_REPLAY';
+
     public function __construct(
         private readonly ProductVariantLookup $variantLookup,
         private readonly ProductCostLock $costLock,
         private readonly BatchStockService $batchStockService,
+        private readonly MovementReplayService $replayService,
+        private readonly FirstCountDetector $firstCountDetector,
+        private readonly WeightedAverageCostService $weightedAverageCostService,
     ) {}
 
     /**
@@ -608,14 +623,15 @@ final class StockAdjustmentService
         ?string $expectedCompanyId = null,
         ?string $variantId = null,
         ?MovementReason $reasonCode = null,
+        ?CarbonInterface $occurredAt = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
 
-        return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId, $expectedCompanyId, $variantId, $reasonCode): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId, $expectedCompanyId, $variantId, $reasonCode, $occurredAt): StockMovement {
             $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
             // WAC serialization seam (product-grain advisory key; §6.7).
-            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $newQuantity, $reason, $userId, $companyId, $variantId, $reasonCode): StockMovement {
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $newQuantity, $reason, $userId, $companyId, $variantId, $reasonCode, $occurredAt): StockMovement {
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
                 /** @var numeric-string $quantityBefore */
@@ -637,6 +653,7 @@ final class StockAdjustmentService
                     userId: $userId,
                     variantId: $variantId,
                     reason: $reasonCode,
+                    occurredAt: $occurredAt,
                 );
 
                 if (bccomp($difference, '0', self::SCALE) > 0) {
@@ -685,6 +702,309 @@ final class StockAdjustmentService
                 return $movement;
             });
         }, attempts: 3);
+    }
+
+    /**
+     * Apply a finalized count line via timestamp replay, under the SAME lock
+     * order as adjust() (ProductCostLock FIRST, then the stock_level row FOR
+     * UPDATE). Live-inventory-counting task B3 (spec §4/§5).
+     *
+     * Replays movements in `(finalQtyAsOf, now]`, computes
+     * `expected_now = finalQty + Σ signed_delta` and
+     * `adjustment = expected_now − on_hand_now`, and posts it additively as a
+     * `count_correction` — or, for the first count of an onboarding line, as an
+     * `opening` balance that sets/blends the WAC. Returns the audit DTO when a
+     * movement is posted; returns null when the negative-at-apply guard trips
+     * (nothing posted, item left for review). The basket-window guard is owned
+     * by the listener (it needs no lock and is evaluated before this call).
+     *
+     * Runs with no CompanyContext (queued finalize listener): tenant/company are
+     * resolved from the location/product, and the cost scale used for the WAC
+     * write is the constant COST_SCALE (resolver-independent).
+     *
+     * @param  numeric-string  $finalQty  Counted quantity as of $finalQtyAsOf (scale 4)
+     * @param  numeric-string|null  $openingUnitCost  Opening cost at COST_SCALE=6; null leaves WAC untouched
+     */
+    public function applyCountResult(
+        string $productId,
+        string $locationId,
+        ?string $variantId,
+        string $finalQty,
+        CarbonInterface $finalQtyAsOf,
+        int $ambiguityWindowMinutes,
+        bool $onboarding,
+        ?string $openingUnitCost,
+    ): ?ReplayAuditDto {
+        $this->assertVariantConsistency($productId, $variantId);
+        $scale = InventoryScale::QUANTITY_SCALE;
+
+        return DB::transaction(function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $scale): ?ReplayAuditDto {
+            $companyId = $this->resolveCompanyId($locationId);
+            $tenantId = $this->resolveTenantId($productId, $companyId);
+
+            // ProductCostLock FIRST (advisory, product-grain), then the
+            // stock_level row FOR UPDATE inside the closure. Never invert this —
+            // adjust()/recordPurchase/recordSale rely on advisory -> row order.
+            return $this->costLock->acquire($tenantId, $companyId, [$productId], function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $companyId, $tenantId, $scale): ?ReplayAuditDto {
+                $now = now();
+                $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
+
+                /** @var numeric-string $rawOnHand */
+                $rawOnHand = (string) $stockLevel->quantity;
+                $onHandNow = bcadd($rawOnHand, '0', $scale);
+
+                // Replay the window (finalQtyAsOf, now] UNDER the row lock so the
+                // summed delta and the on-hand read are consistent (a concurrent
+                // sale cannot commit while we hold the row lock).
+                $replayedDelta = $this->replayService->signedDelta($productId, $locationId, $variantId, $finalQtyAsOf, $now);
+                $expectedNow = bcadd($finalQty, $replayedDelta, $scale);
+
+                // Guard: negative-at-apply (non-onboarding only). Onboarding
+                // deliberately permits negative on-hand (sell-before-count).
+                if (! $onboarding && bccomp($expectedNow, '0', $scale) < 0) {
+                    return null;
+                }
+
+                $adjustment = bcsub($expectedNow, $onHandNow, $scale);
+
+                $postOpening = $onboarding
+                    && $this->firstCountDetector->isFirstCount($productId, $locationId, $variantId);
+
+                if ($postOpening) {
+                    $this->postCountOpening($stockLevel, $productId, $locationId, $variantId, $tenantId, $companyId, $onHandNow, $expectedNow, $adjustment, $openingUnitCost, $now);
+                } else {
+                    $this->postCountCorrection($stockLevel, $productId, $locationId, $variantId, $onHandNow, $expectedNow, $adjustment, $now);
+                }
+
+                return new ReplayAuditDto(
+                    windowFrom: $finalQtyAsOf->toIso8601String(),
+                    windowTo: $now->toIso8601String(),
+                    replayedDelta: $replayedDelta,
+                    onHandAtApply: $onHandNow,
+                    expectedAtApply: $expectedNow,
+                );
+            });
+        }, attempts: 3);
+    }
+
+    /**
+     * Post the replay-computed adjustment as a normal count_correction.
+     *
+     * @param  numeric-string  $onHandNow
+     * @param  numeric-string  $expectedNow
+     * @param  numeric-string  $adjustment
+     */
+    private function postCountCorrection(
+        StockLevel $stockLevel,
+        string $productId,
+        string $locationId,
+        ?string $variantId,
+        string $onHandNow,
+        string $expectedNow,
+        string $adjustment,
+        CarbonInterface $now,
+    ): void {
+        $stockLevel->update(['quantity' => $expectedNow]);
+
+        $movement = $this->recordMovement(
+            tenantId: $stockLevel->tenant_id,
+            companyId: $stockLevel->company_id,
+            productId: $productId,
+            locationId: $locationId,
+            type: MovementType::Adjustment,
+            quantity: $adjustment,
+            quantityBefore: $onHandNow,
+            quantityAfter: $expectedNow,
+            reference: self::COUNT_REPLAY_REFERENCE,
+            userId: null,
+            variantId: $variantId,
+            reason: MovementReason::CountCorrection,
+            occurredAt: $now,
+        );
+
+        if (bccomp($adjustment, '0', self::SCALE) > 0) {
+            $this->ensureDefaultBatchForImplicitPositiveStock($stockLevel, $productId);
+        }
+
+        $this->dispatchCountMovementEvents(
+            $movement,
+            $stockLevel->tenant_id,
+            $stockLevel->company_id,
+            $productId,
+            $locationId,
+            MovementType::Adjustment->value,
+            $adjustment,
+            $expectedNow,
+            $variantId,
+        );
+    }
+
+    /**
+     * Post the first count of an onboarding line as an opening balance,
+     * additively (movement quantity = adjustment, leaving on-hand = expected).
+     * Prior on-hand ≤ 0 SETS the absolute WAC basis; > 0 blends through the
+     * existing WAC formula. A null cost posts the movement without a cost and
+     * leaves the WAC untouched (the listener flags it pending-cost; the count is
+     * NOT blocked).
+     *
+     * @param  numeric-string  $onHandNow
+     * @param  numeric-string  $expectedNow
+     * @param  numeric-string  $adjustment
+     * @param  numeric-string|null  $openingUnitCost
+     */
+    private function postCountOpening(
+        StockLevel $stockLevel,
+        string $productId,
+        string $locationId,
+        ?string $variantId,
+        string $tenantId,
+        string $companyId,
+        string $onHandNow,
+        string $expectedNow,
+        string $adjustment,
+        ?string $openingUnitCost,
+        CarbonInterface $now,
+    ): void {
+        $stockLevel->update(['quantity' => $expectedNow]);
+
+        $movement = $this->recordMovement(
+            tenantId: $stockLevel->tenant_id,
+            companyId: $stockLevel->company_id,
+            productId: $productId,
+            locationId: $locationId,
+            type: MovementType::Opening,
+            quantity: $adjustment,
+            quantityBefore: $onHandNow,
+            quantityAfter: $expectedNow,
+            reference: self::COUNT_REPLAY_REFERENCE,
+            userId: null,
+            variantId: $variantId,
+            reason: MovementReason::OpeningBalance,
+            unitCost: $openingUnitCost,
+            occurredAt: $now,
+        );
+
+        if (bccomp($adjustment, '0', self::SCALE) > 0) {
+            $this->ensureDefaultBatchForImplicitPositiveStock($stockLevel, $productId);
+        }
+
+        if ($openingUnitCost !== null) {
+            $this->applyOpeningWac($productId, $tenantId, $companyId, $onHandNow, $adjustment, $openingUnitCost, $now);
+        }
+
+        $this->dispatchCountMovementEvents(
+            $movement,
+            $stockLevel->tenant_id,
+            $stockLevel->company_id,
+            $productId,
+            $locationId,
+            MovementType::Opening->value,
+            $adjustment,
+            $expectedNow,
+            $variantId,
+        );
+    }
+
+    /**
+     * Set or blend the product WAC for an onboarding opening. Locks the product
+     * row LAST (canonical order: advisory -> stock_level row -> product row),
+     * mirroring WeightedAverageCostService. Costs are carried at COST_SCALE=6.
+     *
+     * @param  numeric-string  $onHandNow
+     * @param  numeric-string  $adjustment
+     * @param  numeric-string  $openingUnitCost
+     */
+    private function applyOpeningWac(
+        string $productId,
+        string $tenantId,
+        string $companyId,
+        string $onHandNow,
+        string $adjustment,
+        string $openingUnitCost,
+        CarbonInterface $now,
+    ): void {
+        $product = Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->lockForUpdate()
+            ->findOrFail($productId);
+
+        $openingCost = bcadd($openingUnitCost, '0', self::COST_SCALE);
+
+        if (bccomp($onHandNow, '0', self::SCALE) <= 0) {
+            // No meaningful prior stock — the opening cost IS the WAC basis.
+            $newCost = $openingCost;
+        } else {
+            // Blend the opened quantity at the opening cost into the running WAC
+            // through the existing formula (no new movement — quantity change is
+            // already recorded by the opening movement above).
+            /** @var numeric-string $currentCost */
+            $currentCost = (string) ($product->cost_price ?? '0');
+            $newCost = $this->weightedAverageCostService->calculateNewWAC(
+                currentQty: $onHandNow,
+                currentCost: bcadd($currentCost, '0', self::COST_SCALE),
+                newQty: $adjustment,
+                newCost: $openingCost,
+            );
+        }
+
+        $product->cost_price = $newCost;
+        $product->cost_updated_at = Carbon::instance($now);
+        $product->save();
+    }
+
+    /**
+     * Dispatch StockMovementRecorded (+ V2 variant-aware) after commit for a
+     * replay-based count movement, matching adjust()'s audit stream.
+     *
+     * @param  numeric-string  $quantity
+     * @param  numeric-string  $newStockLevel
+     */
+    private function dispatchCountMovementEvents(
+        StockMovement $movement,
+        string $tenantId,
+        string $companyId,
+        string $productId,
+        string $locationId,
+        string $movementType,
+        string $quantity,
+        string $newStockLevel,
+        ?string $variantId,
+    ): void {
+        $movementSnapshot = $movement;
+
+        DB::afterCommit(function () use ($movementSnapshot, $tenantId, $companyId, $productId, $locationId, $movementType, $quantity, $newStockLevel, $variantId): void {
+            event(new StockMovementRecorded(
+                movementId: $movementSnapshot->id,
+                tenantId: $tenantId,
+                companyId: $companyId,
+                productId: $productId,
+                locationId: $locationId,
+                movementType: $movementType,
+                quantity: $quantity,
+                unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
+                totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
+                newStockLevel: $newStockLevel,
+                reference: self::COUNT_REPLAY_REFERENCE,
+                occurredAt: now()->toIso8601String(),
+            ));
+
+            event(new StockMovementRecordedV2(
+                movementId: $movementSnapshot->id,
+                tenantId: $tenantId,
+                companyId: $companyId,
+                productId: $productId,
+                locationId: $locationId,
+                movementType: $movementType,
+                quantity: $quantity,
+                unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
+                totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
+                newStockLevel: $newStockLevel,
+                variantId: $variantId,
+                reference: self::COUNT_REPLAY_REFERENCE,
+                occurredAt: now()->toIso8601String(),
+            ));
+        });
     }
 
     /**
@@ -838,10 +1158,11 @@ final class StockAdjustmentService
         string $quantityBefore,
         string $quantityAfter,
         string $reference,
-        string $userId,
+        ?string $userId = null,
         ?string $variantId = null,
         ?MovementReason $reason = null,
         ?string $unitCost = null,
+        ?CarbonInterface $occurredAt = null,
     ): StockMovement {
         // Scope the Location lookup to $companyId (derived from the upstream
         // trusted StockLevel). A forged locationId from another company would
@@ -876,6 +1197,10 @@ final class StockAdjustmentService
             'total_cost' => $persistedTotalCost,
             'reference' => $reference,
             'user_id' => $userId,
+            // Event time (rule: device time for POS paths, now() otherwise).
+            // adjust() threads a device/replay time here; other entry points
+            // (receive/issue/transfer) default to now().
+            'occurred_at' => $occurredAt ?? now(),
         ]);
     }
 

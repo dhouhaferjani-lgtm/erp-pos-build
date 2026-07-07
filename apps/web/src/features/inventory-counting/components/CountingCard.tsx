@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 interface Props {
   counting: InventoryCounting
-  onSendReminder?: (id: number) => void
+  onSendReminder?: (id: string) => void
 }
 
 interface CounterProgressProps {
@@ -77,7 +77,7 @@ export function CountingCard({ counting, onSendReminder }: Props) {
               </span>
             )}
           </h3>
-          <p className="text-sm text-gray-500">#{counting.uuid.slice(0, 8)}</p>
+          <p className="text-sm text-gray-500">#{counting.id.slice(0, 8)}</p>
         </div>
         <CountingStatusBadge status={counting.status} />
       </div>

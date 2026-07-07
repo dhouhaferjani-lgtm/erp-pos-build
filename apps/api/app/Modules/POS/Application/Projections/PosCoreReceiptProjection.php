@@ -14,8 +14,10 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\OriginalReceiptUnresolvableException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\CountingBlockService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
@@ -34,6 +36,7 @@ use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
 use App\Shared\Contracts\Loyalty\SaleEarnContext;
+use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -129,6 +132,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentMethodResolver $paymentMethodResolver,
         private readonly LoyaltyEarningContract $loyaltyEarning,
+        private readonly CountingBlockService $countingBlockService,
     ) {}
 
     public function name(): string
@@ -933,6 +937,89 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         }
 
         $this->decrementStockForLines($receiptId, $event, $terminal, $view, $receiptType);
+
+        // Live inventory counting task C2: a signed sale can never be rejected
+        // server-side (device-SoT). If it arrives against an ACTIVE
+        // sales-blocking count at this location and its DEVICE event time falls
+        // inside the block window, the sale is ACCEPTED (stock already moved
+        // above) and we append {receipt_id, occurred_at} to the counting's
+        // `late_sales_flags` so review can reconcile the leak.
+        //
+        // The flag-append is ADVISORY ONLY — replay reconciles via occurred_at
+        // regardless. A counting-subsystem exception (service lookup, lock,
+        // JSON append, save) must NEVER fail/retry the fiscal projector, so we
+        // wrap in try/catch and swallow.
+        try {
+            $this->flagLateSaleForActiveBlock($receiptId, $event, $terminal);
+        } catch (\Throwable $e) {
+            Log::warning('PosCoreReceiptProjection: late-sale flag-append failed (advisory, sale unaffected)', [
+                'fiscal_event_id' => $event->id,
+                'receipt_id' => $receiptId,
+                'location_id' => $terminal->location_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Append a late-sale flag when this sale landed inside an active
+     * sales-blocking count window for the terminal's location.
+     *
+     * Runs inside `apply()`'s `DB::transaction`, AFTER the stock decrement, so
+     * the flag and the movement commit atomically. Idempotent: the outer
+     * fiscal_event_id guard prevents replay, and we additionally dedupe by
+     * `receipt_id`. A `lockForUpdate` on the counting row serializes concurrent
+     * appends from different receipts against the same jsonb array.
+     *
+     * Rule 20 — this runs in the queued projector with NO CompanyContext;
+     * `CountingBlockService` resolves company from the location id itself.
+     */
+    private function flagLateSaleForActiveBlock(
+        string $receiptId,
+        FiscalEvent $event,
+        Terminal $terminal,
+    ): void {
+        $block = $this->countingBlockService->activeBlockFor((string) $terminal->location_id);
+        if ($block === null) {
+            return;
+        }
+
+        $activatedAt = $block->activated_at;
+        $occurredAt = $event->event_time_device;
+
+        // A sale authored BEFORE the block opened (e.g. an offline receipt
+        // syncing late) is not a sale "during the count" — never flag it.
+        if ($activatedAt === null || $occurredAt->lessThan($activatedAt)) {
+            return;
+        }
+
+        /** @var InventoryCounting|null $locked */
+        $locked = InventoryCounting::query()
+            ->whereKey($block->id)
+            ->lockForUpdate()
+            ->first();
+
+        if ($locked === null) {
+            return;
+        }
+
+        $flags = $locked->late_sales_flags ?? [];
+        foreach ($flags as $flag) {
+            // Defensive: `late_sales_flags` is a raw JSON column — the model's
+            // docblock shape is aspirational, not enforced at write time, so a
+            // legacy/malformed row must not fatal the queued worker.
+            /** @phpstan-ignore function.alreadyNarrowedType, nullCoalesce.offset */
+            if (is_array($flag) && ($flag['receipt_id'] ?? null) === $receiptId) {
+                return;
+            }
+        }
+
+        $flags[] = [
+            'receipt_id' => $receiptId,
+            'occurred_at' => $occurredAt->toIso8601String(),
+        ];
+        $locked->late_sales_flags = $flags;
+        $locked->save();
     }
 
     /**
@@ -993,6 +1080,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // `stock_levels` row and stamps `variant_id` on the movement;
                 // a non-variant line passes null → product-level row.
                 variantId: $line->variantId,
+                // occurred_at = DEVICE event time (offline-authored sale projected
+                // later); the replay must order by when the sale happened, not
+                // when the server inserted the row.
+                occurredAt: $event->event_time_device,
             );
         }
     }
@@ -1015,6 +1106,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $receiptId,
         string $cashierId,
         ?string $variantId = null,
+        ?CarbonInterface $occurredAt = null,
     ): void {
         $stockLevelQuery = StockLevel::query()
             ->where('product_id', $productId)
@@ -1091,6 +1183,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             'notes' => "Stock issued via PosCoreReceiptProjection (receipt: {$receiptId})",
             'user_id' => $cashierId,
             'is_historical' => false,
+            'occurred_at' => $occurredAt ?? now(),
         ]);
     }
 
@@ -1127,6 +1220,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // restocks the variant row, a non-variant refund the
                 // product-level row.
                 variantId: $line->variantId,
+                // occurred_at = DEVICE event time of the refund/void event.
+                occurredAt: $event->event_time_device,
             );
         }
     }
@@ -1152,6 +1247,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $receiptId,
         string $cashierId,
         ?string $variantId = null,
+        ?CarbonInterface $occurredAt = null,
     ): void {
         $stockLevelQuery = StockLevel::query()
             ->where('product_id', $productId)
@@ -1211,6 +1307,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             'notes' => "Stock restocked via PosCoreReceiptProjection refund/void (receipt: {$receiptId})",
             'user_id' => $cashierId,
             'is_historical' => false,
+            'occurred_at' => $occurredAt ?? now(),
         ]);
     }
 

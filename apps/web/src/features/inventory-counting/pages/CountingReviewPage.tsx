@@ -11,12 +11,34 @@ import {
   useFinalizeCounting,
   useReconciliation,
 } from '../api/queries'
+import { isBlockingFlag, type ReconciliationItem } from '../types'
+import { textColors } from '@/lib/designTokens'
+
+// A line that must be resolved before the session can finalize: still pending,
+// an onboarding opening awaiting its cost, or carrying an unresolved blocking
+// flag (basket_window / negative_at_apply / clock_skew) with no final qty yet.
+//
+// The opening-cost gate keys off the PRE-finalize `opening_cost_missing` signal
+// (computed server-side by OpeningCostGate — the same computation the server's
+// finalize gate enforces), NOT the post-finalize `pending_opening_cost` flag,
+// which is only stamped after finalize and is inert on this pending_review page.
+function itemBlocksFinalize(item: ReconciliationItem): boolean {
+  if (item.resolution_method === 'pending') {
+    return true
+  }
+
+  if (item.opening_cost_missing) {
+    return true
+  }
+
+  return (item.flag_reasons ?? []).some(isBlockingFlag) && item.final_qty === null
+}
 
 export function CountingReviewPage() {
   const { t } = useTranslation('inventory')
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const countingId = parseInt(id ?? '0', 10)
+  const countingId = id ?? ''
 
   const { data: counting, isLoading } = useCountingDetail(countingId)
   const { data: reconciliation } = useReconciliation(countingId)
@@ -32,9 +54,13 @@ export function CountingReviewPage() {
     )
   }
 
+  const lateSalesFlags = reconciliation?.late_sales_flags ?? []
+  const hasBlockingItem = (reconciliation?.items ?? []).some(itemBlocksFinalize)
+
   const canFinalize =
     counting.status === 'pending_review' &&
-    reconciliation?.summary.needs_attention === 0
+    reconciliation?.summary.needs_attention === 0 &&
+    !hasBlockingItem
 
   const handleFinalize = () => {
     finalize.mutate(countingId, {
@@ -57,7 +83,7 @@ export function CountingReviewPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-3">
-              {t('counting.review.title')} #{counting.uuid.slice(0, 8)}
+              {t('counting.review.title')} #{counting.id.slice(0, 8)}
               <CountingStatusBadge status={counting.status} />
             </h1>
             <p className="text-gray-500">{t('counting.review.description')}</p>
@@ -102,6 +128,23 @@ export function CountingReviewPage() {
         </div>
       )}
 
+      {/* Late-sale flags captured during the block window */}
+      {lateSalesFlags.length > 0 && (
+        <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <AlertTriangle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium text-blue-800">
+              {t('counting.review.lateSalesDetected', {
+                count: lateSalesFlags.length,
+              })}
+            </p>
+            <p className="text-sm text-blue-700 mt-1">
+              {t('counting.review.lateSalesDescription')}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Reconciliation Table */}
       <ReconciliationTable countingId={countingId} />
 
@@ -117,8 +160,12 @@ export function CountingReviewPage() {
               <h2 className="text-lg font-semibold mb-2">
                 {t('counting.review.finalizeConfirm.title')}
               </h2>
-              <p className="text-gray-600 mb-6">
+              <p className="text-gray-600 mb-2">
                 {t('counting.review.finalizeConfirm.description')}
+              </p>
+
+              <p className={`${textColors.warning} mb-6 text-sm`}>
+                {t('counting.review.finalizeConfirm.syncWarning')}
               </p>
 
               <div className="flex gap-3 justify-end">

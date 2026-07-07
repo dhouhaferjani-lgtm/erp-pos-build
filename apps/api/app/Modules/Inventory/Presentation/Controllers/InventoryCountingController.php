@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Presentation\Controllers;
 
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
+use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\InventoryCounting;
+use App\Modules\Inventory\Domain\InventoryScale;
 use App\Modules\Inventory\Presentation\Requests\ActivateCountingRequest;
 use App\Modules\Inventory\Presentation\Requests\AddProductToCountingRequest;
 use App\Modules\Inventory\Presentation\Requests\CreateCountingRequest;
@@ -20,6 +24,8 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class InventoryCountingController extends Controller
@@ -28,6 +34,123 @@ class InventoryCountingController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly InventoryCountingService $countingService,
     ) {}
+
+    /**
+     * Onboarding worklist (C3): active-catalog products at a location that
+     * still need attention before the location can safely exit onboarding —
+     * negative on-hand, or no `stock_levels` row at all — excluding any
+     * product already given a submitted count (any count_N_qty populated) in
+     * an active or finalized counting at that location.
+     */
+    public function onboardingWorklist(Request $request): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        /** @var array{location_id: string} $validated */
+        $validated = Validator::make(
+            ['location_id' => $request->query('location_id')],
+            ['location_id' => ['required', 'bail', 'uuid']],
+        )->validate();
+
+        $locationId = $validated['location_id'];
+
+        $location = Location::query()->forCompany($companyId)->find($locationId);
+
+        if ($location === null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'LOCATION_NOT_FOUND',
+                    'message' => 'Location not found for the current company.',
+                ],
+            ], 404);
+        }
+
+        $countedProductIds = DB::table('inventory_counting_items')
+            ->join('inventory_countings', 'inventory_countings.id', '=', 'inventory_counting_items.counting_id')
+            ->where('inventory_counting_items.location_id', $locationId)
+            ->whereNotIn('inventory_countings.status', [
+                CountingStatus::Draft->value,
+                CountingStatus::Scheduled->value,
+                CountingStatus::Cancelled->value,
+            ])
+            ->where(function ($query): void {
+                $query->whereNotNull('inventory_counting_items.count_1_qty')
+                    ->orWhereNotNull('inventory_counting_items.count_2_qty')
+                    ->orWhereNotNull('inventory_counting_items.count_3_qty');
+            })
+            ->select('inventory_counting_items.product_id');
+
+        $query = DB::table('products')
+            ->where('products.company_id', $companyId)
+            ->where('products.is_active', true)
+            ->whereNull('products.deleted_at')
+            ->leftJoin('stock_levels', function ($join) use ($locationId): void {
+                $join->on('stock_levels.product_id', '=', 'products.id')
+                    ->where('stock_levels.location_id', $locationId)
+                    ->whereNull('stock_levels.variant_id');
+            })
+            ->where(function ($q): void {
+                $q->where('stock_levels.quantity', '<', 0)
+                    ->orWhereNull('stock_levels.id');
+            })
+            ->whereNotIn('products.id', $countedProductIds)
+            ->select([
+                'products.id as product_id',
+                'products.name as name',
+                'products.sku as sku',
+                'stock_levels.quantity as on_hand',
+            ])
+            ->orderBy('products.name');
+
+        $perPage = max(1, min((int) $request->input('per_page', 15), 100));
+
+        $products = $query->paginate($perPage);
+
+        /** @var Collection<int, \stdClass> $productRows */
+        $productRows = $products->getCollection();
+
+        /** @var list<string> $productIds */
+        $productIds = $productRows->pluck('product_id')->all();
+
+        /** @var array<string, string> $lastSoldByProduct */
+        $lastSoldByProduct = DB::table('stock_movements')
+            ->where('location_id', $locationId)
+            ->where('reason', MovementReason::POSSale->value)
+            ->whereIn('product_id', $productIds)
+            ->selectRaw('product_id, MAX(occurred_at) as last_sold_at')
+            ->groupBy('product_id')
+            ->pluck('last_sold_at', 'product_id')
+            ->all();
+
+        $data = $productRows->map(function (\stdClass $row) use ($lastSoldByProduct): array {
+            /** @var string $productId */
+            $productId = $row->product_id;
+            /** @var string|null $lastSoldAt */
+            $lastSoldAt = $lastSoldByProduct[$productId] ?? null;
+
+            /** @var numeric-string $onHandRaw */
+            $onHandRaw = (string) ($row->on_hand ?? '0');
+            $onHand = bcadd($onHandRaw, '0', InventoryScale::QUANTITY_SCALE);
+
+            return [
+                'product_id' => $productId,
+                'name' => $row->name,
+                'sku' => $row->sku,
+                'on_hand' => $onHand,
+                'last_sold_at' => $lastSoldAt !== null ? Carbon::parse($lastSoldAt)->toIso8601String() : null,
+            ];
+        })->all();
+
+        return response()->json([
+            'data' => $data,
+            'meta' => [
+                'current_page' => $products->currentPage(),
+                'last_page' => $products->lastPage(),
+                'per_page' => $products->perPage(),
+                'total' => $products->total(),
+            ],
+        ]);
+    }
 
     /**
      * Dashboard summary.
@@ -127,7 +250,7 @@ class InventoryCountingController extends Controller
                 'count2User',
                 'count3User',
                 'createdBy',
-                'assignments',
+                'assignments.user',
                 'items.product',
                 'items.location',
             ])
@@ -192,6 +315,9 @@ class InventoryCountingController extends Controller
                     'status' => $counting->status->value,
                     'instructions' => $counting->instructions,
                     'deadline' => $counting->scheduled_end?->toIso8601String(),
+                    'block_sales' => $counting->block_sales,
+                    'ambiguity_window_minutes' => $counting->ambiguity_window_minutes,
+                    'includes_zero_stock' => $counting->includes_zero_stock,
                 ],
                 'my_count_number' => $countNumber,
                 'items' => $transformedItems,
@@ -355,6 +481,9 @@ class InventoryCountingController extends Controller
             'requires_count_3' => $counting->requires_count_3,
             'allow_unexpected_items' => $counting->allow_unexpected_items,
             'instructions' => $counting->instructions,
+            'block_sales' => $counting->block_sales,
+            'ambiguity_window_minutes' => $counting->ambiguity_window_minutes,
+            'includes_zero_stock' => $counting->includes_zero_stock,
             'created_at' => $counting->created_at?->toIso8601String(),
             'activated_at' => $counting->activated_at?->toIso8601String(),
             'finalized_at' => $counting->finalized_at?->toIso8601String(),
@@ -378,6 +507,27 @@ class InventoryCountingController extends Controller
                 'name' => $counting->createdBy->name,
             ] : null,
         ];
+
+        if ($counting->relationLoaded('assignments')) {
+            $data['assignments'] = $counting->assignments->map(fn ($assignment) => [
+                'id' => $assignment->id,
+                'user' => [
+                    'id' => $assignment->user->id,
+                    'name' => $assignment->user->name,
+                ],
+                'count_number' => $assignment->count_number,
+                'status' => $assignment->status->value,
+                'assigned_at' => $assignment->assigned_at->toIso8601String(),
+                'started_at' => $assignment->started_at?->toIso8601String(),
+                'completed_at' => $assignment->completed_at?->toIso8601String(),
+                'deadline' => $assignment->deadline?->toIso8601String(),
+                'total_items' => $assignment->total_items,
+                'counted_items' => $assignment->counted_items,
+                'progress_percentage' => $assignment->total_items > 0
+                    ? (int) round($assignment->counted_items / $assignment->total_items * 100)
+                    : 0,
+            ])->all();
+        }
 
         if ($includeItems && $counting->relationLoaded('items')) {
             $data['items'] = $counting->items->map(fn ($item) => [
@@ -700,12 +850,28 @@ class InventoryCountingController extends Controller
             ], 403);
         }
 
-        // Validate activation requirements
-        $productIds = $counting->scope_filters['product_ids'] ?? [];
-        if (count($productIds) === 0) {
-            return response()->json([
-                'error' => 'At least one product must be added before activation',
-            ], 422);
+        // Validate activation requirements. Only scopes whose item generation
+        // actually consumes scope_filters.product_ids (see
+        // InventoryCountingService::resolveCountingItemSeeds /
+        // getStockLevelsForScope) require it here — zone-scoped and
+        // catalog-sourced (location/category/full_inventory) countings
+        // generate items from product_zone_assignments or the active catalog
+        // and carry no product_ids at all.
+        if (in_array($counting->scope_type, [CountingScopeType::Product, CountingScopeType::ProductLocation], true)) {
+            $productIds = $counting->scope_filters['product_ids'] ?? [];
+            if (count($productIds) === 0) {
+                return response()->json([
+                    'error' => 'At least one product must be added before activation',
+                ], 422);
+            }
+        } elseif ($counting->scope_type === CountingScopeType::Zone) {
+            // Mirrors CreateCountingRequest's zone scope rule: zone_ids required.
+            $zoneIds = $counting->scope_filters['zone_ids'] ?? [];
+            if (count($zoneIds) === 0) {
+                return response()->json([
+                    'error' => 'At least one zone must be selected before activation',
+                ], 422);
+            }
         }
 
         if (! $counting->count_1_user_id) {

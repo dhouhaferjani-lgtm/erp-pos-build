@@ -13,6 +13,7 @@ use App\Modules\Inventory\Presentation\Controllers\StockLevelController;
 use App\Modules\Inventory\Presentation\Controllers\StockMovementController;
 use App\Modules\Inventory\Presentation\Controllers\StockReservationController;
 use App\Modules\Inventory\Presentation\Controllers\StockTransferController;
+use App\Modules\Inventory\Presentation\Controllers\ZoneController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -160,6 +161,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // Inventory Counting Routes
     // ==========================================
 
+    // Onboarding worklist (C3): negative-on-hand / no-stock-row products at a
+    // location still pending count, for the onboarding-mode review screen.
+    Route::get('/inventory/onboarding-worklist', [InventoryCountingController::class, 'onboardingWorklist'])
+        ->middleware('can:inventory.view')
+        ->name('inventory.onboarding-worklist');
+
     // Dashboard
     Route::get('/inventory/countings/dashboard', [InventoryCountingController::class, 'dashboard'])
         ->middleware('can:inventory.view')
@@ -259,4 +266,40 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/inventory/countings/items/{item}/override', [CountingItemController::class, 'override'])
         ->middleware('can:inventory.adjust')
         ->name('inventory-countings.items.override');
+
+    // Opening-cost backfill for onboarding lines (D3). Route params are
+    // uuid-guarded so a non-uuid never reaches a uuid PK probe (PG 22P02 → 500).
+    Route::patch('/inventory/countings/{counting}/items/{item}/opening-cost', [CountingItemController::class, 'setOpeningCost'])
+        ->whereUuid(['counting', 'item'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-countings.items.opening-cost');
+
+    // ==========================================
+    // Zones — shelf/section labels for count scoping + product placement
+    // (stock quantity stays at product/location grain; zones are labels only)
+    // ==========================================
+
+    Route::get('/inventory/zones', [ZoneController::class, 'index'])
+        ->middleware('can:inventory.view')
+        ->name('inventory-zones.index');
+
+    Route::post('/inventory/zones', [ZoneController::class, 'store'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-zones.store');
+
+    Route::patch('/inventory/zones/{zone}', [ZoneController::class, 'update'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-zones.update');
+
+    Route::delete('/inventory/zones/{zone}', [ZoneController::class, 'destroy'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-zones.destroy');
+
+    Route::post('/inventory/zones/{zone}/assign-products', [ZoneController::class, 'assignProducts'])
+        ->middleware('can:inventory.adjust')
+        ->name('inventory-zones.assign-products');
+
+    Route::get('/inventory/zones/{zone}/products', [ZoneController::class, 'products'])
+        ->middleware('can:inventory.view')
+        ->name('inventory-zones.products');
 });

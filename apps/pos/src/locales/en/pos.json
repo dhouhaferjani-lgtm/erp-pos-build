@@ -272,6 +272,8 @@
   "stock": {
     "blocked": "Not enough stock at this branch (available: {{available}})",
     "warned": "Selling beyond branch stock (available: {{available}})",
+    "countingBlocked": "Sales are paused while inventory count {{number}} is in progress",
+    "zoneCounting": "Zone \"{{zone}}\" is being counted — sales continue",
     "incoming": "{{count}} arriving",
     "incomingFromTransfer": "Incoming from branch transfer",
     "incomingOnOrder": "On order (purchase)",

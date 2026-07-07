@@ -1,4 +1,4 @@
-import { api, apiGet, apiPost } from '@/lib/api'
+import { api, apiGet, apiPatch, apiPost } from '@/lib/api'
 import type {
   InventoryCounting,
   CountingDashboard,
@@ -52,13 +52,13 @@ export const countingApi = {
     const queryString = params.toString()
     const url = queryString ? `${BASE_URL}?${queryString}` : BASE_URL
 
-    const response = await api.get<{ data: PaginatedResponse<InventoryCounting> }>(url)
-    return response.data.data
+    const response = await api.get<PaginatedResponse<InventoryCounting>>(url)
+    return response.data
   },
 
   // Detail
-  getDetail: async (id: number): Promise<InventoryCounting> => {
-    return apiGet<InventoryCounting>(`${BASE_URL}/${String(id)}`)
+  getDetail: async (id: string): Promise<InventoryCounting> => {
+    return apiGet<InventoryCounting>(`${BASE_URL}/${id}`)
   },
 
   // Create
@@ -67,50 +67,63 @@ export const countingApi = {
   },
 
   // Activate
-  activate: async (id: number): Promise<void> => {
-    await apiPost(`${BASE_URL}/${String(id)}/activate`, {})
+  activate: async (id: string): Promise<void> => {
+    await apiPost(`${BASE_URL}/${id}/activate`, {})
   },
 
   // Cancel
-  cancel: async (id: number, reason: string): Promise<void> => {
-    await apiPost(`${BASE_URL}/${String(id)}/cancel`, { reason })
+  cancel: async (id: string, reason: string): Promise<void> => {
+    await apiPost(`${BASE_URL}/${id}/cancel`, { reason })
   },
 
   // Finalize
-  finalize: async (id: number): Promise<void> => {
-    await apiPost(`${BASE_URL}/${String(id)}/finalize`, {})
+  finalize: async (id: string): Promise<void> => {
+    await apiPost(`${BASE_URL}/${id}/finalize`, {})
   },
 
   // Reconciliation
-  getReconciliation: async (id: number): Promise<ReconciliationData> => {
-    return apiGet<ReconciliationData>(`${BASE_URL}/${String(id)}/reconciliation`)
+  getReconciliation: async (id: string): Promise<ReconciliationData> => {
+    return apiGet<ReconciliationData>(`${BASE_URL}/${id}/reconciliation`)
   },
 
   // Trigger third count
-  triggerThirdCount: async (countingId: number, itemIds: number[]): Promise<void> => {
-    await apiPost(`${BASE_URL}/${String(countingId)}/trigger-third-count`, { item_ids: itemIds })
+  triggerThirdCount: async (countingId: string, itemIds: string[]): Promise<void> => {
+    await apiPost(`${BASE_URL}/${countingId}/trigger-third-count`, { item_ids: itemIds })
   },
 
   // Manual override
   manualOverride: async (
-    itemId: number,
-    quantity: number,
+    itemId: string,
+    quantity: string,
     notes: string
   ): Promise<void> => {
-    await apiPost(`${BASE_URL}/items/${String(itemId)}/override`, {
+    await apiPost(`${BASE_URL}/items/${itemId}/override`, {
       quantity,
       notes,
     })
   },
 
+  // Opening-cost backfill (D3). `unitCost` is a canonical decimal STRING (6 d.p.
+  // ceiling) — never parsed through a JS number.
+  setOpeningCost: async (
+    countingId: string,
+    itemId: string,
+    unitCost: string
+  ): Promise<void> => {
+    await apiPatch(
+      `${BASE_URL}/${countingId}/items/${itemId}/opening-cost`,
+      { unit_cost: unitCost }
+    )
+  },
+
   // Report
-  getReport: async (id: number): Promise<DiscrepancyReport> => {
-    return apiGet<DiscrepancyReport>(`${BASE_URL}/${String(id)}/report`)
+  getReport: async (id: string): Promise<DiscrepancyReport> => {
+    return apiGet<DiscrepancyReport>(`${BASE_URL}/${id}/report`)
   },
 
   // Export report
-  exportReport: async (id: number, format: 'pdf' | 'xlsx'): Promise<Blob> => {
-    const response = await api.get(`${BASE_URL}/${String(id)}/report/export`, {
+  exportReport: async (id: string, format: 'pdf' | 'xlsx'): Promise<Blob> => {
+    const response = await api.get(`${BASE_URL}/${id}/report/export`, {
       params: { format },
       responseType: 'blob',
     })
@@ -118,7 +131,7 @@ export const countingApi = {
   },
 
   // Send reminder
-  sendReminder: async (id: number): Promise<void> => {
-    await apiPost(`${BASE_URL}/${String(id)}/send-reminder`, {})
+  sendReminder: async (id: string): Promise<void> => {
+    await apiPost(`${BASE_URL}/${id}/send-reminder`, {})
   },
 }

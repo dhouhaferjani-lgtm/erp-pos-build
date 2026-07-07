@@ -196,6 +196,9 @@ final class ReceiptVoidService
             'notes' => "Stock returned via POS void (receipt: {$receiptId})",
             'user_id' => $userId,
             'is_historical' => false,
+            // Server-side void processing time (≈ receipt.voided_at, set moments
+            // earlier in this transaction) — no device event time in this flow.
+            'occurred_at' => now(),
         ]);
     }
 

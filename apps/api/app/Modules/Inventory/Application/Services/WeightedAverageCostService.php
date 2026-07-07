@@ -275,6 +275,7 @@ class WeightedAverageCostService
                     'reference' => $reference,
                     'reference_type' => $referenceType,
                     'reference_id' => $referenceId,
+                    'occurred_at' => now(),
                 ]);
 
                 // Update the variant-scoped physical stock_level row.
@@ -425,6 +426,7 @@ class WeightedAverageCostService
                 'reference' => $reference,
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
+                'occurred_at' => now(),
             ]);
 
             // Update stock level (cost stays same)
@@ -570,6 +572,7 @@ class WeightedAverageCostService
                     'reference' => $reference,
                     'reference_type' => $referenceType,
                     'reference_id' => $referenceId,
+                    'occurred_at' => now(),
                 ]);
 
                 // Update stock level
@@ -758,6 +761,7 @@ class WeightedAverageCostService
                     'reference_type' => $referenceType,
                     'reference_id' => $referenceId,
                     'notes' => $reason,
+                    'occurred_at' => now(),
                 ]);
 
                 $product->cost_price = $newAvgCost;

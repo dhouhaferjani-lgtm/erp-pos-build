@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Domain;
 
-use App\Models\User;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Product\Domain\Product;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -23,14 +25,25 @@ use Illuminate\Support\Carbon;
  * @property numeric-string $theoretical_qty
  * @property numeric-string|null $count_1_qty
  * @property Carbon|null $count_1_at
+ * @property Carbon|null $count_1_device_at
+ * @property Carbon|null $count_1_at_estimate
  * @property string|null $count_1_notes
  * @property numeric-string|null $count_2_qty
  * @property Carbon|null $count_2_at
+ * @property Carbon|null $count_2_device_at
+ * @property Carbon|null $count_2_at_estimate
  * @property string|null $count_2_notes
  * @property numeric-string|null $count_3_qty
  * @property Carbon|null $count_3_at
+ * @property Carbon|null $count_3_device_at
+ * @property Carbon|null $count_3_at_estimate
  * @property string|null $count_3_notes
  * @property numeric-string|null $final_qty
+ * @property Carbon|null $final_qty_as_of
+ * @property numeric-string|null $expected_qty_at_apply
+ * @property numeric-string|null $opening_unit_cost
+ * @property array<string, mixed>|null $replay_audit
+ * @property array<int, string>|null $flag_reasons
  * @property ItemResolutionMethod $resolution_method
  * @property string|null $resolution_notes
  * @property string|null $resolved_by_user_id
@@ -49,6 +62,14 @@ class InventoryCountingItem extends Model
 {
     use HasUuids;
 
+    /**
+     * Clock-skew tolerance for count-submission timestamps. Beyond this, the
+     * device/server disagreement is treated as a fault worth flagging for
+     * recount rather than silently trusted for replay (B3/B4 consume
+     * `count_N_at_estimate` as the replay boundary).
+     */
+    private const CLOCK_SKEW_TOLERANCE_SECONDS = 300;
+
     protected $table = 'inventory_counting_items';
 
     protected $fillable = [
@@ -59,14 +80,25 @@ class InventoryCountingItem extends Model
         'theoretical_qty',
         'count_1_qty',
         'count_1_at',
+        'count_1_device_at',
+        'count_1_at_estimate',
         'count_1_notes',
         'count_2_qty',
         'count_2_at',
+        'count_2_device_at',
+        'count_2_at_estimate',
         'count_2_notes',
         'count_3_qty',
         'count_3_at',
+        'count_3_device_at',
+        'count_3_at_estimate',
         'count_3_notes',
         'final_qty',
+        'final_qty_as_of',
+        'expected_qty_at_apply',
+        'opening_unit_cost',
+        'replay_audit',
+        'flag_reasons',
         'resolution_method',
         'resolution_notes',
         'resolved_by_user_id',
@@ -88,12 +120,23 @@ class InventoryCountingItem extends Model
             'count_2_qty' => 'decimal:4',
             'count_3_qty' => 'decimal:4',
             'final_qty' => 'decimal:4',
+            'expected_qty_at_apply' => 'decimal:4',
+            'opening_unit_cost' => 'decimal:6',
             'count_1_at' => 'datetime',
+            'count_1_device_at' => 'datetime',
+            'count_1_at_estimate' => 'datetime',
             'count_2_at' => 'datetime',
+            'count_2_device_at' => 'datetime',
+            'count_2_at_estimate' => 'datetime',
             'count_3_at' => 'datetime',
+            'count_3_device_at' => 'datetime',
+            'count_3_at_estimate' => 'datetime',
+            'final_qty_as_of' => 'datetime',
             'resolved_at' => 'datetime',
             'is_flagged' => 'boolean',
             'is_unexpected_item' => 'boolean',
+            'replay_audit' => 'array',
+            'flag_reasons' => 'array',
         ];
     }
 
@@ -206,20 +249,75 @@ class InventoryCountingItem extends Model
 
     /**
      * Submit a count for this item.
-     */
-    /**
+     *
+     * Stamps three timestamps per phase: `count_N_at` is always the server
+     * receive instant (authoritative, unchanged); `count_N_device_at` is the
+     * raw device claim (if any); `count_N_at_estimate` is the skew-corrected
+     * instant B3/B4 replay uses as the boundary. When both device fields are
+     * present, the estimate is `count_N_device_at + (server_now − device_now)`
+     * — this corrects for a device clock offset while still trusting the
+     * device's own instant of when the count was physically taken. A skew
+     * (`|server_now − device_now|`) beyond the tolerance, or a device claim
+     * with no `device_now` to correct against, is treated as evidence, not
+     * proof, and flags the item for recount rather than silently replaying it.
+     *
      * @param  numeric-string  $quantity  Canonical numeric string (quantity scale 4, e.g. '1.2345')
      */
-    public function submitCount(int $phase, string $quantity, ?string $notes = null): void
-    {
+    public function submitCount(
+        int $phase,
+        string $quantity,
+        ?string $notes = null,
+        ?CarbonInterface $countedAtDevice = null,
+        ?CarbonInterface $deviceNow = null,
+    ): void {
         $qtyColumn = "count_{$phase}_qty";
         $atColumn = "count_{$phase}_at";
+        $deviceAtColumn = "count_{$phase}_device_at";
+        $estimateColumn = "count_{$phase}_at_estimate";
         $notesColumn = "count_{$phase}_notes";
 
+        $serverNow = Carbon::now();
+
         $this->$qtyColumn = $quantity;
-        $this->$atColumn = now();
+        $this->$atColumn = $serverNow;
         $this->$notesColumn = $notes;
+        // Convert device timestamp to UTC for consistent storage
+        $this->$deviceAtColumn = $countedAtDevice !== null ? $countedAtDevice->setTimezone('UTC') : null;
+
+        if ($countedAtDevice !== null && $deviceNow !== null) {
+            $skewSeconds = $serverNow->getTimestamp() - $deviceNow->getTimestamp();
+            $this->$estimateColumn = $countedAtDevice->copy()->addSeconds($skewSeconds)->setTimezone('UTC');
+
+            if (abs($skewSeconds) > self::CLOCK_SKEW_TOLERANCE_SECONDS) {
+                $this->flagClockSkew();
+            }
+        } elseif ($countedAtDevice !== null) {
+            // Device claims an instant but supplied no clock reference to
+            // correct it against — cannot verify, so fall back to the server
+            // receive time and flag for review.
+            $this->$estimateColumn = $serverNow;
+            $this->flagClockSkew();
+        } else {
+            $this->$estimateColumn = $serverNow;
+        }
+
         $this->save();
+    }
+
+    /**
+     * Append the blocking `clock_skew` flag reason and mark the item flagged,
+     * without clobbering any reasons already recorded (idempotent).
+     */
+    private function flagClockSkew(): void
+    {
+        $reasons = $this->flag_reasons ?? [];
+
+        if (! in_array(CountingItemFlagReason::ClockSkew->value, $reasons, true)) {
+            $reasons[] = CountingItemFlagReason::ClockSkew->value;
+        }
+
+        $this->flag_reasons = $reasons;
+        $this->is_flagged = true;
     }
 
     /**

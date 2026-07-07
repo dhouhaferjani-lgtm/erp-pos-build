@@ -32,7 +32,12 @@ import { getEffectiveAvailable, type AvailabilityCartLine } from './availability
 export type StockGateResult =
   | { ok: true; warn: false }
   | { ok: true; warn: true; available: string }
-  | { ok: false; available: string };
+  | { ok: false; available: string }
+  // Live inventory counting task C2 — device-enforced sales block. A
+  // `block_sales` stock count covering this terminal's location is active, so
+  // EVERY add is hard-refused regardless of on-hand availability (the block is
+  // not about stock quantity). `countingNumber` labels the toast.
+  | { ok: false; blockedByCounting: true; countingNumber: string | null };
 
 const PASS: StockGateResult = { ok: true, warn: false };
 
@@ -50,6 +55,19 @@ export async function gateStockForAdd(
   requestedQty: string,
   cartLines: ReadonlyArray<AvailabilityCartLine>,
 ): Promise<StockGateResult> {
+  const terminal = useTerminalStore.getState().terminal;
+
+  // Live inventory counting task C2 — the sales block wins over EVERYTHING,
+  // including the Menu-module 'off' short-circuit below: while a covering
+  // `block_sales` count is active, no cart ingress is permitted at this
+  // location (the stock is being physically recounted; a concurrent sale would
+  // corrupt the count). A late signed sale that still reaches the server is
+  // accepted there and flagged — but the device refuses at ingress.
+  const block = terminal?.active_counting_block;
+  if (block != null) {
+    return { ok: false, blockedByCounting: true, countingNumber: block.counting_number };
+  }
+
   // Menu-module tenants are ALWAYS 'off' regardless of the terminal payload:
   // their stock pull is skipped entirely (no location_stock rows), and a
   // cached pre-deploy terminal payload lacking pos_stock_policy would
@@ -59,7 +77,7 @@ export async function gateStockForAdd(
     return PASS;
   }
 
-  const policy = useTerminalStore.getState().terminal?.pos_stock_policy ?? 'block';
+  const policy = terminal?.pos_stock_policy ?? 'block';
   if (policy === 'off') {
     return PASS;
   }

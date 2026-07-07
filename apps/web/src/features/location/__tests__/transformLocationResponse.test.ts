@@ -21,6 +21,8 @@ describe('transformLocationResponse tax fields', () => {
       is_default: false,
       is_active: true,
       pos_enabled: true,
+      onboarding_mode: false,
+      pos_stock_policy_override: null,
       created_at: 'x',
       updated_at: 'y',
     })

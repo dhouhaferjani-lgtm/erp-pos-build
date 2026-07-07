@@ -350,7 +350,17 @@
       "taxId": "Identifiant fiscal",
       "taxIdRequiredHint": "Obligatoire pour les magasins en France, Tunisie et Maroc.",
       "vatNumber": "Numéro de TVA",
-      "posEnabled": "Activer le point de vente"
+      "posEnabled": "Activer le point de vente",
+      "onboardingMode": "Mode d'intégration",
+      "onboardingModeHint": "Autorise la vente avant la fin du premier comptage. Tant que ce mode est activé, la politique de stock du point de vente pour cet emplacement est forcée sur Désactivée (vente en dessous de zéro autorisée) — désactivez-le une fois le comptage d'ouverture terminé. Le premier comptage d'un produit effectué pendant ce mode est enregistré comme son stock d'ouverture (quantité et coût de base).",
+      "posStockPolicyOverride": "Politique de stock du point de vente (remplacement)",
+      "posStockPolicyOverrideHint": "Remplace la politique de stock de l'entreprise pour cet emplacement uniquement. Ignoré tant que le mode d'intégration est activé.",
+      "policyOverrideOptions": {
+        "inherit": "Hériter du paramètre de l'entreprise",
+        "block": "Bloquer — empêcher la vente au-delà du stock disponible",
+        "warn": "Avertir — autoriser la vente avec un avertissement",
+        "off": "Désactivée — autoriser la vente en dessous de zéro"
+      }
     },
     "empty": {
       "title": "Aucun emplacement",

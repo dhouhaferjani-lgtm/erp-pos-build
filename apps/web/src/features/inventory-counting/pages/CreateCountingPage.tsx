@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, Check, Trash2 } from 'lucide-react'
 import { useCreateCounting } from '../api/queries'
 import type {
@@ -15,13 +16,19 @@ import { LocationSelectorMulti } from '@/features/locations/components/LocationS
 import { CategorySelector } from '@/features/categories/components/CategorySelector'
 import { useUsers } from '@/features/users/hooks/useUsers'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
+import { listZones } from '@/features/settings/zones/api'
 
 const STEPS = ['scope', 'selection', 'configuration', 'assignment', 'review'] as const
 type Step = (typeof STEPS)[number]
 
+const DEFAULT_AMBIGUITY_WINDOW_MINUTES = 15
+
 const SCOPE_TYPES: CountingScopeType[] = [
   'full_inventory',
-  'warehouse',
+  'zone',
   'category',
   'location',
   'product',
@@ -41,6 +48,8 @@ export function CreateCountingPage() {
     requires_count_2: true,
     requires_count_3: false,
     allow_unexpected_items: true,
+    block_sales: false,
+    ambiguity_window_minutes: DEFAULT_AMBIGUITY_WINDOW_MINUTES,
   })
 
   const stepIndex = STEPS.indexOf(currentStep)
@@ -51,7 +60,8 @@ export function CreateCountingPage() {
     return scopeType === 'product' ||
            scopeType === 'product_location' ||
            scopeType === 'location' ||
-           scopeType === 'category'
+           scopeType === 'category' ||
+           scopeType === 'zone'
   }
 
   const canProceed = () => {
@@ -68,6 +78,12 @@ export function CreateCountingPage() {
         }
         if (formData.scope_type === 'category') {
           return (formData.scope_filters?.category_ids?.length ?? 0) > 0
+        }
+        if (formData.scope_type === 'zone') {
+          return (
+            !!formData.scope_filters?.location_id &&
+            (formData.scope_filters.zone_ids?.length ?? 0) > 0
+          )
         }
         return true
       case 'configuration':
@@ -112,7 +128,15 @@ export function CreateCountingPage() {
   const handleSubmit = () => {
     if (!formData.count_1_user_id) return
 
-    createCounting.mutate(formData as CreateCountingFormData, {
+    // Zone-scoped countings cannot block sales (backend rejects
+    // block_sales:true with a 422 for scope_type:'zone') — enforce this at
+    // submit time too, defense-in-depth alongside the disabled toggle.
+    const payload: CreateCountingFormData = {
+      ...(formData as CreateCountingFormData),
+      block_sales: formData.scope_type === 'zone' ? false : !!formData.block_sales,
+    }
+
+    createCounting.mutate(payload, {
       onSuccess: (counting) => {
         void navigate(`/inventory/counting/${String(counting.id)}`)
       },
@@ -341,6 +365,8 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
         return t('locations:selectLocations')
       case 'category':
         return t('counting.create.selectionTitleCategory')
+      case 'zone':
+        return t('counting.create.selectionTitleZone')
       default:
         return t('counting.create.selection')
     }
@@ -356,6 +382,8 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
         return t('counting.create.selectionDescriptionLocation')
       case 'category':
         return t('counting.create.selectionDescriptionCategory')
+      case 'zone':
+        return t('counting.create.selectionDescriptionZone')
       default:
         return ''
     }
@@ -429,6 +457,109 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
           label={t('counting.create.selectionTitleCategory')}
           helperText={t('counting.create.selectionDescriptionCategory')}
         />
+      )}
+
+      {/* Zone Selection: single location, then zones of that location */}
+      {scopeType === 'zone' && <ZoneScopeSelection data={data} onChange={onChange} />}
+    </div>
+  )
+}
+
+interface ZoneScopeSelectionProps {
+  data: Partial<CreateCountingFormData>
+  onChange: (updates: Partial<CreateCountingFormData>) => void
+}
+
+function ZoneScopeSelection({ data, onChange }: ZoneScopeSelectionProps) {
+  const { t } = useTranslation(['inventory', 'locations'])
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
+  const locationId = data.scope_filters?.location_id ?? ''
+  const zoneIds = data.scope_filters?.zone_ids ?? []
+
+  const { data: zones, isLoading } = useQuery({
+    queryKey: tenantScopedKey(['inventory-zones', locationId]),
+    queryFn: () => listZones(locationId),
+    enabled: locationId !== '' && tenantId !== null && companyId !== null,
+  })
+
+  const handleLocationChange = (locationIds: string[]) => {
+    onChange({
+      scope_filters: {
+        ...data.scope_filters,
+        location_id: locationIds[0],
+        // Zones belong to a single location — reset the selection whenever
+        // the location changes so stale zone ids never leak across locations.
+        zone_ids: [],
+      },
+    })
+  }
+
+  const handleToggleZone = (zoneId: string) => {
+    const next = zoneIds.includes(zoneId)
+      ? zoneIds.filter((id) => id !== zoneId)
+      : [...zoneIds, zoneId]
+    onChange({
+      scope_filters: {
+        ...data.scope_filters,
+        zone_ids: next,
+      },
+    })
+  }
+
+  return (
+    <div className="space-y-6">
+      <LocationSelectorMulti
+        value={locationId ? [locationId] : []}
+        onChange={handleLocationChange}
+        maxSelection={1}
+        label={t('counting.create.zoneLocationLabel')}
+        helperText={t('counting.create.zoneLocationHelper')}
+      />
+
+      {locationId !== '' && (
+        <div>
+          <label className={cn('mb-2 block text-sm font-medium', textColors.secondary)}>
+            {t('counting.create.zoneSelectLabel')}
+          </label>
+
+          {isLoading ? (
+            <p className={cn('text-sm', textColors.tertiary)}>{t('counting.create.zoneLoadingZones')}</p>
+          ) : (zones ?? []).length === 0 ? (
+            <p className={cn('text-sm', textColors.tertiary)}>{t('counting.create.noZonesForLocation')}</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {(zones ?? []).map((zone) => {
+                const selected = zoneIds.includes(zone.id)
+                return (
+                  <label
+                    key={zone.id}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-2 rounded-md border-2 p-3 transition-colors',
+                      selected ? 'border-blue-600 bg-blue-50' : cn(borderColors.default, 'hover:border-gray-300'),
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => { handleToggleZone(zone.id); }}
+                      className="rounded"
+                    />
+                    <span>
+                      <span className={cn('font-medium', textColors.primary)}>{zone.name}</span>
+                      <span className={cn('ms-1', textColors.tertiary)}>({zone.code})</span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+
+          <p className={cn('mt-2 text-sm', textColors.tertiary)}>
+            {t('counting.create.zoneSelectionHelper')}
+          </p>
+        </div>
       )}
     </div>
   )
@@ -537,6 +668,54 @@ function ConfigurationStep({ data, onChange }: ConfigurationStepProps) {
           </label>
           <p className="text-sm text-gray-500 ms-6">
             {t('counting.create.allowUnexpectedItemsHelp')}
+          </p>
+        </div>
+
+        {/* Block Sales During Count */}
+        <div>
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={data.scope_type === 'zone' ? false : !!data.block_sales}
+              disabled={data.scope_type === 'zone'}
+              onChange={(e) => { onChange({ block_sales: e.target.checked }); }}
+              className="me-2 rounded disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <span>{t('counting.create.blockSales')}</span>
+          </label>
+          <p className={cn('text-sm ms-6', textColors.tertiary)}>
+            {data.scope_type === 'zone'
+              ? t('counting.create.blockSalesZoneDisabledHint')
+              : t('counting.create.blockSalesHelp')}
+          </p>
+        </div>
+
+        {/* Ambiguity Window */}
+        <div>
+          <label
+            htmlFor="ambiguity-window-minutes"
+            className={cn('mb-2 block text-sm font-medium', textColors.secondary)}
+          >
+            {t('counting.create.ambiguityWindowMinutes')}
+          </label>
+          <input
+            id="ambiguity-window-minutes"
+            type="number"
+            min={0}
+            step={1}
+            value={data.ambiguity_window_minutes ?? DEFAULT_AMBIGUITY_WINDOW_MINUTES}
+            onChange={(e) => {
+              const parsed = Number.parseInt(e.target.value, 10)
+              onChange({ ambiguity_window_minutes: Number.isNaN(parsed) ? 0 : parsed })
+            }}
+            className={cn(
+              'w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500',
+              borderColors.default,
+              'focus:border-blue-500',
+            )}
+          />
+          <p className={cn('mt-1 text-sm', textColors.tertiary)}>
+            {t('counting.create.ambiguityWindowMinutesHelp')}
           </p>
         </div>
 

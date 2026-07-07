@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
 export function DiscrepancyReportPage() {
   const { t } = useTranslation('inventory')
   const { id } = useParams<{ id: string }>()
-  const countingId = parseInt(id ?? '0', 10)
+  const countingId = id ?? ''
 
   const { data: report, isLoading, error } = useDiscrepancyReport(countingId)
   const exportReport = useExportReport()

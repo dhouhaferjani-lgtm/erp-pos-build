@@ -4,16 +4,25 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
+use App\Modules\Inventory\Domain\Exceptions\OpeningCostRequiredException;
+use App\Modules\Inventory\Domain\Exceptions\OverlappingCountingException;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingEvent;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
+use App\Modules\Inventory\Domain\InventoryScale;
+use App\Modules\Inventory\Domain\ProductZoneAssignment;
+use App\Modules\Inventory\Domain\Services\OpeningCostGate;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Product\Domain\Product;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -22,8 +31,30 @@ use Illuminate\Support\Facades\DB;
  */
 class InventoryCountingService
 {
+    /**
+     * Statuses considered "active" for the overlap guard: from count_1 start
+     * through pending_review (inclusive). Deliberately NOT
+     * InventoryCounting::scopeActive() / CountingStatus::isActive(), which
+     * only cover the *InProgress cases and would miss a counting sitting in
+     * count_N_completed or pending_review — both still hold an unresolved
+     * claim on their items' stock grain.
+     *
+     * @var list<CountingStatus>
+     */
+    private const ACTIVE_OVERLAP_STATUSES = [
+        CountingStatus::Count1InProgress,
+        CountingStatus::Count1Completed,
+        CountingStatus::Count2InProgress,
+        CountingStatus::Count2Completed,
+        CountingStatus::Count3InProgress,
+        CountingStatus::Count3Completed,
+        CountingStatus::PendingReview,
+    ];
+
     public function __construct(
         private readonly CountingReconciliationService $reconciliationService,
+        private readonly ZoneService $zoneService,
+        private readonly OpeningCostGate $openingCostGate,
     ) {}
 
     /**
@@ -48,6 +79,8 @@ class InventoryCountingService
                 'requires_count_2' => $data['requires_count_2'] ?? true,
                 'requires_count_3' => $data['requires_count_3'] ?? false,
                 'allow_unexpected_items' => $data['allow_unexpected_items'] ?? false,
+                'block_sales' => $data['block_sales'] ?? false,
+                'ambiguity_window_minutes' => $data['ambiguity_window_minutes'] ?? 15,
                 'count_1_user_id' => $data['count_1_user_id'],
                 'count_2_user_id' => $data['count_2_user_id'] ?? null,
                 'count_3_user_id' => $data['count_3_user_id'] ?? null,
@@ -57,7 +90,7 @@ class InventoryCountingService
             ]);
 
             // Generate items based on scope
-            $this->generateCountingItems($counting, $companyId);
+            $this->generateCountingItems($counting, $companyId, $this->readIncludeZeroStockFlag($data));
 
             // Create assignments
             $this->createAssignments($counting);
@@ -80,27 +113,295 @@ class InventoryCountingService
 
     /**
      * Generate counting items based on scope.
+     *
+     * Resolves — and persists on the counting — whether the item set includes
+     * zero/negative/no-stock-row active products (`includes_zero_stock`), then
+     * seeds one item per resolved (product, location[, variant]) grain.
+     *
+     * @param  bool|null  $explicitIncludeZeroStock  Caller-supplied opt-in
+     *                                               (from CreateCountingRequest). When null the flag defaults to the
+     *                                               onboarding state of the target location(s).
      */
-    public function generateCountingItems(InventoryCounting $counting, string $companyId): void
-    {
-        $stockLevels = $this->getStockLevelsForScope(
-            $companyId,
+    public function generateCountingItems(
+        InventoryCounting $counting,
+        string $companyId,
+        ?bool $explicitIncludeZeroStock = null,
+    ): void {
+        $includesZeroStock = $this->resolveIncludesZeroStock(
             $counting->scope_type,
-            $counting->scope_filters
+            $counting->scope_filters,
+            $explicitIncludeZeroStock,
+            $companyId,
         );
 
-        foreach ($stockLevels as $stock) {
+        if ($counting->includes_zero_stock !== $includesZeroStock) {
+            $counting->includes_zero_stock = $includesZeroStock;
+            $counting->save();
+        }
+
+        $seeds = $this->resolveCountingItemSeeds(
+            $companyId,
+            $counting->scope_type,
+            $counting->scope_filters,
+            $includesZeroStock,
+        );
+
+        foreach ($seeds as $seed) {
             // variant_id is propagated from the StockLevel row (Task 20).
             // For product-level stock rows (variant_id IS NULL) this remains
             // null — preserving backward compat with non-variant products.
             InventoryCountingItem::create([
                 'counting_id' => $counting->id,
+                'product_id' => $seed['product_id'],
+                'variant_id' => $seed['variant_id'],
+                'location_id' => $seed['location_id'],
+                'theoretical_qty' => $seed['theoretical_qty'],
+            ]);
+        }
+    }
+
+    /**
+     * Coerce the request-supplied `include_zero_stock` flag to a nullable bool.
+     * Absent → null (defer to onboarding-based default).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function readIncludeZeroStockFlag(array $data): ?bool
+    {
+        if (! array_key_exists('include_zero_stock', $data)) {
+            return null;
+        }
+
+        return filter_var($data['include_zero_stock'], FILTER_VALIDATE_BOOL);
+    }
+
+    /**
+     * Whether this counting's item set is sourced from the full active catalog
+     * (zero/negative/no-stock-row products included) rather than the legacy
+     * `quantity > 0` filter. Only `full_inventory` / `location` counts qualify —
+     * they are the whole-location scopes C3's onboarding auto-exit gates on. An
+     * explicit opt-in wins; otherwise it defaults to true when a target
+     * location is in onboarding mode. Zone scope is partial-by-shelf and never
+     * sets this flag (its own item generation still includes zero-qty products).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function resolveIncludesZeroStock(
+        CountingScopeType $scopeType,
+        array $filters,
+        ?bool $explicit,
+        string $companyId,
+    ): bool {
+        if (! in_array($scopeType, [CountingScopeType::FullInventory, CountingScopeType::Location], true)) {
+            return false;
+        }
+
+        if ($explicit !== null) {
+            return $explicit;
+        }
+
+        return $this->anyLocationOnboarding($scopeType, $filters, $companyId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function anyLocationOnboarding(
+        CountingScopeType $scopeType,
+        array $filters,
+        string $companyId,
+    ): bool {
+        $locationIds = $this->resolveLocationIds($scopeType, $filters, $companyId);
+
+        if ($locationIds === []) {
+            return false;
+        }
+
+        return Location::query()
+            ->whereIn('id', $locationIds)
+            ->where('company_id', $companyId)
+            ->where('onboarding_mode', true)
+            ->exists();
+    }
+
+    /**
+     * The concrete location ids a whole-location scope targets.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return list<string>
+     */
+    private function resolveLocationIds(
+        CountingScopeType $scopeType,
+        array $filters,
+        string $companyId,
+    ): array {
+        if ($scopeType === CountingScopeType::Location) {
+            /** @var list<string> $ids */
+            $ids = array_values(array_filter((array) ($filters['location_ids'] ?? [])));
+
+            return $ids;
+        }
+
+        if ($scopeType === CountingScopeType::FullInventory) {
+            /** @var list<string> $ids */
+            $ids = Location::query()
+                ->where('company_id', $companyId)
+                ->where('is_active', true)
+                ->pluck('id')
+                ->all();
+
+            return $ids;
+        }
+
+        return [];
+    }
+
+    /**
+     * Resolve the (product, location, variant, theoretical_qty) seeds for a
+     * scope. Zone scope reads `product_zone_assignments`; onboarding/opt-in
+     * whole-location scopes read the full active catalog LEFT JOIN stock
+     * (theoretical `'0.0000'` when no stock row); every other case keeps the
+     * legacy `quantity > 0` stock-level query.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return list<array{product_id: string, variant_id: string|null, location_id: string, theoretical_qty: numeric-string}>
+     */
+    private function resolveCountingItemSeeds(
+        string $companyId,
+        CountingScopeType $scopeType,
+        array $filters,
+        bool $includesZeroStock,
+    ): array {
+        if ($scopeType === CountingScopeType::Zone) {
+            return $this->zoneItemSeeds($companyId, $filters);
+        }
+
+        if ($includesZeroStock) {
+            return $this->catalogItemSeeds($companyId, $scopeType, $filters);
+        }
+
+        $seeds = [];
+        foreach ($this->getStockLevelsForScope($companyId, $scopeType, $filters) as $stock) {
+            $seeds[] = [
                 'product_id' => $stock->product_id,
                 'variant_id' => $stock->variant_id,
                 'location_id' => $stock->location_id,
                 'theoretical_qty' => $stock->quantity,
-            ]);
+            ];
         }
+
+        return $seeds;
+    }
+
+    /**
+     * Seeds for a zone scope: every product placed in the requested zones, at
+     * the zone's location, with its current product-grain on-hand (or
+     * `'0.0000'` when there is no stock row).
+     *
+     * @param  array<string, mixed>  $filters
+     * @return list<array{product_id: string, variant_id: string|null, location_id: string, theoretical_qty: numeric-string}>
+     */
+    private function zoneItemSeeds(string $companyId, array $filters): array
+    {
+        /** @var list<string> $zoneIds */
+        $zoneIds = array_values(array_filter((array) ($filters['zone_ids'] ?? [])));
+
+        if ($zoneIds === []) {
+            return [];
+        }
+
+        // Defense-in-depth: scope_filters.location_id is validated company-owned
+        // by CreateCountingRequest, and zone_ids are validated to belong to it.
+        // Re-pin here too so a stale/malicious scope_filters row (e.g. one that
+        // bypassed the FormRequest via a direct service call) can never seed
+        // items from a zone at a foreign location.
+        $locationId = $filters['location_id'] ?? null;
+
+        if ($locationId === null || $locationId === '') {
+            return [];
+        }
+
+        $seeds = [];
+
+        $assignments = ProductZoneAssignment::query()
+            ->whereIn('zone_id', $zoneIds)
+            ->where('location_id', $locationId)
+            ->get();
+
+        foreach ($assignments as $assignment) {
+            /** @var StockLevel|null $stock */
+            $stock = StockLevel::query()
+                ->forCompany($companyId)
+                ->where('product_id', $assignment->product_id)
+                ->where('location_id', $assignment->location_id)
+                ->whereNull('variant_id')
+                ->first();
+
+            $seeds[] = [
+                'product_id' => $assignment->product_id,
+                'variant_id' => null,
+                'location_id' => $assignment->location_id,
+                'theoretical_qty' => $stock !== null ? $stock->quantity : '0.0000',
+            ];
+        }
+
+        return $seeds;
+    }
+
+    /**
+     * Seeds for an onboarding/opt-in whole-location scope: the cartesian of
+     * every active company product with each target location, LEFT JOIN stock
+     * (theoretical `'0.0000'` when absent). Never-received and already-sold
+     * (negative) products — exactly the ones the legacy `quantity > 0` filter
+     * drops — are included.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return list<array{product_id: string, variant_id: string|null, location_id: string, theoretical_qty: numeric-string}>
+     */
+    private function catalogItemSeeds(string $companyId, CountingScopeType $scopeType, array $filters): array
+    {
+        $locationIds = $this->resolveLocationIds($scopeType, $filters, $companyId);
+
+        if ($locationIds === []) {
+            return [];
+        }
+
+        /** @var list<string> $productIds */
+        $productIds = Product::query()
+            ->where('company_id', $companyId)
+            ->active()
+            ->pluck('id')
+            ->all();
+
+        if ($productIds === []) {
+            return [];
+        }
+
+        // Product-grain on-hand keyed by "product|location".
+        /** @var array<string, numeric-string> $stockByKey */
+        $stockByKey = [];
+        StockLevel::query()
+            ->forCompany($companyId)
+            ->whereIn('location_id', $locationIds)
+            ->whereNull('variant_id')
+            ->get(['product_id', 'location_id', 'quantity'])
+            ->each(function (StockLevel $stock) use (&$stockByKey): void {
+                $stockByKey[$stock->product_id.'|'.$stock->location_id] = $stock->quantity;
+            });
+
+        $seeds = [];
+        foreach ($locationIds as $locationId) {
+            foreach ($productIds as $productId) {
+                $seeds[] = [
+                    'product_id' => $productId,
+                    'variant_id' => null,
+                    'location_id' => $locationId,
+                    'theoretical_qty' => $stockByKey[$productId.'|'.$locationId] ?? '0.0000',
+                ];
+            }
+        }
+
+        return $seeds;
     }
 
     /**
@@ -239,6 +540,8 @@ class InventoryCountingService
             $this->createAssignments($counting);
 
             if ($activateImmediately) {
+                $this->assertNoOverlappingActiveCounting($counting);
+
                 $counting->transitionTo(CountingStatus::Count1InProgress);
 
                 $assignment = $counting->assignments()
@@ -275,6 +578,8 @@ class InventoryCountingService
         }
 
         DB::transaction(function () use ($counting, $user): void {
+            $this->assertNoOverlappingActiveCounting($counting);
+
             $counting->transitionTo(CountingStatus::Count1InProgress);
 
             // Start assignment for count 1
@@ -298,13 +603,17 @@ class InventoryCountingService
      * CRITICAL: This is the only method that should modify count values.
      *
      * @param  numeric-string  $quantity  Canonical numeric string (quantity scale 4, e.g. '1.2345')
+     * @param  CarbonInterface|null  $countedAtDevice  Raw device-clock instant of the count, if supplied
+     * @param  CarbonInterface|null  $deviceNow  Device clock's own "now" reading at submission, used to derive skew
      */
     public function submitCount(
         InventoryCountingItem $item,
         int $countNumber,
         string $quantity,
         ?string $notes,
-        User $user
+        User $user,
+        ?CarbonInterface $countedAtDevice = null,
+        ?CarbonInterface $deviceNow = null,
     ): void {
         $counting = $item->counting;
 
@@ -337,9 +646,15 @@ class InventoryCountingService
 
         $userId = (string) $user->id;
 
-        DB::transaction(function () use ($item, $countNumber, $quantity, $notes, $userId, $counting): void {
+        DB::transaction(function () use ($item, $countNumber, $quantity, $notes, $userId, $counting, $countedAtDevice, $deviceNow): void {
             // Submit the count
-            $item->submitCount($countNumber, $quantity, $notes);
+            $item->submitCount($countNumber, $quantity, $notes, $countedAtDevice, $deviceNow);
+
+            // Assign-as-you-count: the first count of an item in a single-zone
+            // zone-scoped session upserts that product into the zone (labels the
+            // shelf the moment it is physically counted — including scanned-in
+            // unexpected items). Multiple zones in scope are ambiguous → skipped.
+            $this->assignCountedItemToZone($item, $counting, $countNumber);
 
             // Record event
             InventoryCountingEvent::recordCountSubmitted(
@@ -359,6 +674,31 @@ class InventoryCountingService
             // Check if this phase is complete
             $this->checkPhaseCompletion($counting, $countNumber);
         });
+    }
+
+    /**
+     * Upsert the just-counted product into the session's zone when the session
+     * is zone-scoped with exactly one zone. No-op for every other scope, for
+     * multi-zone sessions (ambiguous target), and for counts after the first
+     * (a later count must not overwrite a deliberate mid-count reassignment).
+     */
+    private function assignCountedItemToZone(
+        InventoryCountingItem $item,
+        InventoryCounting $counting,
+        int $countNumber,
+    ): void {
+        if ($countNumber !== 1 || $counting->scope_type !== CountingScopeType::Zone) {
+            return;
+        }
+
+        /** @var list<string> $zoneIds */
+        $zoneIds = array_values(array_filter((array) ($counting->scope_filters['zone_ids'] ?? [])));
+
+        if (count($zoneIds) !== 1) {
+            return;
+        }
+
+        $this->zoneService->assignProduct($item->product_id, $item->location_id, $zoneIds[0]);
     }
 
     /**
@@ -522,11 +862,15 @@ class InventoryCountingService
         $userId = (string) $user->id;
 
         DB::transaction(function () use ($item, $quantity, $notes, $userId): void {
+            $now = now();
             $item->final_qty = $quantity;
             $item->resolution_method = ItemResolutionMethod::ManualOverride;
             $item->resolution_notes = $notes;
             $item->resolved_by_user_id = $userId;
-            $item->resolved_at = now();
+            $item->resolved_at = $now;
+            // Replay boundary for a manual override is fixed to resolved_at — the
+            // override request carries no count timestamp of its own (B3 §1).
+            $item->final_qty_as_of = $now;
             $item->is_flagged = true;
             $item->flag_reason = 'manual_override';
             $item->save();
@@ -556,7 +900,36 @@ class InventoryCountingService
             );
         }
 
+        // Re-validate the overlap guard at finalize time: the counting was
+        // clear of conflicts at activation, but another counting may have
+        // since become active over the same stock grain (e.g. via a
+        // different activation path, or an unexpected item added mid-flight).
+        $this->assertNoOverlappingActiveCounting($counting);
+
+        // Pre-finalize opening-cost gate (D3): a cost-less onboarding opening
+        // must be caught BEFORE the transition to Finalized. Finalized has no
+        // outgoing transition, so a cost backfilled afterwards could never post
+        // — the counted quantity would be silently stranded. Reject here so the
+        // reviewer supplies (or explicitly zeroes) the cost first.
+        $this->assertOpeningCostsResolved($counting);
+
         DB::transaction(function () use ($counting, $user): void {
+            // Freeze each auto-resolved item's replay boundary before the
+            // finalize event fires (the queued listener reads final_qty_as_of to
+            // choose the replay path vs the legacy delta path). Manual overrides
+            // already stamped their own as-of at override time.
+            foreach ($counting->items as $item) {
+                if ($item->final_qty_as_of !== null) {
+                    continue;
+                }
+
+                $asOf = $this->resolveFinalQtyAsOf($item);
+                if ($asOf !== null) {
+                    $item->final_qty_as_of = Carbon::instance($asOf);
+                    $item->save();
+                }
+            }
+
             // Finalize the counting
             $counting->transitionTo(CountingStatus::Finalized);
 
@@ -585,6 +958,43 @@ class InventoryCountingService
                 );
             });
         });
+    }
+
+    /**
+     * Resolve the replay boundary (`final_qty_as_of`) for an auto-resolved item:
+     * the skew-corrected estimate of the count that produced `final_qty`.
+     *
+     * The lowest-numbered count whose value equals `final_qty` supplies the
+     * boundary. When counters agree (or all match theoretical) any agreeing
+     * count yields the same replay result — no net movement can sit between two
+     * agreeing counts — so the earliest is a safe, deterministic choice. Manual
+     * overrides never reach here (they stamp resolved_at at override time).
+     * Returns null when no count matches, which routes the item to the legacy
+     * delta path.
+     */
+    private function resolveFinalQtyAsOf(InventoryCountingItem $item): ?CarbonInterface
+    {
+        if ($item->resolution_method === ItemResolutionMethod::ManualOverride) {
+            return $item->resolved_at;
+        }
+
+        $finalQty = $item->final_qty;
+        if ($finalQty === null) {
+            return null;
+        }
+
+        foreach ([1, 2, 3] as $phase) {
+            /** @var numeric-string|null $qty */
+            $qty = $item->{"count_{$phase}_qty"};
+            /** @var CarbonInterface|null $estimate */
+            $estimate = $item->{"count_{$phase}_at_estimate"};
+
+            if ($qty !== null && $estimate !== null && bccomp((string) $qty, (string) $finalQty, InventoryScale::QUANTITY_SCALE) === 0) {
+                return $estimate;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -650,6 +1060,91 @@ class InventoryCountingService
             completedBy: (string) $user->id,
             completedAt: now()->toIso8601String(),
         ));
+    }
+
+    /**
+     * Pre-finalize opening-cost gate (D3, spec §5): reject finalize when any
+     * line that WILL post as an onboarding opening balance still lacks a
+     * resolvable positive cost. Uses OpeningCostGate — the SAME computation the
+     * web review payload surfaces (`opening_cost_missing`) — so the FE gate and
+     * the server guarantee never diverge. Items with no `final_qty` post
+     * nothing and are skipped. Reads items fresh (with `product`) so a cost
+     * backfilled via the opening-cost endpoint since load is honoured.
+     *
+     * @throws OpeningCostRequiredException
+     */
+    private function assertOpeningCostsResolved(InventoryCounting $counting): void
+    {
+        /** @var Collection<int, InventoryCountingItem> $items */
+        $items = $counting->items()->with(['product', 'location'])->get();
+
+        $missing = [];
+        foreach ($items as $item) {
+            if ($item->final_qty === null) {
+                continue;
+            }
+
+            $onboarding = (bool) $item->location->onboarding_mode;
+            $result = $this->openingCostGate->evaluateItem($item, $onboarding);
+
+            if (! $result['opening_cost_missing']) {
+                continue;
+            }
+
+            $missing[] = $item->product->name.' ('.$item->product->sku.')';
+        }
+
+        if ($missing !== []) {
+            throw new OpeningCostRequiredException(array_values(array_unique($missing)));
+        }
+    }
+
+    /**
+     * Guard against a counting being active (or finalizing) while any of its
+     * items overlap another counting's items on
+     * `(product_id, location_id, variant_id)` — null-variant-aware: a
+     * NULL-variant row on both sides is treated as the same grain, but a
+     * NULL-variant row never matches a specific-variant row for the same
+     * product/location. Countings in a non-active status (draft, scheduled,
+     * finalized, cancelled) never conflict.
+     *
+     * @throws OverlappingCountingException
+     */
+    private function assertNoOverlappingActiveCounting(InventoryCounting $counting): void
+    {
+        $activeStatusValues = array_map(
+            static fn (CountingStatus $status): string => $status->value,
+            self::ACTIVE_OVERLAP_STATUSES,
+        );
+
+        $conflict = DB::table('inventory_counting_items as a')
+            ->join('inventory_counting_items as b', function ($join): void {
+                $join->on('a.product_id', '=', 'b.product_id')
+                    ->on('a.location_id', '=', 'b.location_id')
+                    ->where(function ($nested): void {
+                        $nested->whereColumn('a.variant_id', '=', 'b.variant_id')
+                            ->orWhere(function ($bothNull): void {
+                                $bothNull->whereNull('a.variant_id')->whereNull('b.variant_id');
+                            });
+                    });
+            })
+            ->join('inventory_countings as c', 'b.counting_id', '=', 'c.id')
+            ->where('a.counting_id', $counting->id)
+            ->where('b.counting_id', '!=', $counting->id)
+            ->where('c.company_id', $counting->company_id)
+            ->whereIn('c.status', $activeStatusValues)
+            ->select(['b.counting_id as conflicting_counting_id', 'a.product_id', 'a.location_id', 'a.variant_id'])
+            ->first();
+
+        if ($conflict !== null) {
+            throw new OverlappingCountingException(
+                $counting->id,
+                (string) $conflict->conflicting_counting_id,
+                (string) $conflict->product_id,
+                (string) $conflict->location_id,
+                $conflict->variant_id !== null ? (string) $conflict->variant_id : null,
+            );
+        }
     }
 
     /**

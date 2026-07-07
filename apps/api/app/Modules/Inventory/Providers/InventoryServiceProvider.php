@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Providers;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Inventory\Application\Contracts\InventoryReservationServiceInterface;
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
+use App\Modules\Inventory\Application\Listeners\ExitOnboardingOnFullCountFinalized;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Inventory\Application\Services\LinkedCostApplicationService;
 use App\Modules\Inventory\Application\Services\LocationStockQueryService;
@@ -67,5 +68,9 @@ class InventoryServiceProvider extends ServiceProvider
 
         // Apply stock adjustments when inventory counting is completed
         Event::listen(InventoryCountingCompleted::class, ApplyStockAdjustmentsOnCountingCompleted::class);
+
+        // Onboarding auto-exit (C3): a finalized whole-location count sourced
+        // from the full catalog (includes_zero_stock) exits onboarding_mode.
+        Event::listen(InventoryCountingCompleted::class, ExitOnboardingOnFullCountFinalized::class);
     }
 }

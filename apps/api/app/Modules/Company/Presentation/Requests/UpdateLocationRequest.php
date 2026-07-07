@@ -6,6 +6,7 @@ namespace App\Modules\Company\Presentation\Requests;
 
 use App\Modules\Company\Application\Services\CountryTaxIdentityConfig;
 use App\Modules\Company\Domain\Enums\LocationType;
+use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\Company\Domain\Location;
 use App\Shared\Domain\Validation\CountryTaxNumberRules;
 use Closure;
@@ -37,6 +38,8 @@ class UpdateLocationRequest extends FormRequest
             'address_country' => ['sometimes', 'nullable', 'string', 'size:2'],
             'is_active' => ['sometimes', 'boolean'],
             'pos_enabled' => ['sometimes', 'boolean'],
+            'onboarding_mode' => ['sometimes', 'boolean'],
+            'pos_stock_policy_override' => ['sometimes', 'nullable', new Enum(PosStockPolicy::class)],
             'tax_id' => [
                 'sometimes',
                 'nullable',

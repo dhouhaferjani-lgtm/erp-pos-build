@@ -47,12 +47,12 @@
       "received": "Réceptionnés",
       "drafts": "Brouillons"
     },
-  "status": {
-    "draft": "Brouillon",
-    "pending": "En attente",
-    "partial": "Partiel",
-    "received": "Réceptionné"
-  },
+    "status": {
+      "draft": "Brouillon",
+      "pending": "En attente",
+      "partial": "Partiel",
+      "received": "Réceptionné"
+    },
     "emptyPending": "Aucune réception en attente",
     "emptyPendingHint": "Les commandes fournisseurs confirmées apparaîtront ici pour réception",
     "emptyReceived": "Aucune commande réceptionnée",
@@ -604,7 +604,7 @@
       "product": "Produit",
       "location": "Emplacement",
       "category": "Catégorie",
-      "warehouse": "Entrepôt",
+      "zone": "Zone / Rayon",
       "full_inventory": "Inventaire complet"
     },
     "scopeDescriptions": {
@@ -612,7 +612,7 @@
       "product": "Compter des produits spécifiques dans tous les emplacements",
       "location": "Compter tous les produits dans des emplacements spécifiques",
       "category": "Compter tous les produits dans des catégories spécifiques",
-      "warehouse": "Compter tous les produits dans des entrepôts spécifiques",
+      "zone": "Compter tous les produits assignés à des zones/rayons spécifiques d'un même emplacement",
       "full_inventory": "Compter tous les produits dans tous les emplacements"
     },
     "executionModes": {
@@ -663,10 +663,18 @@
       "selectionDescriptionLocation": "Choisissez les emplacements à compter",
       "selectionTitleCategory": "Sélectionner des catégories",
       "selectionDescriptionCategory": "Choisissez les catégories de produits à compter",
+      "selectionTitleZone": "Sélectionner l'emplacement et les zones",
+      "selectionDescriptionZone": "Choisissez un emplacement, puis les zones/rayons à compter",
       "productSelectionHelper": "Recherchez et sélectionnez des produits par nom, référence ou code-barres",
       "locationSelectionHelper": "Recherchez et sélectionnez les emplacements à inclure dans le comptage",
       "categorySelectionComingSoon": "Sélection de catégories bientôt disponible",
       "categorySelectionComingSoonHint": "Les catégories de produits ne sont pas encore implémentées. Utilisez l'inventaire complet ou le périmètre produit à la place.",
+      "zoneLocationLabel": "Emplacement",
+      "zoneLocationHelper": "Les zones appartiennent à un seul emplacement — choisissez d'abord l'emplacement à compter",
+      "zoneSelectLabel": "Zones",
+      "zoneLoadingZones": "Chargement des zones…",
+      "noZonesForLocation": "Cet emplacement n'a pas encore de zones. Ajoutez des zones dans les paramètres avant de créer un comptage par zone.",
+      "zoneSelectionHelper": "Sélectionnez une ou plusieurs zones/rayons à compter pour cet emplacement",
       "scopeTitle": "Sélectionner le périmètre du comptage",
       "scopeDescription": "Choisissez ce que vous souhaitez compter",
       "scopeType": "Type de périmètre",
@@ -678,6 +686,11 @@
       "requiresCount3": "Exiger un troisième comptage (pour les écarts)",
       "allowUnexpectedItems": "Autoriser les articles imprévus",
       "allowUnexpectedItemsHelp": "Les compteurs peuvent ajouter des articles non prévus dans la liste",
+      "blockSales": "Bloquer les ventes pendant ce comptage",
+      "blockSalesHelp": "Empêche les ventes sur le(s) emplacement(s) compté(s) pendant que le comptage est en cours",
+      "blockSalesZoneDisabledHint": "Le blocage des ventes n'est pas disponible pour les comptages par zone — les ventes continuent et sont réconciliées par rejeu horodaté",
+      "ambiguityWindowMinutes": "Fenêtre d'ambiguïté (minutes)",
+      "ambiguityWindowMinutesHelp": "Fenêtre de tolérance utilisée pour résoudre les désaccords entre compteurs en rejouant les ventes/mouvements entre les instants de comptage",
       "instructions": "Instructions pour les compteurs",
       "instructionsPlaceholder": "Entrez des instructions spéciales pour les compteurs…",
       "assignmentTitle": "Attribuer les compteurs",
@@ -749,7 +762,11 @@
       "finalQuantity": "Quantité finale",
       "overrideReason": "Raison de la correction",
       "overrideReasonPlaceholder": "Expliquez pourquoi vous corrigez le comptage…",
-      "applyOverride": "Appliquer la correction"
+      "applyOverride": "Appliquer la correction",
+      "expectedNow": "Attendu maintenant",
+      "movementsSinceCount": "Mouvements depuis le comptage",
+      "openingCost": "Coût d'ouverture",
+      "saveCost": "Enregistrer"
     },
     "review": {
       "title": "Révision",
@@ -758,8 +775,12 @@
       "resolveBeforeFinalize": "Utilisez le 3ème comptage ou la correction manuelle pour résoudre les écarts.",
       "finalizeConfirm": {
         "title": "Finaliser le comptage ?",
-        "description": "Cela créera des ajustements de stock basés sur les quantités finales. Cette action est irréversible."
-      }
+        "description": "Cela créera des ajustements de stock basés sur les quantités finales. Cette action est irréversible.",
+        "syncWarning": "Assurez-vous que tous les terminaux de caisse de ce point de vente ont synchronisé leurs ventes avant de finaliser — les ventes synchronisées tardivement après la finalisation ne seront corrigées qu'au prochain comptage."
+      },
+      "lateSalesDetected_one": "{{count}} vente tardive enregistrée pendant le comptage",
+      "lateSalesDetected_other": "{{count}} ventes tardives enregistrées pendant le comptage",
+      "lateSalesDescription": "Des ventes ont eu lieu pendant ce comptage et sont prises en compte dans le rejeu."
     },
     "report": {
       "title": "Rapport d'écarts",
@@ -799,7 +820,17 @@
       "reportDownloaded": "Rapport téléchargé",
       "exportFailed": "Échec de l'export du rapport : {{error}}",
       "reminderSent": "Rappel envoyé avec succès",
-      "reminderFailed": "Échec de l'envoi du rappel : {{error}}"
+      "reminderFailed": "Échec de l'envoi du rappel : {{error}}",
+      "openingCostUpdated": "Coût d'ouverture mis à jour",
+      "openingCostFailed": "Échec de la mise à jour du coût d'ouverture : {{error}}"
+    },
+    "flags": {
+      "basket_window": "Vente dans la fenêtre de panier",
+      "negative_at_apply": "Stock négatif à l'application",
+      "clock_skew": "Décalage d'horloge détecté",
+      "pending_opening_cost": "Coût d'ouverture requis",
+      "normalized_agreement": "Accord normalisé",
+      "notPostedRecount": "Non enregistré — recomptez cet article dans une nouvelle session"
     }
   },
   "categories": {
@@ -963,5 +994,55 @@
     "submitError": "Impossible d'enregistrer le stock initial. Veuillez réessayer.",
     "resetSuccess": "Le stock initial a été réinitialisé.",
     "resetError": "Impossible de réinitialiser le stock initial. Veuillez réessayer."
+  },
+  "zones": {
+    "navLabel": "Zones",
+    "panelTitle": "Zones — {{location}}",
+    "subtitle": "Étiquettes de rayon/section pour le comptage et le placement des produits",
+    "addZone": "Ajouter une zone",
+    "editZone": "Modifier la zone",
+    "empty": {
+      "title": "Aucune zone",
+      "description": "Ajoutez une zone pour cadrer les comptages par rayon ou section."
+    },
+    "list": {
+      "sortOrder": "Ordre {{order}}",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "form": {
+      "name": "Nom",
+      "namePlaceholder": "ex. Allée 3",
+      "nameRequired": "Le nom est requis",
+      "code": "Code",
+      "codePlaceholder": "ex. A3",
+      "codeRequired": "Le code est requis",
+      "sortOrder": "Ordre de tri",
+      "isActive": "Active"
+    },
+    "actions": {
+      "assignProducts": "Assigner des produits"
+    },
+    "deleteConfirm": {
+      "title": "Supprimer la zone",
+      "message": "Supprimer la zone \"{{name}}\" ? Les produits qui y sont assignés devront être réassignés."
+    },
+    "bulkAssign": {
+      "title": "Assigner des produits — {{zone}}",
+      "currentlyAssigned": "Actuellement assignés",
+      "noneAssigned": "Aucun produit assigné à cette zone pour le moment.",
+      "addProducts": "Ajouter des produits",
+      "removeProduct": "Retirer {{name}}",
+      "pendingCount": "{{count}} produit sélectionné",
+      "pendingCount_other": "{{count}} produits sélectionnés",
+      "submit": "Assigner",
+      "success": "Produits assignés à la zone.",
+      "productIdsRequired": "Sélectionnez au moins un produit à assigner."
+    },
+    "messages": {
+      "created": "Zone créée.",
+      "updated": "Zone mise à jour.",
+      "deleted": "Zone supprimée."
+    }
   }
 }

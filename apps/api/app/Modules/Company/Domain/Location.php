@@ -38,6 +38,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool $is_default Whether this is the default location
  * @property bool $is_active Whether the location is active
  * @property bool $pos_enabled Whether POS is enabled at this location
+ * @property bool $onboarding_mode Whether this location is being onboarded (sell-before-count); forces the resolved POS stock policy to Off
+ * @property string|null $pos_stock_policy_override Per-location override of the company's pos_stock_policy; null means inherit the company value
  * @property string|null $receipt_header Custom receipt header
  * @property string|null $receipt_footer Custom receipt footer
  * @property Carbon $created_at
@@ -89,6 +91,8 @@ class Location extends Model
         'is_default',
         'is_active',
         'pos_enabled',
+        'onboarding_mode',
+        'pos_stock_policy_override',
         'receipt_header',
         'receipt_footer',
     ];
@@ -107,6 +111,7 @@ class Location extends Model
             'is_default' => 'boolean',
             'is_active' => 'boolean',
             'pos_enabled' => 'boolean',
+            'onboarding_mode' => 'boolean',
             'legal_identifiers' => 'array',
         ];
     }

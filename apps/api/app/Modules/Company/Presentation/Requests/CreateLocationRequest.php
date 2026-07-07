@@ -6,6 +6,7 @@ namespace App\Modules\Company\Presentation\Requests;
 
 use App\Modules\Company\Application\Services\CountryTaxIdentityConfig;
 use App\Modules\Company\Domain\Enums\LocationType;
+use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Shared\Domain\Validation\CountryTaxNumberRules;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
@@ -35,6 +36,8 @@ class CreateLocationRequest extends FormRequest
             'address_postal_code' => ['nullable', 'string', 'max:20'],
             'address_country' => ['nullable', 'string', 'size:2'],
             'pos_enabled' => ['nullable', 'boolean'],
+            'onboarding_mode' => ['nullable', 'boolean'],
+            'pos_stock_policy_override' => ['nullable', new Enum(PosStockPolicy::class)],
             'tax_id' => [
                 'nullable',
                 'string',

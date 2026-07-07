@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truck, Store } from 'lucide-react'
+import { Plus, MapPin, Edit, Trash2, Star, Building2, Warehouse, Briefcase, Truck, Store, Layers } from 'lucide-react'
 import { fetchLocations, createLocation, updateLocation, deleteLocation, setDefaultLocation } from '../location/api'
-import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput } from '../location/api'
+import type { LocationApiResponse, CreateLocationInput, UpdateLocationInput, PosStockPolicyOverride } from '../location/api'
 import { isBranchTaxIdRequiredCountry } from '../location/branchTaxCountries'
 import { useCountryProfile } from './hooks/useCountryProfile'
 import { getCountryPlaceholders } from '../../lib/countryPlaceholders'
@@ -13,11 +13,16 @@ import { cn } from '../../lib/utils'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { Button, Checkbox, FormField, Input, Select, StatusBadge } from '../../components/atoms'
+import { Button, Checkbox, FormField, Input, Select, StatusBadge, Toggle } from '../../components/atoms'
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { EmptyState } from '../../components/molecules'
+import { ZonesPanel } from './zones/ZonesPanel'
 
 type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile'
+
+// 'inherit' is a form-only sentinel — it maps to `null` (inherit the
+// company's pos_stock_policy) on submit; it is never sent to the API.
+type PosStockPolicyOverrideOption = 'inherit' | PosStockPolicyOverride
 
 const typeIcons: Record<LocationType, typeof Building2> = {
   shop: Store,
@@ -46,6 +51,8 @@ interface LocationFormData {
   taxId: string
   vatNumber: string
   posEnabled: boolean
+  onboardingMode: boolean
+  posStockPolicyOverride: PosStockPolicyOverrideOption
 }
 
 const emptyForm: LocationFormData = {
@@ -61,6 +68,8 @@ const emptyForm: LocationFormData = {
   taxId: '',
   vatNumber: '',
   posEnabled: false,
+  onboardingMode: false,
+  posStockPolicyOverride: 'inherit',
 }
 
 function scopedNamespacePredicate(
@@ -80,7 +89,7 @@ function scopedNamespacePredicate(
 }
 
 export function LocationsPage() {
-  const { t } = useTranslation(['common', 'settings'])
+  const { t } = useTranslation(['common', 'settings', 'inventory'])
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -89,6 +98,7 @@ export function LocationsPage() {
   const [editingLocation, setEditingLocation] = useState<LocationApiResponse | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<LocationApiResponse | null>(null)
   const [formData, setFormData] = useState<LocationFormData>(emptyForm)
+  const [zonesLocation, setZonesLocation] = useState<LocationApiResponse | null>(null)
 
   const { data: locations, isLoading } = useQuery({
     queryKey: tenantScopedKey(['locations']),
@@ -156,6 +166,8 @@ export function LocationsPage() {
       taxId: location.tax_id ?? '',
       vatNumber: location.vat_number ?? '',
       posEnabled: location.pos_enabled,
+      onboardingMode: location.onboarding_mode,
+      posStockPolicyOverride: location.pos_stock_policy_override ?? 'inherit',
     })
     setIsModalOpen(true)
   }
@@ -174,6 +186,11 @@ export function LocationsPage() {
         name: formData.name,
         type: formData.type,
         posEnabled: formData.posEnabled,
+        onboardingMode: formData.onboardingMode,
+        // Always send: 'inherit' clears the override back to null so the
+        // location re-inherits the company's pos_stock_policy.
+        posStockPolicyOverride:
+          formData.posStockPolicyOverride === 'inherit' ? null : formData.posStockPolicyOverride,
       }
       if (formData.code) updateData.code = formData.code
       if (formData.phone) updateData.phone = formData.phone
@@ -197,6 +214,9 @@ export function LocationsPage() {
         name: formData.name,
         type: formData.type,
         posEnabled: formData.posEnabled,
+        onboardingMode: formData.onboardingMode,
+        posStockPolicyOverride:
+          formData.posStockPolicyOverride === 'inherit' ? null : formData.posStockPolicyOverride,
       }
       if (formData.code) createData.code = formData.code
       if (formData.phone) createData.phone = formData.phone
@@ -311,6 +331,15 @@ export function LocationsPage() {
 
                 {/* Actions */}
                 <div className={cn('mt-4 flex items-center gap-2 border-t pt-4', borderColors.light)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => { setZonesLocation(location) }}
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    {t('inventory:zones.navLabel')}
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -492,6 +521,43 @@ export function LocationsPage() {
                 {t('locations.form.posEnabled')}
               </label>
             </div>
+
+            {/* Onboarding mode */}
+            <div className={cn('space-y-1 border-t pt-4', borderColors.light)}>
+              <Toggle
+                id="onboardingMode"
+                aria-label={t('locations.form.onboardingMode')}
+                label={t('locations.form.onboardingMode')}
+                checked={formData.onboardingMode}
+                onChange={(e) => { setFormData({ ...formData, onboardingMode: e.target.checked }) }}
+              />
+              <p className={cn('text-xs', textColors.tertiary)}>
+                {t('locations.form.onboardingModeHint')}
+              </p>
+            </div>
+
+            {/* POS stock policy override */}
+            <FormField
+              label={t('locations.form.posStockPolicyOverride')}
+              htmlFor="posStockPolicyOverride"
+              helperText={t('locations.form.posStockPolicyOverrideHint')}
+            >
+              <Select
+                id="posStockPolicyOverride"
+                value={formData.posStockPolicyOverride}
+                onChange={(e) => {
+                  setFormData({
+                    ...formData,
+                    posStockPolicyOverride: e.target.value as PosStockPolicyOverrideOption,
+                  })
+                }}
+              >
+                <option value="inherit">{t('locations.form.policyOverrideOptions.inherit')}</option>
+                <option value="block">{t('locations.form.policyOverrideOptions.block')}</option>
+                <option value="warn">{t('locations.form.policyOverrideOptions.warn')}</option>
+                <option value="off">{t('locations.form.policyOverrideOptions.off')}</option>
+              </Select>
+            </FormField>
           </ModalContent>
 
           {/* Actions */}
@@ -521,6 +587,18 @@ export function LocationsPage() {
         variant="danger"
         isLoading={deleteMutation.isPending}
       />
+
+      {/* Zones Panel */}
+      <Modal
+        isOpen={zonesLocation !== null}
+        onClose={() => { setZonesLocation(null) }}
+        title={t('inventory:zones.panelTitle', { location: zonesLocation?.name ?? '' })}
+        size="xl"
+      >
+        <ModalContent>
+          {zonesLocation && <ZonesPanel locationId={zonesLocation.id} />}
+        </ModalContent>
+      </Modal>
     </div>
   )
 }

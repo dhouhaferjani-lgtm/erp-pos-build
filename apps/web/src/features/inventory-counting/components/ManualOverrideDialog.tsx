@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { ReconciliationItem } from '../types'
+import { formatQuantity } from '@/lib/decimal'
+import { QuantityInput } from '@/components/atoms/QuantityInput'
 
 interface Props {
   open: boolean
   item: ReconciliationItem | null
   onClose: () => void
-  onSubmit: (quantity: number, notes: string) => void
+  onSubmit: (quantity: string, notes: string) => void
   isLoading: boolean
 }
 
@@ -19,16 +21,19 @@ function ManualOverrideDialogContent({
   isLoading,
 }: Omit<Props, 'open'> & { item: ReconciliationItem }) {
   const { t } = useTranslation('inventory')
-  // Initialize with count_1 qty as starting point
+  // Initialize with count_1 qty as starting point. Both are already
+  // canonical scale-4 decimal strings — never parsed through a JS number.
   const initialQty = item.count_1?.qty ?? item.theoretical_qty
-  const [quantity, setQuantity] = useState(initialQty.toString())
+  const [quantity, setQuantity] = useState(initialQty)
   const [notes, setNotes] = useState('')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const qty = parseFloat(quantity)
-    if (!isNaN(qty) && notes.trim()) {
-      onSubmit(qty, notes.trim())
+    // No parseFloat/Number() on the quantity — the raw canonical string is
+    // sent as-is; the backend's `numeric` validation + bcadd normalization
+    // is the single source of truth for scale (see ManualOverrideRequest).
+    if (quantity.trim() !== '' && notes.trim()) {
+      onSubmit(quantity, notes.trim())
     }
   }
 
@@ -59,24 +64,24 @@ function ManualOverrideDialogContent({
           <div className="grid grid-cols-4 gap-2 mb-4 text-sm">
             <div className="bg-gray-100 rounded p-2 text-center">
               <div className="text-gray-500">{t('counting.reconciliation.theoretical')}</div>
-              <div className="font-mono font-medium">{item.theoretical_qty}</div>
+              <div className="font-mono font-medium">{formatQuantity(item.theoretical_qty)}</div>
             </div>
             <div className="bg-gray-100 rounded p-2 text-center">
               <div className="text-gray-500">{t('counting.count1')}</div>
               <div className="font-mono font-medium">
-                {item.count_1?.qty ?? '-'}
+                {item.count_1 ? formatQuantity(item.count_1.qty) : '-'}
               </div>
             </div>
             <div className="bg-gray-100 rounded p-2 text-center">
               <div className="text-gray-500">{t('counting.count2')}</div>
               <div className="font-mono font-medium">
-                {item.count_2?.qty ?? '-'}
+                {item.count_2 ? formatQuantity(item.count_2.qty) : '-'}
               </div>
             </div>
             <div className="bg-gray-100 rounded p-2 text-center">
               <div className="text-gray-500">{t('counting.count3')}</div>
               <div className="font-mono font-medium">
-                {item.count_3?.qty ?? '-'}
+                {item.count_3 ? formatQuantity(item.count_3.qty) : '-'}
               </div>
             </div>
           </div>
@@ -84,16 +89,14 @@ function ManualOverrideDialogContent({
           <form onSubmit={handleSubmit}>
             {/* Quantity Input */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="manual-override-quantity" className="block text-sm font-medium text-gray-700 mb-1">
                 {t('counting.reconciliation.finalQuantity')}
               </label>
-              <input
-                type="number"
+              <QuantityInput
+                id="manual-override-quantity"
                 value={quantity}
-                onChange={(e) => { setQuantity(e.target.value); }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                min="0"
-                step="0.01"
+                onChange={setQuantity}
+                decimalPlaces={4}
                 required
               />
             </div>

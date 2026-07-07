@@ -92,6 +92,8 @@ const locations: LocationApiResponse[] = [
     is_default: true,
     is_active: true,
     pos_enabled: false,
+    onboarding_mode: false,
+    pos_stock_policy_override: null,
     created_at: '2026-06-05T00:00:00Z',
     updated_at: '2026-06-05T00:00:00Z',
   },

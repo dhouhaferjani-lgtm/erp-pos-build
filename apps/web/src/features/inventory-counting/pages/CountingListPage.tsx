@@ -182,7 +182,7 @@ export function CountingListPage() {
                   <tr key={counting.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-mono text-gray-900">
-                        #{counting.uuid.slice(0, 8)}
+                        #{counting.id.slice(0, 8)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

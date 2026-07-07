@@ -44,6 +44,7 @@ function loc(id: string, name: string): LocationApiResponse {
     address_street: null, address_city: null, address_postal_code: null, address_country: null,
     tax_id: null, vat_number: null, legal_identifiers: null,
     is_default: false, is_active: true, pos_enabled: false,
+    onboarding_mode: false, pos_stock_policy_override: null,
     created_at: '2026-06-08T00:00:00Z', updated_at: '2026-06-08T00:00:00Z',
   }
 }

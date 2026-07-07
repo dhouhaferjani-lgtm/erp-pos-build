@@ -45,6 +45,7 @@ use App\Modules\Promotion\Domain\ValueObjects\CartContext;
 use App\Modules\Promotion\Domain\ValueObjects\CartItemContext;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -665,6 +666,7 @@ final class ReceiptCreationService
                         cashierId: $shift->cashier_id,
                         policy: $stockPolicy,
                         variantId: $lineVariantId,
+                        occurredAt: $receipt->posted_at,
                     );
 
                     // Allocate batches using FEFO for batch-tracked products.
@@ -693,6 +695,7 @@ final class ReceiptCreationService
                         receiptId: $receipt->id,
                         cashierId: $shift->cashier_id,
                         policy: $stockPolicy,
+                        occurredAt: $receipt->posted_at,
                     );
                 }
             }
@@ -890,6 +893,7 @@ final class ReceiptCreationService
         string $cashierId,
         PosStockPolicy $policy,
         ?string $variantId = null,
+        ?CarbonInterface $occurredAt = null,
     ): ?StockMovement {
         $stockLevelQuery = StockLevel::where('product_id', $productId)
             ->where('location_id', $locationId)
@@ -970,6 +974,8 @@ final class ReceiptCreationService
             'notes' => "Stock issued via POS sale (receipt: {$receiptId})",
             'user_id' => $cashierId,
             'is_historical' => false,
+            // Receipt/device time of the sale (legacy draft path).
+            'occurred_at' => $occurredAt ?? now(),
         ]);
     }
 
@@ -1196,6 +1202,7 @@ final class ReceiptCreationService
         string $cashierId,
         PosStockPolicy $policy,
         int $depth = 0,
+        ?CarbonInterface $occurredAt = null,
     ): void {
         if ($depth > 10) {
             return;
@@ -1226,6 +1233,7 @@ final class ReceiptCreationService
                     cashierId: $cashierId,
                     policy: $policy,
                     depth: $depth + 1,
+                    occurredAt: $occurredAt,
                 );
             } else {
                 $this->decrementStock(
@@ -1237,6 +1245,7 @@ final class ReceiptCreationService
                     receiptId: $receiptId,
                     cashierId: $cashierId,
                     policy: $policy,
+                    occurredAt: $occurredAt,
                 );
             }
         }

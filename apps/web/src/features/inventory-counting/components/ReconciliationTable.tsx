@@ -2,13 +2,72 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Check, AlertTriangle, X } from 'lucide-react'
-import { useReconciliation, useTriggerThirdCount, useManualOverride } from '../api/queries'
+import {
+  useReconciliation,
+  useTriggerThirdCount,
+  useManualOverride,
+  useSetOpeningCost,
+} from '../api/queries'
 import { ManualOverrideDialog } from './ManualOverrideDialog'
-import type { ReconciliationItem, CountingItemCount } from '../types'
+import { isBlockingFlag, type ReconciliationItem, type CountingItemCount } from '../types'
 import { cn } from '@/lib/utils'
+import { formatQuantity, formatCurrency } from '@/lib/decimal'
+import { MoneyInput } from '@/components/atoms/MoneyInput'
+import { useCurrency } from '@/hooks/useCurrency'
+
+// Post-finalize backstop reasons: a line the replay skipped at apply time
+// (basket-window ambiguity or negative-at-apply) that was therefore NOT posted.
+// The deliberate v1 recovery path is a recount in a NEW session — surfaced as a
+// hint under the chip so the reviewer knows the quantity is not in stock yet.
+const NOT_POSTED_RECOUNT_REASONS = new Set(['basket_window', 'negative_at_apply'])
+
+// Chips for every flag reason on an item — blocking reasons use a warning style,
+// informational reasons (normalized_agreement) a muted style. Skipped-at-apply
+// reasons additionally show a "not posted — recount in a new session" hint.
+function FlagChips({ item }: { item: ReconciliationItem }) {
+  const { t } = useTranslation('inventory')
+  const reasons = item.flag_reasons ?? []
+
+  if (reasons.length === 0) {
+    return null
+  }
+
+  const showRecountHint = reasons.some((r) => NOT_POSTED_RECOUNT_REASONS.has(r))
+
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {reasons.map((reason) => {
+        const blocking = isBlockingFlag(reason)
+        return (
+          <span
+            key={reason}
+            data-testid={`flag-chip-${reason}`}
+            className={cn(
+              'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+              blocking
+                ? 'bg-amber-100 text-amber-800'
+                : 'bg-gray-100 text-gray-600'
+            )}
+          >
+            {blocking && <AlertTriangle className="w-3 h-3 me-1" />}
+            {t(`counting.flags.${reason}`)}
+          </span>
+        )
+      })}
+      {showRecountHint && (
+        <span
+          data-testid="flag-hint-not-posted"
+          className="w-full text-xs text-gray-500 italic"
+        >
+          {t('counting.flags.notPostedRecount')}
+        </span>
+      )}
+    </div>
+  )
+}
 
 interface Props {
-  countingId: number
+  countingId: string
 }
 
 interface SummaryCardProps {
@@ -48,7 +107,7 @@ function CountCell({ count, matchesTheoretical }: CountCellProps) {
       <span
         className={cn('font-mono', matchesTheoretical && 'text-green-600')}
       >
-        {count.qty}
+        {formatQuantity(count.qty)}
       </span>
       {/* Tooltip */}
       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
@@ -59,13 +118,71 @@ function CountCell({ count, matchesTheoretical }: CountCellProps) {
   )
 }
 
+// Inline opening-cost backfill cell for onboarding opening lines. Editable
+// whenever the line WILL post as an opening (`will_post_as_opening`, computed
+// pre-finalize) so the reviewer can enter — or explicitly zero — the cost before
+// finalize. Emits a canonical decimal STRING (never a JS number) via MoneyInput.
+function OpeningCostCell({
+  item,
+  onSave,
+  isSaving,
+}: {
+  item: ReconciliationItem
+  onSave: (itemId: string, unitCost: string) => void
+  isSaving: boolean
+}) {
+  const { t } = useTranslation('inventory')
+  const { currency } = useCurrency()
+  const [cost, setCost] = useState(item.opening_unit_cost ?? '')
+
+  if (!item.will_post_as_opening) {
+    return (
+      <span className="font-mono text-sm">
+        {item.opening_unit_cost === null
+          ? '-'
+          : formatCurrency(item.opening_unit_cost, false)}
+      </span>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <div className="w-24">
+        <MoneyInput
+          aria-label={t('counting.reconciliation.openingCost')}
+          value={cost}
+          onChange={setCost}
+          currency={currency}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          if (cost.trim() !== '') {
+            onSave(item.id, cost)
+          }
+        }}
+        disabled={isSaving || cost.trim() === ''}
+        className="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {t('counting.reconciliation.saveCost')}
+      </button>
+    </div>
+  )
+}
+
 export function ReconciliationTable({ countingId }: Props) {
   const { t } = useTranslation('inventory')
   const { data, isLoading } = useReconciliation(countingId)
   const triggerThirdCount = useTriggerThirdCount()
   const manualOverride = useManualOverride(countingId)
+  const setOpeningCost = useSetOpeningCost(countingId)
 
-  const [selectedItems, setSelectedItems] = useState<number[]>([])
+  const handleSetOpeningCost = (itemId: string, unitCost: string) => {
+    setOpeningCost.mutate({ itemId, unitCost })
+  }
+
+  const [selectedItems, setSelectedItems] = useState<string[]>([])
   const [overrideItem, setOverrideItem] = useState<ReconciliationItem | null>(
     null
   )
@@ -88,7 +205,10 @@ export function ReconciliationTable({ countingId }: Props) {
 
   const { summary, items } = data
 
-  const flaggedPendingItems = items.filter((i) => i.is_flagged && !i.final_qty)
+  // Explicit null check: final_qty is a scale-4 decimal STRING once resolved
+  // (e.g. '0.0000' for a genuine zero count) — a falsy check would wrongly
+  // treat a resolved zero-quantity item as still "needing action".
+  const flaggedPendingItems = items.filter((i) => i.is_flagged && i.final_qty === null)
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -98,7 +218,7 @@ export function ReconciliationTable({ countingId }: Props) {
     }
   }
 
-  const handleSelect = (id: number, checked: boolean) => {
+  const handleSelect = (id: string, checked: boolean) => {
     if (checked) {
       setSelectedItems([...selectedItems, id])
     } else {
@@ -114,7 +234,7 @@ export function ReconciliationTable({ countingId }: Props) {
     setSelectedItems([])
   }
 
-  const handleOverride = (quantity: number, notes: string) => {
+  const handleOverride = (quantity: string, notes: string) => {
     if (!overrideItem) return
 
     manualOverride.mutate({
@@ -177,7 +297,7 @@ export function ReconciliationTable({ countingId }: Props) {
     if (item.resolution_method === 'auto_counters_agree') {
       return 'bg-yellow-50/50'
     }
-    if (item.is_flagged && !item.final_qty) {
+    if (item.is_flagged && item.final_qty === null) {
       return 'bg-red-50/50'
     }
     return ''
@@ -271,6 +391,15 @@ export function ReconciliationTable({ countingId }: Props) {
                 {t('counting.reconciliation.final')}
               </th>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {t('counting.reconciliation.expectedNow')}
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {t('counting.reconciliation.movementsSinceCount')}
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {t('counting.reconciliation.openingCost')}
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                 {t('counting.reconciliation.varianceShort')}
               </th>
               <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -282,7 +411,7 @@ export function ReconciliationTable({ countingId }: Props) {
             {items.map((item) => (
               <tr key={item.id} className={getRowClassName(item)}>
                 <td className="px-4 py-3">
-                  {item.is_flagged && !item.final_qty && (
+                  {item.is_flagged && item.final_qty === null && (
                     <input
                       type="checkbox"
                       checked={selectedItems.includes(item.id)}
@@ -291,7 +420,10 @@ export function ReconciliationTable({ countingId }: Props) {
                     />
                   )}
                 </td>
-                <td className="px-4 py-3">{getResolutionBadge(item)}</td>
+                <td className="px-4 py-3">
+                  {getResolutionBadge(item)}
+                  <FlagChips item={item} />
+                </td>
                 <td className="px-4 py-3">
                   <div>
                     <div className="font-medium text-gray-900">
@@ -306,7 +438,7 @@ export function ReconciliationTable({ countingId }: Props) {
                   {item.location.code}
                 </td>
                 <td className="px-4 py-3 text-center font-mono">
-                  {item.theoretical_qty}
+                  {formatQuantity(item.theoretical_qty)}
                 </td>
                 <td className="px-4 py-3 text-center">
                   <CountCell
@@ -333,7 +465,24 @@ export function ReconciliationTable({ countingId }: Props) {
                   />
                 </td>
                 <td className="px-4 py-3 text-center font-mono font-medium">
-                  {item.final_qty ?? '-'}
+                  {item.final_qty === null ? '-' : formatQuantity(item.final_qty)}
+                </td>
+                <td className="px-4 py-3 text-center font-mono">
+                  {item.expected_qty_at_apply === null
+                    ? '-'
+                    : formatQuantity(item.expected_qty_at_apply)}
+                </td>
+                <td className="px-4 py-3 text-center font-mono">
+                  {item.replay_audit === null
+                    ? '-'
+                    : formatQuantity(item.replay_audit.replayedDelta)}
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <OpeningCostCell
+                    item={item}
+                    onSave={handleSetOpeningCost}
+                    isSaving={setOpeningCost.isPending}
+                  />
                 </td>
                 <td className="px-4 py-3 text-center">
                   {item.variance !== null && (
@@ -350,7 +499,7 @@ export function ReconciliationTable({ countingId }: Props) {
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  {item.is_flagged && !item.final_qty && (
+                  {item.is_flagged && item.final_qty === null && (
                     <div className="flex gap-1">
                       <button
                         type="button"
