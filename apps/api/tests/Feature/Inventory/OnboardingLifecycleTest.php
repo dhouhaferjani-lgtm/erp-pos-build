@@ -321,6 +321,72 @@ final class OnboardingLifecycleTest extends TestCase
         $this->assertNull($missingRow['last_sold_at']);
     }
 
+    public function test_worklist_excludes_soft_deleted_product_with_negative_stock(): void
+    {
+        $deletedProduct = $this->makeProduct('OLC-DELETED');
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $deletedProduct->id,
+            'location_id' => $this->location->id,
+            'quantity' => '-2.0000',
+            'reserved' => '0.0000',
+        ]);
+        $deletedProduct->delete();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/inventory/onboarding-worklist?location_id='.$this->location->id);
+
+        $response->assertOk();
+
+        $productIds = collect($response->json('data'))->pluck('product_id')->all();
+
+        $this->assertNotContains($deletedProduct->id, $productIds);
+    }
+
+    public function test_worklist_includes_generated_but_uncounted_item(): void
+    {
+        $uncountedProduct = $this->makeProduct('OLC-UNCOUNTED');
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $uncountedProduct->id,
+            'location_id' => $this->location->id,
+            'quantity' => '-4.0000',
+            'reserved' => '0.0000',
+        ]);
+
+        $activeCounting = InventoryCounting::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'scope_type' => CountingScopeType::ProductLocation,
+            'scope_filters' => [],
+            'counting_number' => 'CNT-OLC-UNCOUNTED-'.uniqid(),
+            'status' => CountingStatus::Count1InProgress,
+            'ambiguity_window_minutes' => 15,
+            'created_by_user_id' => $this->user->id,
+        ]);
+        InventoryCountingItem::create([
+            'counting_id' => $activeCounting->id,
+            'product_id' => $uncountedProduct->id,
+            'location_id' => $this->location->id,
+            'theoretical_qty' => '-4.0000',
+            'count_1_qty' => null,
+            'count_2_qty' => null,
+            'count_3_qty' => null,
+            'resolution_method' => ItemResolutionMethod::Pending,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/inventory/onboarding-worklist?location_id='.$this->location->id);
+
+        $response->assertOk();
+
+        $productIds = collect($response->json('data'))->pluck('product_id')->all();
+
+        $this->assertContains($uncountedProduct->id, $productIds);
+    }
+
     public function test_worklist_returns_422_on_malformed_location_id(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')

@@ -82,6 +82,7 @@ class InventoryCountingController extends Controller
         $query = DB::table('products')
             ->where('products.company_id', $companyId)
             ->where('products.is_active', true)
+            ->whereNull('products.deleted_at')
             ->leftJoin('stock_levels', function ($join) use ($locationId): void {
                 $join->on('stock_levels.product_id', '=', 'products.id')
                     ->where('stock_levels.location_id', $locationId)
@@ -100,7 +101,9 @@ class InventoryCountingController extends Controller
             ])
             ->orderBy('products.name');
 
-        $products = $query->paginate((int) $request->input('per_page', 15));
+        $perPage = max(1, min((int) $request->input('per_page', 15), 100));
+
+        $products = $query->paginate($perPage);
 
         /** @var Collection<int, \stdClass> $productRows */
         $productRows = $products->getCollection();
