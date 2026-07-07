@@ -281,11 +281,12 @@ final class LocationNodeService
      */
     public function listNodeProducts(string $nodeId, ?string $search, int $perPage): LengthAwarePaginator
     {
+        $like = $search !== null && $search !== '' ? mb_strtolower($search) : null;
+
         return ProductPlacement::query()
             ->inNode($nodeId)
             ->with('product')
-            ->when($search !== null && $search !== '', function ($query) use ($search): void {
-                $like = mb_strtolower($search);
+            ->when($like !== null, function ($query) use ($like): void {
                 $query->whereHas('product', function ($product) use ($like): void {
                     $product->whereRaw('LOWER(name) LIKE ?', ['%'.$like.'%'])
                         ->orWhereRaw('LOWER(sku) LIKE ?', ['%'.$like.'%']);
