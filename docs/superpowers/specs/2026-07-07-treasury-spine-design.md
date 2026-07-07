@@ -1,0 +1,184 @@
+# Treasury Money-Movement Spine — Design Spec (Phase 1 of 5)
+
+> **Date:** 2026-07-07 · **Status:** DRAFT — awaiting owner review, then adversarial review
+> **Owner decisions captured:** phasing (spine first), no legacy-data constraints (no clients yet), gated adjustment documents, POS auto-tolerance deferred, architecture Option A (movements ledger + cached balance), NF525 scope correction (POS perimeter only).
+> **Inputs:** [2026-07-07 industry-gap audit](../audits/2026-07-07-treasury-industry-gap-audit/README.md) · certification research (NF525/FEC/PCG/TEJ) · ledger-engineering research (Modern Treasury/Stripe/Square/pgledger/TigerBeetle) · code infrastructure map (agents, file:line verified)
+> **Program context:** Phase 1 of: ① spine → ② instrument portfolio → ③ cash-visibility read layer → ④ expense depth → ⑤ bank reconciliation → then TEJ platform integration.
+
+---
+
+## 1. Goal and invariant
+
+Make every money movement **traceable, auditable, and justified**:
+
+> **THE INVARIANT: money in a payment repository changes only through one port, and every change carries its justification — a source document reference and a GL journal entry — written atomically.**
+
+Downstream everything else follows: trustworthy cash position, drill-down from any balance to its constituent movements, clean FEC/PCG audit trail, and a foundation the instrument portfolio (Phase 2) and TEJ/RAS integration can stand on.
+
+## 2. Scope
+
+**In:** append-only `repository_movements` ledger + single write port; migration of ALL money-moving flows onto it (incl. POS bridges — fixes the wrong Total Cash); new POS return/refund GL bridge; treasury refund balance+GL; MultiPayment GL; inter-repository transfers; gated adjustment documents; unpaid-expense AP fix; period-close guard wired into posting; GL chain-sequence race fix; `journal_code` column (FEC-readiness); reconciliation command with freeze-on-drift; minimal read surface (cash-position endpoint, movements drill-down + Movements tab); instrument list-page contract fix (P0 bug, G3).
+
+**Out (explicit):** instrument GL/échéancier (Phase 2); dashboards/charts (Phase 3); expense VAT/recurring/analytics (Phase 4); statement import (Phase 5); POS auto-tolerance (own track); card acquirer-settlement modeling; multi-currency (hard guard only); FEC exporter (schema-readiness only); TEJ integration (already has its own module; untouched); movements hash chain (see §11 delta D6).
+
+## 3. Existing infrastructure — reuse map (verified file:line)
+
+| Building block | State | Phase-1 action |
+|---|---|---|
+| `RepositoryInflow/OutflowInterface` + services (`Shared/Contracts/Treasury/`; `Treasury/Application/Services/Repository*.php:19-57`) | Balance-only port; only Expense + Income call it | **Absorb into new port** (keep interfaces as thin adapters or migrate callers — plan decides) |
+| `PaymentController` inline balance writes (`:602-609`, `:960-961`) | Bypasses port — divergent path | **Migrate onto port** |
+| `RepositoryBalanceChanged` event | Fired, zero listeners, not in `DomainEventSubscriber` | Subscribe → `audit_events`; keep as the notification seam |
+| GL hash chain (`journal_entries.fiscal_hash/previous_hash/chain_sequence`; seal in `GeneralLedgerService::postEntryWithOptionalActor:1957-2014`) | Works; **debits==credits already asserted `:1984-1988`** | Reuse as-is; fix `chain_sequence` allocation race (no lock today) |
+| `FiscalPeriodResolverService::isDateInOpenPeriod` (`:246-256`) + `FiscalPeriodAutoLockService` + `LockExpiredFiscalPeriodsCommand` | Exists, **unwired** — nothing blocks posting into closed periods | **Wire into GL posting + movement recording** |
+| `fiscal_events` immutability (BEFORE UPDATE/DELETE/TRUNCATE triggers, `2026_05_14_100002`) | The in-repo append-only template | **Copy trigger pattern** for `repository_movements` |
+| Withholding/RAS (`Taxation`: `WithholdingCertificateService::createFromPayment:114`, dated `withholding_tax_rules`, TEJ XML export, own hash chain) | Full feature, attaches to payments | **No spine changes needed** — movements link to payments; certificates hang off payments already. Don't break it |
+| `audit_events` + `AuditService::record` + `DomainEventSubscriber` (JET-equivalent; plain PG, per-row hash) | Exists; POS closures/config changes logged; treasury events absent | Register spine events (movements via balance-changed, adjustments, reconciliation results, period closes) |
+| Numbering | Fragmented; JE number = racy unlocked `max()+1` (`GeneralLedgerService:2781`) | Movements get per-repo `ordinal` (free, §4); JE-number race fixed alongside chain-seq fix |
+| POS `pos_z_report_counts` (DB-CHECKed expected/actual/variance) | POS-only cash counts | Pattern noted for future treasury PV de caisse — NOT Phase 1 |
+
+## 4. Data model — `repository_movements`
+
+Append-only. Immutability enforced three ways: no update/delete code paths; model guards; **DB trigger raising on UPDATE/DELETE/TRUNCATE** (per `fiscal_events` template).
+
+| Column | Type / constraint | Notes |
+|---|---|---|
+| `id` | uuid PK | |
+| `tenant_id`, `company_id` | required | tenant DB, company-scoped |
+| `payment_repository_id` | FK, indexed | |
+| `direction` | enum `in`/`out` (PHP enum, rule 9) | |
+| `amount` | `decimal(15,3)`, `CHECK (amount > 0)` | direction carries sign — no signed amounts (anti-pattern) |
+| `currency` | char(3), must equal company currency | **hard guard** — mismatched currency throws; multi-currency deferred |
+| `balance_after` | `decimal(15,3)` | running balance in **record order** (see D3) |
+| `ordinal` | bigint | **gapless per-repository sequence**: counter column on the locked `payment_repositories` row, incremented in-transaction — rolls back with it |
+| `source_type` | enum: `payment`, `expense`, `income`, `refund`, `fiscal_event`, `transfer`, `adjustment`, `opening_balance`, `instrument` *(reserved, Phase 2)* | provenance = pièce justificative |
+| `source_id` | uuid | indexed with source_type |
+| `journal_entry_id` | FK nullable* | the GL justification. *Nullable ONLY for `opening_balance` and same-GL-account transfer legs; architecture test asserts every other source type carries one |
+| `idempotency_key` | string, **unique index** | deterministic `"{source_type}:{source_id}:{leg}"` (e.g. `fiscal_event:{uuid}:tender:cash`, `transfer:{uuid}:out`, `reversal_of:{movement_id}`); retried writers SELECT-on-conflict and treat as success |
+| `transfer_group_id` | uuid nullable | pairs transfer legs; legs must net to zero |
+| `reverses_movement_id` | self-FK nullable | corrections are compensating movements, never edits |
+| `reason_code` | enum nullable | required for `adjustment` and reversals |
+| `occurred_at` / `created_at` | both | business time vs record time; backdating bounded: not before last clean reconciliation checkpoint nor into a closed fiscal period |
+| `created_by` | user FK | |
+| `notes` | text nullable | operator context |
+
+Indexes: PK · unique `idempotency_key` · `(payment_repository_id, occurred_at)` · `(source_type, source_id)`. **No** partitioning/BRIN/fillfactor tuning (unwarranted below tens of millions of rows). `payment_repositories.balance` stays as the cached read column; loses mass-assignability; direct writes outside the port forbidden by PHPStan rule + architecture test.
+
+## 5. The write port
+
+`App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface`:
+
+```php
+public function record(MovementIntent $intent): MovementResult;   // one movement
+public function transfer(TransferIntent $intent): TransferResult; // two paired legs
+```
+
+`MovementIntent` DTO (strict-typed, rule 3): repositoryId, tenantId, companyId, direction, amount (numeric-string), currency, sourceType, sourceId, idempotencyLeg, journalEntryId?, occurredAt?, reasonCode?, reversesMovementId?, createdBy, notes?.
+
+Transaction semantics (single DB transaction, critical section minimal — validation and GL work happen BEFORE the lock):
+1. Resolve scale via injected `CurrencyScaleResolverInterface` (explicit currency — queue-safe, rules 13/19/20).
+2. `lockForUpdate` the repository row(s) — **transfers lock both repositories in sorted-by-id order** (deadlock avoidance).
+3. Insert movement with `balance_after` + incremented `ordinal`; the insert runs under a **savepoint** — on `idempotency_key` unique violation, roll back to the savepoint (a bare unique violation poisons the PG transaction), SELECT the existing row, return it as success (retried-job safety; same savepoint-recovery pattern as location-hierarchy `assignProduct`).
+4. Update cached `balance` (bcadd/bcsub at currency scale).
+5. `afterCommit`: fire `RepositoryBalanceChanged` (now subscribed → `audit_events`).
+
+Callable from HTTP controllers and queued projections. The existing `RepositoryInflow/OutflowService` become delegating adapters over the new port (or callers migrate — implementation plan decides; either way exactly one code path mutates balance). GL-post failure anywhere in the enclosing transaction rolls back the movement — atomicity is the point.
+
+## 6. Flow convergence (all writers, after Phase 1)
+
+| Flow | Today (verified) | After |
+|---|---|---|
+| B2B customer/supplier payment | inline balance write + GL (`PaymentController:602-609,960`) | port: movement(`payment`) + GL |
+| Expense post / refund | old port + GL; **unpaid still credits Cash** (`GeneralLedgerService:2318-2327`) | port; **unpaid → Cr AP liability, no movement**; cash moves on actual payment |
+| Income | old port + GL | port |
+| Vendor/PO refund | inline write + GL | port: movement(`refund`) |
+| POS sale (`TreasuryReceiptBridge`) | GL + Payment, **no balance** | port: movement(`fiscal_event`) per tender line, idempotency-keyed per leg |
+| **POS returns/refunds** | drawer only — no GL, no balance | **new return projection bridge**: movement(out) + GL reversal (closes F3) |
+| Treasury payment refunds | neither (`PaymentRefundService`) | port + GL reversal (closes F4) |
+| POS deposit / account-payment bridges | GL only | port: movements added |
+| MultiPayment split/deposit/on-account | balances only, no GL | port + GL (closes F16) |
+| **Inter-repo transfer** | impossible | **new**: `transfer()` — paired legs, GL when crossing GL accounts |
+| Adjustment | impossible | adjustment document (§7) |
+| Opening balance | seeder sets column | seeder writes `opening_balance` movement |
+
+POS card tenders keep today's repository mapping (traced, not remodeled); acquirer clearing/settlement + `has_deducted_fees` wiring deferred to Phase 5.
+
+## 7. Adjustment documents
+
+Permission `treasury.adjust` (seeded to admin/owner roles). Endpoint + minimal FE action on repository detail. Requires: reason enum (`count_variance`, `correction`, `theft_loss`, `other` + mandatory text), amount, direction. Writes movement(`adjustment`) + GL entry (cash account ↔ configured variance account, TN 658-family via `SystemAccountPurpose`). Immutable once posted; mistakes are reversed (`reverses_movement_id` + reason), never edited. Logged to `audit_events`.
+
+## 8. GL hardening (rides along, protects the invariant)
+
+- **Wire the closed-period guard**: `postEntry` and `record()` reject dates outside an open `FiscalPeriod` (`isDateInOpenPeriod` — exists, unwired). Closed periods therefore lock both GL and movements (FEC ValidDate discipline).
+- **Fix `chain_sequence`/JE-number allocation races**: sequence allocation under a company-scoped lock (the withholding chain and `fiscal_events` already do gapless correctly; GL is the outlier). FEC requires sequential `EcritureNum` — racy `max()+1` is both a correctness and a compliance defect.
+- **`journal_code` enum column on `journal_entries`** (FR journal codes: VT/AC/BQ/CA/OD mapping from `source_type`), populated going forward — makes future FEC export a query, not a migration. Exporter itself is out of scope.
+- debits==credits assertion: **already exists** (`:1984-1988`) — no work, covered by tests only.
+
+## 9. Reconciliation — `treasury:reconcile` (scheduled, per tenant)
+
+1. Per repository: `balance == Σ(signed movements)` AND `balance_after`/`ordinal` chain continuity (gap ⇒ tamper/bug signal).
+2. Ledger↔GL coherence: every non-exempt movement's `journal_entry_id` exists with matching amount; every cash/bank journal line has a movement (completeness, both directions).
+3. Transfer clearing: every `transfer_group_id` nets to zero.
+
+**On drift: freeze the repository (writes via port rejected with explicit error) + alert. Never silently repair.** Results logged to `audit_events`. Full-scan is fine at our volume; watermark checkpoints deferred until row counts warrant.
+
+## 10. Read surface (minimal)
+
+- `GET /api/v1/treasury/cash-position` — per-repository balances grouped by type + totals + `as_of` (server-side; replaces FE summing).
+- `GET /api/v1/payment-repositories/{id}/movements` — paginated, filters: date range, source_type, direction. Each row links to its source document and JE.
+- FE: **Movements tab** on `RepositoryDetailPage` (tenant-scoped query keys, `formatCurrency`, i18n — rules 11/14/19). Owner-verifiable E2E surface.
+- Instrument list-page contract fix (G3): align `InstrumentListPage.tsx` fields to the API response shape.
+
+Routes: `['api','auth:sanctum',SetPermissionsTeam::class]` + `can:` permissions (rule 12). New TS types via `typescript:transform` (rule 7).
+
+## 11. Deltas from the conversationally-approved skeleton (all flagged)
+
+| # | Delta | Why |
+|---|---|---|
+| D1 | `idempotency_key` column replaces `(source_type,source_id,direction)` uniqueness | multi-leg sources (split tender, transfers) and reversals collide under the naive key (ledger research) |
+| D2 | `ordinal` gapless per-repo sequence added | free under the existing row lock; auditor-friendly; reconciliation watermark (ledger research) |
+| D3 | `balance_after` defined as **record-time** running balance only | backdated `occurred_at` must never rewrite snapshots (MT caveat) |
+| D4 | DB trigger blocks UPDATE/DELETE on movements | app-layer discipline is one Eloquent `update()` away from broken; `fiscal_events` template exists |
+| D5 | `reverses_movement_id` + `reason_code`; corrections = compensating movements | PCG piste d'audit fiable + plain auditability |
+| D6 | **No hash chain on movements** (research recommendation overridden by owner) | NF525 scope = POS encaissement perimeter, already discharged by the device fiscal-event chain; back-office movements inherit tamper-evidence transitively via the GL chain each movement links to. Third chain = rejected ceremony |
+| D7 | PaymentController migration onto the port made explicit | code map found it bypasses the port entirely — two divergent mutation paths today |
+| D8 | debits==credits assertion REMOVED from scope | already exists (`postEntry:1984-1988`); June-audit finding F20 was stale. Replaced by the chain-sequence race fix |
+| D9 | Closed-period guard = **wiring**, not building | `isDateInOpenPeriod` + auto-lock exist unwired |
+| D10 | No RAS fields on movements | full withholding/TEJ module already exists attached to payments; movements→payment linkage suffices |
+| D11 | `journal_code` column added (FEC-readiness) | FEC export needs it; adding now is a column, adding later is a backfill |
+| D12 | Spine events logged via existing `audit_events`/`DomainEventSubscriber` | JET-equivalent already exists; no new audit infra |
+
+## 12. Certification traceability (constraint → design element)
+
+| Constraint (source) | Design element |
+|---|---|
+| Pièce justificative on every entry (PCG 921-2; FEC PieceRef/PieceDate) | `source_type`/`source_id` mandatory; JE `source_*` populated; `journal_code` |
+| Sequential numbering (FEC EcritureNum) | `ordinal` per repo; JE number + chain-seq race fix |
+| Corrections never destructive (PCG/NF203) | append-only + trigger + `reverses_movement_id` + reason codes |
+| Period locking / ValidDate (FEC) | closed-period guard wired into posting + movements |
+| Inaltérabilité POS perimeter (NF525) | already discharged by device fiscal-event chain; movements are projections |
+| 10-year retention (L123-22 / TN loi 96-112) | append-only ledger, no purge paths; archival = later phase |
+| RAS at payment time (TEJ) | existing withholding module on payments; movements link to payments |
+| Auditable cash counts / reconciliation evidence | POS Z-counts exist; `treasury:reconcile` results persisted to `audit_events`; treasury PV de caisse = later phase |
+
+## 13. Testing & verification
+
+- TDD per task (rule 2). Per flow in §6: red-green test proving {movement + GL + subledger} atomicity **including rollback** (GL failure ⇒ no movement, no balance change).
+- Port concurrency test: parallel movements on one repository → both recorded, exact balance, dense ordinals. Transfer deadlock test (two opposing transfers, sorted locking).
+- Idempotency: replayed POS fiscal event / retried queue job → single movement per leg.
+- Projection tests clear `CompanyContext` (rule 20); explicit currency everywhere (rule 19).
+- Immutability: UPDATE/DELETE on movements throws at DB level.
+- Period guard: posting/moving into a closed period rejected.
+- Reconcile: seeded drift → freeze + alert; clean tenant → green.
+- Live Playwright E2E: POS sale → movement on repository detail → cash-position reflects → expense post → transfer drawer→bank → adjustment → `treasury:reconcile` clean. Full-suite PHPUnit NOT run locally (standing rule); suites run by path + CI.
+- **Gates:** adversarial review of this spec + the plan before dispatch; `treasury-reviewer` on every milestone; human merges.
+
+## 14. Execution model
+
+Worktree off dev (`feat/treasury-spine`). Implementation plan = bounded, independently-reviewable tasks sized for Codex/Opus dispatch (Codex quota caveat; CLI-brokered Codex cannot write to `apps/erp.*` worktrees → Codex Desktop or Claude agents). Rough task shape (plan will finalize): schema+model+trigger → port+DTOs+adapters → per-flow migrations (one task each) → new bridges → adjustments → GL hardening → reconcile command → read surface+FE → E2E.
+
+## 15. Open questions (for adversarial review, not blockers)
+
+1. Old port interfaces: keep as delegating adapters vs migrate the two callers and delete? (Lean: migrate + delete — fewer paths.)
+2. Freeze mechanism: column on `payment_repositories` (`frozen_at` + reason) vs settings row? (Lean: column.)
+3. Does `TreasuryDepositBridge`'s FIFO allocation GL interact with movement amounts 1:1 per tender or per allocation? Plan task must trace before writing the movement leg keys.
+4. `journal_code` mapping table for existing `source_type` strings — enum now vs config? (Lean: PHP enum with `fromSourceType()`.)
