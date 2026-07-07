@@ -53,7 +53,7 @@ class InventoryCountingService
 
     public function __construct(
         private readonly CountingReconciliationService $reconciliationService,
-        private readonly ZoneService $zoneService,
+        private readonly LocationNodeService $zoneService,
         private readonly OpeningCostGate $openingCostGate,
     ) {}
 
