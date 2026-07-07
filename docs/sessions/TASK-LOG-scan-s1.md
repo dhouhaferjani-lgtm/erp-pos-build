@@ -130,6 +130,79 @@ $ cd apps/api && ./vendor/bin/phpstan analyse app/Modules/DocumentIngestion --de
 Deviations:
 - None.
 
+## Final Wave S1 verification
+
+```text
+$ cd apps/api && php artisan test tests/Feature/DocumentIngestion/IngestionStateMachineTest.php tests/Unit/DocumentIngestion/ExtractionResultDataTest.php tests/Feature/DocumentIngestion/IngestionUploadTest.php tests/Feature/DocumentIngestion/ExtractDocumentJobTest.php tests/Unit/DocumentIngestion/ErpMlExtractionClientTest.php tests/Unit/DocumentIngestion/ExtractionReconcilerTest.php tests/Feature/DocumentIngestion/MatchSuggestionServiceTest.php tests/Unit/Config/HorizonQueueCoverageTest.php tests/Unit/Modules/Catalog/Media/MediaOwnerTypeTest.php tests/Unit/Modules/Catalog/Media/MediaEnumsTest.php
+
+   PASS  Tests\Feature\DocumentIngestion\IngestionStateMachineTest
+  ✓ state machine allows only declared transitions and persists status   1.98s
+  ✓ uploaded cannot transition directly to committed                     0.28s
+  ✓ failed ingestion can be retried                                      0.30s
+  ✓ partial unique index ignores rejected and failed rows only           0.30s
+
+   PASS  Tests\Unit\DocumentIngestion\ExtractionResultDataTest
+  ✓ invoice fixture hydrates and round trips without numeric value coer… 0.07s
+  ✓ delivery note fixture hydrates without prices                        0.05s
+  ✓ numeric field values are rejected instead of cast to strings         0.05s
+
+   PASS  Tests\Feature\DocumentIngestion\IngestionUploadTest
+  ✓ upload creates ingestion media asset and attachment                  0.59s
+  ✓ duplicate same bytes upload returns validation envelope              0.54s
+  ✓ upload requires create permission                                    0.52s
+  ✓ bad kind uses validation envelope                                    0.57s
+  ✓ list filters by status                                               0.55s
+  ✓ detail includes signed source url                                    0.57s
+  ✓ reject flips needs review and conflicts from committed               0.55s
+  ✓ reextract failed ingestion moves back to extracting                  0.54s
+
+   PASS  Tests\Feature\DocumentIngestion\ExtractDocumentJobTest
+  ✓ job is dispatched on ingestion queue                                 0.06s
+  ✓ happy path persists extraction and moves to needs review             0.28s
+  ✓ client failure marks ingestion failed with structured error and ret… 0.30s
+
+   PASS  Tests\Unit\DocumentIngestion\ErpMlExtractionClientTest
+  ✓ successful response returns extraction result data                   0.08s
+  ✓ malformed success response throws extraction failed exception        0.04s
+  ✓ server error throws extraction failed exception                      0.05s
+  ✓ unauthorized response throws extraction failed exception             0.04s
+
+   PASS  Tests\Unit\DocumentIngestion\ExtractionReconcilerTest
+  ✓ tnd invoice fixture is consistent at currency scale
+  ✓ invoice subtotal off by one millieme is flagged
+  ✓ invoice line total mismatch identifies one based line number
+  ✓ delivery note without prices is consistent when quantities exist
+
+   PASS  Tests\Feature\DocumentIngestion\MatchSuggestionServiceTest
+  ✓ suggestions rank supplier by vat product by sku and open receipt li… 0.32s
+
+   PASS  Tests\Unit\Config\HorizonQueueCoverageTest
+  ✓ every dispatched queue is consumed by a horizon supervisor           0.12s
+  ✓ every deploy environment has a horizon provisioning entry            0.04s
+
+   PASS  Tests\Unit\Modules\Catalog\Media\MediaOwnerTypeTest
+  ✓ document case and storage segments
+
+   PASS  Tests\Unit\Modules\Catalog\Media\MediaEnumsTest
+  ✓ enum values are stable strings
+
+  Tests:    31 passed (111 assertions)
+  Duration: 8.83s
+```
+
+```text
+$ cd apps/api && ./vendor/bin/phpstan analyse app/Modules/DocumentIngestion --level=8
+
+Note: Using configuration file /Users/houssamr/Projects/syneriva/apps/erp.scan-to-doc/apps/api/phpstan.neon.
+  0/19 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   0%
+ 19/19 [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 100%
+
+ [OK] No errors
+```
+
+Notes:
+- One attempted final sweep before the successful run failed only because the command path had a typo: `tests/Unit/DocumentInestion/ErpMlExtractionClientTest.php`.
+
 ## Task 3: MediaOwnerType + upload/list/detail/reject endpoints + permissions + queue registration
 
 Files created/modified:
@@ -337,3 +410,91 @@ $ cd apps/api && ./vendor/bin/phpstan analyse app/Modules/DocumentIngestion --de
 Deviations:
 - Task 4 stores `provider='erp_ml'` and `provider_model=null` because `ExtractionClientInterface::extract()` returns only `ExtractionResultData` per the plan signature. The erp-ml response provider/model are validated by the client boundary but not surfaced through the interface yet.
 - Reconciler and suggestions are not invoked in the job until Task 5 creates those services.
+
+## Task 5: bcmath reconciliation + match-or-suggest
+
+Files created/modified:
+- `apps/api/app/Modules/DocumentIngestion/Application/DTO/ReconciliationData.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/DTO/SuggestionsData.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/Services/ExtractionReconciler.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/Services/MatchSuggestionService.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/Jobs/ExtractDocumentJob.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/Services/IngestionService.php`
+- `apps/api/tests/Unit/DocumentIngestion/ExtractionReconcilerTest.php`
+- `apps/api/tests/Feature/DocumentIngestion/MatchSuggestionServiceTest.php`
+- `apps/api/tests/Feature/DocumentIngestion/ExtractDocumentJobTest.php`
+- `packages/shared/types/generated.d.ts`
+- `docs/sessions/TASK-LOG-scan-s1.md`
+
+Test commands and outputs:
+
+```text
+$ cd apps/api && php artisan test tests/Unit/DocumentIngestion/ExtractionReconcilerTest.php tests/Feature/DocumentIngestion/MatchSuggestionServiceTest.php
+
+   FAIL  Tests\Unit\DocumentIngestion\ExtractionReconcilerTest
+  ⨯ tnd invoice fixture is consistent at currency scale                  0.01s
+  ⨯ invoice subtotal off by one millieme is flagged
+  ⨯ invoice line total mismatch identifies one based line number
+  ⨯ delivery note without prices is consistent when quantities exist
+
+   FAIL  Tests\Feature\DocumentIngestion\MatchSuggestionServiceTest
+  ⨯ suggestions rank supplier by vat product by sku and open receipt li… 2.00s
+
+   FAILED  Tests\Unit\DocumentIngestion\ExtractionReconcilerTest > tnd invoice fixture is consistent at currency scale   Error
+  Class "App\Modules\DocumentIngestion\Application\Services\ExtractionReconciler" not found
+
+   FAILED  Tests\Feature\DocumentIngestion\MatchSuggestionServiceTest
+  Target class [App\Modules\DocumentIngestion\Application\Services\MatchSuggestionService] does not exist.
+
+  Tests:    5 failed (2 assertions)
+  Duration: 2.08s
+```
+
+```text
+$ cd apps/api && php artisan test tests/Unit/DocumentIngestion/ExtractionReconcilerTest.php tests/Feature/DocumentIngestion/MatchSuggestionServiceTest.php tests/Feature/DocumentIngestion/ExtractDocumentJobTest.php
+
+   PASS  Tests\Unit\DocumentIngestion\ExtractionReconcilerTest
+  ✓ tnd invoice fixture is consistent at currency scale
+  ✓ invoice subtotal off by one millieme is flagged
+  ✓ invoice line total mismatch identifies one based line number
+  ✓ delivery note without prices is consistent when quantities exist
+
+   PASS  Tests\Feature\DocumentIngestion\MatchSuggestionServiceTest
+  ✓ suggestions rank supplier by vat product by sku and open receipt li… 2.07s
+
+   PASS  Tests\Feature\DocumentIngestion\ExtractDocumentJobTest
+  ✓ job is dispatched on ingestion queue                                 0.06s
+  ✓ happy path persists extraction and moves to needs review             0.28s
+  ✓ client failure marks ingestion failed with structured error and ret… 0.29s
+
+  Tests:    8 passed (33 assertions)
+  Duration: 2.73s
+```
+
+```text
+$ cd apps/api && ./vendor/bin/phpstan analyse app/Modules/DocumentIngestion --level=8
+
+Note: Using configuration file /Users/houssamr/Projects/syneriva/apps/erp.scan-to-doc/apps/api/phpstan.neon.
+  0/19 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   0%
+ 19/19 [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 100%
+
+ [OK] No errors
+```
+
+```text
+$ cd apps/api && CACHE_STORE=array php artisan typescript:transform
+
+| App\Modules\DocumentIngestion\Application\DTO\SuggestionsData      | App.Modules.DocumentIngestion.Application.DTO.SuggestionsData      |
+| App\Modules\DocumentIngestion\Application\DTO\ReconciliationData   | App.Modules.DocumentIngestion.Application.DTO.ReconciliationData   |
+| App\Modules\DocumentIngestion\Application\DTO\ExtractionResultData | App.Modules.DocumentIngestion.Application.DTO.ExtractionResultData |
+Transformed 396 PHP types to TypeScript
+```
+
+```text
+$ cd apps/api && ./vendor/bin/pint app/Modules/DocumentIngestion tests/Unit/DocumentIngestion/ExtractionReconcilerTest.php tests/Feature/DocumentIngestion/MatchSuggestionServiceTest.php tests/Feature/DocumentIngestion/ExtractDocumentJobTest.php
+
+{"result":"fixed","files":[{"path":"app\/Modules\/DocumentIngestion\/Application\/Jobs\/ExtractDocumentJob.php","fixers":["braces_position"]},{"path":"app\/Modules\/DocumentIngestion\/Application\/Services\/IngestionService.php","fixers":["unary_operator_spaces","braces_position","not_operator_with_successor_space","single_line_empty_body","ordered_imports"]}]}
+```
+
+Deviations:
+- None.

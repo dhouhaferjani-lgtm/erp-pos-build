@@ -8,6 +8,8 @@ use App\Jobs\Concerns\BindsTenantContext;
 use App\Modules\DocumentIngestion\Application\DTO\ExtractedFieldData;
 use App\Modules\DocumentIngestion\Application\DTO\ExtractedLineData;
 use App\Modules\DocumentIngestion\Application\DTO\ExtractionResultData;
+use App\Modules\DocumentIngestion\Application\Services\ExtractionReconciler;
+use App\Modules\DocumentIngestion\Application\Services\MatchSuggestionService;
 use App\Modules\DocumentIngestion\Domain\DocumentIngestion;
 use App\Modules\DocumentIngestion\Domain\Enums\IngestionStatus;
 use App\Modules\Media\Domain\Media\MediaAsset;
@@ -44,9 +46,12 @@ final class ExtractDocumentJob implements ShouldQueue
         $this->onQueue('ingestion');
     }
 
-    public function handle(ExtractionClientInterface $client): void
-    {
-        $this->withTenantContext(function () use ($client): void {
+    public function handle(
+        ExtractionClientInterface $client,
+        ExtractionReconciler $reconciler,
+        MatchSuggestionService $matchSuggestionService,
+    ): void {
+        $this->withTenantContext(function () use ($client, $reconciler, $matchSuggestionService): void {
             $ingestion = DocumentIngestion::query()
                 ->where('tenant_id', $this->tenantId)
                 ->where('company_id', $this->companyId)
@@ -73,11 +78,17 @@ final class ExtractDocumentJob implements ShouldQueue
                     new ExtractionHints(languageHint: 'fr'),
                 );
 
+                $reconciliation = $reconciler->reconcile($result);
+                $suggestions = $matchSuggestionService->suggest($ingestion, $result);
+                $confidenceSummary = $this->confidenceSummary($result);
+                $confidenceSummary['reconciliation'] = $reconciliation->toArray();
+
                 $ingestion->fill([
                     'provider' => 'erp_ml',
                     'provider_model' => null,
                     'extraction' => $result->toArray(),
-                    'confidence_summary' => $this->confidenceSummary($result),
+                    'confidence_summary' => $confidenceSummary,
+                    'suggestions' => $suggestions->toArray(),
                     'error' => null,
                 ]);
                 $ingestion->save();

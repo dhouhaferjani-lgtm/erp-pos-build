@@ -8,6 +8,8 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\DocumentIngestion\Application\DTO\ExtractionResultData;
 use App\Modules\DocumentIngestion\Application\Jobs\ExtractDocumentJob;
+use App\Modules\DocumentIngestion\Application\Services\ExtractionReconciler;
+use App\Modules\DocumentIngestion\Application\Services\MatchSuggestionService;
 use App\Modules\DocumentIngestion\Domain\DocumentIngestion;
 use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
 use App\Modules\DocumentIngestion\Domain\Enums\IngestionStatus;
@@ -53,13 +55,20 @@ final class ExtractDocumentJobTest extends TestCase
         );
 
         (new ExtractDocumentJob($context['tenant']->id, $context['company']->id, $context['ingestion']->id))
-            ->handle($this->app->make(ExtractionClientInterface::class));
+            ->handle(
+                $this->app->make(ExtractionClientInterface::class),
+                $this->app->make(ExtractionReconciler::class),
+                $this->app->make(MatchSuggestionService::class),
+            );
 
         $fresh = $context['ingestion']->refresh();
 
         $this->assertSame(IngestionStatus::NeedsReview, $fresh->status);
         $this->assertSame($this->fixture(), $fresh->extraction);
         $this->assertSame('erp_ml', $fresh->provider);
+        $this->assertSame([], $fresh->confidence_summary['reconciliation']['flags']);
+        $this->assertSame([], $fresh->suggestions['supplier_candidates']);
+        $this->assertSame([], $fresh->suggestions['receipt_line_candidates']);
     }
 
     public function test_client_failure_marks_ingestion_failed_with_structured_error_and_rethrows(): void
@@ -74,7 +83,11 @@ final class ExtractDocumentJobTest extends TestCase
 
         try {
             (new ExtractDocumentJob($context['tenant']->id, $context['company']->id, $context['ingestion']->id))
-                ->handle($this->app->make(ExtractionClientInterface::class));
+                ->handle(
+                    $this->app->make(ExtractionClientInterface::class),
+                    $this->app->make(ExtractionReconciler::class),
+                    $this->app->make(MatchSuggestionService::class),
+                );
             $this->fail('Expected extraction failure to be rethrown.');
         } catch (ExtractionFailedException) {
             $fresh = $context['ingestion']->refresh();

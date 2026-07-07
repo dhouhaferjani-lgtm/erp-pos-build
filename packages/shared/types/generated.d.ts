@@ -754,6 +754,16 @@ header: { [key: string]: App.Modules.DocumentIngestion.Application.DTO.Extracted
 lines: Array<App.Modules.DocumentIngestion.Application.DTO.ExtractedLineData>;
 totalsConsistent: boolean;
 };
+export type ReconciliationData = {
+consistent: boolean;
+flags: Array<any>;
+};
+export type SuggestionsData = {
+supplierCandidates: Array<any>;
+productCandidates: Array<any>;
+purchaseOrderCandidates: Array<any>;
+receiptLineCandidates: Array<any>;
+};
 }
 declare namespace App.Modules.DocumentIngestion.Domain.Enums {
 export type DocumentKind = 'supplier_invoice' | 'supplier_delivery_note';
@@ -1137,7 +1147,7 @@ export type SellerType = 'erp_tenant' | 'external' | 'syneriva';
 }
 declare namespace App.Modules.Media.Domain.Enums {
 export type MediaAssetType = 'IMAGE' | 'DOCUMENT' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'SPIN_360';
-export type MediaOwnerType = 'PRODUCT' | 'PRODUCT_VARIANT' | 'CATEGORY' | 'DOCUMENT';
+export type MediaOwnerType = 'PRODUCT' | 'PRODUCT_VARIANT' | 'CATEGORY' | 'DOCUMENT' | 'DOCUMENT_INGESTION';
 export type MediaRole = 'PRIMARY' | 'GALLERY' | 'DATASHEET' | 'MANUAL' | 'VIDEO_POSTER' | 'SPIN' | 'SWATCH' | 'SOURCE_DOCUMENT';
 export type MediaSource = 'UPLOAD' | 'EXTERNAL_URL';
 export type MediaStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'FAILED';
