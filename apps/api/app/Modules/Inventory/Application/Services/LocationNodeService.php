@@ -7,7 +7,6 @@ namespace App\Modules\Inventory\Application\Services;
 use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\NodeCode;
-use App\Modules\Inventory\Domain\ProductPlacement;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -88,6 +87,44 @@ final class LocationNodeService
             if ($codeChanged) {
                 $this->recomputeSubtreePath($node);
             }
+
+            return $node->refresh();
+        });
+    }
+
+    /**
+     * Atomically reparent a node (and its whole subtree). Locks the node and
+     * the new parent, rejects a cross-location parent and a cycle (new parent
+     * inside the moving subtree), then updates parent_id and recomputes
+     * path/depth for the subtree.
+     */
+    public function moveNode(LocationNode $node, ?string $newParentId): LocationNode
+    {
+        return DB::transaction(function () use ($node, $newParentId): LocationNode {
+            /** @var LocationNode $node */
+            $node = LocationNode::query()->lockForUpdate()->findOrFail($node->id);
+
+            if ($newParentId !== null) {
+                /** @var LocationNode $newParent */
+                $newParent = LocationNode::query()->lockForUpdate()->findOrFail($newParentId);
+
+                if ($newParent->location_id !== $node->location_id) {
+                    throw new InvalidArgumentException('Parent must be in the same location.');
+                }
+
+                // Cycle guard: the new parent is the node itself or inside
+                // its subtree ('/'-anchored so A1 never captures A10).
+                if ($newParent->id === $node->id
+                    || $newParent->path === $node->path
+                    || str_starts_with($newParent->path, $node->path.'/')) {
+                    throw new InvalidArgumentException('Cannot move a node under itself or its own descendant.');
+                }
+            }
+
+            $node->parent_id = $newParentId;
+            $node->save();
+
+            $this->recomputeSubtreePath($node);
 
             return $node->refresh();
         });
