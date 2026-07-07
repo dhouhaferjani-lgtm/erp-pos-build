@@ -22,7 +22,7 @@ import {
 export function CountingDetailPage() {
   const { t } = useTranslation('inventory')
   const { id } = useParams<{ id: string }>()
-  const countingId = parseInt(id ?? '0', 10)
+  const countingId = id ?? ''
 
   const { data: counting, isLoading, error } = useCountingDetail(countingId)
   const activateCounting = useActivateCounting()

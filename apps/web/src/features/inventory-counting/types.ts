@@ -65,7 +65,7 @@ export interface CountingAssignment {
 }
 
 export interface InventoryCounting {
-  id: number
+  id: string
   uuid: string
   company_id: number
   scope_type: CountingScopeType
@@ -160,7 +160,7 @@ export function isBlockingFlag(reason: string): boolean {
 }
 
 export interface ReconciliationItem {
-  id: number
+  id: string
   product: CountingItemProduct
   variant: { id: number; name: string } | null
   location: CountingItemLocation

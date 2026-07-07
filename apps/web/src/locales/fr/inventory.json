@@ -775,7 +775,8 @@
       "resolveBeforeFinalize": "Utilisez le 3ème comptage ou la correction manuelle pour résoudre les écarts.",
       "finalizeConfirm": {
         "title": "Finaliser le comptage ?",
-        "description": "Cela créera des ajustements de stock basés sur les quantités finales. Cette action est irréversible."
+        "description": "Cela créera des ajustements de stock basés sur les quantités finales. Cette action est irréversible.",
+        "syncWarning": "Assurez-vous que tous les terminaux de caisse de ce point de vente ont synchronisé leurs ventes avant de finaliser — les ventes synchronisées tardivement après la finalisation ne seront corrigées qu'au prochain comptage."
       },
       "lateSalesDetected_one": "{{count}} vente tardive enregistrée pendant le comptage",
       "lateSalesDetected_other": "{{count}} ventes tardives enregistrées pendant le comptage",

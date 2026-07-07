@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 interface Props {
   counting: InventoryCounting
-  onSendReminder?: (id: number) => void
+  onSendReminder?: (id: string) => void
 }
 
 interface CounterProgressProps {

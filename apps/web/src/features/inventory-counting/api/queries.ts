@@ -13,9 +13,9 @@ export const countingKeys = {
   lists: () => [...countingKeys.all, 'list'] as const,
   list: (filters: CountingFilters) => [...countingKeys.lists(), filters] as const,
   details: () => [...countingKeys.all, 'detail'] as const,
-  detail: (id: number) => [...countingKeys.details(), id] as const,
-  reconciliation: (id: number) => [...countingKeys.all, 'reconciliation', id] as const,
-  report: (id: number) => [...countingKeys.all, 'report', id] as const,
+  detail: (id: string) => [...countingKeys.details(), id] as const,
+  reconciliation: (id: string) => [...countingKeys.all, 'reconciliation', id] as const,
+  report: (id: string) => [...countingKeys.all, 'report', id] as const,
   dashboard: () => [...countingKeys.all, 'dashboard'] as const,
 }
 
@@ -58,7 +58,7 @@ export function useCountingList(filters: CountingFilters) {
   })
 }
 
-export function useCountingDetail(id: number) {
+export function useCountingDetail(id: string) {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
@@ -68,7 +68,7 @@ export function useCountingDetail(id: number) {
   })
 }
 
-export function useReconciliation(countingId: number) {
+export function useReconciliation(countingId: string) {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
@@ -78,7 +78,7 @@ export function useReconciliation(countingId: number) {
   })
 }
 
-export function useDiscrepancyReport(countingId: number) {
+export function useDiscrepancyReport(countingId: string) {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
@@ -117,7 +117,7 @@ export function useActivateCounting() {
   const { t } = useTranslation('inventory')
 
   return useMutation({
-    mutationFn: (id: number) => countingApi.activate(id),
+    mutationFn: (id: string) => countingApi.activate(id),
     onSuccess: async (_, id) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(id)]) }),
@@ -136,7 +136,7 @@ export function useCancelCounting() {
   const { t } = useTranslation('inventory')
 
   return useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) =>
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       countingApi.cancel(id, reason),
     onSuccess: async (_, { id }) => {
       await Promise.all([
@@ -156,7 +156,7 @@ export function useFinalizeCounting() {
   const { t } = useTranslation('inventory')
 
   return useMutation({
-    mutationFn: (id: number) => countingApi.finalize(id),
+    mutationFn: (id: string) => countingApi.finalize(id),
     onSuccess: async (_, id) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(id)]) }),
@@ -175,7 +175,7 @@ export function useTriggerThirdCount() {
   const { t } = useTranslation('inventory')
 
   return useMutation({
-    mutationFn: ({ countingId, itemIds }: { countingId: number; itemIds: number[] }) =>
+    mutationFn: ({ countingId, itemIds }: { countingId: string; itemIds: string[] }) =>
       countingApi.triggerThirdCount(countingId, itemIds),
     onSuccess: async (_, { countingId }) => {
       await Promise.all([
@@ -192,7 +192,7 @@ export function useTriggerThirdCount() {
   })
 }
 
-export function useManualOverride(countingId: number) {
+export function useManualOverride(countingId: string) {
   const queryClient = useQueryClient()
   const { t } = useTranslation('inventory')
 
@@ -202,7 +202,7 @@ export function useManualOverride(countingId: number) {
       quantity,
       notes,
     }: {
-      itemId: number
+      itemId: string
       quantity: string
       notes: string
     }) => countingApi.manualOverride(itemId, quantity, notes),
@@ -222,12 +222,12 @@ export function useManualOverride(countingId: number) {
   })
 }
 
-export function useSetOpeningCost(countingId: number) {
+export function useSetOpeningCost(countingId: string) {
   const queryClient = useQueryClient()
   const { t } = useTranslation('inventory')
 
   return useMutation({
-    mutationFn: ({ itemId, unitCost }: { itemId: number; unitCost: string }) =>
+    mutationFn: ({ itemId, unitCost }: { itemId: string; unitCost: string }) =>
       countingApi.setOpeningCost(countingId, itemId, unitCost),
     onSuccess: async () => {
       await Promise.all([
@@ -248,7 +248,7 @@ export function useExportReport() {
   const { t } = useTranslation('inventory')
 
   return useMutation({
-    mutationFn: ({ id, format }: { id: number; format: 'pdf' | 'xlsx' }) =>
+    mutationFn: ({ id, format }: { id: string; format: 'pdf' | 'xlsx' }) =>
       countingApi.exportReport(id, format),
     onSuccess: (blob, { format }) => {
       // Download the file
@@ -272,7 +272,7 @@ export function useSendReminder() {
   const { t } = useTranslation('inventory')
 
   return useMutation({
-    mutationFn: (id: number) => countingApi.sendReminder(id),
+    mutationFn: (id: string) => countingApi.sendReminder(id),
     onSuccess: () => {
       toast.success(t('counting.messages.reminderSent'))
     },

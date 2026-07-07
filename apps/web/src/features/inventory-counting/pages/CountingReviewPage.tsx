@@ -12,6 +12,7 @@ import {
   useReconciliation,
 } from '../api/queries'
 import { isBlockingFlag, type ReconciliationItem } from '../types'
+import { textColors } from '@/lib/designTokens'
 
 // A line that must be resolved before the session can finalize: still pending,
 // an onboarding opening awaiting its cost, or carrying an unresolved blocking
@@ -37,7 +38,7 @@ export function CountingReviewPage() {
   const { t } = useTranslation('inventory')
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const countingId = parseInt(id ?? '0', 10)
+  const countingId = id ?? ''
 
   const { data: counting, isLoading } = useCountingDetail(countingId)
   const { data: reconciliation } = useReconciliation(countingId)
@@ -159,8 +160,12 @@ export function CountingReviewPage() {
               <h2 className="text-lg font-semibold mb-2">
                 {t('counting.review.finalizeConfirm.title')}
               </h2>
-              <p className="text-gray-600 mb-6">
+              <p className="text-gray-600 mb-2">
                 {t('counting.review.finalizeConfirm.description')}
+              </p>
+
+              <p className={`${textColors.warning} mb-6 text-sm`}>
+                {t('counting.review.finalizeConfirm.syncWarning')}
               </p>
 
               <div className="flex gap-3 justify-end">

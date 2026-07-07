@@ -67,7 +67,7 @@ function FlagChips({ item }: { item: ReconciliationItem }) {
 }
 
 interface Props {
-  countingId: number
+  countingId: string
 }
 
 interface SummaryCardProps {
@@ -128,7 +128,7 @@ function OpeningCostCell({
   isSaving,
 }: {
   item: ReconciliationItem
-  onSave: (itemId: number, unitCost: string) => void
+  onSave: (itemId: string, unitCost: string) => void
   isSaving: boolean
 }) {
   const { t } = useTranslation('inventory')
@@ -178,11 +178,11 @@ export function ReconciliationTable({ countingId }: Props) {
   const manualOverride = useManualOverride(countingId)
   const setOpeningCost = useSetOpeningCost(countingId)
 
-  const handleSetOpeningCost = (itemId: number, unitCost: string) => {
+  const handleSetOpeningCost = (itemId: string, unitCost: string) => {
     setOpeningCost.mutate({ itemId, unitCost })
   }
 
-  const [selectedItems, setSelectedItems] = useState<number[]>([])
+  const [selectedItems, setSelectedItems] = useState<string[]>([])
   const [overrideItem, setOverrideItem] = useState<ReconciliationItem | null>(
     null
   )
@@ -218,7 +218,7 @@ export function ReconciliationTable({ countingId }: Props) {
     }
   }
 
-  const handleSelect = (id: number, checked: boolean) => {
+  const handleSelect = (id: string, checked: boolean) => {
     if (checked) {
       setSelectedItems([...selectedItems, id])
     } else {

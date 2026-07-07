@@ -32,7 +32,7 @@ vi.mock('../api/queries', () => ({
 
 function makeItem(overrides: Partial<ReconciliationItem> = {}): ReconciliationItem {
   return {
-    id: 1,
+    id: '11111111-1111-4111-8111-111111111111',
     product: { id: 1, name: 'Widget', sku: 'SKU-1', barcode: null, image_url: null },
     variant: null,
     location: { id: 1, code: 'WH-1', name: 'Main' },
@@ -75,7 +75,11 @@ function makeReconciliation(items: ReconciliationItem[]): ReconciliationData {
 beforeEach(() => {
   h.setOpeningCostMutate.mockReset()
   h.finalizeMutate.mockReset()
-  h.countingDetail = { id: 7, uuid: 'count-7-uuid', status: 'pending_review' }
+  h.countingDetail = {
+    id: '77777777-7777-4777-8777-777777777777',
+    uuid: '77777777-7777-4777-8777-777777777777',
+    status: 'pending_review',
+  }
   h.reconciliation = makeReconciliation([makeItem()])
 })
 
@@ -85,7 +89,9 @@ afterEach(() => {
 
 function renderReviewPage() {
   return render(
-    <MemoryRouter initialEntries={['/inventory/counting/7/review']}>
+    <MemoryRouter
+      initialEntries={['/inventory/counting/77777777-7777-4777-8777-777777777777/review']}
+    >
       <Routes>
         <Route path="/inventory/counting/:id/review" element={<CountingReviewPage />} />
       </Routes>
@@ -98,7 +104,7 @@ describe('ReconciliationTable replay columns + flags', () => {
     h.reconciliation = makeReconciliation([
       makeItem({ expected_qty_at_apply: '9.0000' }),
     ])
-    render(<ReconciliationTable countingId={7} />)
+    render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
 
     expect(screen.getByText('counting.reconciliation.expectedNow')).toBeInTheDocument()
     expect(screen.getByText('counting.reconciliation.movementsSinceCount')).toBeInTheDocument()
@@ -113,7 +119,7 @@ describe('ReconciliationTable replay columns + flags', () => {
         is_flagged: true,
       }),
     ])
-    render(<ReconciliationTable countingId={7} />)
+    render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
 
     const blocking = screen.getByTestId('flag-chip-basket_window')
     const informational = screen.getByTestId('flag-chip-normalized_agreement')
@@ -130,26 +136,29 @@ describe('ReconciliationTable replay columns + flags', () => {
       // Pre-finalize signal drives the editable cell — NOT the post-finalize
       // pending_opening_cost flag (which is absent during pending_review).
       makeItem({
-        id: 42,
+        id: '42424242-4242-4242-8242-424242424242',
         will_post_as_opening: true,
         opening_cost_missing: true,
         opening_unit_cost: null,
       }),
     ])
-    render(<ReconciliationTable countingId={7} />)
+    render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
 
     const input = screen.getByLabelText('counting.reconciliation.openingCost')
     await user.type(input, '3.5')
     await user.click(screen.getByText('counting.reconciliation.saveCost'))
 
-    expect(h.setOpeningCostMutate).toHaveBeenCalledWith({ itemId: 42, unitCost: '3.5' })
+    expect(h.setOpeningCostMutate).toHaveBeenCalledWith({
+      itemId: '42424242-4242-4242-8242-424242424242',
+      unitCost: '3.5',
+    })
   })
 
   it('shows a static cost cell (no input) when the line will not post as opening', () => {
     h.reconciliation = makeReconciliation([
       makeItem({ will_post_as_opening: false, opening_unit_cost: null }),
     ])
-    render(<ReconciliationTable countingId={7} />)
+    render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
 
     expect(
       screen.queryByLabelText('counting.reconciliation.openingCost')
@@ -160,7 +169,7 @@ describe('ReconciliationTable replay columns + flags', () => {
     h.reconciliation = makeReconciliation([
       makeItem({ flag_reasons: ['basket_window'], is_flagged: true }),
     ])
-    render(<ReconciliationTable countingId={7} />)
+    render(<ReconciliationTable countingId="77777777-7777-4777-8777-777777777777" />)
 
     expect(screen.getByTestId('flag-hint-not-posted')).toHaveTextContent(
       'counting.flags.notPostedRecount'

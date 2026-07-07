@@ -92,6 +92,10 @@ function persistentQueryClient(): QueryClient {
 
 const filters: CountingFilters = { status: 'all', page: 1, per_page: 10 }
 
+// Counting ids are UUID strings end-to-end (backend uses HasUuids) — never
+// numeric. A stable fixture value keeps assertions below readable.
+const COUNTING_UUID = 'c0000000-0000-4000-8000-000000000007'
+
 const createCountingPayload: CreateCountingFormData = {
   scope_type: 'full_inventory',
   scope_filters: {},
@@ -118,9 +122,9 @@ beforeEach(() => {
     links: { first: '', last: '', prev: null, next: null },
   })
   mockGetDetail.mockReset()
-  mockGetDetail.mockResolvedValue({ id: 7, uuid: 'count-7' })
+  mockGetDetail.mockResolvedValue({ id: COUNTING_UUID, uuid: 'count-7' })
   mockCreate.mockReset()
-  mockCreate.mockResolvedValue({ id: 8, uuid: 'count-8' })
+  mockCreate.mockResolvedValue({ id: 'c0000000-0000-4000-8000-000000000008', uuid: 'count-8' })
   mockActivate.mockReset()
   mockActivate.mockResolvedValue(undefined)
   mockGetReconciliation.mockReset()
@@ -143,10 +147,10 @@ describe('countingListInvalidationPredicate', () => {
 
   it('rejects detail/dashboard/reconciliation/report keys and wrong tenant/company', () => {
     const pred = countingListInvalidationPredicate('tenant-A', 'company-1')
-    expect(pred({ queryKey: ['counting', 'detail', 7, 'tenant-A', 'company-1'] })).toBe(false)
+    expect(pred({ queryKey: ['counting', 'detail', COUNTING_UUID, 'tenant-A', 'company-1'] })).toBe(false)
     expect(pred({ queryKey: ['counting', 'dashboard', 'tenant-A', 'company-1'] })).toBe(false)
-    expect(pred({ queryKey: ['counting', 'reconciliation', 7, 'tenant-A', 'company-1'] })).toBe(false)
-    expect(pred({ queryKey: ['counting', 'report', 7, 'tenant-A', 'company-1'] })).toBe(false)
+    expect(pred({ queryKey: ['counting', 'reconciliation', COUNTING_UUID, 'tenant-A', 'company-1'] })).toBe(false)
+    expect(pred({ queryKey: ['counting', 'report', COUNTING_UUID, 'tenant-A', 'company-1'] })).toBe(false)
     expect(pred({ queryKey: ['counting', 'list', filters, 'tenant-B', 'company-1'] })).toBe(false)
     expect(pred({ queryKey: ['counting', 'list', filters, 'tenant-A', 'company-2'] })).toBe(false)
   })
@@ -160,9 +164,9 @@ describe('inventory counting queryKey shapes', () => {
 
     const { result: dashboard } = renderHook(() => useCountingDashboard(), { wrapper })
     const { result: list } = renderHook(() => useCountingList(filters), { wrapper })
-    const { result: detail } = renderHook(() => useCountingDetail(7), { wrapper })
-    const { result: reconciliation } = renderHook(() => useReconciliation(7), { wrapper })
-    const { result: report } = renderHook(() => useDiscrepancyReport(7), { wrapper })
+    const { result: detail } = renderHook(() => useCountingDetail(COUNTING_UUID), { wrapper })
+    const { result: reconciliation } = renderHook(() => useReconciliation(COUNTING_UUID), { wrapper })
+    const { result: report } = renderHook(() => useDiscrepancyReport(COUNTING_UUID), { wrapper })
 
     await waitFor(() => {
       expect(dashboard.current.isSuccess).toBe(true)
@@ -189,21 +193,21 @@ describe('inventory counting queryKey shapes', () => {
     expect(keys.find((k) => k[0] === 'counting' && k[1] === 'detail')).toEqual([
       'counting',
       'detail',
-      7,
+      COUNTING_UUID,
       'tenant-A',
       'company-1',
     ])
     expect(keys.find((k) => k[0] === 'counting' && k[1] === 'reconciliation')).toEqual([
       'counting',
       'reconciliation',
-      7,
+      COUNTING_UUID,
       'tenant-A',
       'company-1',
     ])
     expect(keys.find((k) => k[0] === 'counting' && k[1] === 'report')).toEqual([
       'counting',
       'report',
-      7,
+      COUNTING_UUID,
       'tenant-A',
       'company-1',
     ])
@@ -256,14 +260,14 @@ describe('inventory counting mutation cascades', () => {
     })
     mockGetDetail.mockImplementation(async () => {
       detailCalls += 1
-      return { id: 7, uuid: `detail-${String(detailCalls)}` }
+      return { id: COUNTING_UUID, uuid: `detail-${String(detailCalls)}` }
     })
 
     const client = createTestQueryClient()
     const wrapper = makeWrapper(client)
     const { result: list } = renderHook(() => useCountingList(filters), { wrapper })
     const { result: dashboard } = renderHook(() => useCountingDashboard(), { wrapper })
-    const { result: detail } = renderHook(() => useCountingDetail(7), { wrapper })
+    const { result: detail } = renderHook(() => useCountingDetail(COUNTING_UUID), { wrapper })
     const { result: create } = renderHook(() => useCreateCounting(), { wrapper })
 
     await waitFor(() => {
@@ -291,7 +295,7 @@ describe('inventory counting mutation cascades', () => {
     let listCalls = 0
     mockGetDetail.mockImplementation(async () => {
       detailCalls += 1
-      return { id: 7, uuid: `detail-${String(detailCalls)}` }
+      return { id: COUNTING_UUID, uuid: `detail-${String(detailCalls)}` }
     })
     mockGetDashboard.mockImplementation(async () => {
       dashboardCalls += 1
@@ -312,7 +316,7 @@ describe('inventory counting mutation cascades', () => {
 
     const client = createTestQueryClient()
     const wrapper = makeWrapper(client)
-    const { result: detail } = renderHook(() => useCountingDetail(7), { wrapper })
+    const { result: detail } = renderHook(() => useCountingDetail(COUNTING_UUID), { wrapper })
     const { result: dashboard } = renderHook(() => useCountingDashboard(), { wrapper })
     const { result: list } = renderHook(() => useCountingList(filters), { wrapper })
     const { result: activate } = renderHook(() => useActivateCounting(), { wrapper })
@@ -326,7 +330,7 @@ describe('inventory counting mutation cascades', () => {
     expect(dashboardCalls).toBe(1)
     expect(listCalls).toBe(1)
 
-    await activate.current.mutateAsync(7)
+    await activate.current.mutateAsync(COUNTING_UUID)
 
     await waitFor(() => {
       expect(detailCalls).toBe(2)
@@ -370,9 +374,13 @@ describe('countingKeys factory shape', () => {
     expect(countingKeys.lists()).toEqual(['counting', 'list'])
     expect(countingKeys.list(filters)).toEqual(['counting', 'list', filters])
     expect(countingKeys.details()).toEqual(['counting', 'detail'])
-    expect(countingKeys.detail(7)).toEqual(['counting', 'detail', 7])
-    expect(countingKeys.reconciliation(7)).toEqual(['counting', 'reconciliation', 7])
-    expect(countingKeys.report(7)).toEqual(['counting', 'report', 7])
+    expect(countingKeys.detail(COUNTING_UUID)).toEqual(['counting', 'detail', COUNTING_UUID])
+    expect(countingKeys.reconciliation(COUNTING_UUID)).toEqual([
+      'counting',
+      'reconciliation',
+      COUNTING_UUID,
+    ])
+    expect(countingKeys.report(COUNTING_UUID)).toEqual(['counting', 'report', COUNTING_UUID])
     expect(countingKeys.dashboard()).toEqual(['counting', 'dashboard'])
   })
 })

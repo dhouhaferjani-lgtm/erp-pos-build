@@ -67,7 +67,7 @@ export function CountingDashboardPage() {
 
   const { summary, active_counts, pending_review } = data
 
-  const handleSendReminder = (id: number) => {
+  const handleSendReminder = (id: string) => {
     sendReminder.mutate(id)
   }
 
