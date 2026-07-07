@@ -92,6 +92,72 @@ final class LocationNodesMigrationTest extends TestCase
     }
 
     /**
+     * Data survival (review IMPORTANT-1): the backfill UPDATE must run
+     * against PRE-EXISTING flat-zone data, not just fresh rows. Drive the
+     * real migration down, plant a legacy location_zones row + a
+     * product_zone_assignments row referencing it, migrate up, and assert
+     * both survived the rename + backfill.
+     */
+    public function test_up_backfills_legacy_zone_rows_and_preserves_placements(): void
+    {
+        [$tenantId, $locationId] = $this->seedLocation();
+        $productId = $this->seedProduct($tenantId);
+
+        /** @var object{up: callable, down: callable} $migration */
+        $migration = require database_path('migrations/tenant/2026_07_07_100001_rename_zones_to_location_nodes.php');
+        $migration->down();
+
+        $this->assertTrue(Schema::hasTable('location_zones'));
+        $this->assertFalse(Schema::hasTable('location_nodes'));
+
+        // Legacy flat-zone rows, exactly as the pre-hierarchy schema wrote them.
+        $zoneId = (string) Str::uuid();
+        DB::table('location_zones')->insert([
+            'id' => $zoneId,
+            'tenant_id' => $tenantId,
+            'location_id' => $locationId,
+            'name' => 'Legacy Aisle 1',
+            'code' => 'A1',
+            'sort_order' => 3,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $assignmentId = (string) Str::uuid();
+        DB::table('product_zone_assignments')->insert([
+            'id' => $assignmentId,
+            'tenant_id' => $tenantId,
+            'product_id' => $productId,
+            'location_id' => $locationId,
+            'zone_id' => $zoneId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $migration->up();
+
+        // The zone survived as a top-level node with the backfilled hierarchy columns.
+        $node = DB::table('location_nodes')->where('id', $zoneId)->first();
+        $this->assertNotNull($node, 'legacy zone row must survive the rename');
+        $this->assertSame('zone', $node->node_type);
+        $this->assertSame(0, (int) $node->depth);
+        $this->assertSame('A1', $node->path, 'path must be backfilled from code');
+        $this->assertNull($node->parent_id);
+        $this->assertNull($node->deleted_at);
+        $this->assertSame('Legacy Aisle 1', $node->name);
+        $this->assertSame(3, (int) $node->sort_order);
+
+        // The assignment survived as a live placement still pointing at the node.
+        $placement = DB::table('product_placements')->where('id', $assignmentId)->first();
+        $this->assertNotNull($placement, 'legacy assignment row must survive the rename');
+        $this->assertSame($productId, $placement->product_id);
+        $this->assertSame($locationId, $placement->location_id);
+        $this->assertSame($zoneId, $placement->node_id, 'zone_id must carry over into node_id');
+        $this->assertNull($placement->deleted_at);
+    }
+
+    /**
      * @return array{0: string, 1: string} [tenantId, locationId]
      */
     private function seedLocation(): array
