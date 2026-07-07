@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Presentation\Requests;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Inventory\Domain\Enums\CountingExecutionMode;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
+use App\Modules\Inventory\Domain\LocationZone;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -137,7 +138,44 @@ class CreateCountingRequest extends FormRequest
                 if ($this->boolean('block_sales')) {
                     $validator->errors()->add('block_sales', 'Sales blocking is not supported for zone-scoped counts');
                 }
+                if (! empty($filters['zone_ids']) && ! empty($filters['location_id'])) {
+                    $this->validateZonesBelongToLocation($validator, $filters['zone_ids'], $filters['location_id']);
+                }
                 break;
+        }
+    }
+
+    /**
+     * `scope_filters.zone_ids.*` is only tenant-scoped (location_zones carries
+     * no company_id — see the A2 migration), so a bare exists check lets
+     * company A reference a zone that belongs to company B's location within
+     * the same tenant. `scope_filters.location_id` IS company-validated
+     * (ScopedExists::company above), so pinning every zone to that location
+     * transitively re-establishes the company boundary.
+     *
+     * @param  array<int, mixed>  $zoneIds
+     */
+    private function validateZonesBelongToLocation(Validator $validator, array $zoneIds, string $locationId): void
+    {
+        $zoneIds = array_values(array_filter($zoneIds, static fn (mixed $id): bool => is_string($id) && $id !== ''));
+
+        if ($zoneIds === []) {
+            return;
+        }
+
+        $matchedIds = LocationZone::query()
+            ->whereIn('id', $zoneIds)
+            ->where('location_id', $locationId)
+            ->pluck('id')
+            ->all();
+
+        $foreignIds = array_diff($zoneIds, $matchedIds);
+
+        if ($foreignIds !== []) {
+            $validator->errors()->add(
+                'scope_filters.zone_ids',
+                'The following zones do not belong to the selected location: '.implode(', ', $foreignIds)
+            );
         }
     }
 

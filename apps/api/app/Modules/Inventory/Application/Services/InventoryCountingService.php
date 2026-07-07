@@ -307,10 +307,22 @@ class InventoryCountingService
             return [];
         }
 
+        // Defense-in-depth: scope_filters.location_id is validated company-owned
+        // by CreateCountingRequest, and zone_ids are validated to belong to it.
+        // Re-pin here too so a stale/malicious scope_filters row (e.g. one that
+        // bypassed the FormRequest via a direct service call) can never seed
+        // items from a zone at a foreign location.
+        $locationId = $filters['location_id'] ?? null;
+
+        if ($locationId === null || $locationId === '') {
+            return [];
+        }
+
         $seeds = [];
 
         $assignments = ProductZoneAssignment::query()
             ->whereIn('zone_id', $zoneIds)
+            ->where('location_id', $locationId)
             ->get();
 
         foreach ($assignments as $assignment) {

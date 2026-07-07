@@ -29,6 +29,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\AssertsApiValidation;
 
 /**
  * Task C1: zone-scoped counting + assign-as-you-count + zero-stock inclusion.
@@ -44,6 +45,7 @@ use Tests\TestCase;
  */
 final class ZoneScopedCountingTest extends TestCase
 {
+    use AssertsApiValidation;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -255,6 +257,66 @@ final class ZoneScopedCountingTest extends TestCase
         ]);
 
         $response->assertStatus(422);
+    }
+
+    public function test_zone_scope_rejects_zone_from_a_different_location_same_company(): void
+    {
+        $otherLocation = Location::create([
+            'company_id' => $this->company->id,
+            'code' => 'WH-ZON-02',
+            'name' => 'Second Zone Warehouse',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => false,
+            'onboarding_mode' => false,
+        ]);
+
+        $foreignZone = $this->makeZone('FOREIGN-LOC', $otherLocation);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::Zone->value,
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => [$foreignZone->id]],
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $this->assertApiValidationErrors($response, ['scope_filters.zone_ids']);
+    }
+
+    public function test_zone_scope_rejects_zone_from_another_company_in_the_same_tenant(): void
+    {
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Zone Company',
+            'legal_name' => 'Other Zone Company LLC',
+            'tax_id' => 'ZON-TAX-'.uniqid(),
+            'country_code' => 'TN',
+            'currency' => 'TND',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        $otherLocation = Location::create([
+            'company_id' => $otherCompany->id,
+            'code' => 'WH-ZON-OTHERCO',
+            'name' => 'Other Company Warehouse',
+            'type' => 'warehouse',
+            'is_active' => true,
+            'is_default' => true,
+            'onboarding_mode' => false,
+        ]);
+
+        $foreignZone = $this->makeZone('FOREIGN-CO', $otherLocation);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/inventory/countings', [
+            'scope_type' => CountingScopeType::Zone->value,
+            'scope_filters' => ['location_id' => $this->location->id, 'zone_ids' => [$foreignZone->id]],
+            'count_1_user_id' => (string) $this->user->id,
+            'requires_count_2' => false,
+        ]);
+
+        $this->assertApiValidationErrors($response, ['scope_filters.zone_ids']);
     }
 
     public function test_ambiguity_window_minutes_persists_when_provided(): void
