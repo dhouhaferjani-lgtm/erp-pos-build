@@ -12,6 +12,7 @@ use App\Modules\Contact\Providers\ContactServiceProvider;
 use App\Modules\Coupon\Providers\CouponServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Document\Providers\DocumentServiceProvider;
+use App\Modules\DocumentIngestion\Providers\DocumentIngestionServiceProvider;
 use App\Modules\Expense\Providers\ExpenseServiceProvider;
 use App\Modules\Fiscal\Providers\FiscalServiceProvider;
 use App\Modules\Identity\Infrastructure\Providers\IdentityServiceProvider;
@@ -64,6 +65,7 @@ return [
     ProductServiceProvider::class,
     VehicleServiceProvider::class,
     DocumentServiceProvider::class,
+    DocumentIngestionServiceProvider::class,
     AccountingServiceProvider::class,
     InventoryServiceProvider::class,
     BatchExpiryServiceProvider::class,
