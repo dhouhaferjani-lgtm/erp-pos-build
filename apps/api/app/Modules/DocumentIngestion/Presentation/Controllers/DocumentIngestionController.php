@@ -7,10 +7,12 @@ namespace App\Modules\DocumentIngestion\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\DocumentIngestion\Application\Exceptions\DuplicateDocumentException;
+use App\Modules\DocumentIngestion\Application\Services\IngestionCommitterRegistry;
 use App\Modules\DocumentIngestion\Application\Services\IngestionService;
 use App\Modules\DocumentIngestion\Domain\DocumentIngestion;
 use App\Modules\DocumentIngestion\Domain\Enums\DocumentKind;
 use App\Modules\DocumentIngestion\Domain\Enums\IngestionStatus;
+use App\Modules\DocumentIngestion\Presentation\Requests\CommitDocumentIngestionRequest;
 use App\Modules\DocumentIngestion\Presentation\Requests\StoreDocumentIngestionRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Media\Application\Services\MediaUrlResolver;
@@ -19,6 +21,8 @@ use App\Modules\Media\Domain\Media\MediaAttachment;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class DocumentIngestionController extends Controller
@@ -27,6 +31,7 @@ final class DocumentIngestionController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly IngestionService $service,
         private readonly MediaUrlResolver $mediaUrlResolver,
+        private readonly IngestionCommitterRegistry $committerRegistry,
     ) {}
 
     public function store(StoreDocumentIngestionRequest $request): JsonResponse
@@ -145,6 +150,82 @@ final class DocumentIngestionController extends Controller
         return response()->json(['data' => $this->resource($updated)]);
     }
 
+    public function commit(CommitDocumentIngestionRequest $request, string $id): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(Response::HTTP_UNAUTHORIZED);
+        }
+
+        $claimed = DocumentIngestion::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('id', $id)
+            ->whereIn('status', [IngestionStatus::NeedsReview->value, IngestionStatus::Committing->value])
+            ->update([
+                'status' => IngestionStatus::Committing->value,
+                'updated_at' => now(),
+            ]);
+
+        if ($claimed !== 1) {
+            $existing = $this->findScoped($id);
+            if ($existing instanceof DocumentIngestion && $existing->status === IngestionStatus::Committed) {
+                return response()->json(['data' => $this->commitResource($existing)]);
+            }
+
+            return $this->conflict('Only reviewable ingestions can be committed.');
+        }
+
+        $ingestion = $this->findScoped($id);
+        if (! $ingestion instanceof DocumentIngestion) {
+            return $this->notFound();
+        }
+
+        if ($ingestion->committed_type !== null && $ingestion->committed_id !== null) {
+            $ingestion->forceFill(['status' => IngestionStatus::Committed])->save();
+
+            return response()->json(['data' => $this->commitResource($ingestion)]);
+        }
+
+        try {
+            $this->assertReviewOnlyFlagsAreAbsent($ingestion);
+            $result = $this->committerRegistry
+                ->for($ingestion->kind)
+                ->commit($ingestion, $request->payload(), $user->id);
+
+            DB::transaction(function () use ($ingestion, $result): void {
+                $ingestion->forceFill([
+                    'committed_type' => $result->committedType,
+                    'committed_id' => $result->committedId,
+                    'status' => IngestionStatus::Committed,
+                    'error' => null,
+                ])->save();
+            });
+
+            return response()->json(['data' => $result->toResponseArray()], 201);
+        } catch (\Throwable $exception) {
+            $ingestion->forceFill([
+                'status' => IngestionStatus::NeedsReview,
+                'error' => [
+                    'message' => $exception->getMessage(),
+                    'class' => $exception::class,
+                ],
+            ])->save();
+
+            if ($exception instanceof \DomainException) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'COMMIT_FAILED',
+                        'message' => $exception->getMessage(),
+                    ],
+                ], 422);
+            }
+
+            throw $exception;
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -229,5 +310,42 @@ final class DocumentIngestionController extends Controller
                 'message' => $message,
             ],
         ], 409);
+    }
+
+    /**
+     * @return array{committed_type: string|null, committed_id: string|null, goods_receipt_number: null}
+     */
+    private function commitResource(DocumentIngestion $ingestion): array
+    {
+        return [
+            'committed_type' => $ingestion->committed_type,
+            'committed_id' => $ingestion->committed_id,
+            'goods_receipt_number' => null,
+        ];
+    }
+
+    private function assertReviewOnlyFlagsAreAbsent(DocumentIngestion $ingestion): void
+    {
+        $summary = $ingestion->confidence_summary;
+        $reconciliation = is_array($summary) && is_array($summary['reconciliation'] ?? null)
+            ? $summary['reconciliation']
+            : null;
+
+        $consistent = is_array($reconciliation) ? ($reconciliation['consistent'] ?? true) : true;
+        $flags = is_array($reconciliation) && is_array($reconciliation['flags'] ?? null)
+            ? $reconciliation['flags']
+            : [];
+
+        $hasUnparseable = false;
+        foreach ($flags as $flag) {
+            if (is_string($flag) && str_starts_with($flag, 'field_unparseable:')) {
+                $hasUnparseable = true;
+                break;
+            }
+        }
+
+        if ($consistent === false || $hasUnparseable) {
+            throw new \DomainException('This ingestion has reconciliation flags that require manual review before commit.');
+        }
     }
 }

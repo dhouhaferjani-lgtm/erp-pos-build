@@ -26,3 +26,34 @@ Verification:
 
 Deviations:
 - The task brief said no git commits, while the user explicitly requested a commit per task. Following the direct user instruction.
+
+## Task 7 — Commit endpoint + BL committer
+
+Files changed:
+- `apps/api/app/Modules/DocumentIngestion/Application/Contracts/IngestionCommitterInterface.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/Committers/SupplierDeliveryNoteCommitter.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/DTO/CommitResultData.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/DTO/ReviewedBatchData.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/DTO/ReviewedLineData.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/DTO/ReviewedPayloadData.php`
+- `apps/api/app/Modules/DocumentIngestion/Application/Services/IngestionCommitterRegistry.php`
+- `apps/api/app/Modules/DocumentIngestion/Presentation/Controllers/DocumentIngestionController.php`
+- `apps/api/app/Modules/DocumentIngestion/Presentation/Requests/CommitDocumentIngestionRequest.php`
+- `apps/api/app/Modules/DocumentIngestion/Presentation/routes.php`
+- `apps/api/tests/Feature/DocumentIngestion/CommitDeliveryNoteTest.php`
+
+TDD red:
+- `php artisan test tests/Feature/DocumentIngestion/CommitDeliveryNoteTest.php`
+- Result: failed as expected before implementation with 404 on `POST /api/v1/document-ingestions/{id}/commit`.
+
+Verification:
+- `php artisan test tests/Feature/DocumentIngestion/CommitDeliveryNoteTest.php`
+  - PASS: 4 tests, 36 assertions.
+- `./vendor/bin/phpstan analyse --debug app/Modules/DocumentIngestion app/Modules/Procurement/Application/StandaloneReceiptService.php`
+  - PASS: no errors.
+- `./vendor/bin/pint app/Modules/DocumentIngestion tests/Feature/DocumentIngestion/CommitDeliveryNoteTest.php app/Modules/Procurement/Application/StandaloneReceiptService.php tests/Feature/Procurement/StandaloneReceiptIdempotencyRecoveryTest.php`
+  - PASS.
+
+Notes:
+- Commit endpoint uses atomic `needs_review|committing -> committing` claim and returns stored commit metadata for already committed rows.
+- BL committer re-asserts `goods-receipt.create-standalone`, scoped-resolves supplier/location/product/variant, enforces batch requirements, and rejects missing paid-line price with `LINE_PRICE_REQUIRED`.

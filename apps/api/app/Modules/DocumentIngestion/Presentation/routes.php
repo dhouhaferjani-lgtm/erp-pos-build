@@ -35,4 +35,9 @@ Route::prefix('api/v1')->middleware([
         ->middleware('can:document-ingestions.reject')
         ->whereUuid('id')
         ->name('document-ingestions.reject');
+
+    Route::post('/document-ingestions/{id}/commit', [DocumentIngestionController::class, 'commit'])
+        ->middleware('can:document-ingestions.commit')
+        ->whereUuid('id')
+        ->name('document-ingestions.commit');
 });
