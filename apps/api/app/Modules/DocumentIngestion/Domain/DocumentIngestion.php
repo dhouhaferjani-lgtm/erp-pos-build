@@ -47,6 +47,7 @@ final class DocumentIngestion extends Model
      * @var list<string>
      */
     protected $fillable = [
+        'id',
         'tenant_id',
         'company_id',
         'kind',
