@@ -120,7 +120,7 @@ final class CommitDeliveryNoteTest extends TestCase
     }
 
     #[Test]
-    public function it_commits_a_delivery_note_to_a_posted_standalone_receipt_idempotently(): void
+    public function it_commits_a_delivery_note_to_a_posted_standalone_receipt_and_conflicts_on_recommit(): void
     {
         $product = $this->product('BL-BATCH', purchasePrice: '9.750', requiresBatchTracking: true);
         $ingestion = $this->ingestion();
@@ -148,14 +148,15 @@ final class CommitDeliveryNoteTest extends TestCase
         $replay = $this->actingAs($this->actor, 'sanctum')
             ->postJson("/api/v1/document-ingestions/{$ingestion->id}/commit", $this->payload($product));
 
-        $replay->assertOk()
-            ->assertJsonPath('data.committed_id', $receipt->id);
+        $replay->assertConflict()
+            ->assertJsonPath('error.code', 'INGESTION_CONFLICT');
+        $this->assertSame(IngestionStatus::Committed, $ingestion->refresh()->status);
         $this->assertSame(1, GoodsReceipt::query()->count());
         $this->assertSame(1, StockMovement::query()->count());
     }
 
     #[Test]
-    public function it_recovers_a_committing_delivery_note_without_double_receiving(): void
+    public function it_conflicts_on_an_in_flight_committing_ingestion_without_running_the_committer(): void
     {
         $product = $this->product('BL-CRASH', purchasePrice: '8.125', requiresBatchTracking: true);
         $ingestion = $this->ingestion(status: IngestionStatus::Committing);
@@ -163,8 +164,39 @@ final class CommitDeliveryNoteTest extends TestCase
         $response = $this->actingAs($this->actor, 'sanctum')
             ->postJson("/api/v1/document-ingestions/{$ingestion->id}/commit", $this->payload($product, reference: 'BL-CRASH-001'));
 
-        $response->assertCreated()
-            ->assertJsonPath('data.committed_type', 'goods_receipt');
+        $response->assertConflict()
+            ->assertJsonPath('error.code', 'INGESTION_CONFLICT');
+
+        $this->assertSame(IngestionStatus::Committing, $ingestion->refresh()->status);
+        $this->assertNull($ingestion->committed_type);
+        $this->assertSame(0, GoodsReceipt::query()->count());
+        $this->assertSame(0, StockMovement::query()->count());
+    }
+
+    #[Test]
+    public function it_finalizes_a_crashed_commit_that_already_persisted_its_result(): void
+    {
+        $product = $this->product('BL-RECOVER', purchasePrice: '8.500', requiresBatchTracking: true);
+        $ingestion = $this->ingestion();
+
+        $this->actingAs($this->actor, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$ingestion->id}/commit", $this->payload($product, reference: 'BL-RECOVER-001'))
+            ->assertCreated();
+
+        $ingestion->refresh();
+        $receiptId = $ingestion->committed_id;
+        $this->assertNotNull($receiptId);
+
+        // Simulate a crash after the committer persisted its result but before
+        // the ingestion row was finalized to Committed.
+        $ingestion->forceFill(['status' => IngestionStatus::Committing])->save();
+
+        $recovery = $this->actingAs($this->actor, 'sanctum')
+            ->postJson("/api/v1/document-ingestions/{$ingestion->id}/commit", $this->payload($product, reference: 'BL-RECOVER-001'));
+
+        $recovery->assertOk()
+            ->assertJsonPath('data.committed_type', 'goods_receipt')
+            ->assertJsonPath('data.committed_id', $receiptId);
 
         $this->assertSame(IngestionStatus::Committed, $ingestion->refresh()->status);
         $this->assertSame(1, GoodsReceipt::query()->count());

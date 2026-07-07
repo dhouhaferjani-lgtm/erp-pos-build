@@ -158,11 +158,25 @@ final class DocumentIngestionController extends Controller
             abort(Response::HTTP_UNAUTHORIZED);
         }
 
+        // Crash-recovery branch (explicit, BEFORE the claim): a Committing row
+        // whose committer already persisted its result crashed before the
+        // finalize step — finalize it and return the existing result without
+        // re-running the committer. A Committing row with NO committed result
+        // is an in-flight (or hard-crashed) run: never re-claim it, 409.
+        $recovery = $this->recoverCommittingIngestion($company->tenant_id, $company->id, $id);
+        if ($recovery instanceof JsonResponse) {
+            return $recovery;
+        }
+
+        // Single-winner atomic claim: ONLY NeedsReview may be claimed. Adding
+        // Committing to the prior-state set would let a concurrent second
+        // commit re-evaluate against the winner's new Committing row under
+        // READ COMMITTED and also claim it — running the committer twice.
         $claimed = DocumentIngestion::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('id', $id)
-            ->whereIn('status', [IngestionStatus::NeedsReview->value, IngestionStatus::Committing->value])
+            ->where('status', IngestionStatus::NeedsReview->value)
             ->update([
                 'status' => IngestionStatus::Committing->value,
                 'updated_at' => now(),
@@ -170,8 +184,16 @@ final class DocumentIngestionController extends Controller
 
         if ($claimed !== 1) {
             $existing = $this->findScoped($id);
-            if ($existing instanceof DocumentIngestion && $existing->status === IngestionStatus::Committed) {
-                return response()->json(['data' => $this->commitResource($existing)]);
+            if (! $existing instanceof DocumentIngestion) {
+                return $this->notFound();
+            }
+
+            if ($existing->status === IngestionStatus::Committed) {
+                return $this->conflict('This ingestion has already been committed.');
+            }
+
+            if ($existing->status === IngestionStatus::Committing) {
+                return $this->conflict('This ingestion is already being committed.');
             }
 
             return $this->conflict('Only reviewable ingestions can be committed.');
@@ -272,6 +294,38 @@ final class DocumentIngestionController extends Controller
         return $attachment instanceof MediaAttachment
             ? $this->mediaUrlResolver->forAttachment($attachment, null)
             : null;
+    }
+
+    /**
+     * Finalize a Committing ingestion that already holds its committed result,
+     * or surface a conflict for an in-flight Committing run. Returns null when
+     * the row is not in the Committing state (normal claim path proceeds).
+     */
+    private function recoverCommittingIngestion(string $tenantId, string $companyId, string $id): ?JsonResponse
+    {
+        return DB::transaction(function () use ($tenantId, $companyId, $id): ?JsonResponse {
+            $row = DocumentIngestion::query()
+                ->where('tenant_id', $tenantId)
+                ->where('company_id', $companyId)
+                ->where('id', $id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $row instanceof DocumentIngestion || $row->status !== IngestionStatus::Committing) {
+                return null;
+            }
+
+            if ($row->committed_type === null) {
+                // In-flight or crashed with no persisted result: the failure
+                // catch-path resets Committing -> NeedsReview; never re-run
+                // the committer from here.
+                return $this->conflict('This ingestion is already being committed.');
+            }
+
+            $row->forceFill(['status' => IngestionStatus::Committed, 'error' => null])->save();
+
+            return response()->json(['data' => $this->commitResource($row)]);
+        });
     }
 
     private function findScoped(string $id): ?DocumentIngestion
