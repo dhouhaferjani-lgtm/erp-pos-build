@@ -7,7 +7,7 @@ namespace App\Modules\Inventory\Presentation\Requests;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Inventory\Domain\Enums\CountingExecutionMode;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
-use App\Modules\Inventory\Domain\LocationZone;
+use App\Modules\Inventory\Domain\LocationNode;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -50,7 +50,7 @@ class CreateCountingRequest extends FormRequest
             'scope_filters.location_ids.*' => ['string', ScopedExists::company('locations', $company->id)],
             'scope_filters.location_id' => ['sometimes', 'string', ScopedExists::company('locations', $company->id)],
             'scope_filters.zone_ids' => ['sometimes', 'array'],
-            'scope_filters.zone_ids.*' => ['string', 'uuid', ScopedExists::tenant('location_zones', $company->tenant_id)],
+            'scope_filters.zone_ids.*' => ['string', 'uuid', ScopedExists::tenant('location_nodes', $company->tenant_id)],
 
             // Include zero/negative/no-stock-row active products (opt-in; defaults
             // to true when the target location is in onboarding mode). Set on the
@@ -146,7 +146,7 @@ class CreateCountingRequest extends FormRequest
     }
 
     /**
-     * `scope_filters.zone_ids.*` is only tenant-scoped (location_zones carries
+     * `scope_filters.zone_ids.*` is only tenant-scoped (location_nodes carries
      * no company_id — see the A2 migration), so a bare exists check lets
      * company A reference a zone that belongs to company B's location within
      * the same tenant. `scope_filters.location_id` IS company-validated
@@ -163,7 +163,7 @@ class CreateCountingRequest extends FormRequest
             return;
         }
 
-        $matchedIds = LocationZone::query()
+        $matchedIds = LocationNode::query()
             ->whereIn('id', $zoneIds)
             ->where('location_id', $locationId)
             ->pluck('id')

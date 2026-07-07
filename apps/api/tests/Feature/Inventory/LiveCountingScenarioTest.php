@@ -14,16 +14,14 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
 use App\Modules\Inventory\Application\Listeners\ExitOnboardingOnFullCountFinalized;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
-use App\Modules\Inventory\Application\Services\ZoneService;
+use App\Modules\Inventory\Application\Services\LocationNodeService;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
-use App\Modules\Inventory\Domain\Enums\CountingStatus;
+use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
-use App\Modules\Inventory\Domain\LocationZone;
-use App\Modules\Inventory\Domain\ProductZoneAssignment;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -72,7 +70,7 @@ final class LiveCountingScenarioTest extends TestCase
 
     private InventoryCountingService $countingService;
 
-    private ZoneService $zoneService;
+    private LocationNodeService $zoneService;
 
     protected function setUp(): void
     {
@@ -142,7 +140,7 @@ final class LiveCountingScenarioTest extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->countingService = app(InventoryCountingService::class);
-        $this->zoneService = app(ZoneService::class);
+        $this->zoneService = app(LocationNodeService::class);
     }
 
     /**
@@ -202,13 +200,15 @@ final class LiveCountingScenarioTest extends TestCase
         $this->setOnHand('-2.0000');
 
         // --- Zone-scoped live count (sales keep flowing: block_sales = false). ---
-        $zone = $this->zoneService->createZone(
+        $zone = $this->zoneService->createNode(
             tenantId: $this->tenant->id,
             locationId: $this->location->id,
+            parentId: null,
+            type: LocationNodeType::Zone,
             name: 'Front Shelf',
             code: 'A1',
         );
-        $this->zoneService->assignProduct($this->product->id, $this->location->id, $zone->id);
+        $this->zoneService->assignProduct($this->tenant->id, $this->product->id, $this->location->id, $zone->id);
 
         $counting = $this->countingService->create([
             'scope_type' => CountingScopeType::Zone->value,
@@ -302,10 +302,10 @@ final class LiveCountingScenarioTest extends TestCase
         $this->assertSame('3.000000', (string) Product::whereKey($this->product->id)->value('cost_price'));
 
         // Assign-as-you-count labelled P onto the counted zone.
-        $this->assertDatabaseHas('product_zone_assignments', [
+        $this->assertDatabaseHas('product_placements', [
             'product_id' => $this->product->id,
             'location_id' => $this->location->id,
-            'zone_id' => $zone->id,
+            'node_id' => $zone->id,
         ]);
 
         // A partial (zone) count never exits onboarding on its own.

@@ -17,7 +17,7 @@ use App\Modules\Inventory\Application\Services\CountingBlockService;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\InventoryCounting;
-use App\Modules\Inventory\Domain\LocationZone;
+use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Domain\Receipt;
@@ -28,6 +28,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -205,11 +206,14 @@ final class CountingBlockTest extends TestCase
 
     public function test_zone_scoped_count_is_advisory_not_a_hard_block(): void
     {
-        $zone = LocationZone::create([
+        $zone = LocationNode::create([
             'tenant_id' => $this->tenantId,
             'location_id' => $this->locationId,
+            'node_type' => 'zone',
             'name' => 'Shelf A3',
             'code' => 'A3',
+            'path' => 'A3',
+            'depth' => 0,
             'sort_order' => 1,
             'is_active' => true,
         ]);
@@ -402,8 +406,8 @@ final class CountingBlockTest extends TestCase
         array $scopeFilters,
         CountingStatus $status,
         bool $blockSales,
-        ?\Illuminate\Support\Carbon $activatedAt = null,
-        ?\Illuminate\Support\Carbon $finalizedAt = null,
+        ?Carbon $activatedAt = null,
+        ?Carbon $finalizedAt = null,
     ): InventoryCounting {
         return InventoryCounting::create([
             'tenant_id' => $this->tenantId,

@@ -17,7 +17,8 @@ use App\Modules\Inventory\Domain\InventoryCountingAssignment;
 use App\Modules\Inventory\Domain\InventoryCountingEvent;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\InventoryScale;
-use App\Modules\Inventory\Domain\ProductZoneAssignment;
+use App\Modules\Inventory\Domain\LocationNode;
+use App\Modules\Inventory\Domain\ProductPlacement;
 use App\Modules\Inventory\Domain\Services\OpeningCostGate;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Product;
@@ -258,7 +259,7 @@ class InventoryCountingService
 
     /**
      * Resolve the (product, location, variant, theoretical_qty) seeds for a
-     * scope. Zone scope reads `product_zone_assignments`; onboarding/opt-in
+     * scope. Zone scope reads `product_placements`; onboarding/opt-in
      * whole-location scopes read the full active catalog LEFT JOIN stock
      * (theoretical `'0.0000'` when no stock row); every other case keeps the
      * legacy `quantity > 0` stock-level query.
@@ -323,8 +324,9 @@ class InventoryCountingService
 
         $seeds = [];
 
-        $assignments = ProductZoneAssignment::query()
-            ->whereIn('zone_id', $zoneIds)
+        // SoftDeletes default scope excludes tombstoned placements (live only).
+        $assignments = ProductPlacement::query()
+            ->whereIn('node_id', $zoneIds)
             ->where('location_id', $locationId)
             ->get();
 
@@ -698,7 +700,17 @@ class InventoryCountingService
             return;
         }
 
-        $this->zoneService->assignProduct($item->product_id, $item->location_id, $zoneIds[0]);
+        // Old flat-zone rows resolved tenant from the zone itself; the node
+        // service takes it explicitly. tenant_id is nullable on the model but
+        // always set for zone-scoped sessions — resolve via the node when absent.
+        $tenantId = $counting->tenant_id
+            ?? LocationNode::query()->whereKey($zoneIds[0])->value('tenant_id');
+
+        if (! is_string($tenantId) || $tenantId === '') {
+            return;
+        }
+
+        $this->zoneService->assignProduct($tenantId, $item->product_id, $item->location_id, $zoneIds[0]);
     }
 
     /**
