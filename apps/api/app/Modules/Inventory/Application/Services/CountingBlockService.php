@@ -9,6 +9,7 @@ use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\LocationZone;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * Resolves the ACTIVE sales-blocking counting (if any) and the soft zone
@@ -55,9 +56,9 @@ final class CountingBlockService
      * PosCoreReceiptProjection (late-sale flagging) — keep the signature exact.
      *
      * @param  string|null  $companyId  Pass the caller's already-known company id
-     *   (e.g. `Location::company_id`, already loaded) to skip the internal
-     *   Location lookup. Null (default) preserves the original behavior of
-     *   resolving it from `$locationId`.
+     *                                  (e.g. `Location::company_id`, already loaded) to skip the internal
+     *                                  Location lookup. Null (default) preserves the original behavior of
+     *                                  resolving it from `$locationId`.
      */
     public function activeBlockFor(string $locationId, ?string $companyId = null): ?InventoryCounting
     {
@@ -66,7 +67,7 @@ final class CountingBlockService
             return null;
         }
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, InventoryCounting> $candidates */
+        /** @var Collection<int, InventoryCounting> $candidates */
         $candidates = InventoryCounting::query()
             ->where('company_id', $companyId)
             ->where('block_sales', true)
@@ -93,8 +94,7 @@ final class CountingBlockService
      * location) currently under an active zone-scoped count. Never blocks.
      *
      * @param  string|null  $companyId  Same skip-the-lookup contract as
-     *   {@see self::activeBlockFor()}.
-     *
+     *                                  {@see self::activeBlockFor()}.
      * @return array<int, array{zone_name: string, counting_number: string|null}>
      */
     public function zoneAdvisoriesFor(string $locationId, ?string $companyId = null): array
@@ -104,7 +104,7 @@ final class CountingBlockService
             return [];
         }
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, InventoryCounting> $countings */
+        /** @var Collection<int, InventoryCounting> $countings */
         $countings = InventoryCounting::query()
             ->where('company_id', $companyId)
             ->where('scope_type', CountingScopeType::Zone->value)

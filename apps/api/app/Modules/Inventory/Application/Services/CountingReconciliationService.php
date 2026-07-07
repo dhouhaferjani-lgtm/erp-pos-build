@@ -240,6 +240,8 @@ class CountingReconciliationService
      * Replay signed stock movements between this count's own instant and
      * the common `$to` instant, and add the result to the raw submitted
      * quantity — this is `normalized_N` from the normative rule.
+     *
+     * @return numeric-string
      */
     private function normalizeCount(
         string $countQty,
@@ -255,6 +257,7 @@ class CountingReconciliationService
             $to,
         );
 
+        /** @var numeric-string $countQty */
         return bcadd($countQty, $delta, InventoryScale::QUANTITY_SCALE);
     }
 

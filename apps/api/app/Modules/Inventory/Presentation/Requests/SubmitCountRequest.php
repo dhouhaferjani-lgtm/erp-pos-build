@@ -46,7 +46,7 @@ class SubmitCountRequest extends FormRequest
     private function iso8601TimestampRule(): \Closure
     {
         return function (string $attribute, mixed $value, \Closure $fail): void {
-            if (null === $value || '' === $value) {
+            if ($value === null || $value === '') {
                 return; // null/empty handled by nullable
             }
 
