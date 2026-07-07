@@ -7,10 +7,12 @@ namespace App\Modules\Inventory\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryCountingService;
+use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Presentation\Requests\ManualOverrideRequest;
+use App\Modules\Inventory\Presentation\Requests\SetOpeningCostRequest;
 use App\Modules\Inventory\Presentation\Requests\SubmitCountRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -226,7 +228,61 @@ class CountingItemController extends Controller
                     'resolution_notes' => $item->resolution_notes,
                     'is_flagged' => $item->is_flagged,
                     'flag_reason' => $item->flag_reason,
+                    // Replay-review fields (D3). `expected_qty_at_apply` and the
+                    // `replay_audit` snapshot are stamped by the finalize
+                    // listener; `flag_reasons` is the canonical jsonb array
+                    // (blocking + informational). `opening_unit_cost` drives the
+                    // backfill cell for onboarding opening lines.
+                    'expected_qty_at_apply' => $item->expected_qty_at_apply,
+                    'replay_audit' => $item->replay_audit,
+                    'flag_reasons' => $item->flag_reasons,
+                    'opening_unit_cost' => $item->opening_unit_cost,
                 ])->all(),
+                // Late-sale flags captured on the session during the block
+                // window — surfaced as a review banner.
+                'late_sales_flags' => $counting->late_sales_flags ?? [],
+            ],
+        ]);
+    }
+
+    /**
+     * Backfill / override an onboarding line's opening unit cost (D3).
+     *
+     * Only sensible while the line is pre-post: once the counting is finalized
+     * AND this item was already posted (not flagged, replay audit recorded), the
+     * opening balance is immutable, so mutating the cost would be a silent no-op
+     * against the ledger — reject with 422. Flagged (unposted) items, including
+     * `pending_opening_cost`, remain editable so the cost can be supplied before
+     * the re-finalize path posts them.
+     */
+    public function setOpeningCost(
+        SetOpeningCostRequest $request,
+        string $countingId,
+        string $itemId
+    ): JsonResponse {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        $counting = InventoryCounting::forCompany($companyId)->findOrFail($countingId);
+        /** @var InventoryCountingItem $item */
+        $item = InventoryCountingItem::where('counting_id', $counting->id)
+            ->findOrFail($itemId);
+
+        if (
+            $counting->status === CountingStatus::Finalized
+            && ! $item->is_flagged
+            && $item->replay_audit !== null
+        ) {
+            abort(422, 'Cannot change opening cost: this item has already been posted.');
+        }
+
+        $item->opening_unit_cost = $request->unitCost();
+        $item->save();
+
+        return response()->json([
+            'message' => 'Opening cost updated',
+            'data' => [
+                'item_id' => $item->id,
+                'opening_unit_cost' => $item->opening_unit_cost,
             ],
         ]);
     }

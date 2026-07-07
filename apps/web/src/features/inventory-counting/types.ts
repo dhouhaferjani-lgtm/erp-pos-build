@@ -123,6 +123,42 @@ export interface CountingItemCount {
   notes: string | null
 }
 
+// Replay audit snapshot stamped by the finalize listener (camelCase, mirroring
+// the backend ReplayAuditDto). All quantities are scale-4 decimal STRINGS.
+export interface ReplayAudit {
+  windowFrom: string
+  windowTo: string
+  replayedDelta: string
+  onHandAtApply: string
+  expectedAtApply: string
+}
+
+// A single late-sale flag captured on the session during the block window.
+export interface LateSaleFlag {
+  receipt_id: string
+  occurred_at: string
+}
+
+// Flag-reason semantics (mirror of the PHP CountingItemFlagReason enum).
+// Blocking reasons force review and disable finalize; `normalized_agreement`
+// is informational only.
+export const BLOCKING_FLAG_REASONS = [
+  'basket_window',
+  'negative_at_apply',
+  'clock_skew',
+  'pending_opening_cost',
+] as const
+
+export const INFORMATIONAL_FLAG_REASONS = ['normalized_agreement'] as const
+
+export type CountingItemFlagReason =
+  | (typeof BLOCKING_FLAG_REASONS)[number]
+  | (typeof INFORMATIONAL_FLAG_REASONS)[number]
+
+export function isBlockingFlag(reason: string): boolean {
+  return (BLOCKING_FLAG_REASONS as readonly string[]).includes(reason)
+}
+
 export interface ReconciliationItem {
   id: number
   product: CountingItemProduct
@@ -148,6 +184,16 @@ export interface ReconciliationItem {
 
   is_flagged: boolean
   flag_reason: string | null
+
+  // Replay-review fields (D3). `expected_qty_at_apply` (what stock is expected
+  // to be at apply time after replaying post-count movements) and `replay_audit`
+  // are stamped by the finalize listener; `flag_reasons` is the canonical jsonb
+  // array of reasons; `opening_unit_cost` drives the onboarding cost-backfill
+  // cell. All are scale decimal STRINGS or null.
+  expected_qty_at_apply: string | null
+  replay_audit: ReplayAudit | null
+  flag_reasons: string[] | null
+  opening_unit_cost: string | null
 }
 
 export interface CountingDashboard {
@@ -171,6 +217,7 @@ export interface ReconciliationSummary {
 export interface ReconciliationData {
   summary: ReconciliationSummary
   items: ReconciliationItem[]
+  late_sales_flags: LateSaleFlag[]
 }
 
 export interface DiscrepancyReportSummary {

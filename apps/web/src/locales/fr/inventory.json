@@ -47,12 +47,12 @@
       "received": "Réceptionnés",
       "drafts": "Brouillons"
     },
-  "status": {
-    "draft": "Brouillon",
-    "pending": "En attente",
-    "partial": "Partiel",
-    "received": "Réceptionné"
-  },
+    "status": {
+      "draft": "Brouillon",
+      "pending": "En attente",
+      "partial": "Partiel",
+      "received": "Réceptionné"
+    },
     "emptyPending": "Aucune réception en attente",
     "emptyPendingHint": "Les commandes fournisseurs confirmées apparaîtront ici pour réception",
     "emptyReceived": "Aucune commande réceptionnée",
@@ -762,7 +762,11 @@
       "finalQuantity": "Quantité finale",
       "overrideReason": "Raison de la correction",
       "overrideReasonPlaceholder": "Expliquez pourquoi vous corrigez le comptage…",
-      "applyOverride": "Appliquer la correction"
+      "applyOverride": "Appliquer la correction",
+      "expectedNow": "Attendu maintenant",
+      "movementsSinceCount": "Mouvements depuis le comptage",
+      "openingCost": "Coût d'ouverture",
+      "saveCost": "Enregistrer"
     },
     "review": {
       "title": "Révision",
@@ -772,7 +776,10 @@
       "finalizeConfirm": {
         "title": "Finaliser le comptage ?",
         "description": "Cela créera des ajustements de stock basés sur les quantités finales. Cette action est irréversible."
-      }
+      },
+      "lateSalesDetected_one": "{{count}} vente tardive enregistrée pendant le comptage",
+      "lateSalesDetected_other": "{{count}} ventes tardives enregistrées pendant le comptage",
+      "lateSalesDescription": "Des ventes ont eu lieu pendant ce comptage et sont prises en compte dans le rejeu."
     },
     "report": {
       "title": "Rapport d'écarts",
@@ -812,7 +819,16 @@
       "reportDownloaded": "Rapport téléchargé",
       "exportFailed": "Échec de l'export du rapport : {{error}}",
       "reminderSent": "Rappel envoyé avec succès",
-      "reminderFailed": "Échec de l'envoi du rappel : {{error}}"
+      "reminderFailed": "Échec de l'envoi du rappel : {{error}}",
+      "openingCostUpdated": "Coût d'ouverture mis à jour",
+      "openingCostFailed": "Échec de la mise à jour du coût d'ouverture : {{error}}"
+    },
+    "flags": {
+      "basket_window": "Vente dans la fenêtre de panier",
+      "negative_at_apply": "Stock négatif à l'application",
+      "clock_skew": "Décalage d'horloge détecté",
+      "pending_opening_cost": "Coût d'ouverture requis",
+      "normalized_agreement": "Accord normalisé"
     }
   },
   "categories": {

@@ -1,4 +1,4 @@
-import { api, apiGet, apiPost } from '@/lib/api'
+import { api, apiGet, apiPatch, apiPost } from '@/lib/api'
 import type {
   InventoryCounting,
   CountingDashboard,
@@ -101,6 +101,19 @@ export const countingApi = {
       quantity,
       notes,
     })
+  },
+
+  // Opening-cost backfill (D3). `unitCost` is a canonical decimal STRING (6 d.p.
+  // ceiling) — never parsed through a JS number.
+  setOpeningCost: async (
+    countingId: number,
+    itemId: number,
+    unitCost: string
+  ): Promise<void> => {
+    await apiPatch(
+      `${BASE_URL}/${String(countingId)}/items/${String(itemId)}/opening-cost`,
+      { unit_cost: unitCost }
+    )
   },
 
   // Report

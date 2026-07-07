@@ -13,6 +13,7 @@ use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\InventoryScale;
+use App\Modules\Inventory\Domain\Services\FirstCountDetector;
 use App\Modules\Inventory\Domain\Services\MovementReplayService;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
@@ -33,9 +34,16 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
      */
     public int $backoff = 10;
 
+    /**
+     * Cost scale (COST_SCALE = 6) — matches `opening_unit_cost`'s
+     * `decimal(_,6)` storage and StockAdjustmentService/WeightedAverageCostService.
+     */
+    private const COST_SCALE = 6;
+
     public function __construct(
         private readonly StockAdjustmentService $stockAdjustmentService,
         private readonly MovementReplayService $replayService,
+        private readonly FirstCountDetector $firstCountDetector,
     ) {}
 
     public function handle(InventoryCountingCompleted $event): void
@@ -172,6 +180,20 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
 
         $openingUnitCost = $this->resolveOpeningUnitCost($item, $counting->company_id);
 
+        // An onboarding FIRST count with no resolvable opening cost must NOT
+        // post at zero cost — block it and leave it for cost backfill via the
+        // opening-cost endpoint. A subsequent (non-first) count posts a normal
+        // correction where cost is irrelevant, so gate on first-count too.
+        if (
+            $onboarding
+            && $openingUnitCost === null
+            && $this->firstCountDetector->isFirstCount($item->product_id, $item->location_id, $item->variant_id)
+        ) {
+            $this->flagItem($item, CountingItemFlagReason::PendingOpeningCost, $asOf);
+
+            return false;
+        }
+
         /** @var numeric-string $finalQty */
         $finalQty = (string) $item->final_qty;
 
@@ -198,24 +220,21 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         $expectedAtApply = $audit->expectedAtApply;
         $item->expected_qty_at_apply = $expectedAtApply;
         $item->replay_audit = $audit->toArray();
-
-        // An opening posted with no cost is not blocked, but is flagged so the
-        // review page can backfill the cost.
-        if ($onboarding && $openingUnitCost === null) {
-            $item->is_flagged = true;
-            if ($item->flag_reason === null) {
-                $item->flag_reason = 'pending_opening_cost';
-            }
-        }
-
         $item->save();
 
         return true;
     }
 
     /**
-     * Opening cost for the line: the review-page override when present, else the
-     * product's current cost. May be null (cost-less opening — not blocking).
+     * Opening cost for the line, with a zero-as-missing rule (D3).
+     *
+     * An EXPLICIT item-level `opening_unit_cost` (set via the opening-cost
+     * endpoint) always wins — even '0', which is a deliberate zero-cost opening.
+     * When it is unset, the product's `cost_price` is a fallback ONLY when it is
+     * strictly positive: `cost_price` defaults to '0' and is never null, so a
+     * zero fallback would silently establish a zero-cost opening. A non-positive
+     * fallback therefore resolves to null (MISSING) — the caller blocks the
+     * first-count opening with a `pending_opening_cost` flag instead of posting.
      *
      * @return numeric-string|null
      */
@@ -238,6 +257,11 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
 
         /** @var numeric-string $cost */
         $cost = (string) $costPrice;
+
+        // Non-positive product cost is treated as MISSING for opening lines.
+        if (bccomp($cost, '0', self::COST_SCALE) <= 0) {
+            return null;
+        }
 
         return $cost;
     }

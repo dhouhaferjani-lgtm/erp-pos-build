@@ -11,6 +11,23 @@ import {
   useFinalizeCounting,
   useReconciliation,
 } from '../api/queries'
+import { isBlockingFlag, type ReconciliationItem } from '../types'
+
+// A line that must be resolved before the session can finalize: still pending,
+// an onboarding opening awaiting its cost, or carrying an unresolved blocking
+// flag (basket_window / negative_at_apply / clock_skew) with no final qty yet.
+function itemBlocksFinalize(item: ReconciliationItem): boolean {
+  if (item.resolution_method === 'pending') {
+    return true
+  }
+
+  const reasons = item.flag_reasons ?? []
+  if (reasons.includes('pending_opening_cost') && item.opening_unit_cost === null) {
+    return true
+  }
+
+  return reasons.some(isBlockingFlag) && item.final_qty === null
+}
 
 export function CountingReviewPage() {
   const { t } = useTranslation('inventory')
@@ -32,9 +49,13 @@ export function CountingReviewPage() {
     )
   }
 
+  const lateSalesFlags = reconciliation?.late_sales_flags ?? []
+  const hasBlockingItem = (reconciliation?.items ?? []).some(itemBlocksFinalize)
+
   const canFinalize =
     counting.status === 'pending_review' &&
-    reconciliation?.summary.needs_attention === 0
+    reconciliation?.summary.needs_attention === 0 &&
+    !hasBlockingItem
 
   const handleFinalize = () => {
     finalize.mutate(countingId, {
@@ -97,6 +118,23 @@ export function CountingReviewPage() {
             </p>
             <p className="text-sm text-amber-700 mt-1">
               {t('counting.review.resolveBeforeFinalize')}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Late-sale flags captured during the block window */}
+      {lateSalesFlags.length > 0 && (
+        <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <AlertTriangle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium text-blue-800">
+              {t('counting.review.lateSalesDetected', {
+                count: lateSalesFlags.length,
+              })}
+            </p>
+            <p className="text-sm text-blue-700 mt-1">
+              {t('counting.review.lateSalesDescription')}
             </p>
           </div>
         </div>

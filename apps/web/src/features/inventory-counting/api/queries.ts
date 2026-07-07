@@ -222,6 +222,28 @@ export function useManualOverride(countingId: number) {
   })
 }
 
+export function useSetOpeningCost(countingId: number) {
+  const queryClient = useQueryClient()
+  const { t } = useTranslation('inventory')
+
+  return useMutation({
+    mutationFn: ({ itemId, unitCost }: { itemId: number; unitCost: string }) =>
+      countingApi.setOpeningCost(countingId, itemId, unitCost),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: tenantScopedKey([...countingKeys.reconciliation(countingId)]),
+        }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey([...countingKeys.detail(countingId)]) }),
+      ])
+      toast.success(t('counting.messages.openingCostUpdated'))
+    },
+    onError: (error: Error) => {
+      toast.error(t('counting.messages.openingCostFailed', { error: error.message }))
+    },
+  })
+}
+
 export function useExportReport() {
   const { t } = useTranslation('inventory')
 

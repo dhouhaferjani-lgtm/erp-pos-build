@@ -47,12 +47,12 @@
       "received": "Received",
       "drafts": "Drafts"
     },
-  "status": {
-    "draft": "Draft",
-    "pending": "Pending",
-    "partial": "Partial",
-    "received": "Received"
-  },
+    "status": {
+      "draft": "Draft",
+      "pending": "Pending",
+      "partial": "Partial",
+      "received": "Received"
+    },
     "emptyPending": "No pending receipts",
     "emptyPendingHint": "Confirmed purchase orders will appear here for receiving",
     "emptyReceived": "No received orders yet",
@@ -762,7 +762,11 @@
       "finalQuantity": "Final Quantity",
       "overrideReason": "Reason for Override",
       "overrideReasonPlaceholder": "Explain why you are overriding the count…",
-      "applyOverride": "Apply Override"
+      "applyOverride": "Apply Override",
+      "expectedNow": "Expected now",
+      "movementsSinceCount": "Movements since count",
+      "openingCost": "Opening cost",
+      "saveCost": "Save"
     },
     "review": {
       "title": "Review",
@@ -772,7 +776,10 @@
       "finalizeConfirm": {
         "title": "Finalize Counting?",
         "description": "This will create stock adjustments based on the final quantities. This action cannot be undone."
-      }
+      },
+      "lateSalesDetected_one": "{{count}} late sale recorded during the count",
+      "lateSalesDetected_other": "{{count}} late sales recorded during the count",
+      "lateSalesDescription": "Sales occurred while this count was in progress and are reflected in the replay."
     },
     "report": {
       "title": "Discrepancy Report",
@@ -812,7 +819,16 @@
       "reportDownloaded": "Report downloaded",
       "exportFailed": "Failed to export report: {{error}}",
       "reminderSent": "Reminder sent successfully",
-      "reminderFailed": "Failed to send reminder: {{error}}"
+      "reminderFailed": "Failed to send reminder: {{error}}",
+      "openingCostUpdated": "Opening cost updated",
+      "openingCostFailed": "Failed to update opening cost: {{error}}"
+    },
+    "flags": {
+      "basket_window": "Sale in basket window",
+      "negative_at_apply": "Negative stock at apply",
+      "clock_skew": "Clock skew detected",
+      "pending_opening_cost": "Opening cost required",
+      "normalized_agreement": "Normalized agreement"
     }
   },
   "categories": {
