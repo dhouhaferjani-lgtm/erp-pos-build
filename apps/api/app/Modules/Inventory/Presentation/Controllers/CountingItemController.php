@@ -11,6 +11,7 @@ use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
+use App\Modules\Inventory\Domain\Services\OpeningCostGate;
 use App\Modules\Inventory\Presentation\Requests\ManualOverrideRequest;
 use App\Modules\Inventory\Presentation\Requests\SetOpeningCostRequest;
 use App\Modules\Inventory\Presentation\Requests\SubmitCountRequest;
@@ -24,6 +25,7 @@ class CountingItemController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly InventoryCountingService $countingService,
+        private readonly OpeningCostGate $openingCostGate,
     ) {}
 
     /**
@@ -195,7 +197,17 @@ class CountingItemController extends Controller
         return response()->json([
             'data' => [
                 'summary' => $summary,
-                'items' => $items->map(fn ($item) => [
+                'items' => $items->map(function ($item) {
+                    // Pre-finalize opening-cost signal (D3). `will_post_as_opening`
+                    // and `opening_cost_missing` come from OpeningCostGate — the
+                    // SAME computation the finalize gate enforces — so the review
+                    // page can flag/gate cost-less openings BEFORE finalize
+                    // instead of relying on the post-finalize `pending_opening_cost`
+                    // flag (which is inert here and unfixable after finalize).
+                    $onboarding = (bool) $item->location->onboarding_mode;
+                    $gate = $this->openingCostGate->evaluateItem($item, $onboarding);
+
+                    return [
                     'id' => $item->id,
                     'product' => [
                         'id' => $item->product->id,
@@ -237,7 +249,12 @@ class CountingItemController extends Controller
                     'replay_audit' => $item->replay_audit,
                     'flag_reasons' => $item->flag_reasons,
                     'opening_unit_cost' => $item->opening_unit_cost,
-                ])->all(),
+                    // Pre-finalize opening-cost gate signals (D3): drive the
+                    // review-page cost cell + finalize gate. Additive.
+                    'will_post_as_opening' => $gate['will_post_as_opening'],
+                    'opening_cost_missing' => $gate['opening_cost_missing'],
+                    ];
+                })->all(),
                 // Late-sale flags captured on the session during the block
                 // window — surfaced as a review banner.
                 'late_sales_flags' => $counting->late_sales_flags ?? [],
@@ -248,12 +265,13 @@ class CountingItemController extends Controller
     /**
      * Backfill / override an onboarding line's opening unit cost (D3).
      *
-     * Only sensible while the line is pre-post: once the counting is finalized
-     * AND this item was already posted (not flagged, replay audit recorded), the
-     * opening balance is immutable, so mutating the cost would be a silent no-op
-     * against the ledger — reject with 422. Flagged (unposted) items, including
-     * `pending_opening_cost`, remain editable so the cost can be supplied before
-     * the re-finalize path posts them.
+     * Editable only while the counting is PRE-finalize (draft through
+     * pending_review). The opening-cost gate now runs before finalize
+     * (InventoryCountingService::finalize), so by design no cost-less opening
+     * ever reaches a finalized counting. A Finalized counting has no outgoing
+     * transition and therefore NO re-post path — a cost written afterwards could
+     * never post, so it would silently strand against the ledger; a Cancelled
+     * counting posts nothing at all. Both are rejected with 422.
      */
     public function setOpeningCost(
         SetOpeningCostRequest $request,
@@ -267,12 +285,9 @@ class CountingItemController extends Controller
         $item = InventoryCountingItem::where('counting_id', $counting->id)
             ->findOrFail($itemId);
 
-        if (
-            $counting->status === CountingStatus::Finalized
-            && ! $item->is_flagged
-            && $item->replay_audit !== null
-        ) {
-            abort(422, 'Cannot change opening cost: this item has already been posted.');
+        if (in_array($counting->status, [CountingStatus::Finalized, CountingStatus::Cancelled], true)) {
+            abort(422, 'Cannot change opening cost: this counting is '.$counting->status->value.
+                ' and has no re-post path. The opening-cost gate runs before finalize.');
         }
 
         $item->opening_unit_cost = $request->unitCost();

@@ -12,15 +12,18 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
+use App\Modules\Inventory\Application\Services\InventoryCountingService;
 use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
+use App\Modules\Inventory\Domain\Exceptions\OpeningCostRequiredException;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -29,6 +32,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -227,8 +231,11 @@ final class OpeningCostEndpointTest extends TestCase
         )->assertStatus(422);
     }
 
-    public function test_finalized_but_flagged_pending_item_is_still_editable(): void
+    public function test_finalized_counting_rejects_opening_cost_edit_even_when_flagged(): void
     {
+        // Post-fix: the opening-cost gate runs BEFORE finalize, so a finalized
+        // counting has no re-post path — a cost written now could never post.
+        // Reject with 422 regardless of the item's flag state.
         $counting = $this->counting(CountingStatus::Finalized);
         $item = $this->item($counting, [
             'flag_reasons' => [CountingItemFlagReason::PendingOpeningCost->value],
@@ -238,10 +245,109 @@ final class OpeningCostEndpointTest extends TestCase
         $this->actingAs($this->admin)->patchJson(
             "/api/v1/inventory/countings/{$counting->id}/items/{$item->id}/opening-cost",
             ['unit_cost' => '4.25'],
+        )->assertStatus(422);
+
+        $item->refresh();
+        $this->assertNull($item->opening_unit_cost);
+    }
+
+    public function test_cancelled_counting_rejects_opening_cost_edit(): void
+    {
+        $counting = $this->counting(CountingStatus::Cancelled);
+        $item = $this->item($counting, ['opening_unit_cost' => null]);
+
+        $this->actingAs($this->admin)->patchJson(
+            "/api/v1/inventory/countings/{$counting->id}/items/{$item->id}/opening-cost",
+            ['unit_cost' => '4.25'],
+        )->assertStatus(422);
+
+        $item->refresh();
+        $this->assertNull($item->opening_unit_cost);
+    }
+
+    public function test_pending_review_counting_allows_opening_cost_edit(): void
+    {
+        // Pre-finalize (the gate's editable window) — the reviewer can still
+        // supply or zero the cost.
+        $counting = $this->counting(CountingStatus::PendingReview);
+        $item = $this->item($counting, ['opening_unit_cost' => null]);
+
+        $this->actingAs($this->admin)->patchJson(
+            "/api/v1/inventory/countings/{$counting->id}/items/{$item->id}/opening-cost",
+            ['unit_cost' => '4.25'],
         )->assertStatus(200);
 
         $item->refresh();
         $this->assertSame('4.250000', $item->opening_unit_cost);
+    }
+
+    // ================= pre-finalize opening-cost gate (full flow) =================
+
+    public function test_pre_finalize_gate_blocks_then_allows_after_cost_backfill(): void
+    {
+        // Fake only the finalize event so the queued stock listener does not
+        // auto-run on finalize; we fire it explicitly at step 5 to assert the
+        // posted opening (mirrors ReplayFinalizeTest).
+        Event::fake([InventoryCountingCompleted::class]);
+
+        // Onboarding location (setUp), zero-cost product, no prior baseline
+        // movement → a first-count opening with a MISSING cost.
+        $counting = $this->counting(CountingStatus::PendingReview);
+        $item = $this->item($counting, ['opening_unit_cost' => null]);
+
+        // 1. Reconciliation payload surfaces the PRE-finalize signals.
+        $recon = $this->actingAs($this->admin)->getJson(
+            "/api/v1/inventory/countings/{$counting->id}/reconciliation",
+        );
+        $recon->assertOk();
+        $row = collect($recon->json('data.items'))->firstWhere('id', $item->id);
+        $this->assertTrue($row['will_post_as_opening']);
+        $this->assertTrue($row['opening_cost_missing']);
+
+        // 2. Finalize is REJECTED (server-side gate → domain exception / 422).
+        $service = app(InventoryCountingService::class);
+        try {
+            $service->finalize($counting->fresh() ?? $counting, $this->admin);
+            $this->fail('Expected OpeningCostRequiredException');
+        } catch (OpeningCostRequiredException $e) {
+            $this->assertStringContainsString('OC Product', $e->getMessage());
+        }
+        $this->assertSame(CountingStatus::PendingReview, $counting->fresh()->status);
+
+        // 3. Backfill the cost via the endpoint.
+        $this->actingAs($this->admin)->patchJson(
+            "/api/v1/inventory/countings/{$counting->id}/items/{$item->id}/opening-cost",
+            ['unit_cost' => '2.5'],
+        )->assertStatus(200);
+
+        // opening_cost_missing now clears in the payload.
+        $recon2 = $this->actingAs($this->admin)->getJson(
+            "/api/v1/inventory/countings/{$counting->id}/reconciliation",
+        );
+        $row2 = collect($recon2->json('data.items'))->firstWhere('id', $item->id);
+        $this->assertTrue($row2['will_post_as_opening']);
+        $this->assertFalse($row2['opening_cost_missing']);
+
+        // 4. Finalize now SUCCEEDS.
+        $service->finalize($counting->fresh() ?? $counting, $this->admin);
+        $this->assertSame(CountingStatus::Finalized, $counting->fresh()->status);
+
+        // 5. The finalize listener posts the opening movement with the
+        //    backfilled cost and the counted quantity — nothing flagged.
+        $this->fire($counting->fresh() ?? $counting);
+
+        $item->refresh();
+        $this->assertNotContains(
+            CountingItemFlagReason::PendingOpeningCost->value,
+            $item->flag_reasons ?? [],
+        );
+
+        $opening = StockMovement::where('product_id', $this->product->id)
+            ->where('movement_type', MovementType::Opening->value)
+            ->first();
+        $this->assertNotNull($opening);
+        $this->assertSame(0, bccomp((string) $opening->unit_cost, '2.5', 6));
+        $this->assertSame('10.0000', StockLevel::where('product_id', $this->product->id)->value('quantity'));
     }
 
     // ================= listener gap fix =================

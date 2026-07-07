@@ -194,6 +194,16 @@ export interface ReconciliationItem {
   replay_audit: ReplayAudit | null
   flag_reasons: string[] | null
   opening_unit_cost: string | null
+
+  // Pre-finalize opening-cost gate signals (D3 fix). Computed server-side by
+  // OpeningCostGate — the SAME computation the finalize gate enforces — so the
+  // review page flags/gates cost-less openings BEFORE finalize instead of
+  // relying on the post-finalize `pending_opening_cost` flag (inert pre-finalize,
+  // unfixable post-finalize). `will_post_as_opening`: this line will post as an
+  // onboarding opening balance. `opening_cost_missing`: it will, and still has no
+  // resolvable positive cost (item cost unset AND product cost_price ≤ 0).
+  will_post_as_opening: boolean
+  opening_cost_missing: boolean
 }
 
 export interface CountingDashboard {

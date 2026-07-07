@@ -10,6 +10,7 @@ use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
+use App\Modules\Inventory\Domain\Exceptions\OpeningCostRequiredException;
 use App\Modules\Inventory\Domain\Exceptions\OverlappingCountingException;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingAssignment;
@@ -17,6 +18,7 @@ use App\Modules\Inventory\Domain\InventoryCountingEvent;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\InventoryScale;
 use App\Modules\Inventory\Domain\ProductZoneAssignment;
+use App\Modules\Inventory\Domain\Services\OpeningCostGate;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Product;
 use Carbon\CarbonInterface;
@@ -52,6 +54,7 @@ class InventoryCountingService
     public function __construct(
         private readonly CountingReconciliationService $reconciliationService,
         private readonly ZoneService $zoneService,
+        private readonly OpeningCostGate $openingCostGate,
     ) {}
 
     /**
@@ -903,6 +906,13 @@ class InventoryCountingService
         // different activation path, or an unexpected item added mid-flight).
         $this->assertNoOverlappingActiveCounting($counting);
 
+        // Pre-finalize opening-cost gate (D3): a cost-less onboarding opening
+        // must be caught BEFORE the transition to Finalized. Finalized has no
+        // outgoing transition, so a cost backfilled afterwards could never post
+        // — the counted quantity would be silently stranded. Reject here so the
+        // reviewer supplies (or explicitly zeroes) the cost first.
+        $this->assertOpeningCostsResolved($counting);
+
         DB::transaction(function () use ($counting, $user): void {
             // Freeze each auto-resolved item's replay boundary before the
             // finalize event fires (the queued listener reads final_qty_as_of to
@@ -1050,6 +1060,43 @@ class InventoryCountingService
             completedBy: (string) $user->id,
             completedAt: now()->toIso8601String(),
         ));
+    }
+
+    /**
+     * Pre-finalize opening-cost gate (D3, spec §5): reject finalize when any
+     * line that WILL post as an onboarding opening balance still lacks a
+     * resolvable positive cost. Uses OpeningCostGate — the SAME computation the
+     * web review payload surfaces (`opening_cost_missing`) — so the FE gate and
+     * the server guarantee never diverge. Items with no `final_qty` post
+     * nothing and are skipped. Reads items fresh (with `product`) so a cost
+     * backfilled via the opening-cost endpoint since load is honoured.
+     *
+     * @throws OpeningCostRequiredException
+     */
+    private function assertOpeningCostsResolved(InventoryCounting $counting): void
+    {
+        /** @var Collection<int, InventoryCountingItem> $items */
+        $items = $counting->items()->with(['product', 'location'])->get();
+
+        $missing = [];
+        foreach ($items as $item) {
+            if ($item->final_qty === null) {
+                continue;
+            }
+
+            $onboarding = (bool) $item->location->onboarding_mode;
+            $result = $this->openingCostGate->evaluateItem($item, $onboarding);
+
+            if (! $result['opening_cost_missing']) {
+                continue;
+            }
+
+            $missing[] = $item->product->name.' ('.$item->product->sku.')';
+        }
+
+        if ($missing !== []) {
+            throw new OpeningCostRequiredException(array_values(array_unique($missing)));
+        }
     }
 
     /**

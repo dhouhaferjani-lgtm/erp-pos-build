@@ -58,6 +58,8 @@ function makeItem(overrides: Partial<ReconciliationItem> = {}): ReconciliationIt
     },
     flag_reasons: null,
     opening_unit_cost: null,
+    will_post_as_opening: false,
+    opening_cost_missing: false,
     ...overrides,
   }
 }
@@ -122,13 +124,15 @@ describe('ReconciliationTable replay columns + flags', () => {
     expect(informational.className).toContain('gray')
   })
 
-  it('PATCHes opening cost from the backfill cell', async () => {
+  it('PATCHes opening cost from the backfill cell when the line will post as opening', async () => {
     const user = userEvent.setup()
     h.reconciliation = makeReconciliation([
+      // Pre-finalize signal drives the editable cell — NOT the post-finalize
+      // pending_opening_cost flag (which is absent during pending_review).
       makeItem({
         id: 42,
-        flag_reasons: ['pending_opening_cost'],
-        is_flagged: true,
+        will_post_as_opening: true,
+        opening_cost_missing: true,
         opening_unit_cost: null,
       }),
     ])
@@ -139,6 +143,28 @@ describe('ReconciliationTable replay columns + flags', () => {
     await user.click(screen.getByText('counting.reconciliation.saveCost'))
 
     expect(h.setOpeningCostMutate).toHaveBeenCalledWith({ itemId: 42, unitCost: '3.5' })
+  })
+
+  it('shows a static cost cell (no input) when the line will not post as opening', () => {
+    h.reconciliation = makeReconciliation([
+      makeItem({ will_post_as_opening: false, opening_unit_cost: null }),
+    ])
+    render(<ReconciliationTable countingId={7} />)
+
+    expect(
+      screen.queryByLabelText('counting.reconciliation.openingCost')
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows a "not posted — recount" hint for skipped-at-apply flags', () => {
+    h.reconciliation = makeReconciliation([
+      makeItem({ flag_reasons: ['basket_window'], is_flagged: true }),
+    ])
+    render(<ReconciliationTable countingId={7} />)
+
+    expect(screen.getByTestId('flag-hint-not-posted')).toHaveTextContent(
+      'counting.flags.notPostedRecount'
+    )
   })
 })
 
@@ -151,11 +177,11 @@ describe('CountingReviewPage finalize gating', () => {
     expect(btn).not.toBeDisabled()
   })
 
-  it('disables finalize when an opening line is missing its cost', () => {
+  it('disables finalize when an opening line is missing its cost (pre-finalize signal)', () => {
     h.reconciliation = makeReconciliation([
       makeItem({
-        flag_reasons: ['pending_opening_cost'],
-        is_flagged: true,
+        will_post_as_opening: true,
+        opening_cost_missing: true,
         opening_unit_cost: null,
       }),
     ])
@@ -163,6 +189,20 @@ describe('CountingReviewPage finalize gating', () => {
 
     const btn = screen.getByRole('button', { name: /counting\.actions\.finalize/ })
     expect(btn).toBeDisabled()
+  })
+
+  it('enables finalize once an opening line has its cost (opening_cost_missing false)', () => {
+    h.reconciliation = makeReconciliation([
+      makeItem({
+        will_post_as_opening: true,
+        opening_cost_missing: false,
+        opening_unit_cost: '2.500000',
+      }),
+    ])
+    renderReviewPage()
+
+    const btn = screen.getByRole('button', { name: /counting\.actions\.finalize/ })
+    expect(btn).not.toBeDisabled()
   })
 
   it('disables finalize when an item carries an unresolved blocking flag', () => {

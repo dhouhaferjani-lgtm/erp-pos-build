@@ -828,7 +828,8 @@
       "negative_at_apply": "Stock négatif à l'application",
       "clock_skew": "Décalage d'horloge détecté",
       "pending_opening_cost": "Coût d'ouverture requis",
-      "normalized_agreement": "Accord normalisé"
+      "normalized_agreement": "Accord normalisé",
+      "notPostedRecount": "Non enregistré — recomptez cet article dans une nouvelle session"
     }
   },
   "categories": {

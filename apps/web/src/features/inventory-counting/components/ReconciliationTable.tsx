@@ -15,18 +15,15 @@ import { formatQuantity, formatCurrency } from '@/lib/decimal'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
 import { useCurrency } from '@/hooks/useCurrency'
 
-// An onboarding opening line whose cost still needs to be supplied before it can
-// post. `pending_opening_cost` is stamped by the finalize listener; the cost is
-// considered supplied once `opening_unit_cost` is non-null.
-function isOpeningMissingCost(item: ReconciliationItem): boolean {
-  return (
-    (item.flag_reasons ?? []).includes('pending_opening_cost') &&
-    item.opening_unit_cost === null
-  )
-}
+// Post-finalize backstop reasons: a line the replay skipped at apply time
+// (basket-window ambiguity or negative-at-apply) that was therefore NOT posted.
+// The deliberate v1 recovery path is a recount in a NEW session — surfaced as a
+// hint under the chip so the reviewer knows the quantity is not in stock yet.
+const NOT_POSTED_RECOUNT_REASONS = new Set(['basket_window', 'negative_at_apply'])
 
 // Chips for every flag reason on an item — blocking reasons use a warning style,
-// informational reasons (normalized_agreement) a muted style.
+// informational reasons (normalized_agreement) a muted style. Skipped-at-apply
+// reasons additionally show a "not posted — recount in a new session" hint.
 function FlagChips({ item }: { item: ReconciliationItem }) {
   const { t } = useTranslation('inventory')
   const reasons = item.flag_reasons ?? []
@@ -34,6 +31,8 @@ function FlagChips({ item }: { item: ReconciliationItem }) {
   if (reasons.length === 0) {
     return null
   }
+
+  const showRecountHint = reasons.some((r) => NOT_POSTED_RECOUNT_REASONS.has(r))
 
   return (
     <div className="mt-1 flex flex-wrap gap-1">
@@ -55,6 +54,14 @@ function FlagChips({ item }: { item: ReconciliationItem }) {
           </span>
         )
       })}
+      {showRecountHint && (
+        <span
+          data-testid="flag-hint-not-posted"
+          className="w-full text-xs text-gray-500 italic"
+        >
+          {t('counting.flags.notPostedRecount')}
+        </span>
+      )}
     </div>
   )
 }
@@ -111,8 +118,10 @@ function CountCell({ count, matchesTheoretical }: CountCellProps) {
   )
 }
 
-// Inline opening-cost backfill cell for onboarding lines missing a cost. Emits
-// a canonical decimal STRING (never a JS number) via MoneyInput.
+// Inline opening-cost backfill cell for onboarding opening lines. Editable
+// whenever the line WILL post as an opening (`will_post_as_opening`, computed
+// pre-finalize) so the reviewer can enter — or explicitly zero — the cost before
+// finalize. Emits a canonical decimal STRING (never a JS number) via MoneyInput.
 function OpeningCostCell({
   item,
   onSave,
@@ -124,9 +133,9 @@ function OpeningCostCell({
 }) {
   const { t } = useTranslation('inventory')
   const { currency } = useCurrency()
-  const [cost, setCost] = useState('')
+  const [cost, setCost] = useState(item.opening_unit_cost ?? '')
 
-  if (!isOpeningMissingCost(item)) {
+  if (!item.will_post_as_opening) {
     return (
       <span className="font-mono text-sm">
         {item.opening_unit_cost === null

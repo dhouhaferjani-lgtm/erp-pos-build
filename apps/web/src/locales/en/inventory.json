@@ -828,7 +828,8 @@
       "negative_at_apply": "Negative stock at apply",
       "clock_skew": "Clock skew detected",
       "pending_opening_cost": "Opening cost required",
-      "normalized_agreement": "Normalized agreement"
+      "normalized_agreement": "Normalized agreement",
+      "notPostedRecount": "Not posted — recount this item in a new session"
     }
   },
   "categories": {

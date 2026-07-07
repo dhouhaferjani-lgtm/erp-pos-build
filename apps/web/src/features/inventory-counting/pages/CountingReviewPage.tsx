@@ -16,17 +16,21 @@ import { isBlockingFlag, type ReconciliationItem } from '../types'
 // A line that must be resolved before the session can finalize: still pending,
 // an onboarding opening awaiting its cost, or carrying an unresolved blocking
 // flag (basket_window / negative_at_apply / clock_skew) with no final qty yet.
+//
+// The opening-cost gate keys off the PRE-finalize `opening_cost_missing` signal
+// (computed server-side by OpeningCostGate — the same computation the server's
+// finalize gate enforces), NOT the post-finalize `pending_opening_cost` flag,
+// which is only stamped after finalize and is inert on this pending_review page.
 function itemBlocksFinalize(item: ReconciliationItem): boolean {
   if (item.resolution_method === 'pending') {
     return true
   }
 
-  const reasons = item.flag_reasons ?? []
-  if (reasons.includes('pending_opening_cost') && item.opening_unit_cost === null) {
+  if (item.opening_cost_missing) {
     return true
   }
 
-  return reasons.some(isBlockingFlag) && item.final_qty === null
+  return (item.flag_reasons ?? []).some(isBlockingFlag) && item.final_qty === null
 }
 
 export function CountingReviewPage() {
