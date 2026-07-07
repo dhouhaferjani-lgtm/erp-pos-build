@@ -944,7 +944,21 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         // inside the block window, the sale is ACCEPTED (stock already moved
         // above) and we append {receipt_id, occurred_at} to the counting's
         // `late_sales_flags` so review can reconcile the leak.
-        $this->flagLateSaleForActiveBlock($receiptId, $event, $terminal);
+        //
+        // The flag-append is ADVISORY ONLY — replay reconciles via occurred_at
+        // regardless. A counting-subsystem exception (service lookup, lock,
+        // JSON append, save) must NEVER fail/retry the fiscal projector, so we
+        // wrap in try/catch and swallow.
+        try {
+            $this->flagLateSaleForActiveBlock($receiptId, $event, $terminal);
+        } catch (\Throwable $e) {
+            Log::warning('PosCoreReceiptProjection: late-sale flag-append failed (advisory, sale unaffected)', [
+                'fiscal_event_id' => $event->id,
+                'receipt_id' => $receiptId,
+                'location_id' => $terminal->location_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
