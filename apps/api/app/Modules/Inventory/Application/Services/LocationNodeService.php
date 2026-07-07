@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Application\Services;
 use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Modules\Inventory\Domain\LocationNode;
 use App\Modules\Inventory\Domain\NodeCode;
+use App\Modules\Inventory\Domain\ProductPlacement;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -127,6 +128,73 @@ final class LocationNodeService
             $this->recomputeSubtreePath($node);
 
             return $node->refresh();
+        });
+    }
+
+    /**
+     * Tombstone a node, its whole subtree, and their live placements in ONE
+     * transaction — explicitly, never via FK cascade (cascade does not fire
+     * on soft-delete; spec D10). Refuses when live placements exist under the
+     * subtree unless $force.
+     */
+    public function softDeleteSubtree(LocationNode $node, bool $force = false): void
+    {
+        DB::transaction(function () use ($node, $force): void {
+            /** @var LocationNode $node */
+            $node = LocationNode::query()->lockForUpdate()->findOrFail($node->id);
+
+            /** @var list<string> $subtreeIds */
+            $subtreeIds = LocationNode::query()
+                ->atLocation($node->location_id)
+                ->subtreeOf($node->path)
+                ->pluck('id')
+                ->all();
+
+            $livePlacements = ProductPlacement::query()
+                ->whereIn('node_id', $subtreeIds)
+                ->count();
+
+            if ($livePlacements > 0 && ! $force) {
+                throw new InvalidArgumentException(
+                    "Subtree of node {$node->id} has {$livePlacements} live product placement(s); pass force to tombstone them too."
+                );
+            }
+
+            $now = now();
+
+            LocationNode::query()->whereIn('id', $subtreeIds)->update([
+                'deleted_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            ProductPlacement::query()->whereIn('node_id', $subtreeIds)->update([
+                'deleted_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+    }
+
+    /**
+     * Un-tombstone a single node (children stay deleted — restore is
+     * per-node). Fails when the code has been reused by a live sibling at the
+     * same location (the partial unique only covers live rows).
+     */
+    public function restoreNode(LocationNode $node): void
+    {
+        DB::transaction(function () use ($node): void {
+            $codeTaken = LocationNode::query()
+                ->atLocation($node->location_id)
+                ->where('code', $node->code)
+                ->whereKeyNot($node->id)
+                ->exists();
+
+            if ($codeTaken) {
+                throw new InvalidArgumentException(
+                    "Cannot restore node {$node->id}: code '{$node->code}' is used by a live node at this location."
+                );
+            }
+
+            $node->restore();
         });
     }
 
