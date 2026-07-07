@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\PurchaseOrderService;
 use App\Modules\Inventory\Application\DTOs\GoodsReceiptResult;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
+use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
@@ -113,7 +114,7 @@ final readonly class StandaloneReceiptService
         }
 
         try {
-            $receipt = DB::transaction(function () use ($purchaseOrder, $input): GoodsReceipt {
+            $receipt = DB::transaction(function () use ($purchaseOrder, $company, $input): GoodsReceipt {
                 $purchaseOrder->load('lines');
                 $maps = $this->receiptMaps($purchaseOrder, $input);
 
@@ -129,25 +130,25 @@ final readonly class StandaloneReceiptService
                     $input->externalDate,
                 );
 
-                if (! $input->postImmediately) {
-                    return $draft;
-                }
+                $receipt = $input->postImmediately
+                    ? $this->goodsReceiptService->post($draft, $input->actorId, true)
+                    : $draft;
 
-                return $this->goodsReceiptService->post($draft, $input->actorId, true);
+                DB::table('procurement_idempotency_keys')
+                    ->where('company_id', $company->id)
+                    ->where('idempotency_key', $input->idempotencyKey)
+                    ->update([
+                        'goods_receipt_id' => $receipt->id,
+                        'updated_at' => now(),
+                    ]);
+
+                return $receipt;
             });
         } catch (\Throwable $exception) {
             $this->compensateFailedReceiptCreation($purchaseOrder, $company->id, $input);
 
             throw $exception;
         }
-
-        DB::table('procurement_idempotency_keys')
-            ->where('company_id', $company->id)
-            ->where('idempotency_key', $input->idempotencyKey)
-            ->update([
-                'goods_receipt_id' => $receipt->id,
-                'updated_at' => now(),
-            ]);
 
         /** @var Document $freshOrder */
         $freshOrder = $receipt->purchaseOrder->fresh(['lines']);
@@ -352,6 +353,29 @@ final readonly class StandaloneReceiptService
             ? Document::query()->with('lines')->find((string) $row->purchase_order_id)
             : null;
 
+        if ($purchaseOrder instanceof Document) {
+            /** @var GoodsReceipt|null $postedReceipt */
+            $postedReceipt = GoodsReceipt::query()
+                ->with('lines')
+                ->where('company_id', $companyId)
+                ->where('purchase_order_id', $purchaseOrder->id)
+                ->where('status', GoodsReceiptStatus::Posted)
+                ->orderBy('created_at')
+                ->first();
+
+            if ($postedReceipt instanceof GoodsReceipt) {
+                DB::table('procurement_idempotency_keys')
+                    ->where('company_id', $companyId)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->update([
+                        'goods_receipt_id' => $postedReceipt->id,
+                        'updated_at' => now(),
+                    ]);
+
+                return new GoodsReceiptResult($purchaseOrder, $postedReceipt);
+            }
+        }
+
         if ($purchaseOrder instanceof Document && $purchaseOrder->status === DocumentStatus::Confirmed) {
             return $purchaseOrder;
         }
@@ -366,6 +390,22 @@ final readonly class StandaloneReceiptService
 
     private function compensateFailedReceiptCreation(Document $purchaseOrder, string $companyId, StandaloneReceiptInput $input): void
     {
+        $postedReceiptExists = GoodsReceipt::query()
+            ->where('company_id', $companyId)
+            ->where('purchase_order_id', $purchaseOrder->id)
+            ->where('status', GoodsReceiptStatus::Posted)
+            ->exists();
+
+        if ($postedReceiptExists) {
+            Log::warning('Standalone receipt compensation skipped because a posted receipt exists for the purchase order.', [
+                'company_id' => $companyId,
+                'idempotency_key' => $input->idempotencyKey,
+                'purchase_order_id' => $purchaseOrder->id,
+            ]);
+
+            return;
+        }
+
         try {
             DB::transaction(function () use ($purchaseOrder, $companyId, $input): void {
                 $purchaseOrder->forceFill([
