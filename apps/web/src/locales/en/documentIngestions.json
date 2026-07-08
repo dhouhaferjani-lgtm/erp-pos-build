@@ -1,0 +1,99 @@
+{
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "commit": "Commit document",
+    "reExtract": "Re-run extraction",
+    "reject": "Reject",
+    "review": "Review",
+    "startExtraction": "Start extraction",
+    "upload": "Upload scan"
+  },
+  "fields": {
+    "confidence": "Confidence",
+    "file": "Source file",
+    "kind": "Document type",
+    "provider": "Provider",
+    "status": "Status"
+  },
+  "filters": {
+    "allKinds": "All document types",
+    "allStatuses": "All statuses"
+  },
+  "kinds": {
+    "supplier_delivery_note": "Delivery note",
+    "supplier_invoice": "Supplier invoice"
+  },
+  "list": {
+    "confidencePercent": "{{value}}%",
+    "empty": "No scans yet.",
+    "filters": "Scan filters",
+    "providerPending": "Pending",
+    "subtitle": "Upload supplier invoices and delivery notes, then review OCR extraction before committing.",
+    "title": "Document scans",
+    "unknownConfidence": "Unknown confidence"
+  },
+  "messages": {
+    "committed": "Document committed.",
+    "rejected": "Scan rejected.",
+    "uploaded": "Scan uploaded."
+  },
+  "review": {
+    "batchNumber": "Batch number",
+    "blockedReconciliation": "Reconciliation must be resolved before commit.",
+    "blockedStatus": "Only scans needing review can be committed.",
+    "blockedUnparseable": "Unparseable fields must be corrected before commit.",
+    "chooseLocation": "Choose a location",
+    "chooseProduct": "Choose a product",
+    "chooseSupplier": "Choose a supplier",
+    "committed": "Scan already committed",
+    "committedNoTarget": "The committed target is not available yet.",
+    "committedTarget": "{{type}} {{id}}",
+    "createSupplier": "Create supplier",
+    "expiryDate": "Expiry date",
+    "extractedFields": "Extracted fields",
+    "lines": "Lines",
+    "loading": "Loading scan…",
+    "location": "Location",
+    "meta": "{{provider}} / {{model}}",
+    "noExtraction": "Extraction is not available for this scan.",
+    "noSupplierRef": "No supplier reference",
+    "pages": "{{count}} page",
+    "pages_other": "{{count}} pages",
+    "pendingReceipt": "Goods not delivered yet",
+    "product": "Product",
+    "providerUnknown": "Unknown",
+    "quantity": "Quantity",
+    "reconciliationFlags": "Reconciliation flags",
+    "rejectConfirm": "Reject this scan?",
+    "source": "Source document",
+    "sourceLine": "Receipt line",
+    "sourceMissing": "Source preview is unavailable.",
+    "supplier": "Supplier",
+    "title": "Review scan",
+    "unitPrice": "Unit price",
+    "vatRate": "VAT rate"
+  },
+  "statuses": {
+    "committed": "Committed",
+    "committing": "Committing",
+    "extracting": "Extracting",
+    "failed": "Failed",
+    "needs_review": "Needs review",
+    "rejected": "Rejected",
+    "uploaded": "Uploaded"
+  },
+  "upload": {
+    "errors": {
+      "duplicate": "This source file is already in the scan queue.",
+      "fileRequired": "Choose a source file.",
+      "fileTooLarge": "The file is larger than the upload limit.",
+      "kindRequired": "Choose a document type."
+    },
+    "fileHint": "PDF or image up to 20 MB.",
+    "placeholders": {
+      "kind": "Choose a document type"
+    },
+    "title": "Upload scan"
+  }
+}

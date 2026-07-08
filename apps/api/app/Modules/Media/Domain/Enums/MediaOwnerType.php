@@ -10,6 +10,7 @@ enum MediaOwnerType: string
     case ProductVariant = 'PRODUCT_VARIANT';
     case Category = 'CATEGORY';
     case Document = 'DOCUMENT';
+    case DocumentIngestion = 'DOCUMENT_INGESTION';
 
     public function storageSegment(): string
     {
@@ -18,6 +19,7 @@ enum MediaOwnerType: string
             self::ProductVariant => 'product-variants',
             self::Category => 'categories',
             self::Document => 'documents',
+            self::DocumentIngestion => 'ingestions',
         };
     }
 }

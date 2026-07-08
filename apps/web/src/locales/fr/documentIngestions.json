@@ -1,0 +1,99 @@
+{
+  "actions": {
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "commit": "Valider le document",
+    "reExtract": "Relancer l'extraction",
+    "reject": "Rejeter",
+    "review": "Revoir",
+    "startExtraction": "Démarrer l'extraction",
+    "upload": "Téléverser un scan"
+  },
+  "fields": {
+    "confidence": "Confiance",
+    "file": "Fichier source",
+    "kind": "Type de document",
+    "provider": "Fournisseur",
+    "status": "Statut"
+  },
+  "filters": {
+    "allKinds": "Tous les types",
+    "allStatuses": "Tous les statuts"
+  },
+  "kinds": {
+    "supplier_delivery_note": "Bon de livraison",
+    "supplier_invoice": "Facture fournisseur"
+  },
+  "list": {
+    "confidencePercent": "{{value}} %",
+    "empty": "Aucun scan pour le moment.",
+    "filters": "Filtres des scans",
+    "providerPending": "En attente",
+    "subtitle": "Téléversez factures fournisseurs et bons de livraison, puis vérifiez l'extraction OCR avant validation.",
+    "title": "Scans de documents",
+    "unknownConfidence": "Confiance inconnue"
+  },
+  "messages": {
+    "committed": "Document validé.",
+    "rejected": "Scan rejeté.",
+    "uploaded": "Scan téléversé."
+  },
+  "review": {
+    "batchNumber": "Numéro de lot",
+    "blockedReconciliation": "La réconciliation doit être résolue avant validation.",
+    "blockedStatus": "Seuls les scans à revoir peuvent être validés.",
+    "blockedUnparseable": "Les champs illisibles doivent être corrigés avant validation.",
+    "chooseLocation": "Choisir un emplacement",
+    "chooseProduct": "Choisir un produit",
+    "chooseSupplier": "Choisir un fournisseur",
+    "committed": "Scan déjà validé",
+    "committedNoTarget": "La cible validée n'est pas encore disponible.",
+    "committedTarget": "{{type}} {{id}}",
+    "createSupplier": "Créer un fournisseur",
+    "expiryDate": "Date d'expiration",
+    "extractedFields": "Champs extraits",
+    "lines": "Lignes",
+    "loading": "Chargement du scan…",
+    "location": "Emplacement",
+    "meta": "{{provider}} / {{model}}",
+    "noExtraction": "L'extraction n'est pas disponible pour ce scan.",
+    "noSupplierRef": "Aucune référence fournisseur",
+    "pages": "{{count}} page",
+    "pages_other": "{{count}} pages",
+    "pendingReceipt": "Marchandise non livrée",
+    "product": "Produit",
+    "providerUnknown": "Inconnu",
+    "quantity": "Quantité",
+    "reconciliationFlags": "Alertes de réconciliation",
+    "rejectConfirm": "Rejeter ce scan ?",
+    "source": "Document source",
+    "sourceLine": "Ligne de réception",
+    "sourceMissing": "L'aperçu source est indisponible.",
+    "supplier": "Fournisseur",
+    "title": "Revue du scan",
+    "unitPrice": "Prix unitaire",
+    "vatRate": "Taux TVA"
+  },
+  "statuses": {
+    "committed": "Validé",
+    "committing": "Validation",
+    "extracting": "Extraction",
+    "failed": "Échoué",
+    "needs_review": "À revoir",
+    "rejected": "Rejeté",
+    "uploaded": "Téléversé"
+  },
+  "upload": {
+    "errors": {
+      "duplicate": "Ce fichier source est déjà dans la file des scans.",
+      "fileRequired": "Choisissez un fichier source.",
+      "fileTooLarge": "Le fichier dépasse la limite d'envoi.",
+      "kindRequired": "Choisissez un type de document."
+    },
+    "fileHint": "PDF ou image jusqu'à 20 Mo.",
+    "placeholders": {
+      "kind": "Choisir un type de document"
+    },
+    "title": "Téléverser un scan"
+  }
+}

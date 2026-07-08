@@ -21,6 +21,10 @@ export const PERMISSIONS = {
   'supplier-invoices.create-pending': ['admin', 'purchases', 'manager', 'accountant'],
   'supplier-invoices.link-receipts': ['admin', 'purchases', 'manager', 'accountant'],
   'supplier-invoices.approve-invoice-first': ['admin', 'manager', 'accountant'],
+  'document-ingestions.view': ['admin', 'purchases', 'manager', 'accountant'],
+  'document-ingestions.create': ['admin', 'purchases', 'manager'],
+  'document-ingestions.commit': ['admin', 'purchases', 'manager', 'accountant'],
+  'document-ingestions.reject': ['admin', 'purchases', 'manager'],
 
   // Inventory
   'inventory.view': ['admin', 'inventory', 'manager'],
@@ -224,6 +228,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   dashboard: ['dashboard.view'],
   sales: ['sales.view'],
   purchases: ['purchases.view'],
+  'document-ingestions': ['document-ingestions.view'],
   inventory: ['inventory.view'],
   expenses: ['expenses.view'],
   'expense-categories': ['expense-categories.view'],

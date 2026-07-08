@@ -1,0 +1,162 @@
+{
+  "doc_kind": "supplier_invoice",
+  "pages": 2,
+  "supplier": {
+    "name": {
+      "value": "PHARMA DISTRIBUTION FRANCE",
+      "confidence": 0.98,
+      "source_bbox": [0.101, 0.120, 0.480, 0.168]
+    },
+    "vat_number": {
+      "value": "FR12345678901",
+      "confidence": 0.96
+    },
+    "address": {
+      "value": "12 Rue des Laboratoires, 75002 Paris",
+      "confidence": 0.91
+    },
+    "iban": {
+      "value": "FR7612345987650123456789014",
+      "confidence": 0.88
+    }
+  },
+  "header": {
+    "number": {
+      "value": "FAC-2026-0715",
+      "confidence": 0.97
+    },
+    "issue_date": {
+      "value": "2026-07-01",
+      "confidence": 0.95
+    },
+    "due_date": {
+      "value": "2026-07-31",
+      "confidence": 0.92
+    },
+    "currency": {
+      "value": "TND",
+      "confidence": 0.90
+    },
+    "subtotal": {
+      "value": "244.750",
+      "confidence": 0.94
+    },
+    "tax_total": {
+      "value": "17.133",
+      "confidence": 0.93
+    },
+    "stamp_duty": {
+      "value": "1.000",
+      "confidence": 0.89
+    },
+    "grand_total": {
+      "value": "262.883",
+      "confidence": 0.95
+    }
+  },
+  "lines": [
+    {
+      "description": {
+        "value": "Doliprane 1000mg boîte 8 comprimés",
+        "confidence": 0.94
+      },
+      "supplier_ref": {
+        "value": "DOL1000-8",
+        "confidence": 0.91
+      },
+      "quantity": {
+        "value": "10.0000",
+        "confidence": 0.95
+      },
+      "unit_price": {
+        "value": "12.500",
+        "confidence": 0.93
+      },
+      "tax_rate": {
+        "value": "7.00",
+        "confidence": 0.90
+      },
+      "line_total": {
+        "value": "125.000",
+        "confidence": 0.95
+      },
+      "batch_number": {
+        "value": "B260701",
+        "confidence": 0.87
+      },
+      "expiry_date": {
+        "value": "2028-06-30",
+        "confidence": 0.86
+      }
+    },
+    {
+      "description": {
+        "value": "Spasfon comprimés enrobés",
+        "confidence": 0.93
+      },
+      "supplier_ref": {
+        "value": "SPA-30",
+        "confidence": 0.90
+      },
+      "quantity": {
+        "value": "5.0000",
+        "confidence": 0.96
+      },
+      "unit_price": {
+        "value": "18.750",
+        "confidence": 0.92
+      },
+      "tax_rate": {
+        "value": "7.00",
+        "confidence": 0.90
+      },
+      "line_total": {
+        "value": "93.750",
+        "confidence": 0.94
+      },
+      "batch_number": {
+        "value": "S260702",
+        "confidence": 0.84
+      },
+      "expiry_date": {
+        "value": "2027-12-31",
+        "confidence": 0.85
+      }
+    },
+    {
+      "description": {
+        "value": "Sérum physiologique 5ml x 40",
+        "confidence": 0.92
+      },
+      "supplier_ref": {
+        "value": "SER-PHY-40",
+        "confidence": 0.89
+      },
+      "quantity": {
+        "value": "2.0000",
+        "confidence": 0.95
+      },
+      "unit_price": {
+        "value": "13.000",
+        "confidence": 0.91
+      },
+      "tax_rate": {
+        "value": "7.00",
+        "confidence": 0.89
+      },
+      "line_total": {
+        "value": "26.000",
+        "confidence": 0.94
+      },
+      "batch_number": {
+        "value": "P260703",
+        "confidence": 0.83
+      },
+      "expiry_date": {
+        "value": "2029-03-31",
+        "confidence": 0.84
+      }
+    }
+  ],
+  "totals_consistent": true
+}

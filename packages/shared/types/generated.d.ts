@@ -726,6 +726,50 @@ export type ReturnCondition = 'unopened' | 'used' | 'damaged' | 'unusable';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_regret' | 'damaged_in_transit' | 'warranty' | 'exchange' | 'other';
 export type SupplierInvoiceMatchStatus = 'unmatched' | 'matched' | 'price_variance' | 'quantity_variance' | 'exception';
 }
+declare namespace App.Modules.DocumentIngestion.Application.DTO {
+export type ConfidenceSummaryData = {
+averageConfidence: number | null;
+lowConfidenceFields: Array<any>;
+reconciliation: App.Modules.DocumentIngestion.Application.DTO.ReconciliationData;
+};
+export type ExtractedFieldData = {
+value: string;
+confidence: number;
+sourceBbox: Array<any> | null;
+};
+export type ExtractedLineData = {
+description: App.Modules.DocumentIngestion.Application.DTO.ExtractedFieldData;
+supplierRef: App.Modules.DocumentIngestion.Application.DTO.ExtractedFieldData | null;
+quantity: App.Modules.DocumentIngestion.Application.DTO.ExtractedFieldData;
+unitPrice: App.Modules.DocumentIngestion.Application.DTO.ExtractedFieldData | null;
+taxRate: App.Modules.DocumentIngestion.Application.DTO.ExtractedFieldData | null;
+lineTotal: App.Modules.DocumentIngestion.Application.DTO.ExtractedFieldData | null;
+batchNumber: App.Modules.DocumentIngestion.Application.DTO.ExtractedFieldData | null;
+expiryDate: App.Modules.DocumentIngestion.Application.DTO.ExtractedFieldData | null;
+};
+export type ExtractionResultData = {
+docKind: string;
+pages: number;
+supplier: { [key: string]: App.Modules.DocumentIngestion.Application.DTO.ExtractedFieldData };
+header: { [key: string]: App.Modules.DocumentIngestion.Application.DTO.ExtractedFieldData };
+lines: Array<App.Modules.DocumentIngestion.Application.DTO.ExtractedLineData>;
+totalsConsistent: boolean;
+};
+export type ReconciliationData = {
+consistent: boolean;
+flags: Array<any>;
+};
+export type SuggestionsData = {
+supplierCandidates: Array<any>;
+productCandidates: Array<any>;
+purchaseOrderCandidates: Array<any>;
+receiptLineCandidates: Array<any>;
+};
+}
+declare namespace App.Modules.DocumentIngestion.Domain.Enums {
+export type DocumentKind = 'supplier_invoice' | 'supplier_delivery_note';
+export type IngestionStatus = 'uploaded' | 'extracting' | 'needs_review' | 'committing' | 'committed' | 'rejected' | 'failed';
+}
 declare namespace App.Modules.Expense.Domain.Enums {
 export type ExpenseKind = 'generic' | 'linked_cost';
 }
@@ -1132,7 +1176,7 @@ export type SellerType = 'erp_tenant' | 'external' | 'syneriva';
 }
 declare namespace App.Modules.Media.Domain.Enums {
 export type MediaAssetType = 'IMAGE' | 'DOCUMENT' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'SPIN_360';
-export type MediaOwnerType = 'PRODUCT' | 'PRODUCT_VARIANT' | 'CATEGORY' | 'DOCUMENT';
+export type MediaOwnerType = 'PRODUCT' | 'PRODUCT_VARIANT' | 'CATEGORY' | 'DOCUMENT' | 'DOCUMENT_INGESTION';
 export type MediaRole = 'PRIMARY' | 'GALLERY' | 'DATASHEET' | 'MANUAL' | 'VIDEO_POSTER' | 'SPIN' | 'SWATCH' | 'SOURCE_DOCUMENT';
 export type MediaSource = 'UPLOAD' | 'EXTERNAL_URL';
 export type MediaStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'FAILED';

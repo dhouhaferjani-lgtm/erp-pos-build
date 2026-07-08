@@ -55,6 +55,8 @@ const ReturnNoteDetailPage = lazy(() => import('../features/documents/return-not
 // Purchases module
 const GoodsReceiptListPage = lazy(() => import('../features/purchases/GoodsReceiptListPage').then((m) => ({ default: m.GoodsReceiptListPage })))
 const StandaloneReceiptPage = lazy(() => import('../features/purchases/StandaloneReceiptPage').then((m) => ({ default: m.StandaloneReceiptPage })))
+const DocumentIngestionListPage = lazy(() => import('../features/document-ingestions/DocumentIngestionListPage').then((m) => ({ default: m.DocumentIngestionListPage })))
+const ReviewIngestionPage = lazy(() => import('../features/document-ingestions/ReviewIngestionPage').then((m) => ({ default: m.ReviewIngestionPage })))
 const SupplierInvoiceListPage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceListPage').then((m) => ({ default: m.SupplierInvoiceListPage })))
 const SupplierInvoiceCreatePage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceCreatePage').then((m) => ({ default: m.SupplierInvoiceCreatePage })))
 const SupplierInvoiceDetailPage = lazy(() => import('../features/purchases/supplier-invoices/SupplierInvoiceDetailPage').then((m) => ({ default: m.SupplierInvoiceDetailPage })))
@@ -887,6 +889,26 @@ export function AppRoutes() {
               <RequirePermission permission="goods-receipt.create-standalone">
                 <SuspenseWrapper>
                   <StandaloneReceiptPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="scans"
+            element={
+              <RequirePermission permission="document-ingestions.view">
+                <SuspenseWrapper>
+                  <DocumentIngestionListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="scans/:id"
+            element={
+              <RequirePermission permission="document-ingestions.view">
+                <SuspenseWrapper>
+                  <ReviewIngestionPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

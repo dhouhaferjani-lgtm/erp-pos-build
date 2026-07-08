@@ -206,7 +206,7 @@ return [
             // never consumed. Guarded by HorizonQueueCoverageTest.
             // `fiscal-projections` feeds pos_receipts and every server-backed
             // POS report; it sat unconsumed from 2026-05-18 to 2026-06-12.
-            'queue' => ['default', 'fiscal-projections', 'enrichment', 'images', 'imports'],
+            'queue' => ['default', 'fiscal-projections', 'enrichment', 'images', 'imports', 'ingestion'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,
