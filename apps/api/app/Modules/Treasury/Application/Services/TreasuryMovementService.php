@@ -344,6 +344,30 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
         });
     }
 
+    public function freeze(string $repositoryId, string $reason): void
+    {
+        // Direct column write — ONLY frozen_at/frozen_reason, never balance
+        // (Task 22's trigger will forbid balance writes outside this port; an
+        // Eloquent ->save() risks carrying other dirty attributes along, so use
+        // an explicit query-builder update scoped to exactly these two columns).
+        PaymentRepository::query()
+            ->whereKey($repositoryId)
+            ->update([
+                'frozen_at' => CarbonImmutable::now(),
+                'frozen_reason' => $reason,
+            ]);
+    }
+
+    public function unfreeze(string $repositoryId): void
+    {
+        PaymentRepository::query()
+            ->whereKey($repositoryId)
+            ->update([
+                'frozen_at' => null,
+                'frozen_reason' => null,
+            ]);
+    }
+
     /**
      * Insert one append-only movement leg against an ALREADY-LOCKED repository,
      * advance its gapless ordinal, and update its cached balance.

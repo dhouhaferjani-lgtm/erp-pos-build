@@ -10,6 +10,7 @@ use App\Modules\Treasury\Application\DTOs\TransferIntent;
 use App\Modules\Treasury\Application\DTOs\TransferResult;
 use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
 use App\Modules\Treasury\Domain\Exceptions\IdempotencyConflictException;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 
 /**
  * The single write port every treasury money-movement converges onto
@@ -86,4 +87,25 @@ interface TreasuryMovementServiceInterface
      *                                      When the transferGroupId was reused for a materially different transfer.
      */
     public function transfer(TransferIntent $intent): TransferResult;
+
+    /**
+     * Freeze a repository: subsequent interactive {@see record()} /
+     * {@see transfer()} calls (`allowWhileFrozen = false`) throw
+     * {@see RepositoryFrozenException};
+     * projection/replay calls (`allowWhileFrozen = true`) still succeed and are
+     * marked `recorded_while_frozen = true` (Task 11 policy, enforced inside
+     * `record()` already — this method only flips the flag).
+     *
+     * Writes ONLY `frozen_at` / `frozen_reason` on `payment_repositories` — never
+     * `balance` — via a direct, explicit column update (no mass-assignment).
+     * No authorization check here; that is the caller's (admin endpoint /
+     * reconcile command) responsibility.
+     */
+    public function freeze(string $repositoryId, string $reason): void;
+
+    /**
+     * Unfreeze a repository: clears `frozen_at` / `frozen_reason`, restoring
+     * interactive writes. Same column-scope guarantee as {@see freeze()}.
+     */
+    public function unfreeze(string $repositoryId): void;
 }
