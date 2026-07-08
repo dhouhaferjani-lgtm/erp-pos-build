@@ -10,11 +10,13 @@ use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Media\Domain\Media\MediaAsset;
+use App\Modules\Media\Domain\ValueObjects\ExternalUrlGuard;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 
 /**
  * Service for uploading and registering media assets in the media subsystem.
@@ -59,33 +61,6 @@ final class MediaUploadService
      * @var array<int, string>
      */
     private const ALLOWED_IMAGE_MIME = self::ALLOWED_MIME;
-
-    /**
-     * Blocked hosts for external URL registration (basic SSRF guard).
-     * Private and loopback addresses must never be fetched.
-     *
-     * @var array<int, string>
-     */
-    private const BLOCKED_HOSTS = [
-        'localhost',
-        '127.0.0.1',
-        '::1',
-    ];
-
-    /**
-     * Private IP range prefixes (IPv4) that are disallowed for external URLs.
-     *
-     * @var array<int, string>
-     */
-    private const PRIVATE_IP_PREFIXES = [
-        '10.',
-        '172.16.', '172.17.', '172.18.', '172.19.',
-        '172.20.', '172.21.', '172.22.', '172.23.',
-        '172.24.', '172.25.', '172.26.', '172.27.',
-        '172.28.', '172.29.', '172.30.', '172.31.',
-        '192.168.',
-        '169.254.',
-    ];
 
     /**
      * Upload a file and create a MediaAsset record for the given owner.
@@ -295,44 +270,12 @@ final class MediaUploadService
      */
     private function guardExternalUrl(string $url): void
     {
-        $parsed = parse_url($url);
-
-        if ($parsed === false || empty($parsed['host'])) {
+        try {
+            ExternalUrlGuard::assertHttpsHostAllowed($url);
+        } catch (InvalidArgumentException $e) {
             throw ValidationException::withMessages([
-                'url' => ['The URL must be a valid absolute URL.'],
+                'url' => [$e->getMessage()],
             ]);
-        }
-
-        if (($parsed['scheme'] ?? '') !== 'https') {
-            throw ValidationException::withMessages([
-                'url' => ['The URL must use the HTTPS scheme.'],
-            ]);
-        }
-
-        if (strlen($url) > 2048) {
-            throw ValidationException::withMessages([
-                'url' => ['The URL must not exceed 2048 characters.'],
-            ]);
-        }
-
-        // Normalize the host: strip IPv6 brackets so '[::1]' becomes '::1'
-        // before comparing against BLOCKED_HOSTS.  parse_url() preserves the
-        // brackets (RFC-3986 §3.2.2), so without trimming, the check misses
-        // IPv6 loopback addresses passed as 'https://[::1]/path'.
-        $host = strtolower(trim($parsed['host'], '[]'));
-
-        if (in_array($host, self::BLOCKED_HOSTS, true)) {
-            throw ValidationException::withMessages([
-                'url' => ['The URL host is not allowed (blocked: loopback / localhost).'],
-            ]);
-        }
-
-        foreach (self::PRIVATE_IP_PREFIXES as $prefix) {
-            if (str_starts_with($host, $prefix)) {
-                throw ValidationException::withMessages([
-                    'url' => ['The URL host resolves to a private IP address and is not allowed.'],
-                ]);
-            }
         }
     }
 }
