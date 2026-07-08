@@ -6,6 +6,8 @@ namespace App\Modules\Product\Application\Services;
 
 use App\Enums\Vertical;
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
+use App\Modules\Product\Application\Jobs\PersistEnrichmentImagesJob;
+use App\Modules\Product\Application\Support\ImageDescriptorNormalizer;
 use App\Modules\Product\Domain\Brand;
 use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Enums\BrandSource;
@@ -126,6 +128,15 @@ final class CatalogEnrichmentService
                     'reviewed_by' => null,
                     'accepted_fields' => $acceptedFields,
                 ]);
+
+                $normalizedImages = ImageDescriptorNormalizer::normalize($catalog->images);
+                if ($normalizedImages !== []) {
+                    PersistEnrichmentImagesJob::dispatch(
+                        $product->tenant_id,
+                        $product->id,
+                        $normalizedImages,
+                    );
+                }
             });
         };
 
