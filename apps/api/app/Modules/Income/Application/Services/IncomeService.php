@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Income\Application\Services;
 
+use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -11,21 +12,27 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Income\Domain\IncomeMetadata;
-use App\Shared\Contracts\Treasury\RepositoryInflowInterface;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Service for managing income records — the mirror of ExpenseService.
  *
- * Posting an income posts a GL entry (Dr cash/bank, Cr class-7 revenue) and
- * INCREASES the receiving repository balance via the RepositoryInflow port.
+ * Posting an income posts a GL entry (Dr cash/bank, Cr class-7 revenue),
+ * synchronously and in-transaction, and INCREASES the receiving repository
+ * balance via the treasury write port (Wave D, Task 17) — atomically with
+ * the GL post, honouring the global lock order (GL advisory lock BEFORE the
+ * port's repository row lock, spine BLOCKER-1).
  */
 final class IncomeService
 {
     public function __construct(
         private readonly GeneralLedgerService $glService,
-        private readonly RepositoryInflowInterface $inflow,
         private readonly CompanyContext $companyContext,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     /**
@@ -131,20 +138,37 @@ final class IncomeService
 
             $metadata = $income->incomeMetadata;
 
-            // Post the GL entry (Dr cash/bank, Cr class-7 revenue).
-            $this->glService->createFromIncome($income->loadMissing('incomeMetadata.paymentRepository'), $user);
+            // Post the GL entry (Dr cash/bank, Cr class-7 revenue) SYNCHRONOUSLY,
+            // in-transaction, so it returns the posted entry and — per the global
+            // lock order (BLOCKER-1) — takes the GL company advisory lock BEFORE
+            // the movement port takes the repository row lock below.
+            $entry = $this->glService->createFromIncome($income->loadMissing('incomeMetadata.paymentRepository'), $user, PostingMode::SynchronousInTransaction);
 
-            // Increment treasury cash balance when the income is received and
-            // linked to a payment repository. Amount and currency are passed as
-            // strings so the port owns all bcmath/scale operations (Rule 19).
+            // Move treasury cash ONLY when the income is received and linked to a
+            // payment repository. This REPLACES the old inline inflow: the write
+            // port is the single writer of the repository balance + append-only
+            // movement row, atomically with the GL post above. Amount/currency
+            // are passed as strings so the port owns all bcmath/scale operations
+            // (Rule 19).
             if ($metadata?->is_received === true && $metadata->payment_repository_id !== null && $income->total !== null) {
-                $this->inflow->applyInflow(
-                    $metadata->payment_repository_id,
-                    $income->tenant_id,
-                    $income->company_id,
-                    $income->total,
-                    (string) $income->currency,
-                );
+                $this->movementService->record(new MovementIntent(
+                    repositoryId: $metadata->payment_repository_id,
+                    tenantId: $income->tenant_id,
+                    companyId: $income->company_id,
+                    direction: MovementDirection::In,
+                    amount: $income->total,
+                    currency: (string) $income->currency,
+                    sourceType: MovementSourceType::Income,
+                    sourceId: $income->id,
+                    idempotencyLeg: 'main',
+                    journalEntryId: $entry->id,
+                    occurredAt: null,
+                    reasonCode: null,
+                    reversesMovementId: null,
+                    createdBy: $user->id,
+                    notes: null,
+                    allowWhileFrozen: false,
+                ));
             }
 
             $fresh = $income->fresh(['incomeMetadata']);
