@@ -66,6 +66,7 @@
     "reconciliationFlags": "تنبيهات المطابقة",
     "rejectConfirm": "رفض هذا المسح؟",
     "source": "المستند المصدر",
+    "openSource": "فتح المستند في علامة تبويب جديدة",
     "sourceLine": "سطر الاستلام",
     "sourceMissing": "معاينة المصدر غير متاحة.",
     "supplier": "المورد",

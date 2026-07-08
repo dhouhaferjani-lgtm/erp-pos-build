@@ -47,10 +47,45 @@ function normalizeSuggestions(raw: unknown): DocumentIngestionDetail['suggestion
   }
 }
 
+// The extraction JSONB is served verbatim too — its per-line fields are snake_case
+// (unit_price, tax_rate, supplier_ref, line_total, batch_number, expiry_date), but the
+// review form reads the camelCase ExtractedLine shape. Only `quantity`/`description`
+// share a key, so the rest silently prefilled to '' (and the invoice commit shipped no
+// per-line price). Map once here, tolerant of either casing.
+function normalizeExtraction(raw: unknown): DocumentIngestionDetail['extraction'] {
+  if (raw === null || typeof raw !== 'object') {
+    return raw as DocumentIngestionDetail['extraction']
+  }
+  const extraction = raw as Record<string, unknown>
+  const lines = Array.isArray(extraction['lines']) ? extraction['lines'] : []
+
+  return {
+    ...(extraction as object),
+    lines: lines.map((rawLine) => {
+      const line = (rawLine ?? {}) as Record<string, unknown>
+      const pick = (camel: string, snake: string): unknown => line[camel] ?? line[snake] ?? null
+      return {
+        description: line['description'],
+        supplierRef: pick('supplierRef', 'supplier_ref'),
+        quantity: line['quantity'],
+        unitPrice: pick('unitPrice', 'unit_price'),
+        taxRate: pick('taxRate', 'tax_rate'),
+        lineTotal: pick('lineTotal', 'line_total'),
+        batchNumber: pick('batchNumber', 'batch_number'),
+        expiryDate: pick('expiryDate', 'expiry_date'),
+      }
+    }),
+  } as DocumentIngestionDetail['extraction']
+}
+
 export async function getDocumentIngestion(id: string): Promise<DocumentIngestionDetail> {
   const response = await api.get<ApiEnvelope<DocumentIngestionDetail>>(`/document-ingestions/${id}`)
   const detail = response.data.data
-  return { ...detail, suggestions: normalizeSuggestions(detail.suggestions) }
+  return {
+    ...detail,
+    extraction: normalizeExtraction(detail.extraction),
+    suggestions: normalizeSuggestions(detail.suggestions),
+  }
 }
 
 export async function uploadDocumentIngestion(

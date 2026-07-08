@@ -67,6 +67,7 @@
     "reconciliationFlags": "Reconciliation flags",
     "rejectConfirm": "Reject this scan?",
     "source": "Source document",
+    "openSource": "Open document in new tab",
     "sourceLine": "Receipt line",
     "sourceMissing": "Source preview is unavailable.",
     "supplier": "Supplier",
