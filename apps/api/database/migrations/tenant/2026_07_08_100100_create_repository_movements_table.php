@@ -41,13 +41,17 @@ return new class extends Migration
             $table->index('transfer_group_id');
 
             // MED-12: referential integrity. journal_entry_id nullable (opening_balance /
-            // same-account transfer legs); reverses_movement_id self-FK for corrections.
+            // same-account transfer legs). The self-FK reverses_movement_id is added
+            // AFTER create (below): a self-referential FK inside Schema::create fails on
+            // Postgres — the primary-key unique constraint is not yet visible to the FK
+            // (SQLSTATE 42830). SQLite cannot ADD a FK via ALTER and does not enforce it
+            // in the test harness, so the self-FK is pgsql-only, alongside the CHECKs.
             $table->foreign('payment_repository_id')->references('id')->on('payment_repositories');
             $table->foreign('journal_entry_id')->references('id')->on('journal_entries');
-            $table->foreign('reverses_movement_id')->references('id')->on('repository_movements');
         });
 
         if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE repository_movements ADD CONSTRAINT repository_movements_reverses_movement_id_foreign FOREIGN KEY (reverses_movement_id) REFERENCES repository_movements (id)');
             DB::statement('ALTER TABLE repository_movements ADD CONSTRAINT repository_movements_amount_positive CHECK (amount > 0)');
             DB::statement("ALTER TABLE repository_movements ADD CONSTRAINT repository_movements_direction_valid CHECK (direction IN ('in','out'))");
         }
