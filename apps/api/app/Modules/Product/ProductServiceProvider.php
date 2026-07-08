@@ -7,9 +7,11 @@ namespace App\Modules\Product;
 use App\Modules\POS\Infrastructure\Broadcasting\CatalogModelObserver;
 use App\Modules\Product\Application\Contracts\ProductRepositoryInterface;
 use App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener;
+use App\Modules\Product\Application\Services\DiscountPolicySubjectProvider;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Infrastructure\Persistence\EloquentProductRepository;
+use App\Shared\Contracts\DiscountPolicySubjectProviderInterface;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -18,6 +20,7 @@ class ProductServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(ProductRepositoryInterface::class, EloquentProductRepository::class);
+        $this->app->bind(DiscountPolicySubjectProviderInterface::class, DiscountPolicySubjectProvider::class);
     }
 
     public function boot(): void
