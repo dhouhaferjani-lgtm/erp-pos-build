@@ -11,6 +11,7 @@ use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
 use App\Modules\Media\Domain\Media\MediaAsset;
 use App\Modules\Media\Domain\ValueObjects\ExternalUrlGuard;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -81,6 +82,11 @@ final class MediaUploadService
      *                              partial DB index, making re-ingestion idempotent.
      *
      * @throws ValidationException If the file MIME type is not in $allowedMime.
+     * @throws QueryException If the row insert violates a DB
+     *                        constraint (e.g. the partial-unique
+     *                        `(tenant_id, source_ref)` idempotency
+     *                        index when the same URL is ingested
+     *                        concurrently).
      */
     public function upload(
         string $tenantId,
@@ -195,6 +201,10 @@ final class MediaUploadService
      * MIME allow-list.  Behavior is byte-identical to the previous implementation.
      *
      * @throws ValidationException If the file is not an allowed image type.
+     * @throws QueryException If the row insert violates a DB
+     *                        constraint (e.g. the partial-unique
+     *                        `(tenant_id, source_ref)` index on a
+     *                        concurrent re-ingestion of the same URL).
      */
     public function uploadForProduct(
         string $tenantId,

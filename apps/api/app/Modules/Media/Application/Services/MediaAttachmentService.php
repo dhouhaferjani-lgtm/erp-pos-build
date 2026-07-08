@@ -209,4 +209,79 @@ final class MediaAttachmentService
             }
         });
     }
+
+    /**
+     * Fully remove an asset that has NO attachment links — orphan cleanup after a
+     * failed or duplicate enrichment persist.
+     *
+     * Unlike {@see deleteAsset()} (which only soft-deletes and leaves rendition
+     * rows), this permanently removes the storage object, all rendition files and
+     * rows, and hard-deletes the `media_assets` row. It refuses to run if any
+     * attachment link still points at the asset, so live links can never be
+     * orphaned.
+     *
+     * Storage deletion runs in {@see DB::afterCommit()} so the durable DB removal
+     * is the source of truth while files are torn down; external-URL assets have
+     * no stored bytes and are skipped.
+     *
+     * @param  string  $assetId  UUID of the orphan MediaAsset to purge.
+     * @param  string  $tenantId  Tenant scope guard.
+     *
+     * @throws \RuntimeException If any attachment link still exists for this asset.
+     */
+    public function hardDeleteOrphan(string $assetId, string $tenantId): void
+    {
+        DB::transaction(function () use ($assetId, $tenantId): void {
+            $asset = MediaAsset::withTrashed()
+                ->where('id', $assetId)
+                ->where('tenant_id', $tenantId)
+                ->first();
+
+            if ($asset === null) {
+                return;
+            }
+
+            $linkCount = MediaAttachment::where('media_asset_id', $assetId)
+                ->where('tenant_id', $tenantId)
+                ->count();
+
+            if ($linkCount > 0) {
+                throw new \RuntimeException(
+                    "Refusing to hard-delete MediaAsset [{$assetId}]: {$linkCount} attachment link(s) still exist.",
+                );
+            }
+
+            $storageDisk = $asset->storage_disk;
+            $storagePath = $asset->storage_path;
+            $isExternal = $asset->source === MediaSource::ExternalUrl;
+
+            /** @var array<int, array{storage_disk: string, storage_path: string}> $renditionPaths */
+            $renditionPaths = MediaRendition::where('media_asset_id', $assetId)
+                ->where('tenant_id', $tenantId)
+                ->get(['storage_disk', 'storage_path'])
+                ->map(fn (MediaRendition $r): array => [
+                    'storage_disk' => $r->storage_disk,
+                    'storage_path' => $r->storage_path,
+                ])
+                ->all();
+
+            // Remove rendition rows then hard-delete the asset row (bypasses SoftDeletes).
+            MediaRendition::where('media_asset_id', $assetId)
+                ->where('tenant_id', $tenantId)
+                ->delete();
+            $asset->forceDelete();
+
+            if ($storageDisk !== 'url' && ! $isExternal) {
+                DB::afterCommit(function () use ($storageDisk, $storagePath, $renditionPaths): void {
+                    if ($storagePath !== null && $storagePath !== '') {
+                        $this->storage->delete($storageDisk, $storagePath);
+                    }
+
+                    foreach ($renditionPaths as $rendition) {
+                        $this->storage->delete($rendition['storage_disk'], $rendition['storage_path']);
+                    }
+                });
+            }
+        });
+    }
 }
