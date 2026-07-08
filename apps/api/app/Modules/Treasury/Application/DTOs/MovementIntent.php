@@ -20,7 +20,7 @@ final readonly class MovementIntent
      * @param  string  $repositoryId  UUID of the target PaymentRepository
      * @param  string  $tenantId  UUID of the owning tenant
      * @param  string  $companyId  UUID of the owning company
-     * @param  string  $amount  numeric-string, positive decimal at currency scale (never float)
+     * @param  numeric-string  $amount  positive decimal at currency scale (never float)
      * @param  string  $sourceId  UUID (or natural id) of the source record identified by $sourceType
      * @param  string  $idempotencyLeg  Caller-assigned leg discriminator (e.g. "payment:0") — combined
      *                                  with $sourceType/$sourceId to form the idempotency key

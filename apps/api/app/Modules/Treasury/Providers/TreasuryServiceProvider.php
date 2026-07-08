@@ -12,12 +12,14 @@ use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Application\Services\RepositoryInflowService;
 use App\Modules\Treasury\Application\Services\RepositoryOutflowService;
+use App\Modules\Treasury\Application\Services\TreasuryMovementService;
 use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
 use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use App\Shared\Contracts\Treasury\RepositoryInflowInterface;
 use App\Shared\Contracts\Treasury\RepositoryOutflowInterface;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Support\ServiceProvider;
 
 class TreasuryServiceProvider extends ServiceProvider
@@ -55,6 +57,15 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->bind(
             RepositoryInflowInterface::class,
             RepositoryInflowService::class,
+        );
+
+        // Task 11 — the single money-movement write port. Every treasury
+        // movement (payments, expenses, POS receipt legs, transfers, reversals)
+        // converges onto record(). Bound to the Shared contract so cross-module
+        // consumers never import the concrete service or Treasury domain models.
+        $this->app->bind(
+            TreasuryMovementServiceInterface::class,
+            TreasuryMovementService::class,
         );
 
         // Phase 1 §7.4 / §13 / SoT §13.6/D16 — Treasury-operational projector

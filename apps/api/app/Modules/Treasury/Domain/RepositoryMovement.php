@@ -8,21 +8,33 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementReasonCode;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * @property string $id
+ * @property string $tenant_id
+ * @property string $company_id
  * @property string $payment_repository_id
  * @property MovementDirection $direction
  * @property numeric-string $amount
+ * @property string $currency ISO 4217 currency code (char(3))
  * @property numeric-string $balance_after
  * @property int $ordinal
  * @property MovementSourceType $source_type
  * @property string $source_id
  * @property ?string $journal_entry_id
  * @property string $idempotency_key
+ * @property ?string $transfer_group_id
+ * @property ?string $reverses_movement_id
+ * @property ?MovementReasonCode $reason_code
+ * @property CarbonImmutable $occurred_at
+ * @property ?string $created_by
+ * @property bool $recorded_while_frozen
+ * @property ?string $notes
+ * @property CarbonImmutable $created_at
  */
 final class RepositoryMovement extends Model
 {
