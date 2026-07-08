@@ -21,7 +21,7 @@ final class MediaAsset extends Model
 
     protected $fillable = [
         'tenant_id', 'type', 'source', 'status', 'storage_disk', 'storage_path',
-        'external_url', 'original_filename', 'mime_type', 'file_size', 'checksum',
+        'external_url', 'source_ref', 'original_filename', 'mime_type', 'file_size', 'checksum',
         'width', 'height', 'duration_ms', 'frame_count', 'title', 'uploaded_by',
     ];
 

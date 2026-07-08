@@ -10,6 +10,7 @@ use App\Modules\Product\Application\Listeners\ProcessEnrichmentEventListener;
 use App\Modules\Product\Domain\Events\EnrichmentWebhookReceived;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Product\Infrastructure\Persistence\EloquentProductRepository;
+use App\Modules\Product\Presentation\Console\RunEnrichmentCommand;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -33,5 +34,11 @@ class ProductServiceProvider extends ServiceProvider
         // container, so any constructor state on a passed instance would
         // be lost.
         Product::observe(CatalogModelObserver::class);
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                RunEnrichmentCommand::class,
+            ]);
+        }
     }
 }

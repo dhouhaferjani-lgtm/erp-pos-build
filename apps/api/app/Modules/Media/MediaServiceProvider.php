@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Modules\Media;
 
 use App\Modules\Media\Application\Services\MediaService;
+use App\Modules\Media\Domain\Contracts\HostResolverInterface;
 use App\Modules\Media\Domain\Contracts\MediaAssetRepositoryInterface;
 use App\Modules\Media\Domain\Contracts\MediaAttachmentRepositoryInterface;
 use App\Modules\Media\Domain\Contracts\MediaStorageInterface;
+use App\Modules\Media\Domain\Contracts\PinnedImageDownloaderInterface;
 use App\Modules\Media\Domain\Contracts\RenditionGeneratorInterface;
+use App\Modules\Media\Infrastructure\Net\CurlPinnedImageDownloader;
+use App\Modules\Media\Infrastructure\Net\DnsHostResolver;
 use App\Modules\Media\Infrastructure\Persistence\EloquentMediaAssetRepository;
 use App\Modules\Media\Infrastructure\Persistence\EloquentMediaAttachmentRepository;
 use App\Modules\Media\Infrastructure\Rendition\ImageRenditionGenerator;
@@ -25,6 +29,8 @@ class MediaServiceProvider extends ServiceProvider
         $this->app->bind(MediaStorageInterface::class, MediaStorageAdapter::class);
         $this->app->bind(RenditionGeneratorInterface::class, ImageRenditionGenerator::class);
         $this->app->bind(MediaServiceInterface::class, MediaService::class);
+        $this->app->bind(HostResolverInterface::class, DnsHostResolver::class);
+        $this->app->bind(PinnedImageDownloaderInterface::class, CurlPinnedImageDownloader::class);
     }
 
     public function boot(): void
