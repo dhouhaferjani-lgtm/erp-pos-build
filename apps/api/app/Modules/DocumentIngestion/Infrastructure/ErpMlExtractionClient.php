@@ -56,8 +56,15 @@ final class ErpMlExtractionClient implements ExtractionClientInterface
             $provider = is_string($json['provider'] ?? null) ? $json['provider'] : 'erp_ml';
             $model = is_string($json['model'] ?? null) ? $json['model'] : null;
 
+            // erp-ml keeps doc_kind/pages in the top-level envelope, not inside `result`.
+            // ExtractionResultData wants them alongside the payload fields, so fold the
+            // authoritative envelope values in (top-level wins over any stray result key).
+            $payload = $result;
+            $payload['doc_kind'] = $json['doc_kind'] ?? null;
+            $payload['pages'] = $json['pages'] ?? null;
+
             return new ExtractionResponse(
-                result: ExtractionResultData::from($result),
+                result: ExtractionResultData::from($payload),
                 provider: $provider,
                 model: $model,
             );

@@ -19,11 +19,24 @@ final class ErpMlExtractionClientTest extends TestCase
         config()->set('services.erp_ml.url', 'http://erp-ml.test');
         config()->set('services.erp_ml.service_token', 'secret-token');
 
+        // Mirror erp-ml's real ExtractionResponse wire shape: provider/model/doc_kind/pages
+        // are top-level envelope fields; only supplier/header/lines/totals_consistent live
+        // under `result`. (The prior fixture nested doc_kind/pages under `result`, which the
+        // live service never does — hiding the client mapping bug.)
+        $fixture = $this->fixture();
+
         Http::fake([
             'erp-ml.test/api/v1/extract' => Http::response([
                 'provider' => 'claude',
                 'model' => 'claude-haiku',
-                'result' => $this->fixture(),
+                'doc_kind' => $fixture['doc_kind'],
+                'pages' => $fixture['pages'],
+                'result' => [
+                    'supplier' => $fixture['supplier'],
+                    'header' => $fixture['header'],
+                    'lines' => $fixture['lines'],
+                    'totals_consistent' => $fixture['totals_consistent'],
+                ],
             ], 200),
         ]);
 
