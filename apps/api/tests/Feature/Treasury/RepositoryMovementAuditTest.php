@@ -12,6 +12,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementReasonCode;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -61,6 +62,8 @@ class RepositoryMovementAuditTest extends TestCase
         $repositoryId = Str::uuid()->toString();
         $journalEntryId = Str::uuid()->toString();
         $sourceId = Str::uuid()->toString();
+        $reversesMovementId = Str::uuid()->toString();
+        $transferGroupId = Str::uuid()->toString();
 
         event(new RepositoryMovementRecorded(
             movementId: $movementId,
@@ -77,6 +80,10 @@ class RepositoryMovementAuditTest extends TestCase
             ordinal: 1,
             recordedWhileFrozen: false,
             occurredAt: now()->toIso8601String(),
+            createdBy: $user->id,
+            reasonCode: MovementReasonCode::Correction,
+            reversesMovementId: $reversesMovementId,
+            transferGroupId: $transferGroupId,
         ));
 
         $auditEventCount = AuditEvent::where('aggregate_id', $movementId)
@@ -104,5 +111,9 @@ class RepositoryMovementAuditTest extends TestCase
         $this->assertSame($journalEntryId, $auditEvent->payload['journal_entry_id']);
         $this->assertSame(1, $auditEvent->payload['ordinal']);
         $this->assertSame(false, $auditEvent->payload['recorded_while_frozen']);
+        $this->assertSame($user->id, $auditEvent->payload['created_by']);
+        $this->assertSame('correction', $auditEvent->payload['reason_code']);
+        $this->assertSame($reversesMovementId, $auditEvent->payload['reverses_movement_id']);
+        $this->assertSame($transferGroupId, $auditEvent->payload['transfer_group_id']);
     }
 }

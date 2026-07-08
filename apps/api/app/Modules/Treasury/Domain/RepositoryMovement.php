@@ -45,6 +45,28 @@ final class RepositoryMovement extends Model
     ];
 
     /**
+     * Model-level append-only guard (spec §4 "model guards" layer).
+     *
+     * The Postgres trigger (Task 3) enforces this at the DB level, but that
+     * trigger is pgsql-only DDL and gives no protection on sqlite (test
+     * driver) or for any in-process code path that might bypass raw SQL.
+     * Block update/delete here so the guard holds everywhere Eloquent is
+     * used, regardless of driver. Inserts are NOT guarded: the port's sole
+     * write path (TreasuryMovementService::record(), via insert()) must
+     * keep working.
+     */
+    protected static function booted(): void
+    {
+        self::updating(function (): never {
+            throw new \LogicException('repository_movements are append-only; corrections are compensating movements');
+        });
+
+        self::deleting(function (): never {
+            throw new \LogicException('repository_movements are append-only; corrections are compensating movements');
+        });
+    }
+
+    /**
      * @return BelongsTo<PaymentRepository, $this>
      */
     public function repository(): BelongsTo

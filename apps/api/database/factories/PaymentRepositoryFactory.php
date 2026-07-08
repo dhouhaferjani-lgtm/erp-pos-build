@@ -32,15 +32,18 @@ class PaymentRepositoryFactory extends Factory
             'is_active' => true,
             // MED-11: currency defaults to the owning company's currency.
             // Relies on 'company_id' having already been resolved (e.g. via
-            // ->for($company)) earlier in this definition array.
-            'currency' => function (array $attributes): ?string {
+            // ->for($company)) earlier in this definition array. When
+            // company_id is unresolved (or the company can't be found), fall
+            // back to a legible default instead of null -- a null here fails
+            // opaquely against the NOT NULL constraint on pgsql.
+            'currency' => function (array $attributes): string {
                 if (! isset($attributes['company_id']) || ! is_string($attributes['company_id'])) {
-                    return null;
+                    return 'TND';
                 }
 
                 $company = Company::query()->find($attributes['company_id']);
 
-                return $company instanceof Company ? $company->currency : null;
+                return $company instanceof Company ? $company->currency : 'TND';
             },
         ];
     }

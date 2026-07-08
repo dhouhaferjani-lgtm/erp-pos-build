@@ -17,13 +17,34 @@ final class RepositoryMovementsTableTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_idempotency_key_is_unique_and_amount_must_be_positive(): void
+    public function test_idempotency_key_must_be_unique(): void
     {
         $row = $this->baseMovementRow();
         DB::table('repository_movements')->insert($row);
 
+        // Collide ONLY on idempotency_key: change 'id' and 'ordinal' so the
+        // unique(payment_repository_id, ordinal) index cannot also fire and
+        // mask which constraint actually raised the violation.
         $this->expectException(QueryException::class);
-        DB::table('repository_movements')->insert(array_merge($row, ['id' => (string) Str::uuid()]));
+        DB::table('repository_movements')->insert(array_merge($row, [
+            'id' => (string) Str::uuid(),
+            'ordinal' => $row['ordinal'] + 1,
+        ]));
+    }
+
+    public function test_ordinal_is_unique_per_repository(): void
+    {
+        $row = $this->baseMovementRow();
+        DB::table('repository_movements')->insert($row);
+
+        // Collide ONLY on (payment_repository_id, ordinal): change 'id' and
+        // 'idempotency_key' so the unique(idempotency_key) index cannot also
+        // fire and mask which constraint actually raised the violation.
+        $this->expectException(QueryException::class);
+        DB::table('repository_movements')->insert(array_merge($row, [
+            'id' => (string) Str::uuid(),
+            'idempotency_key' => 'test:'.Str::uuid(),
+        ]));
     }
 
     public function test_amount_check_rejects_zero(): void

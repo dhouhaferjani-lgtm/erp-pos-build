@@ -88,15 +88,36 @@ final class RepositoryMovementModelTest extends TestCase
         $this->assertSame('journal_entry_id', $journalEntry->getForeignKeyName());
     }
 
-    public function test_model_is_append_only_by_configuration_not_by_a_save_guard(): void
+    public function test_model_has_no_timestamps_and_is_unguarded_for_inserts(): void
     {
-        // Immutability is enforced by the Postgres trigger (Task 3) plus the fact that
-        // the port (insert()) is the sole writer -- not by a model-level save() guard.
-        // We assert the configuration that reflects that design instead.
+        // Inserts go through the port (insert()), not Eloquent save(); the
+        // model stays fully unguarded and timestamp-free for that path.
         $movement = new RepositoryMovement;
 
         $this->assertFalse($movement->usesTimestamps());
         $this->assertSame([], $movement->getGuarded());
+    }
+
+    public function test_model_throws_on_update(): void
+    {
+        $movement = RepositoryMovement::find($this->seedMovementRow());
+        $this->assertInstanceOf(RepositoryMovement::class, $movement);
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('repository_movements are append-only; corrections are compensating movements');
+
+        $movement->update(['notes' => 'tampered']);
+    }
+
+    public function test_model_throws_on_delete(): void
+    {
+        $movement = RepositoryMovement::find($this->seedMovementRow());
+        $this->assertInstanceOf(RepositoryMovement::class, $movement);
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('repository_movements are append-only; corrections are compensating movements');
+
+        $movement->delete();
     }
 
     /**

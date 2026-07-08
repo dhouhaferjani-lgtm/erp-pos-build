@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Domain\Events;
 
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementReasonCode;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Shared\Domain\Events\DomainEvent;
 
@@ -36,6 +37,10 @@ final class RepositoryMovementRecorded extends DomainEvent
         public readonly int $ordinal,
         public readonly bool $recordedWhileFrozen,
         public readonly string $occurredAt,
+        public readonly ?string $createdBy = null,
+        public readonly ?MovementReasonCode $reasonCode = null,
+        public readonly ?string $reversesMovementId = null,
+        public readonly ?string $transferGroupId = null,
     ) {
         parent::__construct($movementId);
     }
@@ -63,6 +68,10 @@ final class RepositoryMovementRecorded extends DomainEvent
             'ordinal' => $this->ordinal,
             'recorded_while_frozen' => $this->recordedWhileFrozen,
             'occurred_at' => $this->occurredAt,
+            'created_by' => $this->createdBy,
+            'reason_code' => $this->reasonCode?->value,
+            'reverses_movement_id' => $this->reversesMovementId,
+            'transfer_group_id' => $this->transferGroupId,
         ];
     }
 }
