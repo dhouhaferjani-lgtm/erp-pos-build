@@ -678,6 +678,10 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
+        if ($mode === PostingMode::SynchronousInTransaction && $user === null) {
+            throw new \LogicException('createPaymentReceivedJournalEntry: synchronous in-transaction GL posting requires an actor ($user); refusing to return an unposted Draft into an atomic money-movement flow.');
+        }
+
         if ($user !== null) {
             if ($mode === PostingMode::SynchronousInTransaction) {
                 $this->postEntryNow($entry, $user, $currencyCode);
@@ -1994,6 +1998,10 @@ final class GeneralLedgerService
      */
     public function postEntryNow(JournalEntry $entry, ?User $user, ?string $currencyCode = null): void
     {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('postEntryNow must be called inside a database transaction — synchronous in-transaction posting is only atomic with the caller\'s work (spine BLOCKER-1 / MED-9).');
+        }
+
         $posted = $this->sealAndPersistEntry($entry, $user, $currencyCode);
 
         // The DB state change above is already durable within the caller

@@ -7,6 +7,7 @@ namespace Tests\Feature\Accounting;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
@@ -17,6 +18,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 /**
@@ -118,6 +120,43 @@ final class PostEntryNowAtomicityTest extends TestCase
         $this->assertNotNull($fresh->chain_sequence);
         $this->assertNotNull($fresh->fiscal_hash);
         $this->assertSame($this->user->id, $fresh->posted_by);
+    }
+
+    public function test_post_entry_now_dispatches_journal_entry_posted_exactly_once_on_commit(): void
+    {
+        app(CompanyContext::class)->clear();
+        Event::fake([JournalEntryPosted::class]);
+
+        $entry = $this->makeDraftBalancedEntry('SPINE-EVENT-COMMIT-001');
+
+        DB::transaction(function () use ($entry): void {
+            app(GeneralLedgerService::class)->postEntryNow($entry, $this->user, 'TND');
+
+            // Deferred to afterCommit — must not have fired yet mid-transaction.
+            Event::assertNotDispatched(JournalEntryPosted::class);
+        });
+
+        Event::assertDispatched(JournalEntryPosted::class, 1);
+    }
+
+    public function test_post_entry_now_does_not_dispatch_journal_entry_posted_on_rollback(): void
+    {
+        app(CompanyContext::class)->clear();
+        Event::fake([JournalEntryPosted::class]);
+
+        try {
+            DB::transaction(function (): void {
+                $entry = $this->makeDraftBalancedEntry('SPINE-EVENT-ROLLBACK-001');
+
+                app(GeneralLedgerService::class)->postEntryNow($entry, $this->user, 'TND');
+
+                throw new \RuntimeException('force rollback');
+            });
+        } catch (\RuntimeException) {
+            // expected
+        }
+
+        Event::assertNotDispatched(JournalEntryPosted::class);
     }
 
     private function makeDraftBalancedEntry(string $entryNumber): JournalEntry
