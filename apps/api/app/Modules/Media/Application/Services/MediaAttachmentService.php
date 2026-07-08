@@ -241,6 +241,9 @@ final class MediaAttachmentService
                 return;
             }
 
+            // NOTE: this zero-links check assumes the caller holds the per-product
+            // lock (Cache::lock("enrich-img:...")); it is NOT TOCTOU-safe against a
+            // future caller attaching to this asset id concurrently from outside that lock.
             $linkCount = MediaAttachment::where('media_asset_id', $assetId)
                 ->where('tenant_id', $tenantId)
                 ->count();
