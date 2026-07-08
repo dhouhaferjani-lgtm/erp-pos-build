@@ -6,6 +6,7 @@ namespace App\Modules\Product\Application\Services;
 
 use App\Modules\Product\Application\DTOs\BrandResolution;
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
+use App\Modules\Product\Application\Jobs\PersistEnrichmentImagesJob;
 use App\Modules\Product\Application\Jobs\SendEnrichmentFeedbackJob;
 use App\Modules\Product\Application\Support\ImageDescriptorNormalizer;
 use App\Modules\Product\Domain\EnrichmentResult;
@@ -178,6 +179,21 @@ final class EnrichmentReviewService
                 }
 
                 $product->update($productUpdates);
+
+                // Path B (human-reviewed accept): images persist automatically unless the
+                // reviewer explicitly submits a non-empty accepted-fields list that excludes
+                // 'images'. Mirrors Path A (CatalogEnrichmentService::applyCatalogHit()) -
+                // afterCommit() is required so the queue worker never races the
+                // surrounding transaction (see SendEnrichmentFeedbackJob below).
+                $imagesRequested = $acceptedFields === [] || in_array('images', $acceptedFields, true);
+                $normalizedImages = ImageDescriptorNormalizer::normalize($enrichedData->images);
+                if ($imagesRequested && $normalizedImages !== []) {
+                    PersistEnrichmentImagesJob::dispatch(
+                        $product->tenant_id,
+                        $product->id,
+                        $normalizedImages,
+                    )->afterCommit();
+                }
 
                 // Record accepted fields as a map
                 $acceptedFieldsMap = [];
