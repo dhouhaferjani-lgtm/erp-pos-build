@@ -9,7 +9,9 @@ use App\Modules\Media\Domain\Contracts\HostResolverInterface;
 use App\Modules\Media\Domain\Contracts\MediaAssetRepositoryInterface;
 use App\Modules\Media\Domain\Contracts\MediaAttachmentRepositoryInterface;
 use App\Modules\Media\Domain\Contracts\MediaStorageInterface;
+use App\Modules\Media\Domain\Contracts\PinnedImageDownloaderInterface;
 use App\Modules\Media\Domain\Contracts\RenditionGeneratorInterface;
+use App\Modules\Media\Infrastructure\Net\CurlPinnedImageDownloader;
 use App\Modules\Media\Infrastructure\Net\DnsHostResolver;
 use App\Modules\Media\Infrastructure\Persistence\EloquentMediaAssetRepository;
 use App\Modules\Media\Infrastructure\Persistence\EloquentMediaAttachmentRepository;
@@ -28,6 +30,7 @@ class MediaServiceProvider extends ServiceProvider
         $this->app->bind(RenditionGeneratorInterface::class, ImageRenditionGenerator::class);
         $this->app->bind(MediaServiceInterface::class, MediaService::class);
         $this->app->bind(HostResolverInterface::class, DnsHostResolver::class);
+        $this->app->bind(PinnedImageDownloaderInterface::class, CurlPinnedImageDownloader::class);
     }
 
     public function boot(): void
