@@ -75,6 +75,10 @@ final class MediaUploadService
      * Uploaded would be invisible to every read query (which filters on Ready).
      *
      * @param  array<int, string>  $allowedMime  MIME types accepted for this upload.
+     * @param  ?string  $sourceRef  Provenance identifier (e.g. the source URL an
+     *                              enrichment pipeline scraped this asset from). When
+     *                              non-null it is enforced unique per tenant by a
+     *                              partial DB index, making re-ingestion idempotent.
      *
      * @throws ValidationException If the file MIME type is not in $allowedMime.
      */
@@ -86,6 +90,7 @@ final class MediaUploadService
         ?string $userId,
         MediaAssetType $assetType,
         array $allowedMime,
+        ?string $sourceRef = null,
     ): MediaAsset {
         $this->guardMimeTypeAgainst($file, $allowedMime);
 
@@ -145,6 +150,7 @@ final class MediaUploadService
                 $userId,
                 $assetType,
                 $initialStatus,
+                $sourceRef,
             ): MediaAsset {
                 $asset = MediaAsset::create([
                     'tenant_id' => $tenantId,
@@ -160,6 +166,7 @@ final class MediaUploadService
                     'height' => $height,
                     'original_filename' => $file->getClientOriginalName(),
                     'uploaded_by' => $userId,
+                    'source_ref' => $sourceRef,
                 ]);
 
                 // Dispatch rendition generation ONLY for image assets.
@@ -194,6 +201,7 @@ final class MediaUploadService
         string $productId,
         UploadedFile $file,
         ?string $userId,
+        ?string $sourceRef = null,
     ): MediaAsset {
         return $this->upload(
             $tenantId,
@@ -203,6 +211,7 @@ final class MediaUploadService
             $userId,
             MediaAssetType::Image,
             self::ALLOWED_IMAGE_MIME,
+            $sourceRef,
         );
     }
 
