@@ -64,6 +64,22 @@ class SalesOrderController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>  $line
+     * @return numeric-string|null
+     */
+    private function lineDiscount(array $line, string $key): ?string
+    {
+        if (! isset($line[$key])) {
+            return null;
+        }
+
+        /** @var numeric-string $value */
+        $value = (string) $line[$key];
+
+        return $value;
+    }
+
+    /**
      * Get the CompanyContext service.
      *
      * Required by HandlesDocuments trait.
@@ -168,7 +184,7 @@ class SalesOrderController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        return DB::transaction(function () use ($tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
+        return DB::transaction(function () use ($request, $tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
             // Generate document number
             $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::SalesOrder);
 
@@ -193,7 +209,13 @@ class SalesOrderController extends Controller
                 /** @var numeric-string $taxRate */
                 $taxRate = (string) ($line['tax_rate'] ?? '0');
 
-                $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                $lineSubtotal = DocumentLine::computeLineTotal(
+                    $quantity,
+                    $unitPrice,
+                    $this->lineDiscount($line, 'discount_percent'),
+                    $this->lineDiscount($line, 'discount_amount'),
+                    $this->scale(),
+                );
                 $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
                 $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
@@ -231,7 +253,13 @@ class SalesOrderController extends Controller
                 $quantity = (string) $lineData['quantity'];
                 /** @var numeric-string $unitPrice */
                 $unitPrice = (string) $lineData['unit_price'];
-                $lineTotal = bcmul($quantity, $unitPrice, $this->scale());
+                $lineTotal = DocumentLine::computeLineTotal(
+                    $quantity,
+                    $unitPrice,
+                    $this->lineDiscount($lineData, 'discount_percent'),
+                    $this->lineDiscount($lineData, 'discount_amount'),
+                    $this->scale(),
+                );
 
                 /** @var Service|null $lineService */
                 $lineService = isset($lineData['service_id']) ? $services->get($lineData['service_id']) : null;
@@ -267,7 +295,7 @@ class SalesOrderController extends Controller
             /** @var Document $freshDocument */
             $freshDocument = $document->fresh($this->defaultRelations());
 
-            return $this->documentCreatedResponse($freshDocument, $this->scale());
+            return $this->documentCreatedResponse($freshDocument, $this->scale(), $request);
         });
     }
 
@@ -318,7 +346,7 @@ class SalesOrderController extends Controller
 
         $company = $this->companyContext->requireCompany();
 
-        return DB::transaction(function () use ($documentModel, $validated, $lines, $vehicleContext, $hasVehicleContext, $company): JsonResponse {
+        return DB::transaction(function () use ($request, $documentModel, $validated, $lines, $vehicleContext, $hasVehicleContext, $company): JsonResponse {
             // Update document fields (excluding lines)
             $documentModel->update($validated);
 
@@ -348,7 +376,13 @@ class SalesOrderController extends Controller
                     /** @var numeric-string $taxRate */
                     $taxRate = (string) ($lineData['tax_rate'] ?? '0');
 
-                    $lineSubtotal = bcmul($quantity, $unitPrice, $this->scale());
+                    $lineSubtotal = DocumentLine::computeLineTotal(
+                        $quantity,
+                        $unitPrice,
+                        $this->lineDiscount($lineData, 'discount_percent'),
+                        $this->lineDiscount($lineData, 'discount_amount'),
+                        $this->scale(),
+                    );
                     $lineTax = bcmul($lineSubtotal, bcdiv($taxRate, '100', 4), $this->scale());
 
                     $subtotal = bcadd($subtotal, $lineSubtotal, $this->scale());
@@ -395,7 +429,7 @@ class SalesOrderController extends Controller
             /** @var Document $freshDocument */
             $freshDocument = $documentModel->fresh($this->defaultRelations());
 
-            return $this->documentResponse($freshDocument, 200, $this->scale());
+            return $this->documentResponse($freshDocument, 200, $this->scale(), $request);
         });
     }
 
