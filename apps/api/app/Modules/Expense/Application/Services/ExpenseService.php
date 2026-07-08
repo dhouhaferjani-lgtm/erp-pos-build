@@ -34,6 +34,7 @@ use App\Shared\Contracts\Treasury\RepositoryInflowInterface;
 use App\Shared\Contracts\Treasury\RepositoryOutflowInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -254,8 +255,9 @@ final class ExpenseService
      * Settle a posted, unpaid expense: pay down the AP liability booked by
      * {@see post()} — POST /expenses/{id}/pay (Wave D, Task 15).
      *
-     * Posts `Dr AP-liability (SupplierPayable) / Cr Cash` (via the existing
-     * `createSupplierPaymentJournalEntry` helper, `SynchronousInTransaction`)
+     * Posts `Dr AP-liability (SupplierPayable) / Cr Cash` (via the dedicated
+     * `createExpenseSettlementJournalEntry` helper, which mirrors Task 14's AP
+     * booking with the SAME nullable partner, `SynchronousInTransaction`)
      * and writes an `out` movement through the treasury write port, keyed on
      * idempotency leg `settlement` — distinct from `post()`'s `main` leg, so
      * settlement is idempotent independently of the original post.
@@ -275,8 +277,15 @@ final class ExpenseService
         }
 
         return DB::transaction(function () use ($expense, $data, $user): Document {
+            // Defense-in-depth tenant/company scoping (Fix 4). expense_metadata
+            // has no tenant/company columns of its own, so pin the row through
+            // its document to refuse a document_id smuggled from another tenant.
             $metadata = ExpenseMetadata::query()
                 ->where('document_id', $expense->id)
+                ->whereHas('document', function (Builder $query) use ($expense): void {
+                    $query->whereRaw('tenant_id = ?', [$expense->tenant_id])
+                        ->whereRaw('company_id = ?', [$expense->company_id]);
+                })
                 ->lockForUpdate()
                 ->first();
 
@@ -284,8 +293,22 @@ final class ExpenseService
                 throw new \DomainException('This expense has no payment metadata to settle.');
             }
 
+            // Only the AP-booking kind is settleable via /pay. post() branches on
+            // ExpenseKind::LinkedCost → createLinkedCostCapitalizationEntry, which
+            // CREDITS Cash (never SupplierPayable) regardless of is_paid; every
+            // other kind (Generic/default) reaches createFromExpense and, when
+            // unpaid, books Cr SupplierPayable. Reversing an AP that was never
+            // credited would fabricate a phantom liability reversal and
+            // double-decrement cash — so reject linked-cost settlement outright.
+            // This condition matches post()'s own branch exactly.
+            if ($metadata->expense_kind === ExpenseKind::LinkedCost) {
+                throw new \DomainException('Only standard expenses booking an accounts-payable liability can be settled via /pay; linked-cost expenses are settled at capitalization.');
+            }
+
             $settlementKey = MovementSourceType::Expense->value.':'.$expense->id.':settlement';
             $alreadySettled = RepositoryMovement::query()
+                ->where('tenant_id', $expense->tenant_id)
+                ->where('company_id', $expense->company_id)
                 ->where('idempotency_key', $settlementKey)
                 ->exists();
 
@@ -305,12 +328,18 @@ final class ExpenseService
                 throw new \DomainException('This expense has already been paid.');
             }
 
-            /** @var PaymentRepository $repository */
+            // Business-rule failure (unknown/foreign repository) → 422, matching
+            // the other settlement guards, rather than the 404 firstOrFail would
+            // raise (Fix 3). The lookup is already tenant/company-scoped.
             $repository = PaymentRepository::query()
                 ->where('tenant_id', $expense->tenant_id)
                 ->where('company_id', $expense->company_id)
                 ->whereKey($data->paymentRepositoryId)
-                ->firstOrFail();
+                ->first();
+
+            if ($repository === null) {
+                throw new \DomainException('The selected payment repository was not found for this company.');
+            }
 
             $creditAccount = match ($repository->type) {
                 RepositoryType::BankAccount => Account::findByPurposeOrFail($expense->company_id, SystemAccountPurpose::Bank),
@@ -323,10 +352,18 @@ final class ExpenseService
             // SYNCHRONOUSLY in-transaction so it takes the GL company advisory
             // lock BEFORE the movement port's repository row lock below — the
             // same global lock order as post() (spine BLOCKER-1).
-            $entry = $this->glService->createSupplierPaymentJournalEntry(
+            //
+            // Use the dedicated expense-settlement helper (NOT
+            // createSupplierPaymentJournalEntry, whose $partnerId is non-nullable):
+            // documents.partner_id is nullable, so a petty-cash / anonymous-vendor
+            // expense booked its AP line with a NULL partner in post(). The
+            // settlement must mirror that AP booking with the SAME (nullable)
+            // partner — passing null into the non-null helper would TypeError → 500
+            // (Fix 1).
+            $entry = $this->glService->createExpenseSettlementJournalEntry(
                 companyId: $expense->company_id,
                 partnerId: $expense->partner_id,
-                paymentId: $expense->id,
+                expenseId: $expense->id,
                 amount: (string) ($expense->total ?? '0'),
                 paymentMethodAccountId: $creditAccount->id,
                 date: Carbon::parse($data->paymentDate),

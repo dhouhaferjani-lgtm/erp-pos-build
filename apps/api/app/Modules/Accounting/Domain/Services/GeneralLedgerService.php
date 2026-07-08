@@ -628,6 +628,89 @@ final class GeneralLedgerService
     }
 
     /**
+     * Create the settlement journal entry that pays down the accounts-payable
+     * liability booked by {@see createFromExpense()} for an UNPAID expense.
+     *
+     * Mirrors that AP booking EXACTLY — same SupplierPayable account, same
+     * (nullable) partner tag — so the two entries net to zero on the AP
+     * subledger. Unlike {@see createSupplierPaymentJournalEntry()} this accepts
+     * a NULL partner, because `documents.partner_id` is nullable and a
+     * petty-cash / anonymous-vendor expense books its AP line with no partner.
+     *
+     *   Dr SupplierPayable (401, partner = nullable) = amount
+     *   Cr Cash/Bank                                 = amount
+     */
+    public function createExpenseSettlementJournalEntry(
+        string $companyId,
+        ?string $partnerId,
+        string $expenseId,
+        string $amount,
+        string $paymentMethodAccountId,
+        \DateTimeInterface $date,
+        User $user,
+        ?string $description = null,
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
+    ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createExpenseSettlementJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
+        $payableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
+
+        $entry = DB::transaction(function () use (
+            $companyId, $partnerId, $expenseId, $amount, $paymentMethodAccountId,
+            $date, $description, $payableAccount, $user
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $user->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description ?? 'Expense settlement',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'expense_settlement',
+                'journal_code' => JournalCode::fromSourceType('expense_settlement')->value,
+                'source_id' => $expenseId,
+            ]);
+
+            // Debit: Accounts Payable — partner nullable, mirroring the AP booking.
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $payableAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Payable cleared',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Bank/Cash — money left the treasury repository.
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentMethodAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Expense settlement payment',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
+
+        return $entry;
+    }
+
+    /**
      * Create journal entry for customer payment received.
      *
      * Standard payment against an invoice:
