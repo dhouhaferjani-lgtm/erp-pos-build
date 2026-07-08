@@ -56,6 +56,11 @@ final class RemoteImageFetcher
         // private address. The downloader re-verifies the connected peer IP.
         $pinnedIp = $ips[0];
 
-        return $this->downloader->download($url, $host, $pinnedIp, self::MAX_BYTES);
+        // Thread the real connection port so the downloader's RESOLVE pin matches
+        // the actual port; ExternalUrlGuard has already rejected any non-443 port.
+        $parsedPort = parse_url($url, PHP_URL_PORT);
+        $port = is_int($parsedPort) ? $parsedPort : 443;
+
+        return $this->downloader->download($url, $host, $pinnedIp, $port, self::MAX_BYTES);
     }
 }

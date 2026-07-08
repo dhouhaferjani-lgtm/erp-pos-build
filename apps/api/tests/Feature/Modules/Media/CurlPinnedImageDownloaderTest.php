@@ -107,13 +107,18 @@ final class CurlPinnedImageDownloaderTest extends TestCase
         return "http://127.0.0.1:{$this->port}{$path}";
     }
 
+    private function urlForHost(string $host, string $path): string
+    {
+        return "http://{$host}:{$this->port}{$path}";
+    }
+
     public function test_downloads_valid_png_and_verifies_peer_ip(): void
     {
         $png = $this->validPngBytes();
         $this->bootServer($this->routerServingBytes('image/png', $png));
 
         $downloader = new CurlPinnedImageDownloader;
-        $result = $downloader->download($this->url('/serum.png'), '127.0.0.1', '127.0.0.1', 10_485_760);
+        $result = $downloader->download($this->url('/serum.png'), '127.0.0.1', '127.0.0.1', $this->port, 10_485_760);
 
         $this->assertFileExists($result->tempPath);
         $this->assertSame('image/png', $result->mime);
@@ -121,6 +126,55 @@ final class CurlPinnedImageDownloaderTest extends TestCase
         $this->assertSame(strlen($png), $result->byteSize);
         $this->assertStringEqualsFile($result->tempPath, $png);
         @unlink($result->tempPath);
+    }
+
+    /**
+     * Exercises the CURLOPT_RESOLVE pin with a real HOSTNAME (not a literal IP, so
+     * the RESOLVE entry is actually consulted): `img.test.local` is pinned to the
+     * loopback IP the built-in server runs on for the exact server port. The pin
+     * must direct the socket to 127.0.0.1 (no /etc/hosts entry exists), the body
+     * must download, and the peer-IP re-verification must pass.
+     */
+    public function test_pins_hostname_to_server_ip_and_downloads(): void
+    {
+        $png = $this->validPngBytes();
+        $this->bootServer($this->routerServingBytes('image/png', $png));
+
+        $downloader = new CurlPinnedImageDownloader;
+        $result = $downloader->download(
+            $this->urlForHost('img.test.local', '/serum.png'),
+            'img.test.local',
+            '127.0.0.1',
+            $this->port,
+            10_485_760,
+        );
+
+        $this->assertFileExists($result->tempPath);
+        $this->assertSame('image/png', $result->mime);
+        $this->assertSame('serum.png', $result->filename);
+        $this->assertStringEqualsFile($result->tempPath, $png);
+        @unlink($result->tempPath);
+    }
+
+    /**
+     * Negative case for the defense-in-depth peer-IP verification, reproducing the
+     * exact failure mode of the old hardcoded-port bug: the pin PORT (443) does not
+     * match the URL's real connection port, so libcurl silently ignores
+     * CURLOPT_RESOLVE and connects to the URL's own IP (127.0.0.1). The caller
+     * pinned a DIFFERENT public IP (41.226.11.20), so CURLINFO_PRIMARY_IP mismatches
+     * the pinned IP and the download MUST be rejected before the body is trusted.
+     */
+    public function test_rejects_when_peer_ip_does_not_match_pin(): void
+    {
+        $png = $this->validPngBytes();
+        $this->bootServer($this->routerServingBytes('image/png', $png));
+
+        $downloader = new CurlPinnedImageDownloader;
+        $this->expectException(RemoteImageFetchException::class);
+        $this->expectExceptionMessage('does not match pinned IP');
+        // Port 443 != the server's ephemeral port -> RESOLVE inert (the old bug) ->
+        // curl connects to 127.0.0.1 from the URL, but pin says 41.226.11.20.
+        $downloader->download($this->url('/serum.png'), '127.0.0.1', '41.226.11.20', 443, 10_485_760);
     }
 
     public function test_aborts_when_body_exceeds_max_bytes(): void
@@ -131,7 +185,7 @@ final class CurlPinnedImageDownloaderTest extends TestCase
         $downloader = new CurlPinnedImageDownloader;
         $this->expectException(RemoteImageFetchException::class);
         // maxBytes far below the 4096-byte body -> WRITEFUNCTION aborts the transfer.
-        $downloader->download($this->url('/big.png'), '127.0.0.1', '127.0.0.1', 512);
+        $downloader->download($this->url('/big.png'), '127.0.0.1', '127.0.0.1', $this->port, 512);
     }
 
     public function test_denies_redirect(): void
@@ -140,7 +194,7 @@ final class CurlPinnedImageDownloaderTest extends TestCase
 
         $downloader = new CurlPinnedImageDownloader;
         $this->expectException(RemoteImageFetchException::class);
-        $downloader->download($this->url('/redirect'), '127.0.0.1', '127.0.0.1', 10_485_760);
+        $downloader->download($this->url('/redirect'), '127.0.0.1', '127.0.0.1', $this->port, 10_485_760);
     }
 
     public function test_rejects_image_content_type_with_non_image_bytes(): void
@@ -149,7 +203,7 @@ final class CurlPinnedImageDownloaderTest extends TestCase
 
         $downloader = new CurlPinnedImageDownloader;
         $this->expectException(RemoteImageFetchException::class);
-        $downloader->download($this->url('/fake.png'), '127.0.0.1', '127.0.0.1', 10_485_760);
+        $downloader->download($this->url('/fake.png'), '127.0.0.1', '127.0.0.1', $this->port, 10_485_760);
     }
 
     private function routerServingBytes(string $contentType, string $body): string

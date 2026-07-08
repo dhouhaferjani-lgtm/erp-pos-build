@@ -46,6 +46,7 @@ final class RemoteImageFetcherTest extends TestCase
         $this->assertSame('https://pharma-shop.tn/img/serum.png', $downloader->url);
         $this->assertSame('pharma-shop.tn', $downloader->host);
         $this->assertSame('41.226.11.20', $downloader->pinnedIp);
+        $this->assertSame(443, $downloader->port);
         $this->assertSame(10_485_760, $downloader->maxBytes);
     }
 
@@ -112,16 +113,19 @@ final class RecordingPinnedImageDownloader implements PinnedImageDownloaderInter
 
     public ?string $pinnedIp = null;
 
+    public ?int $port = null;
+
     public ?int $maxBytes = null;
 
     public function __construct(private ?FetchedImage $result = null) {}
 
-    public function download(string $url, string $host, string $pinnedIp, int $maxBytes): FetchedImage
+    public function download(string $url, string $host, string $pinnedIp, int $port, int $maxBytes): FetchedImage
     {
         $this->called = true;
         $this->url = $url;
         $this->host = $host;
         $this->pinnedIp = $pinnedIp;
+        $this->port = $port;
         $this->maxBytes = $maxBytes;
 
         return $this->result ?? new FetchedImage('/tmp/x', 'image/png', 'x.png', 1);

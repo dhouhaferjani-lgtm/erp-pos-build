@@ -6,7 +6,9 @@ namespace App\Modules\Media\Infrastructure\Net;
 
 use App\Modules\Media\Application\DTOs\FetchedImage;
 use App\Modules\Media\Application\Exceptions\RemoteImageFetchException;
+use App\Modules\Media\Application\Services\RemoteImageFetcher;
 use App\Modules\Media\Domain\Contracts\PinnedImageDownloaderInterface;
+use App\Modules\Media\Domain\ValueObjects\ExternalUrlGuard;
 
 /**
  * Default {@see PinnedImageDownloaderInterface} implementation over raw cURL.
@@ -21,6 +23,14 @@ use App\Modules\Media\Domain\Contracts\PinnedImageDownloaderInterface;
  *  - after transfer the connected peer IP (CURLINFO_PRIMARY_IP) MUST equal the
  *    pinned IP, the declared content-type MUST be in the allowlist, and the
  *    leading bytes MUST match the declared image type's magic bytes.
+ *
+ * SCHEME-TRUST BOUNDARY: this downloader does NOT enforce the URL scheme, host
+ * safety, or port. CURLOPT_PROTOCOLS deliberately permits http (so the plain-HTTP
+ * built-in-server integration test can exercise the real transfer). Callers MUST
+ * pre-validate every URL with {@see ExternalUrlGuard::assertHttpsHostAllowed}
+ * — as {@see RemoteImageFetcher} does —
+ * before handing it here. The RESOLVE pin is built for the exact ($host, $port)
+ * the caller passes; the caller is responsible for passing the URL's real port.
  */
 final class CurlPinnedImageDownloader implements PinnedImageDownloaderInterface
 {
@@ -45,7 +55,7 @@ final class CurlPinnedImageDownloader implements PinnedImageDownloaderInterface
 
     private const MAGIC_WEBP = 'WEBP';
 
-    public function download(string $url, string $host, string $pinnedIp, int $maxBytes): FetchedImage
+    public function download(string $url, string $host, string $pinnedIp, int $port, int $maxBytes): FetchedImage
     {
         $tempPath = tempnam(sys_get_temp_dir(), 'enrimg_');
         if ($tempPath === false) {
@@ -70,7 +80,9 @@ final class CurlPinnedImageDownloader implements PinnedImageDownloaderInterface
 
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
-            CURLOPT_RESOLVE => ["{$host}:443:{$pinnedIp}"],
+            // Pin for the ACTUAL connection port — a hardcoded 443 here would be
+            // silently ignored by libcurl for any other port, defeating the pin.
+            CURLOPT_RESOLVE => ["{$host}:{$port}:{$pinnedIp}"],
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_CONNECTTIMEOUT => self::CONNECT_TIMEOUT,
             CURLOPT_TIMEOUT => self::TRANSFER_TIMEOUT,
