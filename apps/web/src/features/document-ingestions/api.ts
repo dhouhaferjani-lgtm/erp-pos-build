@@ -31,9 +31,26 @@ export async function listDocumentIngestions(
   return response.data
 }
 
+// The server serves MatchSuggestionService::toArray() verbatim — snake_case keys
+// (supplier_candidates, product_candidates, …). The review page reads the camelCase
+// shape; normalize once here so an undefined array can't crash the mount effect.
+function normalizeSuggestions(raw: unknown): DocumentIngestionDetail['suggestions'] {
+  if (raw === null || typeof raw !== 'object') {
+    return null
+  }
+  const s = raw as Record<string, unknown>
+  return {
+    supplierCandidates: (s['supplierCandidates'] ?? s['supplier_candidates'] ?? []) as never,
+    productCandidates: (s['productCandidates'] ?? s['product_candidates'] ?? []) as never,
+    receiptLineCandidates: (s['receiptLineCandidates'] ?? s['receipt_line_candidates'] ?? []) as never,
+    purchaseOrderCandidates: (s['purchaseOrderCandidates'] ?? s['purchase_order_candidates'] ?? []) as never,
+  }
+}
+
 export async function getDocumentIngestion(id: string): Promise<DocumentIngestionDetail> {
   const response = await api.get<ApiEnvelope<DocumentIngestionDetail>>(`/document-ingestions/${id}`)
-  return response.data.data
+  const detail = response.data.data
+  return { ...detail, suggestions: normalizeSuggestions(detail.suggestions) }
 }
 
 export async function uploadDocumentIngestion(
