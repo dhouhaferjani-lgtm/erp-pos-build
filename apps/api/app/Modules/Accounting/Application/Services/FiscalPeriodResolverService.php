@@ -277,13 +277,18 @@ class FiscalPeriodResolverService
      */
     public function isDateInClosedPeriod(string $companyId, Carbon $date): bool
     {
-        $period = FiscalPeriod::query()
+        // Order-independent: return true iff a covering period whose status is
+        // Closed OR Locked EXISTS. The previous ->first()->isClosed() form was
+        // row-order-dependent — with two periods overlapping the date it could
+        // sample an Open period and wrongly allow a post into a date that is
+        // ALSO covered by a Closed period. The whereIn([Closed, Locked]) mirrors
+        // FiscalPeriod::isClosed() exactly (Locked is treated as closed too).
+        return FiscalPeriod::query()
             ->where('company_id', $companyId)
             ->where('start_date', '<=', $date)
             ->where('end_date', '>=', $date)
-            ->first();
-
-        return $period !== null && $period->isClosed();
+            ->whereIn('status', [PeriodStatus::Closed, PeriodStatus::Locked])
+            ->exists();
     }
 
     /**

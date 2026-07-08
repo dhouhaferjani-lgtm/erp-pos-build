@@ -7,6 +7,7 @@ namespace Tests\Feature\Accounting;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -19,6 +20,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -157,6 +159,57 @@ final class PostEntryNowAtomicityTest extends TestCase
         }
 
         Event::assertNotDispatched(JournalEntryPosted::class);
+    }
+
+    /**
+     * Wave B gate (Fix 4): a sync-capable helper called with
+     * SynchronousInTransaction but NO enclosing transaction must throw a
+     * LogicException BEFORE creating the Draft — otherwise the inner
+     * DB::transaction commits an orphaned Draft that postEntryNow then rejects,
+     * leaving a committed unposted entry behind. The throw must precede any row
+     * creation, so no journal_entries row is left.
+     */
+    public function test_sync_helper_without_enclosing_transaction_throws_before_creating_draft(): void
+    {
+        app(CompanyContext::class)->clear();
+
+        // The orphaned-Draft risk exists ONLY at transactionLevel 0. Under the
+        // RefreshDatabase harness every test body otherwise runs inside a
+        // wrapping transaction (level 1), so we roll it back to genuinely reach
+        // level 0 — the production condition the guard defends against. The guard
+        // is the FIRST statement of the helper and touches no DB, so dummy UUIDs
+        // suffice and nothing is created. A fresh transaction is re-opened in the
+        // finally block so RefreshDatabase teardown has one to roll back.
+        DB::rollBack();
+        $this->assertSame(0, DB::transactionLevel());
+
+        try {
+            $threw = false;
+            try {
+                app(GeneralLedgerService::class)->createSupplierPaymentJournalEntry(
+                    companyId: (string) Str::uuid(),
+                    partnerId: (string) Str::uuid(),
+                    paymentId: (string) Str::uuid(),
+                    amount: '100.000',
+                    paymentMethodAccountId: (string) Str::uuid(),
+                    date: new \DateTimeImmutable('2025-05-01'),
+                    user: $this->user,
+                    description: null,
+                    currencyCode: 'TND',
+                    mode: PostingMode::SynchronousInTransaction,
+                );
+            } catch (\LogicException $e) {
+                $threw = true;
+                $this->assertStringContainsString('enclosing database transaction', $e->getMessage());
+            }
+
+            $this->assertTrue($threw, 'Expected LogicException for SynchronousInTransaction without an enclosing transaction.');
+
+            // The guard fired before the inner DB::transaction — no Draft was created.
+            $this->assertSame(0, JournalEntry::count());
+        } finally {
+            DB::beginTransaction();
+        }
     }
 
     private function makeDraftBalancedEntry(string $entryNumber): JournalEntry

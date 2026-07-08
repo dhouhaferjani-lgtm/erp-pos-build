@@ -17,8 +17,13 @@ use App\Modules\Company\Domain\FiscalPeriod;
  * explicitly ALLOWED — posting must never be blocked for a company that has
  * not configured fiscal periods yet, or this would brick every unconfigured
  * tenant.
+ *
+ * Extends \DomainException (not \RuntimeException) so the generic
+ * DomainException render handler (bootstrap/app.php) maps it to an HTTP 422
+ * BUSINESS_ERROR response instead of an unhandled 500 — a closed period is a
+ * business-rule rejection, not a server fault.
  */
-class ClosedFiscalPeriodException extends \RuntimeException
+class ClosedFiscalPeriodException extends \DomainException
 {
     public function __construct(
         public readonly string $companyId,

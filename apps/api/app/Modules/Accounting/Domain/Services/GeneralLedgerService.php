@@ -569,6 +569,10 @@ final class GeneralLedgerService
         ?string $currencyCode = null,
         PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createSupplierPaymentJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $payableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
 
         $entry = DB::transaction(function () use (
@@ -642,6 +646,10 @@ final class GeneralLedgerService
         ?string $currencyCode = null,
         PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createPaymentReceivedJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
 
         $entry = DB::transaction(function () use (
@@ -2376,6 +2384,10 @@ final class GeneralLedgerService
      */
     public function createFromExpense(Document $expense, User $user, PostingMode $mode = PostingMode::AfterCommit): JournalEntry
     {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createFromExpense: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $entry = DB::transaction(function () use ($expense): JournalEntry {
             $companyId = $expense->company_id;
             $metadata = $expense->expenseMetadata;
@@ -2470,6 +2482,10 @@ final class GeneralLedgerService
      */
     public function createFromIncome(Document $income, User $user, PostingMode $mode = PostingMode::AfterCommit): JournalEntry
     {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createFromIncome: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $entry = DB::transaction(function () use ($income): JournalEntry {
             $companyId = $income->company_id;
             $metadata = $income->incomeMetadata;
