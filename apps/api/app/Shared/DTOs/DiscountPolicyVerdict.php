@@ -16,10 +16,19 @@ final class DiscountPolicyVerdict extends Data
      */
     public function __construct(
         public bool $allowed,
+        public bool $blocksSale,
         public string $severity,
         public ?string $requiresPermission,
-        public ?string $floorNet,
+        public string $maxDiscountPercent,
         public ?string $discountPercent,
+        public ?string $floorPriceNet,
+        public string $floorBasis,
+        public string $floorEnforcement,
+        public string $mode,
+        public bool $overridable,
+        public bool $requiresReason,
+        public string $policyVersion,
+        public string $policyAsOf,
         public array $reasons = [],
         public array $meta = [],
     ) {}

@@ -56,6 +56,7 @@ final class DiscountPolicySubjectProviderTest extends TestCase
             'category_id' => $child->id,
             'max_discount_percent' => null,
             'cost_price' => '100.123456',
+            'sale_price' => '150.00',
             'last_purchase_cost' => '98.000000',
             'minimum_margin_override' => '12.00',
         ]);
@@ -69,6 +70,7 @@ final class DiscountPolicySubjectProviderTest extends TestCase
 
         self::assertSame('10.00', $subjects['line-0']->effectiveMaxDiscountPercent());
         self::assertSame('12.00', $subjects['line-0']->minimumMarginPercent);
+        self::assertSame('150.000', $subjects['line-0']->salePriceNet);
         self::assertSame('100.123456', $subjects['line-0']->wacNet);
         self::assertSame('98.000000', $subjects['line-0']->lastPurchaseCost);
         self::assertNotSame('', $subjects['line-0']->policyVersion);
@@ -136,5 +138,19 @@ final class DiscountPolicySubjectProviderTest extends TestCase
         self::assertSame($taxConfiguration->id, $subject->taxConfigurationId);
         self::assertSame('20.00', $subject->taxRate);
         self::assertSame('5.5000', $subject->resolvedTaxRate);
+    }
+
+    public function test_subject_treats_sale_price_as_ht_even_when_company_entry_mode_is_ttc(): void
+    {
+        $this->company->update(['price_entry_mode' => PriceEntryMode::Ttc]);
+        $product = Product::factory()->for($this->tenant)->for($this->company)->create([
+            'sale_price' => '123.450',
+            'tax_rate' => '20.00',
+        ]);
+
+        $subject = $this->provider->resolve($this->company->id, $product->id);
+
+        self::assertSame('123.450', $subject->salePriceNet);
+        self::assertSame(PriceEntryMode::Ttc->value, $subject->priceEntryMode);
     }
 }

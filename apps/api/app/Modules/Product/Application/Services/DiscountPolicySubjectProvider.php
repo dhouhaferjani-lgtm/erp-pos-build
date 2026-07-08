@@ -11,9 +11,9 @@ use App\Shared\Contracts\TaxConfigurationLookupInterface;
 use App\Shared\DTOs\DiscountPolicyLineContext;
 use App\Shared\DTOs\DiscountPolicySubject;
 use App\Shared\DTOs\TaxConfigurationSummary;
+use App\Shared\Exceptions\DiscountPolicySubjectNotFoundException;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
-use RuntimeException;
 
 final class DiscountPolicySubjectProvider implements DiscountPolicySubjectProviderInterface
 {
@@ -52,7 +52,7 @@ final class DiscountPolicySubjectProvider implements DiscountPolicySubjectProvid
         foreach ($contexts as $lineKey => $context) {
             $product = $productsById->get($context->productId);
             if (! $product instanceof Product) {
-                throw new RuntimeException("Product {$context->productId} was not found for discount policy resolution.");
+                throw new DiscountPolicySubjectNotFoundException($context->productId);
             }
 
             $company = $product->company;
@@ -73,6 +73,7 @@ final class DiscountPolicySubjectProvider implements DiscountPolicySubjectProvid
                 productMaxDiscountPercent: $product->max_discount_percent !== null ? (string) $product->max_discount_percent : null,
                 categoryMaxDiscountPercents: $categoryCaps,
                 companyMaxDiscountPercent: $company->default_max_discount_percent !== null ? (string) $company->default_max_discount_percent : null,
+                salePriceNet: $product->sale_price !== null ? (string) $product->sale_price : null,
                 wacNet: (string) $product->cost_price,
                 lastPurchaseCost: $product->last_purchase_cost !== null ? (string) $product->last_purchase_cost : null,
                 minimumMarginPercent: $marginsByProductId[$product->id]->minimum_margin,

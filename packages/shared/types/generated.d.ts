@@ -1470,7 +1470,7 @@ declare namespace App.Modules.PlatformIntegration.Domain.Enums {
 export type PlatformLookupStatus = 'found' | 'not_found' | 'error' | 'cached';
 }
 declare namespace App.Modules.Pricing.Domain.Enums {
-export type FloorBasis = 'Cost' | 'MinimumMargin' | 'DiscountCap';
+export type FloorBasis = 'None' | 'Cost' | 'MinimumMargin' | 'DiscountCap';
 export type PriceBasis = 'Ht' | 'Ttc';
 export type RegulatoryEnforcement = 'Advisory' | 'Block';
 export type RegulatoryRuleType = 'BelowCostFloor' | 'PharmaMarginSchedule';
@@ -2423,10 +2423,16 @@ export type ToleranceType = 'underpayment' | 'overpayment' | 'none';
 }
 declare namespace App.Shared.DTOs {
 export type DiscountPolicyContext = {
-subject: App.Shared.DTOs.DiscountPolicySubject;
+companyId: string;
+productId: string;
+variantId: string | null;
 effectiveUnitPrice: string;
+currency: string;
+quantity: string;
 taxRate: string | null;
+taxConfigurationId: string | null;
 priceBasis: string;
+userId: string | null;
 };
 export type DiscountPolicyLineContext = {
 productId: string;
@@ -2439,6 +2445,7 @@ variantId: string | null;
 productMaxDiscountPercent: string | null;
 categoryMaxDiscountPercents: Array<any>;
 companyMaxDiscountPercent: string | null;
+salePriceNet: string | null;
 wacNet: string | null;
 lastPurchaseCost: string | null;
 minimumMarginPercent: string | null;
@@ -2453,10 +2460,19 @@ policyVersion: string;
 };
 export type DiscountPolicyVerdict = {
 allowed: boolean;
+blocksSale: boolean;
 severity: string;
 requiresPermission: string | null;
-floorNet: string | null;
+maxDiscountPercent: string;
 discountPercent: string | null;
+floorPriceNet: string | null;
+floorBasis: string;
+floorEnforcement: string;
+mode: string;
+overridable: boolean;
+requiresReason: boolean;
+policyVersion: string;
+policyAsOf: string;
 reasons: Array<any>;
 meta: Array<any>;
 };

@@ -6,6 +6,7 @@ namespace App\Modules\Pricing\Domain\Enums;
 
 enum FloorBasis: string
 {
+    case None = 'None';
     case Cost = 'Cost';
     case MinimumMargin = 'MinimumMargin';
     case DiscountCap = 'DiscountCap';

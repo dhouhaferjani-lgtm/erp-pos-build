@@ -71,6 +71,7 @@ final class DiscountPolicyDtoTest extends TestCase
             productMaxDiscountPercent: $productMaxDiscountPercent,
             categoryMaxDiscountPercents: $categoryMaxDiscountPercents,
             companyMaxDiscountPercent: $companyMaxDiscountPercent,
+            salePriceNet: '150.00',
             wacNet: '100.000000',
             lastPurchaseCost: '98.000000',
             minimumMarginPercent: '12.00',
