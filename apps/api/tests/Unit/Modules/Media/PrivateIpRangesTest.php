@@ -29,6 +29,12 @@ final class PrivateIpRangesTest extends TestCase
             'v6 loopback' => ['::1', true],
             'v6 ula' => ['fd00::1', true],
             'v6 public' => ['2a00:1450:4001::1', false],
+            'v4 multicast low' => ['224.0.0.1', true],
+            'v4 multicast high' => ['239.255.255.250', true],
+            'v6 multicast' => ['ff02::1', true],
+            'v6 6to4 tunnel embedding private v4' => ['2002:0a00:0001::', true],
+            'v6 teredo tunnel embedding private v4' => ['2001:0000:0000:0000:0000:0000:0a00:0001', true],
+            'v6 public non-tunnel (google dns)' => ['2001:4860:4860::8888', false],
         ];
     }
 }
