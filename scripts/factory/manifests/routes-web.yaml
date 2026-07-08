@@ -327,6 +327,10 @@ routes:
     component: EnrichmentQueuePage
     module_gate: inventory
     permission: null
+  - path: /inventory/entry-exit-notes
+    component: EntryExitNotesPage
+    module_gate: inventory
+    permission: null
   - path: /inventory/expiry-write-off
     component: ExpiryWriteOffPage
     module_gate: BatchExpiry
@@ -623,6 +627,18 @@ routes:
     component: GoodsReceiptListPage
     module_gate: purchases
     permission: null
+  - path: /purchases/receipts/new
+    component: StandaloneReceiptPage
+    module_gate: null
+    permission: goods-receipt.create-standalone
+  - path: /purchases/scans
+    component: DocumentIngestionListPage
+    module_gate: null
+    permission: document-ingestions.view
+  - path: /purchases/scans/:id
+    component: ReviewIngestionPage
+    module_gate: null
+    permission: document-ingestions.view
   - path: /purchases/supplier-invoices
     component: SupplierInvoiceListPage
     module_gate: purchases
@@ -631,6 +647,10 @@ routes:
     component: SupplierInvoiceDetailPage
     module_gate: purchases
     permission: null
+  - path: /purchases/supplier-invoices/new
+    component: SupplierInvoiceCreatePage
+    module_gate: null
+    permission: purchases.create
   - path: /purchases/suppliers
     component: CustomerListPage
     module_gate: purchases
