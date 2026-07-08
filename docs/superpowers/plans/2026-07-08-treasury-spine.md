@@ -1,6 +1,23 @@
 # Treasury Money-Movement Spine — Implementation Plan (Phase 1)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **Rev 2 (2026-07-08):** reconciled against the Codex plan review — `reviews/2026-07-08-treasury-spine-plan-codex-review.md` (2 BLOCKER / 6 HIGH / 5 MED / 2 LOW, all accepted). Key structural changes: a **global lock-order invariant** (below), a `PostingMode` seam on GL helpers (Task 6), explicit `allowWhileFrozen` on `MovementIntent` (Tasks 11/20/21), request-level idempotency keys (Task 16b/18), and Task 19 rewritten from real code.
+
+## Global lock order (BLOCKER-1 — every flow MUST follow this)
+
+To prevent cross-flow deadlock between the GL per-company advisory lock (Task 7) and the `payment_repositories` row lock (Task 11), **every** converged flow acquires locks in this order, top to bottom:
+
+1. **GL company advisory lock** — `pg_advisory_xact_lock(hashtextextended(company_id::text, 0))`, taken inside `postEntryNow` / `sealAndPersistEntry` (Task 7).
+2. **`payment_repositories` row lock(s)** — `lockForUpdate`, taken inside `TreasuryMovementService::record()` / `transfer()` (Task 11/12); transfers lock **both** repos sorted by id.
+
+Concretely: **post the GL entry (advisory-locked) BEFORE calling `record()` (repo-locked).** No flow may lock a repository row and then post GL. This is why Task 16 reorders `PaymentController` (which today locks the repo before GL) and why `transfer()` takes the company advisory lock before its sorted repo locks even when it posts no JE.
+
+## Executor notes
+
+- **Test helpers** referenced in a task's example (`seedCompanyWithCurrency`, `postedJournalEntryId`, `makeDraftBalancedEntry`, `seedRepository`, etc.) are **not pre-existing** — define them in the task that first uses them, or substitute the repo's existing factory/seeder patterns (`PaymentRepositorySeeder`, `DemoPharmacySeeder`, model factories). Verify a factory exists before calling `::factory()`.
+- **Commit messages:** conventional commits (`feat(...)`, `fix(...)`, `test(...)`) — matches repo git history.
+- **Migrations** apply per-tenant: after adding any, run `php artisan tenants:migrate` (not `migrate`) on the local stack.
 
 **Goal:** Make every money movement in a payment repository flow through one append-only ledger + single write port, each carrying a source-document reference and a GL journal entry written atomically — so cash position is trustworthy, drillable, and audit-defensible.
 
@@ -130,6 +147,16 @@ return new class extends Migration
             FROM companies c
             WHERE c.id = pr.company_id AND pr.currency IS NULL
         SQL);
+
+        // MED-11: currency is a hard guard — must be non-null. Assert backfill
+        // completeness, then enforce at the schema level.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            $nulls = DB::table('payment_repositories')->whereNull('currency')->count();
+            if ($nulls > 0) {
+                throw new \RuntimeException("Cannot enforce NOT NULL: {$nulls} payment_repositories have null currency after backfill.");
+            }
+            DB::statement('ALTER TABLE payment_repositories ALTER COLUMN currency SET NOT NULL');
+        }
     }
 
     public function down(): void
@@ -143,7 +170,7 @@ return new class extends Migration
 
 > Verify `companies` table + `currency` column name first (`grep -rn "currency" database/migrations/tenant | grep companies`). Adjust the backfill if the company currency lives elsewhere.
 
-- [ ] **Step 4: Add `currency`, `frozen_at`, `next_movement_ordinal` to the model** (`PaymentRepository.php`): add to `$casts` (`next_movement_ordinal => 'integer'`, `frozen_at => 'immutable_datetime'`) and property docblocks. **Do NOT add `currency`/`next_movement_ordinal` to `$fillable`** (port-managed).
+- [ ] **Step 4: Add `currency`, `frozen_at`, `next_movement_ordinal` to the model** (`PaymentRepository.php`): add to `$casts` (`next_movement_ordinal => 'integer'`, `frozen_at => 'immutable_datetime'`) and property docblocks. **Do NOT add `currency`/`next_movement_ordinal` to `$fillable`** (port-managed). **Also update `PaymentRepositoryFactory`** (if it exists) to default `currency` to the factory's company currency (MED-11) — grep `database/factories` for it; if absent, ensure the seeder sets currency.
 
 - [ ] **Step 5: Run test — expect PASS**
 
@@ -250,6 +277,12 @@ return new class extends Migration
             $table->index(['payment_repository_id', 'occurred_at']);
             $table->index(['source_type', 'source_id']);
             $table->index('transfer_group_id');
+
+            // MED-12: referential integrity. journal_entry_id nullable (opening_balance /
+            // same-account transfer legs); reverses_movement_id self-FK for corrections.
+            $table->foreign('payment_repository_id')->references('id')->on('payment_repositories');
+            $table->foreign('journal_entry_id')->references('id')->on('journal_entries');
+            $table->foreign('reverses_movement_id')->references('id')->on('repository_movements');
         });
 
         if (DB::connection()->getDriverName() === 'pgsql') {
@@ -528,7 +561,15 @@ public function postEntryNow(JournalEntry $entry, ?User $user, ?string $currency
 }
 ```
 
-Extract `sealAndPersistEntry(JournalEntry, ?User, ?string): JournalEntryPosted` from `postEntryWithOptionalActor` (lines 1957-2014): keep the Draft check, balance assertion, `getLastChainHash`/`getNextChainSequence`/`calculateHash`, `$entry->update([...])`; **return** the constructed `JournalEntryPosted` instead of `event()`-ing it inline. Leave the existing `postEntryWithOptionalActor` behavior intact for non-spine callers by having it call `sealAndPersistEntry` then `event()` immediately (preserving current semantics).
+Extract `sealAndPersistEntry(JournalEntry, ?User, ?string): JournalEntryPosted` from `postEntryWithOptionalActor` (lines 1957-2014): keep the Draft check, balance assertion, `getLastChainHash`/`getNextChainSequence`/`calculateHash`, `$entry->update([...])`; **return** the constructed `JournalEntryPosted` instead of `event()`-ing it inline. Leave the existing `postEntryWithOptionalActor` behavior intact for non-spine callers by having it call `sealAndPersistEntry` then `event()` immediately (preserving current semantics — verified: `postEntry` fires the event inline today).
+
+- [ ] **Step 3b (HIGH-3): add the `PostingMode` seam to the spine GL helpers.** The spine callers (`createFromExpense`, `createFromIncome`, `createSupplierPaymentJournalEntry`, `createPaymentReceivedJournalEntry`) today create a Draft then call `postEntryAndDispatchPostedEventAfterCommit` (`:2332`, `:2429`, `:604`, `:675`). Add:
+
+```php
+enum PostingMode { case AfterCommit; case SynchronousInTransaction; }
+```
+
+Give each of those four helpers a `PostingMode $mode = PostingMode::AfterCommit` parameter (default preserves current behavior for every non-spine caller — no regression). When `SynchronousInTransaction`, the helper calls `postEntryNow($entry, $user, $currency)` instead of the afterCommit wrapper, and **returns the posted `JournalEntry`** so the caller can pass its id to `record()`. Tasks 14/16/17/19 pass `PostingMode::SynchronousInTransaction`.
 
 > **Chain-sequence race:** `postEntryNow` runs inside the caller transaction; the `getLastChainHash`+`getNextChainSequence` reads are still unlocked. Task 7 adds the lock. Do NOT duplicate that here.
 
@@ -557,6 +598,8 @@ if (DB::connection()->getDriverName() === 'pgsql') {
 ```
 
 Apply the same advisory lock in `generateEntryNumber` (wrap its read) so entry-number and chain-sequence share the per-company serialization. Both are transaction-scoped locks, released on commit; posting already runs in a transaction.
+
+> **Global lock order (BLOCKER-1):** this advisory lock is **step 1** of every converged flow. Because it lives inside `postEntryNow`/sealing, and callers post GL before calling `record()` (which takes the repo lock), the order is always advisory → repo. `transfer()` (Task 12) must take this same company advisory lock BEFORE its sorted repo locks even when it posts no JE — add an explicit `pg_advisory_xact_lock(hashtextextended(company_id::text,0))` at the top of `transfer()`.
 
 - [ ] **Step 4: Run — expect PASS** + `./vendor/bin/phpunit tests/Feature/Accounting`.
 - [ ] **Step 5: Commit** `fix(accounting): serialize GL chain-sequence + entry-number allocation per company (advisory lock)`.
@@ -614,7 +657,7 @@ if ($this->fiscalPeriodResolver->isDateInClosedPeriod($entry->company_id, $entry
 
 **Interfaces:**
 - Produces:
-  - `MovementIntent` (readonly): `repositoryId, tenantId, companyId, MovementDirection $direction, string $amount /*numeric-string*/, string $currency, MovementSourceType $sourceType, string $sourceId, string $idempotencyLeg, ?string $journalEntryId, ?CarbonImmutable $occurredAt, ?MovementReasonCode $reasonCode, ?string $reversesMovementId, ?string $createdBy, ?string $notes`. Computes `idempotencyKey(): string` = `"{$sourceType->value}:{$sourceId}:{$idempotencyLeg}"`.
+  - `MovementIntent` (readonly): `repositoryId, tenantId, companyId, MovementDirection $direction, string $amount /*numeric-string*/, string $currency, MovementSourceType $sourceType, string $sourceId, string $idempotencyLeg, ?string $journalEntryId, ?CarbonImmutable $occurredAt, ?MovementReasonCode $reasonCode, ?string $reversesMovementId, ?string $createdBy, ?string $notes, bool $allowWhileFrozen = false`. Computes `idempotencyKey(): string` = `"{$sourceType->value}:{$sourceId}:{$idempotencyLeg}"`. **`allowWhileFrozen` (HIGH-4/5) is explicit, NOT inferred from `sourceType`** — set `true` ONLY by offline-device-replay projection bridges (Task 20 receipt legs, Task 21 returns); every interactive caller and every server-authored fiscal event (e.g. `DEPOSIT_RECEIPT`, which `isServerOnly()`) leaves it `false`.
   - `MovementResult` (readonly): `string $movementId, string $balanceAfter, int $ordinal, bool $wasIdempotentHit`.
   - `TransferIntent` (readonly): `fromRepositoryId, toRepositoryId, tenantId, companyId, string $amount, string $currency, string $transferGroupId, ?string $journalEntryId, ?CarbonImmutable $occurredAt, ?string $createdBy, ?string $notes`.
   - `TransferResult` (readonly): `MovementResult $outLeg, MovementResult $inLeg`.
@@ -643,7 +686,8 @@ if ($this->fiscalPeriodResolver->isDateInClosedPeriod($entry->company_id, $entry
   - (b) currency mismatch (intent currency ≠ repository currency) throws.
   - (c) idempotency: calling `record()` twice with the same intent (same key) in separate transactions yields one row; the second returns `wasIdempotentHit = true` with the same `movementId`, no ordinal gap, balance unchanged.
   - (d) idempotency mismatch: same key, different amount → throws loudly.
-  - (e) interactive write into a frozen repository throws `RepositoryFrozenException`.
+  - (e) interactive write (`allowWhileFrozen=false`) into a frozen repository throws `RepositoryFrozenException`; a replay write (`allowWhileFrozen=true`) into a frozen repository succeeds with `recorded_while_frozen=true`.
+  - (f) MED-9: calling `record()` with no active transaction (`DB::transactionLevel()===0`) throws `LogicException`.
 
 ```php
 public function test_records_movement_and_increments_ordinal_and_balance(): void
@@ -672,9 +716,18 @@ public function test_records_movement_and_increments_ordinal_and_balance(): void
 ```php
 public function record(MovementIntent $intent): MovementResult
 {
+    // 0. MED-9: the caller MUST own an outer transaction (so the GL post + this
+    // movement + the SET LOCAL GUC are atomic). Enforce it — a top-level call
+    // would silently lose the row lock at statement end.
+    if (DB::transactionLevel() === 0) {
+        throw new \LogicException('TreasuryMovementService::record() must be called inside a DB::transaction (with the GL post).');
+    }
+
     $scale = $this->scaleResolver->getScale($intent->currency);
 
-    // 1. Lock the repository row (critical section; validation done above).
+    // 1. Lock the repository row. NOTE global lock order (BLOCKER-1): the caller
+    // has ALREADY taken the GL company advisory lock via postEntryNow. Repo lock
+    // comes second, always.
     /** @var PaymentRepository $repo */
     $repo = PaymentRepository::query()
         ->where('tenant_id', $intent->tenantId)->where('company_id', $intent->companyId)
@@ -685,15 +738,21 @@ public function record(MovementIntent $intent): MovementResult
         throw new CurrencyMismatchException($intent->repositoryId, $repo->currency, $intent->currency);
     }
 
-    // 3. Freeze policy (review F5): interactive writes rejected; projections flagged.
+    // 3. Freeze policy (review F5 + HIGH-4/5): rejection is driven by the EXPLICIT
+    // allowWhileFrozen flag, never inferred from sourceType (returns are Refund;
+    // server DEPOSIT_RECEIPT is FiscalEvent — both would be misclassified).
     $recordedWhileFrozen = false;
     if ($repo->frozen_at !== null) {
-        if ($intent->isProjectionOrigin()) { // sourceType === FiscalEvent
-            $recordedWhileFrozen = true;      // record + alert, never throw (offline POS)
+        if ($intent->allowWhileFrozen) {
+            $recordedWhileFrozen = true;      // offline device replay: record + alert, never throw
         } else {
             throw new RepositoryFrozenException($intent->repositoryId, (string) $repo->frozen_reason);
         }
     }
+
+    // MED-10: set the port GUC in the OUTER transaction, BEFORE the savepoint, so a
+    // duplicate-key rollback-to-savepoint cannot unset it and trip the Task-22 trigger.
+    DB::statement("SET LOCAL app.treasury_movement_port = 'on'");
 
     // 4. SAVEPOINT for idempotency recovery (unique-violation poisons the txn otherwise).
     DB::beginTransaction(); // nested → PG SAVEPOINT
@@ -734,9 +793,9 @@ public function record(MovementIntent $intent): MovementResult
 }
 ```
 
-Implement `handleIdempotentHit` (SELECT by `idempotency_key`; compare `repository_id`, `direction`, `amount`, `currency`, `source_type`, `source_id`; on full match return `MovementResult(existing, wasIdempotentHit: true)`; on mismatch throw `IdempotencyConflictException`). Implement `isProjectionOrigin()` on `MovementIntent` (`sourceType === MovementSourceType::FiscalEvent`). Create exceptions `CurrencyMismatchException`, `RepositoryFrozenException`, `IdempotencyConflictException` in Treasury Domain. Bind the interface in `TreasuryServiceProvider`.
+Implement `handleIdempotentHit` (SELECT by `idempotency_key`; compare `repository_id`, `direction`, `amount`, `currency`, `source_type`, `source_id`; on full match return `MovementResult(existing, wasIdempotentHit: true)`; on mismatch throw `IdempotencyConflictException`). Create exceptions `CurrencyMismatchException`, `RepositoryFrozenException`, `IdempotencyConflictException` in Treasury Domain. Bind the interface in `TreasuryServiceProvider`.
 
-> The savepoint uses `DB::beginTransaction()/commit()/rollBack()` which map to PG SAVEPOINTs when already inside the caller transaction. The caller MUST wrap `record()` in a `DB::transaction` alongside its `postEntryNow` call.
+> The savepoint uses `DB::beginTransaction()/commit()/rollBack()` which map to PG SAVEPOINTs when already inside the caller transaction (verified: Laravel nests SAVEPOINTs at `transactionLevel > 0`; `afterCommit` fires only at the OUTER commit). The Step-0 assertion guarantees the caller transaction exists.
 
 - [ ] **Step 4: Run — expect PASS** (`./vendor/bin/phpunit tests/Feature/Treasury/TreasuryMovementServiceRecordTest.php`).
 - [ ] **Step 5: Commit** `feat(treasury): TreasuryMovementService::record() — single-movement write port`.
@@ -752,7 +811,7 @@ Implement `handleIdempotentHit` (SELECT by `idempotency_key`; compare `repositor
 
 - [ ] **Step 1: Write the failing tests:** (a) transfer 30 from A(100)→B(0) leaves A=70, B=30, two movements share `transfer_group_id`, ordinals increment on each repo; (b) two opposing concurrent transfers A↔B don't deadlock (sorted lock order) — assert both complete; (c) failure after the first leg rolls back both (no half-transfer).
 - [ ] **Step 2: Run — expect FAIL.**
-- [ ] **Step 3: Implement** using two internal insert calls (NOT two public `record()` calls) within one `DB::transaction`, locking sorted. Reuse the ordinal/balance logic. Currency must match across both repositories + company.
+- [ ] **Step 3: Implement** using two internal insert calls (NOT two public `record()` calls) within one `DB::transaction`, locking sorted. **Take the GL company advisory lock (`pg_advisory_xact_lock(hashtextextended(company_id::text,0))`) FIRST** (global lock order, BLOCKER-1), then the two repo locks sorted by id, then `SET LOCAL app.treasury_movement_port='on'`, then the inserts. Reuse the ordinal/balance logic. Currency must match across both repositories + company.
 - [ ] **Step 4: Run — expect PASS.**
 - [ ] **Step 5: Commit** `feat(treasury): TreasuryMovementService::transfer() — atomic paired-leg transfer`.
 
@@ -791,7 +850,7 @@ Implement `handleIdempotentHit` (SELECT by `idempotency_key`; compare `repositor
 
 - [ ] **Step 1: Write the failing tests:** (a) paid expense: repo balance decrements, one `repository_movements` row (`source_type=expense`), GL Cr = Cash account; (b) unpaid expense: **no movement**, repo balance unchanged, GL Cr = AP-liability account (NOT cash); (c) GL-post failure rolls back the movement (atomicity).
 - [ ] **Step 2: Run — expect FAIL.**
-- [ ] **Step 3: Implement.** In `createFromExpense`, branch on `metadata.is_paid`: paid → Cr cash (existing); unpaid → Cr the AP-liability account. In `ExpenseService::post`, replace the `outflow->applyOutflow` block with, inside the existing `DB::transaction`: post GL via `postEntryNow`, then (paid only) `movementService->record(MovementIntent(...sourceType: Expense, direction: Out, journalEntryId: $entry->id, idempotencyLeg: 'main'...))`. Inject `TreasuryMovementServiceInterface` + `GeneralLedgerService` (already injected) into `ExpenseService`.
+- [ ] **Step 3: Implement.** In `createFromExpense`, branch on `metadata.is_paid`: paid → Cr cash (existing); unpaid → Cr the AP-liability account. Call it with `PostingMode::SynchronousInTransaction` (Task 6) so the JE posts in-transaction and returns posted. In `ExpenseService::post`, replace the `outflow->applyOutflow` block with, inside the existing `DB::transaction`: post GL via the synchronous helper, then (paid only) `movementService->record(new MovementIntent(...sourceType: Expense, direction: Out, journalEntryId: $entry->id, idempotencyLeg: 'main', allowWhileFrozen: false ...))`. Inject `TreasuryMovementServiceInterface` into `ExpenseService` (`GeneralLedgerService` already injected).
 - [ ] **Step 4: Run — expect PASS** (`./vendor/bin/phpunit tests/Feature/Expense`).
 - [ ] **Step 5: Commit** `feat(expense): post via movement port; unpaid expense books AP liability not cash`.
 
@@ -825,9 +884,30 @@ Implement `handleIdempotentHit` (SELECT by `idempotency_key`; compare `repositor
 
 - [ ] **Step 1: Write the failing test** — a customer payment creates a `payment` row AND a `repository_movements` row with matching `journal_entry_id`, balance moves once (not twice); supplier payment decrements; the old `RepositoryBalanceChanged` is no longer the balance path (movement event is).
 - [ ] **Step 2: Run — expect FAIL.**
-- [ ] **Step 3: Implement.** Replace the inline balance block (both `store` `:586-619` and `storeMultiple` `:948-961`) with a `movementService->record(...)` call; switch the GL helper to the `postEntryNow` path so posting is in-transaction (the GL helper currently uses the afterCommit wrapper — change these two call sites to `postEntryNow`). Remove the inline `RepositoryBalanceChanged` dispatch. Keep `lockForUpdate` semantics via the port (the port locks the repo itself — remove the controller's own repo lock to avoid double-lock; verify no other logic depends on the controller-held lock).
+- [ ] **Step 3: Implement — EXPLICIT REORDER (BLOCKER-2).** The current order is **balance-write-then-GL**: `store` locks the repo and mutates `balance` at `:586-607`, fires `RepositoryBalanceChanged` afterCommit at `:608-619`, and only creates GL at `:623-675` (via the afterCommit wrapper). A literal "replace the inline balance block with `record()`" is impossible — there is no `journalEntryId` yet at `:586`. Rewrite the transaction body to:
+  1. create the `Payment` (+ allocations) as today;
+  2. create the **draft** JE and post it with `PostingMode::SynchronousInTransaction` (Task 6) — this takes the company advisory lock and returns the posted `JournalEntry`;
+  3. call `movementService->record(new MovementIntent(... direction: In for customer / Out for supplier, sourceType: Payment, sourceId: <stable idempotency source, Task 16b>, journalEntryId: $entry->id, idempotencyLeg: 'main', allowWhileFrozen: false ...))`;
+  4. set `$payment->journal_entry_id = $entry->id`.
+
+  Delete the inline `$repository->balance = ...` block (`:600-607`), the manual `RepositoryBalanceChanged` dispatch (`:608-619`), the controller's own repo `lockForUpdate` (the port locks it), **and the manual supplier partner-refresh block at `:650-657` (LOW-13)** — posting is now in-transaction so `JournalEntryPosted` fires afterCommit and its listener (`EventServiceProvider.php:63-65`) does the refresh; the manual one would double-refresh. Do the same reorder for `storeMultiple` (`:948-961`).
 - [ ] **Step 4: Run — expect PASS** (`./vendor/bin/phpunit tests/Feature/Treasury`).
-- [ ] **Step 5: Commit** `feat(treasury): PaymentController store/storeMultiple write via movement port`.
+- [ ] **Step 5: Commit** `feat(treasury): PaymentController store/storeMultiple write via movement port (reordered draft→post→record)`.
+
+### Task 16b: Request-level idempotency for payment + multipayment creation (HIGH-7)
+
+**Problem (verified):** `PaymentController::store()` mints a fresh `Payment` UUID (`:434-450`) with no client idempotency key; a lost-response retry creates a second payment (and would create a second movement, since the movement key derives from the new payment id). The movement port's idempotency can't save a flow whose *source id itself* is non-deterministic across retries.
+
+**Files:** Modify `PaymentController.php`, `MultiPaymentController.php`, a migration adding `idempotency_key` to `payments`; Test `apps/api/tests/Feature/Treasury/PaymentIdempotencyTest.php`.
+
+**Interfaces:**
+- Produces: payment/multipayment creation accepts an `Idempotency-Key` header (or body field), persisted as `payments.idempotency_key` (unique per company); a retry with the same key returns the existing payment (and therefore the existing movement) instead of creating a new one. Movement `sourceId` = the payment id, now stable because the payment itself is deduped.
+
+- [ ] **Step 1: Write the failing test** — POST the same payment twice with the same `Idempotency-Key` → one `payments` row, one `repository_movements` row, balance moved once.
+- [ ] **Step 2: Run — expect FAIL.**
+- [ ] **Step 3: Implement** the `payments.idempotency_key` column (unique `(company_id, idempotency_key)`), read the header in the controllers, short-circuit to the existing payment on a hit (before opening the write transaction). This makes the Task 16/19 movement keys stable.
+- [ ] **Step 4: Run — expect PASS.**
+- [ ] **Step 5: Commit** `feat(treasury): request-level idempotency on payment + multipayment creation`.
 
 ### Task 17: Migrate `IncomeService` onto the port
 
@@ -845,22 +925,30 @@ Implement `handleIdempotentHit` (SELECT by `idempotency_key`; compare `repositor
 **Files:** Modify `VendorRefundService.php`, `PaymentRefundService.php`; Test `apps/api/tests/Feature/Treasury/RefundSpineTest.php`.
 
 **Interfaces:**
-- Produces: refunds `lockForUpdate` the original payment, compute already-refunded total under the lock, write `movement(refund)` + GL reversal via `postEntryNow`; partial refunds carry an idempotency key (`refund:{original_payment_id}:{refund_request_id}`).
+- Produces: refunds `lockForUpdate` the original payment, compute already-refunded total under the lock, write `movement(refund)` + GL reversal via `postEntryNow`; refunds carry a **stable `refund_request_id`** → idempotency key `refund:{original_payment_id}:{refund_request_id}`.
 
-- [ ] **Step 1:** Failing tests — (a) vendor refund creates `movement(refund, out)` + GL; (b) two concurrent partial refunds summing over the original are rejected (over-refund guard under lock); (c) partial-refund retry is idempotent.
+> **HIGH-6 (verified):** admin refund endpoints (`PaymentRefundController::partialRefund` `:91-98`, `refundPayment` `:61-65`) accept only `amount`/`reason` — no request id. `refund_request_id` exists ONLY on the POS/prorated path today. Without a stable request id the planned idempotency key cannot be built and retries double-refund.
+
+- [ ] **Step 1:** Failing tests — (a) vendor refund creates `movement(refund, out)` + GL; (b) two concurrent partial refunds summing over the original are rejected (over-refund guard under lock); (c) a partial-refund retry with the same `refund_request_id` is idempotent (one refund payment, one movement).
 - [ ] **Step 2:** Run — FAIL.
-- [ ] **Step 3:** Add `lockForUpdate` on the original payment in `PaymentRefundService::partialRefund`/`fullRefund`; compute refunded-to-date under the lock; replace inline balance in `VendorRefundService` with `record()`; add GL reversal via `postEntryNow`; idempotency key on partials.
+- [ ] **Step 3:** Add a required `refund_request_id` (client-supplied UUID) to the admin full/partial refund requests; persist it on the refund `payments` row; add a unique index `(company_id, original_payment_id, refund_request_id)` covering the non-prorated admin path (extend the existing POS-prorated index or add a sibling). Add `lockForUpdate` on the original payment in `PaymentRefundService::partialRefund`/`fullRefund`; compute refunded-to-date under the lock; replace inline balance in `VendorRefundService` (`:149-152`) with `record()`; add GL reversal via `postEntryNow`; movement idempotency key `refund:{original_payment_id}:{refund_request_id}`.
 - [ ] **Step 4:** Run — PASS.
 - [ ] **Step 5:** Commit `fix(treasury): refunds lock original payment, post GL + movement via port`.
 
-### Task 19: Migrate `MultiPaymentService` (add GL) onto the port
+### Task 19: `MultiPaymentService` — add movement + GL to the cash-moving flows
+
+> **HIGH-8 (verified — Task rewritten from real code):** `MultiPaymentService.php:58-305` does **NOT** write repository balances. It creates `Payment` + `PaymentAllocation` rows and updates `document.balance_due`. So there is no "inline balance write to replace" — the real gap is that its cash-bearing flows (`createSplitPayment` `:58-91`, deposit application `:110-141`) create `Payment` rows that **never move repository cash and post no GL**. `recordPaymentOnAccount` (`:194-246`) has **no `repository_id`** — it is a partner credit-balance entry, NOT a cash movement, so it gets **no repository movement** (only its existing partner-balance effect; a GL entry to the customer-advances account may be added but that is not a `repository_movements` row).
 
 **Files:** Modify `MultiPaymentService.php`; Test `apps/api/tests/Feature/Treasury/MultiPaymentSpineTest.php`.
-- [ ] **Step 1:** Failing test — split/deposit/on-account each create a `movement` + a posted GL entry (today they write balances with no GL).
+
+**Interfaces:**
+- Produces: `createSplitPayment` and deposit-application flows — for each payment line that carries a `repository_id`, write `movement(payment, in/out)` + post GL via `postEntryNow`, keyed by the (now-stable, Task 16b) payment id + line index. `recordPaymentOnAccount` writes NO repository movement (documented as partner-credit).
+
+- [ ] **Step 1:** Failing tests — (a) a split payment with two repository-bearing lines creates two movements + posted GL, each linked; (b) `recordPaymentOnAccount` creates **no** `repository_movements` row (partner credit only); (c) a repository-bearing line with a null `repository_id` is rejected or skipped per the resolved rule (decide + assert).
 - [ ] **Step 2:** Run — FAIL.
-- [ ] **Step 3:** Replace the balance writes (`MultiPaymentService.php:58-305`) with `record()` calls (one leg per payment line, idempotency leg = the line index) and add GL via `postEntryNow`.
+- [ ] **Step 3:** For each cash-moving line, after creating the `Payment`, create+post its GL (`postEntryNow`) and call `record()` inside the existing transaction; require `repository_id` where a line represents cash; leave `recordPaymentOnAccount` movement-free.
 - [ ] **Step 4:** Run — PASS.
-- [ ] **Step 5:** Commit `feat(treasury): MultiPaymentService posts GL + movements via port`.
+- [ ] **Step 5:** Commit `feat(treasury): MultiPaymentService cash lines post GL + movements via port`.
 
 ### Task 20: Migrate POS bridges onto the port (canonical-index idempotency, gl_account_id)
 
@@ -873,7 +961,7 @@ Implement `handleIdempotentHit` (SELECT by `idempotency_key`; compare `repositor
 
 - [ ] **Step 1:** Failing tests — (a) a 2-tender sale (cash+card) creates two movements with distinct canonical-index keys, both linked to the receipt's GL; (b) replay after a partial write (only leg 0 exists) writes the missing leg 1 (complete-set); (c) full replay is fully idempotent; (d) deposit bridge resolves `gl_account_id` and creates a movement.
 - [ ] **Step 2:** Run — FAIL.
-- [ ] **Step 3:** Persist the canonical `PaymentDTO` index (add column to `pos_receipt_payments` if not derivable; **first trace** `PosCoreReceiptProjection.php:733-801` per §15 Q2). Replace the any-exists idempotency probe with per-leg keys; call `record()` per tender line inside the bridge's transaction (bridges already post GL — route through `postEntryNow`). Canonicalize deposit/account bridges on `gl_account_id` (drop `account_id`-only check in `TreasuryDepositBridge::resolveRepository`).
+- [ ] **Step 3:** Persist the canonical `PaymentDTO` index (add column to `pos_receipt_payments` if not derivable; **first trace** `PosCoreReceiptProjection.php:733-801` per §15 Q2). Replace the any-exists idempotency probe with per-leg keys; call `record()` per tender line inside the bridge's transaction (bridges already post GL — route through `postEntryNow`). **Device-replay legs set `allowWhileFrozen: true`** (offline POS must never poison the fiscal-projection queue on a frozen repo — HIGH-4). **Server-authored `DEPOSIT_RECEIPT` (which `isServerOnly()`) sets `allowWhileFrozen: false`** — it is not offline device replay (HIGH-5). Canonicalize deposit/account bridges on `gl_account_id` (drop `account_id`-only check in `TreasuryDepositBridge::resolveRepository:196-215`).
 - [ ] **Step 4:** Run — PASS (`./vendor/bin/phpunit tests/Feature/Treasury`). Projection tests `app(CompanyContext::class)->clear()` first (rule 20).
 - [ ] **Step 5:** Commit `feat(treasury): POS bridges write movements via port with canonical-index idempotency`.
 
@@ -882,7 +970,7 @@ Implement `handleIdempotentHit` (SELECT by `idempotency_key`; compare `repositor
 **Files:** Create `apps/api/app/Modules/Treasury/Application/Projections/TreasuryReturnBridge.php` + register in the projection dispatcher; Test `apps/api/tests/Feature/Treasury/PosReturnBridgeTest.php`.
 
 **Interfaces:**
-- Produces: a return/refund fiscal event → `movement(refund, out)` + GL reversal (Dr sales-return / Cr cash), keyed `fiscal_event:{event_id}:refund:{index}`.
+- Produces: a return/refund fiscal event → `movement(refund, out)` + GL reversal (Dr sales-return / Cr cash), keyed `fiscal_event:{event_id}:refund:{index}`, with **`allowWhileFrozen: true`** (offline device replay — HIGH-4; the movement's `sourceType` is `Refund` but freeze-safety comes from the explicit flag, not the source type).
 
 - [ ] **Step 1:** Failing test — a POS return event decrements the drawer repository via a movement AND posts a GL reversal (today it does neither).
 - [ ] **Step 2:** Run — FAIL. (Confirm the return event type + `handlesEventType` registration point first — grep the existing bridges' `handlesEventType`.)
@@ -918,6 +1006,8 @@ END; $$ LANGUAGE plpgsql;
 CREATE TRIGGER forbid_direct_balance_write_trg BEFORE UPDATE ON payment_repositories
     FOR EACH ROW EXECUTE FUNCTION forbid_direct_balance_write();
 ```
+
+The port already issues `SET LOCAL app.treasury_movement_port = 'on'` inside `record()`/`transfer()`, **before its idempotency savepoint** (Task 11, MED-10) — so this task adds only the trigger, not the GUC. Verify (MED-10 test) that a duplicate-key rollback-to-savepoint does NOT unset the GUC (it was set before the savepoint) and a subsequent balance write in the same outer transaction still passes the trigger. Note the freeze path: `freeze()`/`unfreeze()` (Task 13) update `frozen_at`/`frozen_reason` only — `NEW.balance IS DISTINCT FROM OLD.balance` is false, so the trigger correctly skips them.
 
 Delete the four old-port files; remove their bindings from `TreasuryServiceProvider`; drop `balance` from `PaymentRepository::$fillable`. Run `grep -rn "applyInflow\|applyOutflow\|RepositoryInflowInterface\|RepositoryOutflowInterface" app/` and confirm ZERO remaining references (all migrated in Tasks 14-21).
 
@@ -1020,7 +1110,11 @@ Delete the four old-port files; remove their bindings from `TreasuryServiceProvi
 
 **Placeholder scan:** none — every code step has real code or a precise surgical instruction with a verified anchor; the three "trace first" notes (§15 open questions) are explicit pre-work inside their tasks (T20 canonical index, T24 drift fixture, T8 resolver), not deferred implementation.
 
-**Type consistency:** `record(MovementIntent): MovementResult` and `transfer(TransferIntent): TransferResult` consistent T10↔T11↔T12↔consumers; `postEntryNow(JournalEntry, ?User, ?string): void` consistent T6↔T14/T16/T17; `MovementSourceType`/`MovementDirection` enum cases consistent throughout; `idempotencyKey()` format consistent T10↔T11↔T20.
+**Type consistency:** `record(MovementIntent): MovementResult` and `transfer(TransferIntent): TransferResult` consistent T10↔T11↔T12↔consumers; `postEntryNow(JournalEntry, ?User, ?string): void` + `PostingMode` seam consistent T6↔T14/T16/T17/T19; `MovementSourceType`/`MovementDirection` enum cases consistent throughout; `idempotencyKey()` format + `allowWhileFrozen` flag consistent T10↔T11↔T20↔T21.
+
+## Plan-review reconciliation (Codex, 2026-07-08)
+
+Full review + finding→edit map: `reviews/2026-07-08-treasury-spine-plan-codex-review.md` (2 BLOCKER / 6 HIGH / 5 MED / 2 LOW, all accepted; three load-bearing claims verified in code). Summary of Rev-2 changes: **§Global lock order** (advisory→repo, BLOCKER-1); Task 16 reordered draft→post→record + manual-refresh deletion (BLOCKER-2, LOW-13); Task 6 `PostingMode` seam (HIGH-3); explicit `allowWhileFrozen` flag replacing source-type inference (HIGH-4/5); new Task 16b request-level idempotency (HIGH-7); Task 18 `refund_request_id` (HIGH-6); Task 19 rewritten from real code (HIGH-8); `transactionLevel()>0` assertion (MED-9); `SET LOCAL` before savepoint (MED-10); currency `NOT NULL` + factory (MED-11); movement FKs (MED-12).
 
 ## Execution Handoff
 
