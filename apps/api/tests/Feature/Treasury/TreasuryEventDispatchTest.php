@@ -30,7 +30,6 @@ use App\Modules\Treasury\Domain\Events\InstrumentTransferred;
 use App\Modules\Treasury\Domain\Events\PaymentRefunded;
 use App\Modules\Treasury\Domain\Events\PaymentReversed;
 use App\Modules\Treasury\Domain\Events\ReconciliationCompleted;
-use App\Modules\Treasury\Domain\Events\RepositoryBalanceChanged;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -38,6 +37,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
@@ -278,15 +278,16 @@ class TreasuryEventDispatchTest extends TestCase
         });
     }
 
-    // --- Task 5: RepositoryBalanceChanged from PaymentController::store() ---
+    // --- Task 16: PaymentController::store() records a treasury movement (spine) ---
+    // The old inline balance write + hand-fired RepositoryBalanceChanged were
+    // retired in favour of the movement write port: the balance path is now an
+    // append-only repository_movements row, not the RepositoryBalanceChanged event.
 
-    public function test_payment_store_dispatches_repository_balance_changed_event(): void
+    public function test_payment_store_records_a_repository_movement(): void
     {
-        Event::fake([RepositoryBalanceChanged::class]);
-
         $repository = $this->createBankRepository();
 
-        $this->actingAs($this->user, 'sanctum')
+        $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/payments', [
                 'partner_id' => $this->partner->id,
                 'payment_method_id' => $this->paymentMethod->id,
@@ -294,14 +295,24 @@ class TreasuryEventDispatchTest extends TestCase
                 'currency' => 'TND',
                 'payment_date' => now()->toDateString(),
                 'repository_id' => $repository->id,
-            ])
-            ->assertCreated();
+            ]);
 
-        Event::assertDispatched(RepositoryBalanceChanged::class, function (RepositoryBalanceChanged $event) use ($repository) {
-            return $event->repositoryId === $repository->id
-                && $event->previousBalance === '0.000'
-                && $event->changeAmount === '250.000';
-        });
+        $response->assertCreated();
+        $paymentId = $response->json('data.id');
+
+        $movements = DB::table('repository_movements')
+            ->where('payment_repository_id', $repository->id)
+            ->where('source_type', 'payment')
+            ->where('source_id', $paymentId)
+            ->get();
+
+        $this->assertCount(1, $movements, 'store() must record exactly one movement.');
+        $this->assertSame('in', $movements->first()->direction);
+        $this->assertSame(0, bccomp((string) $movements->first()->amount, '250.000', 3));
+
+        // Balance moved once through the port.
+        $repository->refresh();
+        $this->assertSame(0, bccomp((string) $repository->balance, '250.000', 3));
     }
 
     // --- Task 4: ReconciliationCompleted ---

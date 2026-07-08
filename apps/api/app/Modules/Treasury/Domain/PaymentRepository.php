@@ -63,6 +63,28 @@ class PaymentRepository extends Model
         return PaymentRepositoryFactory::new();
     }
 
+    protected static function booted(): void
+    {
+        // `currency` is port-managed (not fillable) and NOT NULL (spine columns
+        // migration, MED-11), so a plain create() — e.g. PaymentRepositoryController
+        // ::store() — never sets it and would insert null. Default it here from the
+        // owning company (single-currency today) so EVERY repository satisfies the
+        // movement port's currency invariant, mirroring the factory and the
+        // migration backfill. `next_movement_ordinal` already defaults to 0 at the
+        // DB level. This is set only on creation; the port owns it thereafter.
+        static::creating(function (PaymentRepository $repository): void {
+            // Read via getAttribute (mixed) — the @property PHPDoc types these as
+            // always-string (their post-creation truth), but at creation currency is
+            // not yet set and may be null.
+            $currency = $repository->getAttribute('currency');
+            $companyId = $repository->getAttribute('company_id');
+            if ($currency === null && is_string($companyId)) {
+                $company = Company::query()->find($companyId);
+                $repository->currency = $company instanceof Company ? $company->currency : 'TND';
+            }
+        });
+    }
+
     protected $fillable = [
         'tenant_id',
         'company_id',

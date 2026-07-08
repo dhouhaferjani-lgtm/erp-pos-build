@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Controllers;
 
-use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -18,17 +18,20 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
-use App\Modules\Treasury\Domain\Events\RepositoryBalanceChanged;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -45,7 +48,7 @@ class PaymentController extends Controller
         private readonly PaymentAllocationService $allocationService,
         private readonly WithholdingCertificateService $withholdingService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
-        private readonly PartnerBalanceService $partnerBalanceService,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     private function scale(): int
@@ -578,7 +581,16 @@ class PaymentController extends Controller
                 }
             }
 
-            // Update repository balance and create GL journal entry
+            // Post the GL journal entry SYNCHRONOUSLY (in-transaction), then record the
+            // treasury cash movement through the single write port. This REPLACES the
+            // old inline `$repository->balance = bcadd/bcsub(...)` write and the
+            // hand-fired RepositoryBalanceChanged event: the port is now the single
+            // writer of the repository balance + append-only movement row, atomically
+            // with the GL post.
+            //
+            // Global lock order (BLOCKER-1): the synchronous GL post takes the company
+            // advisory lock FIRST; the port then takes the repository row lock inside
+            // record(). The repository is therefore NOT locked here — record() locks it.
             $repositoryId = $validated['repository_id'] ?? null;
             /** @var PaymentRepository|null $repository */
             $repository = null;
@@ -588,91 +600,87 @@ class PaymentController extends Controller
                 $repoResult = PaymentRepository::query()
                     ->where('tenant_id', $tenantId)
                     ->where('company_id', $companyId)
-                    ->lockForUpdate()
                     ->find($repositoryId);
                 $repository = $repoResult;
-
-                if ($repository instanceof PaymentRepository) {
-                    // Cash direction: customer payments come IN (increment); supplier
-                    // payments go OUT (decrement) — money leaves the repository to pay
-                    // the supplier. bcmath at scale 3, never float.
-                    /** @var numeric-string $currentBalance */
-                    $currentBalance = $repository->balance ?? '0.00';
-                    $previousBalance = $currentBalance;
-                    $repository->balance = $isSupplierPayment
-                        ? bcsub($currentBalance, $paymentAmount, $this->scale())
-                        : bcadd($currentBalance, $paymentAmount, $this->scale());
-                    $repository->save();
-
-                    $newBalance = $repository->balance;
-                    DB::afterCommit(function () use ($repository, $tenantId, $companyId, $previousBalance, $newBalance, $paymentAmount, $validated): void {
-                        event(new RepositoryBalanceChanged(
-                            repositoryId: $repository->id,
-                            tenantId: $tenantId,
-                            companyId: $companyId,
-                            previousBalance: $previousBalance,
-                            newBalance: $newBalance,
-                            changeAmount: $paymentAmount,
-                            currency: $validated['currency'] ?? 'TND',
-                            changedAt: now()->toIso8601String(),
-                        ));
-                    });
-                }
             }
 
-            if ($repositoryId && bccomp($totalAllocatedForGL, '0', $this->scale()) > 0) {
-                // Ensure repository is loaded if not already
-                if (! $repository instanceof PaymentRepository) {
-                    /** @var PaymentRepository|null $repoResult */
-                    $repoResult = PaymentRepository::query()
-                        ->where('tenant_id', $tenantId)
-                        ->where('company_id', $companyId)
-                        ->find($repositoryId);
-                    $repository = $repoResult;
+            /** @var string|null $primaryJournalEntryId */
+            $primaryJournalEntryId = null;
+
+            if (
+                $repository instanceof PaymentRepository
+                && $repository->gl_account_id
+                && bccomp($totalAllocatedForGL, '0', $this->scale()) > 0
+            ) {
+                if ($isSupplierPayment) {
+                    // Supplier-side: Dr SupplierPayable (401, partner-tagged) / Cr Bank.
+                    // Posted synchronously in-transaction so it returns the POSTED entry;
+                    // its JournalEntryPosted event fires afterCommit and the
+                    // RefreshPartnerBalanceOnJournalEntryPosted listener recomputes
+                    // payable_balance (no manual partner-refresh needed anymore, LOW-13).
+                    $journalEntry = $this->glService->createSupplierPaymentJournalEntry(
+                        companyId: $companyId,
+                        partnerId: $validated['partner_id'],
+                        paymentId: $payment->id,
+                        amount: $totalAllocatedForGL,
+                        paymentMethodAccountId: $repository->gl_account_id,
+                        date: new \DateTimeImmutable($validated['payment_date']),
+                        user: $user,
+                        description: "Supplier payment - {$payment->reference}",
+                        currencyCode: $payment->currency,
+                        mode: PostingMode::SynchronousInTransaction,
+                    );
+                } else {
+                    $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
+                        companyId: $companyId,
+                        partnerId: $validated['partner_id'],
+                        paymentId: $payment->id,
+                        amount: $totalAllocatedForGL,
+                        paymentMethodAccountId: $repository->gl_account_id,
+                        date: new \DateTimeImmutable($validated['payment_date']),
+                        description: "Customer payment - {$payment->reference}",
+                        user: $user,
+                        currencyCode: $payment->currency,
+                        mode: PostingMode::SynchronousInTransaction,
+                    );
                 }
 
-                if ($repository instanceof PaymentRepository && $repository->gl_account_id) {
-                    if ($isSupplierPayment) {
-                        // Supplier-side: Dr SupplierPayable (401, partner-tagged) / Cr Bank.
-                        // Reuse the existing canonical, hash-chained GL method.
-                        $journalEntry = $this->glService->createSupplierPaymentJournalEntry(
-                            companyId: $companyId,
-                            partnerId: $validated['partner_id'],
-                            paymentId: $payment->id,
-                            amount: $totalAllocatedForGL,
-                            paymentMethodAccountId: $repository->gl_account_id,
-                            date: new \DateTimeImmutable($validated['payment_date']),
-                            user: $user,
-                            description: "Supplier payment - {$payment->reference}",
-                            currencyCode: $payment->currency
-                        );
+                $primaryJournalEntryId = $journalEntry->id;
 
-                        // payable_balance is DERIVED from the 401 subledger; recompute it
-                        // after the supplier_payment entry is POSTED. The GL method posts
-                        // via afterCommit, so defer the refresh to afterCommit too (and
-                        // register it AFTER the post so it runs once the Dr 401 is posted).
-                        $supplierPartnerId = $validated['partner_id'];
-                        DB::afterCommit(function () use ($companyId, $supplierPartnerId): void {
-                            $this->partnerBalanceService->refreshPartnerBalance($companyId, $supplierPartnerId);
-                        });
-                    } else {
-                        $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
-                            companyId: $companyId,
-                            partnerId: $validated['partner_id'],
-                            paymentId: $payment->id,
-                            amount: $totalAllocatedForGL,
-                            paymentMethodAccountId: $repository->gl_account_id,
-                            date: new \DateTimeImmutable($validated['payment_date']),
-                            description: "Customer payment - {$payment->reference}",
-                            user: $user,
-                            currencyCode: $payment->currency
-                        );
-                    }
+                // Link journal entry to payment
+                $payment->journal_entry_id = $journalEntry->id;
+                $payment->save();
+            }
 
-                    // Link journal entry to payment
-                    $payment->journal_entry_id = $journalEntry->id;
-                    $payment->save();
-                }
+            // Move the treasury cash through the write port — the SINGLE writer of the
+            // repository balance + movement row. Direction: customer payments come IN,
+            // supplier payments go OUT. The FULL payment amount moves (matching the old
+            // inline write); any excess-advance portion is booked separately in the GL
+            // below, but the physical cash-in/out is this one movement, keyed on the
+            // stable payment id. Amount/currency pass as strings so the port owns all
+            // bcmath/scale (Rule 19).
+            if ($repository instanceof PaymentRepository) {
+                $this->movementService->record(new MovementIntent(
+                    repositoryId: $repository->id,
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    direction: $isSupplierPayment ? MovementDirection::Out : MovementDirection::In,
+                    amount: $paymentAmount,
+                    // The movement is a fact about THIS repository — record it in the
+                    // repository's own currency (the port's currency invariant), not the
+                    // request currency. AutoERP is single-currency today, so these agree.
+                    currency: $repository->currency,
+                    sourceType: MovementSourceType::Payment,
+                    sourceId: $payment->id,
+                    idempotencyLeg: 'main',
+                    journalEntryId: $primaryJournalEntryId,
+                    occurredAt: null,
+                    reasonCode: null,
+                    reversesMovementId: null,
+                    createdBy: $user->id,
+                    notes: null,
+                    allowWhileFrozen: false,
+                ));
             }
 
             // Handle excess amount as customer advance.
@@ -945,20 +953,25 @@ class PaymentController extends Controller
                     $remainingPrimaryAllocation = bcsub($remainingPrimaryAllocation, $allocationForThisPayment, $this->scale());
                 }
 
-                // Update repository balance
+                // Post the GL entry SYNCHRONOUSLY, then record the treasury cash
+                // movement for this payment line through the write port (Task 16). The
+                // FULL line amount moves IN (multi-line is customer-only — supplier
+                // invoices are rejected up front). The port is the single writer of the
+                // repository balance + movement row, replacing the old inline
+                // `$repository->balance = bcadd(...)`. Global lock order (BLOCKER-1): the
+                // synchronous GL post takes the company advisory lock FIRST, then the
+                // port takes the repository row lock in record() — so the repository is
+                // NOT locked here.
                 $repositoryId = $paymentLine['repository_id'] ?? null;
                 if ($repositoryId) {
                     /** @var PaymentRepository|null $repository */
                     $repository = PaymentRepository::query()
                         ->where('tenant_id', $tenantId)
                         ->where('company_id', $companyId)
-                        ->lockForUpdate()
                         ->find($repositoryId);
                     if ($repository) {
-                        /** @var numeric-string $currentBalance */
-                        $currentBalance = $repository->balance ?? '0.00';
-                        $repository->balance = bcadd($currentBalance, $lineAmount, $this->scale());
-                        $repository->save();
+                        /** @var string|null $lineJournalEntryId */
+                        $lineJournalEntryId = null;
 
                         // Create GL entry for allocated portion
                         if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0 && $repository->gl_account_id) {
@@ -971,11 +984,37 @@ class PaymentController extends Controller
                                 date: new \DateTimeImmutable($validated['payment_date']),
                                 description: "Customer payment - {$payment->reference}",
                                 user: $user,
-                                currencyCode: $payment->currency
+                                currencyCode: $payment->currency,
+                                mode: PostingMode::SynchronousInTransaction,
                             );
+                            $lineJournalEntryId = $journalEntry->id;
                             $payment->journal_entry_id = $journalEntry->id;
                             $payment->save();
                         }
+
+                        // Record the full line cash-in through the write port. sourceId is
+                        // this line's own payment id (each line is a distinct Payment), so
+                        // the idempotency key `payment:{id}:main` is unique per line.
+                        $this->movementService->record(new MovementIntent(
+                            repositoryId: $repository->id,
+                            tenantId: $tenantId,
+                            companyId: $companyId,
+                            direction: MovementDirection::In,
+                            amount: $lineAmount,
+                            // Record in the repository's own currency (port invariant),
+                            // not the request currency — single-currency, so they agree.
+                            currency: $repository->currency,
+                            sourceType: MovementSourceType::Payment,
+                            sourceId: $payment->id,
+                            idempotencyLeg: 'main',
+                            journalEntryId: $lineJournalEntryId,
+                            occurredAt: null,
+                            reasonCode: null,
+                            reversesMovementId: null,
+                            createdBy: $user->id,
+                            notes: null,
+                            allowWhileFrozen: false,
+                        ));
                     }
                 }
 
