@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain;
 
+use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
@@ -25,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property JournalEntryStatus $status
  * @property string|null $source_type
  * @property string|null $source_id
+ * @property JournalCode|null $journal_code
  * @property bool $is_historical
  * @property string|null $fiscal_hash
  * @property string|null $previous_hash
@@ -55,6 +57,7 @@ class JournalEntry extends Model
         'status',
         'source_type',
         'source_id',
+        'journal_code',
         'is_historical',
         'fiscal_hash',
         'previous_hash',
@@ -74,6 +77,7 @@ class JournalEntry extends Model
         return [
             'entry_date' => 'date',
             'status' => JournalEntryStatus::class,
+            'journal_code' => JournalCode::class,
             'is_historical' => 'boolean',
             'chain_sequence' => 'integer',
             'posted_at' => 'datetime',

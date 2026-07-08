@@ -9,6 +9,7 @@ use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
+use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
@@ -143,6 +144,7 @@ final class GeneralLedgerService
                 'description' => "Invoice {$invoice->document_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'invoice',
+                'journal_code' => JournalCode::fromSourceType('invoice')->value,
                 'source_id' => $invoice->id,
             ]);
 
@@ -215,6 +217,7 @@ final class GeneralLedgerService
                 'description' => "Credit Note {$creditNote->document_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'credit_note',
+                'journal_code' => JournalCode::fromSourceType('credit_note')->value,
                 'source_id' => $creditNote->id,
             ]);
 
@@ -285,6 +288,7 @@ final class GeneralLedgerService
                 'description' => $description,
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'payment',
+                'journal_code' => JournalCode::fromSourceType('payment')->value,
             ]);
 
             // Debit: Cash/Bank (no partner - asset account)
@@ -349,6 +353,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Customer advance received',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'advance',
+                'journal_code' => JournalCode::fromSourceType('advance')->value,
                 'source_id' => $advanceId,
             ]);
 
@@ -423,6 +428,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Supplier advance refund',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'supplier_advance_refund',
+                'journal_code' => JournalCode::fromSourceType('supplier_advance_refund')->value,
                 'source_id' => $refundId,
             ]);
 
@@ -495,6 +501,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Supplier invoice',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'supplier_invoice',
+                'journal_code' => JournalCode::fromSourceType('supplier_invoice')->value,
                 'source_id' => $invoiceId,
             ]);
 
@@ -578,6 +585,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Supplier payment',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'supplier_payment',
+                'journal_code' => JournalCode::fromSourceType('supplier_payment')->value,
                 'source_id' => $paymentId,
             ]);
 
@@ -653,6 +661,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Customer payment received',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'customer_payment',
+                'journal_code' => JournalCode::fromSourceType('customer_payment')->value,
                 'source_id' => $paymentId,
             ]);
 
@@ -747,6 +756,7 @@ final class GeneralLedgerService
                 'description' => $description ?? "Payment tolerance write-off ({$type})",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'payment_tolerance',
+                'journal_code' => JournalCode::fromSourceType('payment_tolerance')->value,
                 'source_id' => $documentId,
             ]);
 
@@ -870,6 +880,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Apply prepayment to invoice',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'prepayment_application',
+                'journal_code' => JournalCode::fromSourceType('prepayment_application')->value,
                 'source_id' => $invoiceId,
             ]);
 
@@ -1009,6 +1020,7 @@ final class GeneralLedgerService
                 'description' => $description ?? "COGS for Invoice {$documentNumber}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'cogs',
+                'journal_code' => JournalCode::fromSourceType('cogs')->value,
                 'source_id' => $invoiceId,
             ]);
 
@@ -1124,6 +1136,7 @@ final class GeneralLedgerService
                 'description' => 'Goods Receipt GR-IR accrual',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'goods_receipt',
+                'journal_code' => JournalCode::fromSourceType('goods_receipt')->value,
                 'source_id' => $movementId,
             ]);
 
@@ -1268,6 +1281,7 @@ final class GeneralLedgerService
             'description' => "Supplier invoice {$supplierInvoice->document_number} — GR-IR clearing",
             'status' => JournalEntryStatus::Draft,
             'source_type' => 'supplier_invoice',
+            'journal_code' => JournalCode::fromSourceType('supplier_invoice')->value,
             'source_id' => $supplierInvoice->id,
         ]);
 
@@ -1484,6 +1498,7 @@ final class GeneralLedgerService
             'description' => "Supplier credit note {$creditNote->document_number} — reversal",
             'status' => JournalEntryStatus::Draft,
             'source_type' => 'supplier_credit_note',
+            'journal_code' => JournalCode::fromSourceType('supplier_credit_note')->value,
             'source_id' => $creditNote->id,
         ]);
 
@@ -1647,6 +1662,7 @@ final class GeneralLedgerService
             'description' => "Supplier credit note {$creditNote->document_number} — reversal",
             'status' => JournalEntryStatus::Draft,
             'source_type' => 'supplier_credit_note',
+            'journal_code' => JournalCode::fromSourceType('supplier_credit_note')->value,
             'source_id' => $creditNote->id,
         ]);
 
@@ -1823,6 +1839,7 @@ final class GeneralLedgerService
                 'description' => $this->describeVoucherEvent($ledgerRow, $voucher),
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'voucher_ledger',
+                'journal_code' => JournalCode::fromSourceType('voucher_ledger')->value,
                 'source_id' => $ledgerRow->id,
             ]);
 
@@ -2152,6 +2169,7 @@ final class GeneralLedgerService
                 'description' => "POS tolerance write-off / Receipt {$receiptId}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'pos_payment_tolerance',
+                'journal_code' => JournalCode::fromSourceType('pos_payment_tolerance')->value,
                 'source_id' => $receiptId,
             ]);
 
@@ -2216,6 +2234,7 @@ final class GeneralLedgerService
                 'description' => "POS Receipt {$receipt->receipt_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'pos_receipt',
+                'journal_code' => JournalCode::fromSourceType('pos_receipt')->value,
                 'source_id' => $receipt->id,
             ]);
 
@@ -2290,6 +2309,7 @@ final class GeneralLedgerService
                 'description' => "POS Account Charge {$command->accountChargeUuid}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'pos_account_charge',
+                'journal_code' => JournalCode::fromSourceType('pos_account_charge')->value,
                 'source_id' => $command->fiscalEventId,
             ]);
 
@@ -2396,6 +2416,7 @@ final class GeneralLedgerService
                 'description' => "Expense: {$expense->document_number} - {$vendorName}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'expense',
+                'journal_code' => JournalCode::fromSourceType('expense')->value,
                 'source_id' => $expense->id,
             ]);
 
@@ -2497,6 +2518,7 @@ final class GeneralLedgerService
                 'description' => "Income: {$income->document_number} - {$sourceName}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'income',
+                'journal_code' => JournalCode::fromSourceType('income')->value,
                 'source_id' => $income->id,
             ]);
 
@@ -2571,6 +2593,7 @@ final class GeneralLedgerService
                 'description' => "Linked cost capitalization: {$expense->document_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'linked_cost_capitalization',
+                'journal_code' => JournalCode::fromSourceType('linked_cost_capitalization')->value,
                 'source_id' => $cost->id,
             ]);
 
@@ -2649,6 +2672,7 @@ final class GeneralLedgerService
                 'description' => "Linked cost reversal: {$expense->document_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'linked_cost_capitalization_reversal',
+                'journal_code' => JournalCode::fromSourceType('linked_cost_capitalization_reversal')->value,
                 'source_id' => $reversalCost->id,
             ]);
 
@@ -2747,6 +2771,7 @@ final class GeneralLedgerService
                 'description' => "Batch write-off ({$reason->label()}): {$batchNumber}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'batch_write_off',
+                'journal_code' => JournalCode::fromSourceType('batch_write_off')->value,
                 'source_id' => $movementId,
             ]);
 
@@ -2842,6 +2867,7 @@ final class GeneralLedgerService
                 'description' => "Reversal of batch write-off (orig {$original->entry_number})",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'batch_write_off_reversal',
+                'journal_code' => JournalCode::fromSourceType('batch_write_off_reversal')->value,
                 'source_id' => $reversalMovementId,
             ]);
 
