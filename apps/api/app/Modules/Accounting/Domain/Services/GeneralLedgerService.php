@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain\Services;
 
+use App\Modules\Accounting\Application\Services\FiscalPeriodResolverService;
 use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
@@ -12,6 +13,7 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
+use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
@@ -45,6 +47,7 @@ final class GeneralLedgerService
         private readonly PartnerBalanceService $partnerBalanceService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly GeneralLedgerHashService $hashService,
+        private readonly FiscalPeriodResolverService $fiscalPeriodResolver,
     ) {}
 
     private function scale(): int
@@ -2069,6 +2072,16 @@ final class GeneralLedgerService
         // autocommit path degrades to a harmless per-statement no-op.
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$entry->company_id]);
+        }
+
+        // Reject posting into a fiscal period that EXISTS and is CLOSED for the
+        // entry date (spine BLOCKER-2). Absence of any period for the date is
+        // allowed — period configuration may not be set up yet, and this guard
+        // must never brick posting for an unconfigured company. Checked after
+        // the advisory lock so the reject is consistent with the same
+        // transaction-serialized view used for the chain-sequence allocation.
+        if ($this->fiscalPeriodResolver->isDateInClosedPeriod($entry->company_id, $entry->entry_date)) {
+            throw new ClosedFiscalPeriodException($entry->company_id, $entry->entry_date->toDateString());
         }
 
         $previousHash = JournalEntry::getLastChainHash($entry->company_id);

@@ -168,8 +168,16 @@ class CreateJournalEntryTest extends TestCase
 
     public function test_manual_journal_entry_post_dispatches_audit_event(): void
     {
+        // Uses today's date (not the fixed '2025-01-15' used elsewhere in this
+        // file) because this is the one test in the file that actually POSTS
+        // the entry: sealAndPersistEntry() now rejects posting into a Closed
+        // fiscal period (spine BLOCKER-2), and company auto-provisioning
+        // (CreateFiscalYearsForNewCompany) closes the whole PAST fiscal year
+        // relative to wall-clock "today" — so a hardcoded past date drifts
+        // into a closed period as real time advances. Today's date always
+        // falls in the current (open) period.
         $createResponse = $this->actingAs($this->user)->postJson('/api/v1/journal-entries', [
-            'entry_date' => '2025-01-15',
+            'entry_date' => now()->toDateString(),
             'description' => 'Manual posting',
             'lines' => [
                 [
