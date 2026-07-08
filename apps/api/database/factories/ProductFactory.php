@@ -67,6 +67,7 @@ class ProductFactory extends Factory
             'cost_price' => $costPrice,
             'sale_price' => $salePrice,
             'purchase_price' => $purchasePrice,
+            'max_discount_percent' => null,
             'tax_rate' => CurrencyScale::bcformat($this->faker->randomElement([20.0, 10.0, 5.5, 0.0]), 2), // VAT rates
             'is_active' => $this->faker->boolean(95), // 95% active
             'barcode' => $this->faker->optional(0.8)->ean13(),

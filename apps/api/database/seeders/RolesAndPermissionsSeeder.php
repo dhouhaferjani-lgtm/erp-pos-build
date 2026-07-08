@@ -71,6 +71,9 @@ class RolesAndPermissionsSeeder extends Seeder
             // Pricing (price lists, pricing rules, partner pricing, margin check)
             'pricing.view',
             'pricing.manage',
+            'pricing.view_cost_prices',
+            'pricing.sell_below_minimum_margin',
+            'pricing.sell_below_cost',
 
             // Workshop Service Bundles (automotive menu pricing)
             'workshop-bundles.view',
@@ -489,6 +492,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'catalog.labels.print',
             'workshop-bundles.view', 'workshop-bundles.manage',
             'pricing.view', 'pricing.manage',
+            'pricing.view_cost_prices', 'pricing.sell_below_minimum_margin', 'pricing.sell_below_cost',
             'menus.view', 'menus.manage',
             'promotions.view', 'promotions.manage',
             'coupons.view', 'coupons.manage',

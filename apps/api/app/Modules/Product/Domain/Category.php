@@ -34,6 +34,7 @@ use Illuminate\Support\Str;
  * @property RestockPolicy|null $restock_policy Category-level return restock policy
  * @property string|null $target_margin_override
  * @property string|null $minimum_margin_override
+ * @property string|null $max_discount_percent
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
@@ -66,6 +67,7 @@ class Category extends Model
         'restock_policy',
         'target_margin_override',
         'minimum_margin_override',
+        'max_discount_percent',
     ];
 
     /**
@@ -91,6 +93,7 @@ class Category extends Model
             'restock_policy' => RestockPolicy::class,
             'target_margin_override' => 'decimal:2',
             'minimum_margin_override' => 'decimal:2',
+            'max_discount_percent' => 'decimal:2',
         ];
     }
 
