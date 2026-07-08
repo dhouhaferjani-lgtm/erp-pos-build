@@ -149,11 +149,11 @@ Raise the eye/`ViewDetailsButton` hit target to ≥ 40px (§6).
 5. **Low-contrast 10px brand labels & lavender placeholder** (`ProductThumb.tsx:60` hardcodes `bg-[#eef3f8] text-[#5e6670]`): move to tokens, raise contrast/size.
 6. **Cart icon clipped at screen edge** (§4).
 
-## 11. Open questions for owner review
-- **Q1** — For this tenant, also point `--accent` → `--action` so any stray `accent` usage degrades to blue (safe), or leave `--accent` green as a purely-decorative brand touch (e.g. wordmark)? *Recommend: point to action for safety; keep an explicit brand-green only where intentional.*
-- **Q2** — Regulatory-code (CIP/PPN) search/display needs a backend projection into the POS product payload. In-scope for a follow-up, or drop? *Recommend: defer; note as a backend ticket.*
-- **Q3** — Stock-badge French wording: `Stock 12` vs `12 en stock` vs bare `12`. *Recommend: `Stock 12` / `Stock 3` / `Rupture`.*
-- **Q4** — Payment footer: full navy (bookend the header) or strong top-border only? *Recommend: navy bookend for section clarity.*
+## 11. Resolved decisions (owner-approved 2026-07-08)
+- **Q1 → RESOLVED:** point `--accent` → `--action` (blue) for this tenant so any stray `accent` usage degrades safely to blue; keep an explicit brand-green only where deliberately intended (e.g. wordmark).
+- **Q2 → RESOLVED (deferred):** regulatory-code (CIP/PPN) search/display is **out of Spec 1** — it needs a backend projection into the POS product payload. Log as a backend ticket.
+- **Q3 → RESOLVED:** stock-badge wording is `Stock 12` / `Stock 3` / `Rupture` (as in §7).
+- **Q4 → RESOLVED:** payment footer is **full navy**, bookending the navy header for section clarity (as in §4).
 
 ## 12. Ground-truth component map (real files to touch)
 - Tokens: `src/index.css`, `src/lib/designTokens.ts`, `docs/.../design-language.md`
