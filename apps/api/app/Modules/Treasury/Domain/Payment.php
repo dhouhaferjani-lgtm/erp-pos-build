@@ -42,6 +42,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $fiscal_event_id Phase 1 §7.5 — UUID FK → fiscal_events.id when this Payment was projected from a SALE_RECEIPT fiscal event by TreasuryReceiptBridge (Task 22); NULL for legacy / non-fiscal payments
  * @property string|null $original_payment_id UUID of the original Payment this refund was split from (Task 19)
  * @property string|null $refund_request_id Idempotency key for refundReceiptPayments() calls (Task 19)
+ * @property string|null $idempotency_key Client-supplied request-level idempotency key (Task 16b) — dedups payment/multipayment creation so a lost-response retry cannot mint a second payment (and second movement). Unique per (company_id, idempotency_key) when non-null; NULL on every payment whose caller did not supply a key.
  * @property string|null $authorized_by_user_id Manager/admin who authorised the override (Task 19 / spec §3.6)
  * @property string|null $policy_trigger Policy condition that triggered the override (Task 19 / spec §3.6)
  * @property string|null $reference
@@ -94,6 +95,9 @@ class Payment extends Model
         'refund_request_id',
         'authorized_by_user_id',
         'policy_trigger',
+        // Task 16b (spine Wave D, HIGH-7) — request-level idempotency key for
+        // payment/multipayment creation.
+        'idempotency_key',
         // Phase 1 §13 — fiscal-engine integration columns. `origin` tags
         // which surface authored the payment; `fiscal_event_id` is the
         // back-link to the authoritative `fiscal_events` row when this
