@@ -38,6 +38,10 @@ use Illuminate\Support\Carbon;
  * @property string|null $account_id
  * @property string|null $gl_account_id
  * @property bool $is_active
+ * @property string $currency ISO 4217 currency code (char(3)); port-managed, not fillable.
+ * @property Carbon|null $frozen_at
+ * @property string|null $frozen_reason
+ * @property int $next_movement_ordinal Monotonic per-repository ordinal for spine movements; port-managed, not fillable.
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
@@ -90,6 +94,8 @@ class PaymentRepository extends Model
             'last_reconciled_balance' => 'decimal:3',
             'last_reconciled_at' => 'datetime',
             'is_active' => 'boolean',
+            'frozen_at' => 'immutable_datetime',
+            'next_movement_ordinal' => 'integer',
         ];
     }
 
