@@ -252,6 +252,8 @@ final class TreasuryMovementServiceRecordTest extends TestCase
             $this->markTestSkipped('Idempotency savepoint recovery is Postgres-shaped (duplicate-insert poisons the txn until rollback-to-savepoint).');
         }
 
+        Event::fake([RepositoryMovementRecorded::class]);
+
         $repo = $this->seedRepository(balance: '100.000');
         $sourceId = (string) Str::uuid();
 
@@ -274,6 +276,73 @@ final class TreasuryMovementServiceRecordTest extends TestCase
         $repo->refresh();
         $this->assertSame(1, $repo->next_movement_ordinal);
         $this->assertSame('125.000', $repo->balance);
+
+        // The idempotent replay returns before registering its afterCommit hook — the
+        // event fires exactly once, for the FIRST (genuine) write, never for the replay.
+        Event::assertDispatchedTimes(RepositoryMovementRecorded::class, 1);
+        Event::assertDispatched(
+            RepositoryMovementRecorded::class,
+            fn (RepositoryMovementRecorded $e): bool => $e->movementId === $first->movementId,
+        );
+    }
+
+    /**
+     * #1 safety property of the port: a unique violation that is NOT on
+     * idempotency_key must throw loudly — never be masked as a wrong/existing
+     * row. Force a (payment_repository_id, ordinal) collision (the gapless
+     * dense-sequence guard) that carries a DIFFERENT idempotency_key than the
+     * one `record()` will attempt, by pre-seeding the ordinal `record()` is
+     * about to compute. `handleIdempotentHit`'s idempotency_key lookup then
+     * finds nothing, so it must throw IdempotencyConflictException rather than
+     * returning the colliding row or silently creating a duplicate.
+     */
+    public function test_ordinal_collision_without_matching_idempotency_key_throws_loudly(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Idempotency savepoint recovery is Postgres-shaped (duplicate-insert poisons the txn until rollback-to-savepoint).');
+        }
+
+        $repo = $this->seedRepository(balance: '100.000'); // next_movement_ordinal = 0
+
+        // Pre-insert a movement occupying ordinal 1 — the exact ordinal record()
+        // is about to compute (next_movement_ordinal + 1) — under a DIFFERENT
+        // idempotency_key. This collides on the (payment_repository_id, ordinal)
+        // unique index, NOT on idempotency_key.
+        $foreignSourceId = (string) Str::uuid();
+        $preExistingId = (string) Str::uuid();
+        DB::table('repository_movements')->insert([
+            'id' => $preExistingId,
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_repository_id' => $repo->id,
+            'direction' => MovementDirection::In->value,
+            'amount' => '10.000',
+            'currency' => 'TND',
+            'balance_after' => '110.000',
+            'ordinal' => 1,
+            'source_type' => 'payment',
+            'source_id' => $foreignSourceId,
+            'idempotency_key' => "payment:{$foreignSourceId}:main",
+            'occurred_at' => now(),
+        ]);
+
+        $intent = $this->intent($repo, amount: '25.000', sourceId: (string) Str::uuid());
+
+        try {
+            DB::transaction(fn () => $this->service()->record($intent));
+            $this->fail('Expected IdempotencyConflictException to be thrown.');
+        } catch (IdempotencyConflictException $e) {
+            $this->assertSame($intent->idempotencyKey(), $e->idempotencyKey);
+        }
+
+        // No wrong row returned, no duplicate created: exactly the one pre-seeded
+        // row exists; the repository's ordinal/balance were rolled back to the
+        // savepoint, untouched by the failed attempt.
+        $this->assertSame(1, RepositoryMovement::where('payment_repository_id', $repo->id)->count());
+        $this->assertSame($preExistingId, RepositoryMovement::where('payment_repository_id', $repo->id)->sole()->id);
+        $repo->refresh();
+        $this->assertSame(0, $repo->next_movement_ordinal);
+        $this->assertSame('100.000', $repo->balance);
     }
 
     // (d) idempotency mismatch: same key, different amount → throws loudly.

@@ -151,6 +151,9 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
      * already recorded. Return the existing row when every semantic field
      * matches (a genuine replay); throw when the same key was reused for a
      * materially different movement.
+     *
+     * NOTE: `journal_entry_id` is deliberately NOT part of the comparison — see
+     * the replay contract on {@see TreasuryMovementServiceInterface::record()}.
      */
     private function handleIdempotentHit(MovementIntent $intent): MovementResult
     {
@@ -231,10 +234,35 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
         );
     }
 
+    /**
+     * Precise unique-violation detection ONLY — never the broad SQLSTATE class.
+     *
+     * On pgsql (production), SQLSTATE 23505 is the exact unique_violation code;
+     * the broader class '23000' also covers FK and NOT-NULL violations on some
+     * drivers and must NEVER be treated as "unique" or a genuine FK/NOT-NULL bug
+     * would be misrouted into {@see handleIdempotentHit} and silently swallowed.
+     *
+     * sqlite (test driver only) reports EVERY constraint violation — unique, FK,
+     * NOT NULL — under the same SQLSTATE '23000' with the same driver code 19
+     * (SQLITE_CONSTRAINT); there is no distinct SQLSTATE for unique violations
+     * on that driver. Disambiguate there via the driver-specific message text
+     * ("UNIQUE constraint failed"), which is sqlite's own unique-constraint
+     * signal.
+     */
     private function isUniqueViolation(QueryException $e): bool
     {
         $sqlState = (string) ($e->errorInfo[0] ?? '');
 
-        return in_array($sqlState, ['23000', '23505'], true);
+        if ($sqlState === '23505') {
+            return true;
+        }
+
+        if ($sqlState === '23000' && DB::connection()->getDriverName() === 'sqlite') {
+            $message = (string) ($e->errorInfo[2] ?? '');
+
+            return str_contains($message, 'UNIQUE constraint failed');
+        }
+
+        return false;
     }
 }
