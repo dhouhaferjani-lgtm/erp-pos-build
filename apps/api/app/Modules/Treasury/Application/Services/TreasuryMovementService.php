@@ -4,9 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Application\Services;
 
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\MovementResult;
+use App\Modules\Treasury\Application\DTOs\TransferIntent;
+use App\Modules\Treasury\Application\DTOs\TransferResult;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementReasonCode;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded;
 use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
 use App\Modules\Treasury\Domain\Exceptions\IdempotencyConflictException;
@@ -33,6 +40,7 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
 {
     public function __construct(
         private CurrencyScaleResolverInterface $scaleResolver,
+        private GeneralLedgerService $generalLedger,
     ) {}
 
     public function record(MovementIntent $intent): MovementResult
@@ -84,45 +92,30 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
             DB::statement("SET LOCAL app.treasury_movement_port = 'on'");
         }
 
+        $occurredAt = $intent->occurredAt ?? CarbonImmutable::now();
+
         // 4. SAVEPOINT for idempotency recovery (a unique-violation poisons the
         // transaction otherwise). Nested beginTransaction → PG SAVEPOINT.
         DB::beginTransaction();
         try {
-            $nextOrdinal = $repo->next_movement_ordinal + 1;
-            $previous = $repo->balance ?? '0';
-            $balanceAfter = $intent->direction === MovementDirection::In
-                ? bcadd($previous, $intent->amount, $scale)
-                : bcsub($previous, $intent->amount, $scale);
-
-            $movementId = (string) Str::uuid();
-            $occurredAt = $intent->occurredAt ?? CarbonImmutable::now();
-
-            DB::table('repository_movements')->insert([
-                'id' => $movementId,
-                'tenant_id' => $intent->tenantId,
-                'company_id' => $intent->companyId,
-                'payment_repository_id' => $intent->repositoryId,
-                'direction' => $intent->direction->value,
-                'amount' => $intent->amount,
-                'currency' => $intent->currency,
-                'balance_after' => $balanceAfter,
-                'ordinal' => $nextOrdinal,
-                'source_type' => $intent->sourceType->value,
-                'source_id' => $intent->sourceId,
-                'journal_entry_id' => $intent->journalEntryId,
-                'idempotency_key' => $intent->idempotencyKey(),
-                'transfer_group_id' => null,
-                'reverses_movement_id' => $intent->reversesMovementId,
-                'reason_code' => $intent->reasonCode?->value,
-                'occurred_at' => $occurredAt,
-                'created_by' => $intent->createdBy,
-                'recorded_while_frozen' => $recordedWhileFrozen,
-                'notes' => $intent->notes,
-            ]);
-
-            $repo->next_movement_ordinal = $nextOrdinal;
-            $repo->balance = $balanceAfter;
-            $repo->save();
+            [$movementId, $balanceAfter, $nextOrdinal] = $this->insertMovementLeg(
+                repository: $repo,
+                direction: $intent->direction,
+                amount: $intent->amount,
+                currency: $intent->currency,
+                scale: $scale,
+                sourceType: $intent->sourceType,
+                sourceId: $intent->sourceId,
+                idempotencyKey: $intent->idempotencyKey(),
+                journalEntryId: $intent->journalEntryId,
+                transferGroupId: null,
+                reversesMovementId: $intent->reversesMovementId,
+                reasonCode: $intent->reasonCode,
+                recordedWhileFrozen: $recordedWhileFrozen,
+                occurredAt: $occurredAt,
+                createdBy: $intent->createdBy,
+                notes: $intent->notes,
+            );
 
             DB::commit(); // release savepoint
         } catch (QueryException $e) {
@@ -144,6 +137,265 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
         )));
 
         return new MovementResult($movementId, $balanceAfter, $nextOrdinal, false);
+    }
+
+    public function transfer(TransferIntent $intent): TransferResult
+    {
+        $scale = $this->scaleResolver->getScale($intent->currency);
+        $isPgsql = DB::connection()->getDriverName() === 'pgsql';
+
+        return DB::transaction(function () use ($intent, $scale, $isPgsql): TransferResult {
+            // 1. GLOBAL LOCK ORDER (BLOCKER-1): take the GL company advisory lock
+            // FIRST — before ANY repository row lock — so this transfer can never
+            // deadlock against a record()+GL flow (which also takes advisory THEN
+            // repo, via postEntryNow). Same key/shape as postEntryNow, so a JE
+            // post below re-acquires the same transaction-scoped lock harmlessly.
+            // GUC/advisory locking is a Postgres concept — no-op on sqlite (test
+            // driver).
+            if ($isPgsql) {
+                DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$intent->companyId]);
+            }
+
+            // 2. Lock BOTH repositories, sorted by id. Sorting is what prevents a
+            // deadlock between opposing concurrent A↔B transfers: every transfer
+            // acquires the two row locks in the SAME (id-ascending) order.
+            $sortedIds = [$intent->fromRepositoryId, $intent->toRepositoryId];
+            sort($sortedIds);
+
+            /** @var array<string, PaymentRepository> $locked */
+            $locked = [];
+            foreach ($sortedIds as $repositoryId) {
+                $locked[$repositoryId] = PaymentRepository::query()
+                    ->where('tenant_id', $intent->tenantId)
+                    ->where('company_id', $intent->companyId)
+                    ->whereKey($repositoryId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+            }
+
+            $fromRepo = $locked[$intent->fromRepositoryId];
+            $toRepo = $locked[$intent->toRepositoryId];
+
+            // 3. Currency guard (review F12): the intent must match BOTH
+            // repositories' currency (each of which was backfilled from — and so
+            // matches — the company currency).
+            if ($fromRepo->currency !== $intent->currency) {
+                throw new CurrencyMismatchException($fromRepo->id, $fromRepo->currency, $intent->currency);
+            }
+            if ($toRepo->currency !== $intent->currency) {
+                throw new CurrencyMismatchException($toRepo->id, $toRepo->currency, $intent->currency);
+            }
+
+            // 4. Open the port (Task-22 trigger gate). pgsql-only DDL.
+            if ($isPgsql) {
+                DB::statement("SET LOCAL app.treasury_movement_port = 'on'");
+            }
+
+            // 5. GL: post EXACTLY ONE journal entry — and only when the two
+            // repositories map to DIFFERENT gl_account_id. A transfer between two
+            // repositories backed by the same GL account has no net GL effect, so
+            // no entry is posted and both legs carry a null journal_entry_id (the
+            // spec's nullable exemption for same-GL-account transfer legs). The
+            // advisory lock (step 1) is already held, so postEntryNow's own
+            // re-acquire is a no-op and the global order is preserved.
+            $legJournalEntryId = null;
+            if ($fromRepo->gl_account_id !== $toRepo->gl_account_id && $intent->journalEntryId !== null) {
+                /** @var JournalEntry $entry */
+                $entry = JournalEntry::query()->whereKey($intent->journalEntryId)->firstOrFail();
+                $actor = $intent->createdBy !== null ? User::find($intent->createdBy) : null;
+                $this->generalLedger->postEntryNow($entry, $actor, $intent->currency);
+                $legJournalEntryId = $intent->journalEntryId;
+            }
+
+            $occurredAt = $intent->occurredAt ?? CarbonImmutable::now();
+
+            // 6. Two legs — NOT two public record() calls. Each advances its own
+            // repository's gapless ordinal + cached balance; both share the
+            // intent's transfer_group_id and net to zero.
+            [$outId, $outBalance, $outOrdinal] = $this->insertMovementLeg(
+                repository: $fromRepo,
+                direction: MovementDirection::Out,
+                amount: $intent->amount,
+                currency: $intent->currency,
+                scale: $scale,
+                sourceType: MovementSourceType::Transfer,
+                sourceId: $intent->transferGroupId,
+                idempotencyKey: "transfer:{$intent->transferGroupId}:out",
+                journalEntryId: $legJournalEntryId,
+                transferGroupId: $intent->transferGroupId,
+                reversesMovementId: null,
+                reasonCode: null,
+                recordedWhileFrozen: false,
+                occurredAt: $occurredAt,
+                createdBy: $intent->createdBy,
+                notes: $intent->notes,
+            );
+
+            [$inId, $inBalance, $inOrdinal] = $this->insertMovementLeg(
+                repository: $toRepo,
+                direction: MovementDirection::In,
+                amount: $intent->amount,
+                currency: $intent->currency,
+                scale: $scale,
+                sourceType: MovementSourceType::Transfer,
+                sourceId: $intent->transferGroupId,
+                idempotencyKey: "transfer:{$intent->transferGroupId}:in",
+                journalEntryId: $legJournalEntryId,
+                transferGroupId: $intent->transferGroupId,
+                reversesMovementId: null,
+                reasonCode: null,
+                recordedWhileFrozen: false,
+                occurredAt: $occurredAt,
+                createdBy: $intent->createdBy,
+                notes: $intent->notes,
+            );
+
+            // 7. Fire RepositoryMovementRecorded for BOTH legs after commit — so
+            // no listener observes an uncommitted (or rolled-back) transfer.
+            DB::afterCommit(function () use (
+                $intent,
+                $fromRepo,
+                $toRepo,
+                $legJournalEntryId,
+                $occurredAt,
+                $outId,
+                $outBalance,
+                $outOrdinal,
+                $inId,
+                $inBalance,
+                $inOrdinal,
+            ): void {
+                event($this->buildTransferLegEvent(
+                    $outId,
+                    $fromRepo->id,
+                    $intent,
+                    MovementDirection::Out,
+                    $outBalance,
+                    $outOrdinal,
+                    $legJournalEntryId,
+                    $occurredAt,
+                ));
+                event($this->buildTransferLegEvent(
+                    $inId,
+                    $toRepo->id,
+                    $intent,
+                    MovementDirection::In,
+                    $inBalance,
+                    $inOrdinal,
+                    $legJournalEntryId,
+                    $occurredAt,
+                ));
+            });
+
+            return new TransferResult(
+                new MovementResult($outId, $outBalance, $outOrdinal, false),
+                new MovementResult($inId, $inBalance, $inOrdinal, false),
+            );
+        });
+    }
+
+    /**
+     * Insert one append-only movement leg against an ALREADY-LOCKED repository,
+     * advance its gapless ordinal, and update its cached balance.
+     *
+     * The single implementation of the ordinal/balance/insert sequence, shared
+     * by {@see record()} and both {@see transfer()} legs — so the three writers
+     * cannot drift. The caller owns transaction/savepoint framing and lock
+     * acquisition; this method only writes.
+     *
+     * @param  numeric-string  $amount
+     * @return array{0: string, 1: numeric-string, 2: int} [movementId, balanceAfter, ordinal]
+     */
+    private function insertMovementLeg(
+        PaymentRepository $repository,
+        MovementDirection $direction,
+        string $amount,
+        string $currency,
+        int $scale,
+        MovementSourceType $sourceType,
+        string $sourceId,
+        string $idempotencyKey,
+        ?string $journalEntryId,
+        ?string $transferGroupId,
+        ?string $reversesMovementId,
+        ?MovementReasonCode $reasonCode,
+        bool $recordedWhileFrozen,
+        CarbonInterface $occurredAt,
+        ?string $createdBy,
+        ?string $notes,
+    ): array {
+        $nextOrdinal = $repository->next_movement_ordinal + 1;
+        $previous = $repository->balance ?? '0';
+        /** @var numeric-string $balanceAfter */
+        $balanceAfter = $direction === MovementDirection::In
+            ? bcadd($previous, $amount, $scale)
+            : bcsub($previous, $amount, $scale);
+
+        $movementId = (string) Str::uuid();
+
+        DB::table('repository_movements')->insert([
+            'id' => $movementId,
+            'tenant_id' => $repository->tenant_id,
+            'company_id' => $repository->company_id,
+            'payment_repository_id' => $repository->id,
+            'direction' => $direction->value,
+            'amount' => $amount,
+            'currency' => $currency,
+            'balance_after' => $balanceAfter,
+            'ordinal' => $nextOrdinal,
+            'source_type' => $sourceType->value,
+            'source_id' => $sourceId,
+            'journal_entry_id' => $journalEntryId,
+            'idempotency_key' => $idempotencyKey,
+            'transfer_group_id' => $transferGroupId,
+            'reverses_movement_id' => $reversesMovementId,
+            'reason_code' => $reasonCode?->value,
+            'occurred_at' => $occurredAt,
+            'created_by' => $createdBy,
+            'recorded_while_frozen' => $recordedWhileFrozen,
+            'notes' => $notes,
+        ]);
+
+        $repository->next_movement_ordinal = $nextOrdinal;
+        $repository->balance = $balanceAfter;
+        $repository->save();
+
+        return [$movementId, $balanceAfter, $nextOrdinal];
+    }
+
+    /**
+     * Build the RepositoryMovementRecorded event for one transfer leg.
+     */
+    private function buildTransferLegEvent(
+        string $movementId,
+        string $repositoryId,
+        TransferIntent $intent,
+        MovementDirection $direction,
+        string $balanceAfter,
+        int $ordinal,
+        ?string $journalEntryId,
+        CarbonInterface $occurredAt,
+    ): RepositoryMovementRecorded {
+        return new RepositoryMovementRecorded(
+            movementId: $movementId,
+            repositoryId: $repositoryId,
+            tenantId: $intent->tenantId,
+            companyId: $intent->companyId,
+            direction: $direction,
+            amount: $intent->amount,
+            balanceAfter: $balanceAfter,
+            currency: $intent->currency,
+            sourceType: MovementSourceType::Transfer,
+            sourceId: $intent->transferGroupId,
+            journalEntryId: $journalEntryId,
+            ordinal: $ordinal,
+            recordedWhileFrozen: false,
+            occurredAt: $occurredAt->toIso8601String(),
+            createdBy: $intent->createdBy,
+            reasonCode: null,
+            reversesMovementId: null,
+            transferGroupId: $intent->transferGroupId,
+        );
     }
 
     /**

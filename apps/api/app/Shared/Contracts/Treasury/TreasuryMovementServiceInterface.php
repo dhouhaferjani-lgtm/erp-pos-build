@@ -6,6 +6,9 @@ namespace App\Shared\Contracts\Treasury;
 
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\MovementResult;
+use App\Modules\Treasury\Application\DTOs\TransferIntent;
+use App\Modules\Treasury\Application\DTOs\TransferResult;
+use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
 
 /**
  * The single write port every treasury money-movement converges onto
@@ -45,4 +48,28 @@ interface TreasuryMovementServiceInterface
      * @throws \LogicException When called outside a DB transaction (MED-9).
      */
     public function record(MovementIntent $intent): MovementResult;
+
+    /**
+     * Move funds between two treasury repositories as an atomic paired out/in
+     * leg (Task 12 — spec §5.3).
+     *
+     * Unlike {@see record()}, `transfer()` OWNS its dedicated `DB::transaction`.
+     * Inside it, the global lock order is honoured: the GL company advisory lock
+     * is taken FIRST, then BOTH repositories are locked in `sort([fromId, toId])`
+     * order (deadlock-free against opposing concurrent transfers), then the two
+     * legs are written — an `out` leg on the source and an `in` leg on the
+     * destination, sharing the intent's `transfer_group_id`, each advancing its
+     * own repository's gapless ordinal and cached balance.
+     *
+     * Exactly ONE journal entry is posted (synchronously in-transaction via
+     * `postEntryNow`) — and only when the two repositories map to DIFFERENT
+     * `gl_account_id`. A transfer between two repositories backed by the same GL
+     * account has no net GL effect, so no entry is posted and both legs carry a
+     * null `journal_entry_id` (the spec's nullable exemption for same-GL-account
+     * transfer legs).
+     *
+     * @throws CurrencyMismatchException
+     *                                   When the intent currency does not match both repositories.
+     */
+    public function transfer(TransferIntent $intent): TransferResult;
 }

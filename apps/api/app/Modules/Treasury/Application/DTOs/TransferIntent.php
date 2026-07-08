@@ -18,7 +18,7 @@ final readonly class TransferIntent
      * @param  string  $toRepositoryId  UUID of the destination PaymentRepository (in leg)
      * @param  string  $tenantId  UUID of the owning tenant
      * @param  string  $companyId  UUID of the owning company
-     * @param  string  $amount  numeric-string, positive decimal at currency scale (never float)
+     * @param  numeric-string  $amount  positive decimal at currency scale (never float)
      * @param  string  $transferGroupId  Caller-assigned id shared by both legs, used for idempotency
      * @param  ?string  $journalEntryId  UUID of the GL journal entry this transfer is tied to, if any
      * @param  ?string  $createdBy  UUID of the acting user, if any
