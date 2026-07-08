@@ -135,7 +135,7 @@ final class CatalogEnrichmentService
                         $product->tenant_id,
                         $product->id,
                         $normalizedImages,
-                    );
+                    )->afterCommit();
                 }
             });
         };
