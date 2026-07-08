@@ -2022,9 +2022,9 @@ final class GeneralLedgerService
      * chain-sequence derivation MUST NOT change here — every posting path funnels
      * through this method so the chain stays byte-identical.
      *
-     * NOTE (Task 7): the getLastChainHash + getNextChainSequence reads are still
-     * unlocked; the advisory lock that closes the concurrent-post race is added by
-     * Task 7. Do not duplicate it here.
+     * NOTE (Task 7): the getLastChainHash + getNextChainSequence reads are
+     * serialized per company by a transaction-scoped advisory lock taken just
+     * before them (below), closing the concurrent-post chain_sequence race.
      */
     private function sealAndPersistEntry(JournalEntry $entry, ?User $user, ?string $currencyCode = null): JournalEntryPosted
     {
@@ -2057,6 +2057,18 @@ final class GeneralLedgerService
             throw new \InvalidArgumentException(
                 "Cannot post unbalanced journal entry: total debit {$totalDebit} does not equal total credit {$totalCredit}."
             );
+        }
+
+        // Serialize chain-sequence + hash reads per company via a transaction-scoped
+        // advisory lock (released at commit). Concurrent posts to one company would
+        // otherwise race on these unlocked max() reads and allocate duplicate
+        // chain_sequence — an FEC-sequentiality break (Task 7). This is step 1 of
+        // every converged flow: taken BEFORE any payment_repositories row lock, so
+        // the global order is always advisory -> repo. The lock is only effective
+        // inside an explicit transaction; postEntryNow enforces one, and the legacy
+        // autocommit path degrades to a harmless per-statement no-op.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$entry->company_id]);
         }
 
         $previousHash = JournalEntry::getLastChainHash($entry->company_id);
@@ -2860,6 +2872,16 @@ final class GeneralLedgerService
 
     private function generateEntryNumber(string $companyId): string
     {
+        // Same per-company advisory lock as sealAndPersistEntry so entry-number and
+        // chain-sequence allocation share serialization: concurrent creates would
+        // otherwise race on this unlocked max()+1 read and allocate a duplicate
+        // entry_number (Task 7). Transaction-scoped, released at commit; when
+        // running outside a transaction it degrades to a harmless per-statement
+        // no-op — every GL create path wraps this in DB::transaction.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$companyId]);
+        }
+
         $year = date('Y');
         $lastEntry = JournalEntry::query()
             ->where('company_id', $companyId)
