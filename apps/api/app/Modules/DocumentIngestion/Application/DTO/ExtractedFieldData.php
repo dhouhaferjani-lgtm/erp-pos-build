@@ -32,8 +32,11 @@ final class ExtractedFieldData extends Data
             throw new \InvalidArgumentException("{$path}.confidence must be numeric");
         }
 
+        // erp-ml emits source_bbox as `list[float] | None`: a null bbox is legitimate
+        // for fields it can't localize (low-confidence / blank template / handwriting).
+        // Present-but-null must map to no bbox, not a hard failure.
         $sourceBbox = null;
-        if (array_key_exists('source_bbox', $payload)) {
+        if (array_key_exists('source_bbox', $payload) && $payload['source_bbox'] !== null) {
             if (! is_array($payload['source_bbox'])) {
                 throw new \InvalidArgumentException("{$path}.source_bbox must be an array");
             }
