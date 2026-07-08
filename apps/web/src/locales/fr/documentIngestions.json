@@ -67,6 +67,7 @@
     "reconciliationFlags": "Alertes de réconciliation",
     "rejectConfirm": "Rejeter ce scan ?",
     "source": "Document source",
+    "openSource": "Ouvrir le document dans un nouvel onglet",
     "sourceLine": "Ligne de réception",
     "sourceMissing": "L'aperçu source est indisponible.",
     "supplier": "Fournisseur",
