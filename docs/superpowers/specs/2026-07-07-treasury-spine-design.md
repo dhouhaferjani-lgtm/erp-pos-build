@@ -1,6 +1,6 @@
 # Treasury Money-Movement Spine — Design Spec (Phase 1 of 5)
 
-> **Date:** 2026-07-07 · **Status:** DRAFT — awaiting owner review, then adversarial review
+> **Date:** 2026-07-07 · **Rev 2 (2026-07-08):** reconciled against the Codex adversarial review — [reviews/2026-07-08-treasury-spine-codex-review.md](reviews/2026-07-08-treasury-spine-codex-review.md) (2 BLOCKER / 8 HIGH / 4 MED, all accepted; resolutions in §16) · **Status:** awaiting owner review
 > **Owner decisions captured:** phasing (spine first), no legacy-data constraints (no clients yet), gated adjustment documents, POS auto-tolerance deferred, architecture Option A (movements ledger + cached balance), NF525 scope correction (POS perimeter only).
 > **Inputs:** [2026-07-07 industry-gap audit](../audits/2026-07-07-treasury-industry-gap-audit/README.md) · certification research (NF525/FEC/PCG/TEJ) · ledger-engineering research (Modern Treasury/Stripe/Square/pgledger/TigerBeetle) · code infrastructure map (agents, file:line verified)
 > **Program context:** Phase 1 of: ① spine → ② instrument portfolio → ③ cash-visibility read layer → ④ expense depth → ⑤ bank reconciliation → then TEJ platform integration.
@@ -17,7 +17,7 @@ Downstream everything else follows: trustworthy cash position, drill-down from a
 
 ## 2. Scope
 
-**In:** append-only `repository_movements` ledger + single write port; migration of ALL money-moving flows onto it (incl. POS bridges — fixes the wrong Total Cash); new POS return/refund GL bridge; treasury refund balance+GL; MultiPayment GL; inter-repository transfers; gated adjustment documents; unpaid-expense AP fix; period-close guard wired into posting; GL chain-sequence race fix; `journal_code` column (FEC-readiness); reconciliation command with freeze-on-drift; minimal read surface (cash-position endpoint, movements drill-down + Movements tab); instrument list-page contract fix (P0 bug, G3).
+**In:** append-only `repository_movements` ledger + single write port; migration of ALL money-moving flows onto it (incl. POS bridges — fixes the wrong Total Cash); new POS return/refund GL bridge; treasury refund balance+GL; MultiPayment GL; inter-repository transfers; gated adjustment documents; unpaid-expense AP fix **+ expense settlement path** (`POST /expenses/{id}/pay` — closes the AP loop, review F6); period-close guard wired into posting; GL chain-sequence race fix; `journal_code` column (FEC-readiness); `payment_repositories.currency` column + `gl_account_id` canonicalization in projection bridges (review F12/F14); reconciliation command with freeze-on-drift; minimal read surface (cash-position endpoint, movements drill-down + Movements tab); instrument list-page contract fix (P0 bug, G3).
 
 **Out (explicit):** instrument GL/échéancier (Phase 2); dashboards/charts (Phase 3); expense VAT/recurring/analytics (Phase 4); statement import (Phase 5); POS auto-tolerance (own track); card acquirer-settlement modeling; multi-currency (hard guard only); FEC exporter (schema-readiness only); TEJ integration (already has its own module; untouched); movements hash chain (see §11 delta D6).
 
@@ -27,7 +27,7 @@ Downstream everything else follows: trustworthy cash position, drill-down from a
 |---|---|---|
 | `RepositoryInflow/OutflowInterface` + services (`Shared/Contracts/Treasury/`; `Treasury/Application/Services/Repository*.php:19-57`) | Balance-only port; only Expense + Income call it | **Absorb into new port** (keep interfaces as thin adapters or migrate callers — plan decides) |
 | `PaymentController` inline balance writes (`:602-609`, `:960-961`) | Bypasses port — divergent path | **Migrate onto port** |
-| `RepositoryBalanceChanged` event | Fired, zero listeners, not in `DomainEventSubscriber` | Subscribe → `audit_events`; keep as the notification seam |
+| `RepositoryBalanceChanged` event | Fired, zero listeners, not in `DomainEventSubscriber` | Superseded by richer `RepositoryMovementRecorded`; register in `DomainEventSubscriber` → `audit_events` (review F13) |
 | GL hash chain (`journal_entries.fiscal_hash/previous_hash/chain_sequence`; seal in `GeneralLedgerService::postEntryWithOptionalActor:1957-2014`) | Works; **debits==credits already asserted `:1984-1988`** | Reuse as-is; fix `chain_sequence` allocation race (no lock today) |
 | `FiscalPeriodResolverService::isDateInOpenPeriod` (`:246-256`) + `FiscalPeriodAutoLockService` + `LockExpiredFiscalPeriodsCommand` | Exists, **unwired** — nothing blocks posting into closed periods | **Wire into GL posting + movement recording** |
 | `fiscal_events` immutability (BEFORE UPDATE/DELETE/TRUNCATE triggers, `2026_05_14_100002`) | The in-repo append-only template | **Copy trigger pattern** for `repository_movements` |
@@ -47,18 +47,19 @@ Append-only. Immutability enforced three ways: no update/delete code paths; mode
 | `payment_repository_id` | FK, indexed | |
 | `direction` | enum `in`/`out` (PHP enum, rule 9) | |
 | `amount` | `decimal(15,3)`, `CHECK (amount > 0)` | direction carries sign — no signed amounts (anti-pattern) |
-| `currency` | char(3), must equal company currency | **hard guard** — mismatched currency throws; multi-currency deferred |
+| `currency` | char(3), must equal **repository currency AND company currency** | **hard guard** — mismatched currency throws; requires new `payment_repositories.currency` col (review F12); multi-currency deferred |
 | `balance_after` | `decimal(15,3)` | running balance in **record order** (see D3) |
 | `ordinal` | bigint | **gapless per-repository sequence**: counter column on the locked `payment_repositories` row, incremented in-transaction — rolls back with it |
 | `source_type` | enum: `payment`, `expense`, `income`, `refund`, `fiscal_event`, `transfer`, `adjustment`, `opening_balance`, `instrument` *(reserved, Phase 2)* | provenance = pièce justificative |
 | `source_id` | uuid | indexed with source_type |
 | `journal_entry_id` | FK nullable* | the GL justification. *Nullable ONLY for `opening_balance` and same-GL-account transfer legs; architecture test asserts every other source type carries one |
-| `idempotency_key` | string, **unique index** | deterministic `"{source_type}:{source_id}:{leg}"` (e.g. `fiscal_event:{uuid}:tender:cash`, `transfer:{uuid}:out`, `reversal_of:{movement_id}`); retried writers SELECT-on-conflict and treat as success |
+| `idempotency_key` | string, **unique index** | deterministic `"{source_type}:{source_id}:{leg}"` where `leg` is a **stable ordinal, never a method label** (review F3): POS tenders → `fiscal_event:{uuid}:payment:{canonical_index}` (the canonical `PaymentDTO` index, persisted on `pos_receipt_payments` — see F3/F4 below); transfer → `transfer:{uuid}:out`/`:in`; reversal → `reversal_of:{movement_id}`. Retried writers SELECT-on-conflict, **validate semantic fields, and treat as success only on full match** (mismatch throws) |
 | `transfer_group_id` | uuid nullable | pairs transfer legs; legs must net to zero |
 | `reverses_movement_id` | self-FK nullable | corrections are compensating movements, never edits |
 | `reason_code` | enum nullable | required for `adjustment` and reversals |
 | `occurred_at` / `created_at` | both | business time vs record time; backdating bounded: not before last clean reconciliation checkpoint nor into a closed fiscal period |
 | `created_by` | user FK | |
+| `recorded_while_frozen` | bool default false | set when a queued projection wrote into a frozen repository (§9, review F5); drives operator alert |
 | `notes` | text nullable | operator context |
 
 Indexes: PK · unique `idempotency_key` · `(payment_repository_id, occurred_at)` · `(source_type, source_id)`. **No** partitioning/BRIN/fillfactor tuning (unwarranted below tens of millions of rows). `payment_repositories.balance` stays as the cached read column; loses mass-assignability; direct writes outside the port forbidden by PHPStan rule + architecture test.
@@ -74,27 +75,29 @@ public function transfer(TransferIntent $intent): TransferResult; // two paired 
 
 `MovementIntent` DTO (strict-typed, rule 3): repositoryId, tenantId, companyId, direction, amount (numeric-string), currency, sourceType, sourceId, idempotencyLeg, journalEntryId?, occurredAt?, reasonCode?, reversesMovementId?, createdBy, notes?.
 
-Transaction semantics (single DB transaction, critical section minimal — validation and GL work happen BEFORE the lock):
-1. Resolve scale via injected `CurrencyScaleResolverInterface` (explicit currency — queue-safe, rules 13/19/20).
-2. `lockForUpdate` the repository row(s) — **transfers lock both repositories in sorted-by-id order** (deadlock avoidance).
-3. Insert movement with `balance_after` + incremented `ordinal`; the insert runs under a **savepoint** — on `idempotency_key` unique violation, roll back to the savepoint (a bare unique violation poisons the PG transaction), SELECT the existing row, return it as success (retried-job safety; same savepoint-recovery pattern as location-hierarchy `assignProduct`).
-4. Update cached `balance` (bcadd/bcsub at currency scale).
-5. `afterCommit`: fire `RepositoryBalanceChanged` (now subscribed → `audit_events`).
+Transaction semantics (single DB transaction; **GL posting is synchronous inside it** — see the BLOCKER resolution below):
+1. Resolve scale via injected `CurrencyScaleResolverInterface` (explicit currency — queue-safe, rules 13/19/20). Validate intent currency against **repository currency AND company currency** (new `payment_repositories.currency` column, review F12).
+2. **Post the GL entry synchronously in-transaction.** New `postEntryNow()` path on `GeneralLedgerService` (alongside the existing `postEntryAndDispatchPostedEventAfterCommit`, which defers via `DB::afterCommit` — `GeneralLedgerService.php:83-94` — and is therefore FORBIDDEN for spine flows): creates + posts + hash-seals the JE inside the caller transaction; only the `JournalEntryPosted` **event dispatch** stays afterCommit. Period validation (`isDateInOpenPeriod`) happens ONCE, here, in-transaction — never split between movement-time and post-time (review BLOCKERs 1+2).
+3. `lockForUpdate` the repository row(s). `transfer()` is a **single dedicated transaction that locks BOTH repositories sorted by id BEFORE any insert** and writes both legs + both balances itself — never implemented as two `record()` calls (review F7).
+4. Exact savepoint ordering (review F11): lock repo → **SAVEPOINT** → increment `ordinal` (counter on the locked row) → compute `balance_after` → insert movement → update cached `balance` → release savepoint. On `idempotency_key` unique violation: roll back to savepoint (undoes ordinal + balance — no gaps), SELECT the existing movement, **validate its semantic fields** (repository, direction, amount, currency, source) against the intent — match ⇒ return as success; mismatch ⇒ throw loudly (review F3).
+5. `afterCommit`: fire `RepositoryMovementRecorded` (richer successor to `RepositoryBalanceChanged`; both registered in `DomainEventSubscriber` → `audit_events` — review F13).
 
-Callable from HTTP controllers and queued projections. The existing `RepositoryInflow/OutflowService` become delegating adapters over the new port (or callers migrate — implementation plan decides; either way exactly one code path mutates balance). GL-post failure anywhere in the enclosing transaction rolls back the movement — atomicity is the point.
+Callable from HTTP controllers and queued projections. The old `RepositoryInflow/OutflowService` are **deleted in the same convergence wave** (not kept as adapters — one code path only; review F8). **Acceptance test injects a GL-post failure after the movement write point and proves nothing survives commit** — no payment, allocation, movement, balance change, or JE.
 
 ## 6. Flow convergence (all writers, after Phase 1)
 
 | Flow | Today (verified) | After |
 |---|---|---|
 | B2B customer/supplier payment | inline balance write + GL (`PaymentController:602-609,960`) | port: movement(`payment`) + GL |
-| Expense post / refund | old port + GL; **unpaid still credits Cash** (`GeneralLedgerService:2318-2327`) | port; **unpaid → Cr AP liability, no movement**; cash moves on actual payment |
-| Income | old port + GL | port |
+| Expense post (paid) | old port + GL | port: movement(`expense`) + GL |
+| Expense post (unpaid) | **unpaid still credits Cash** (bug, `GeneralLedgerService:2318-2327`) | **Cr AP liability, no movement**; settled later via new `POST /expenses/{id}/pay` → movement(out) + Dr AP/Cr Cash, atomic (review F6) |
+| Expense refund | old port + GL | port: movement(`refund`) |
+| Income | old port + GL | port: movement(`income`) + GL |
 | Vendor/PO refund | inline write + GL | port: movement(`refund`) |
-| POS sale (`TreasuryReceiptBridge`) | GL + Payment, **no balance** | port: movement(`fiscal_event`) per tender line, idempotency-keyed per leg |
-| **POS returns/refunds** | drawer only — no GL, no balance | **new return projection bridge**: movement(out) + GL reversal (closes F3) |
-| Treasury payment refunds | neither (`PaymentRefundService`) | port + GL reversal (closes F4) |
-| POS deposit / account-payment bridges | GL only | port: movements added |
+| POS sale (`TreasuryReceiptBridge`) | GL + Payment, **no balance** | port: movement(`fiscal_event`) per tender line, keyed by canonical index; **complete-set idempotency** — replay validates every expected leg exists, repairs partial sets in-txn (review F4) |
+| **POS returns/refunds** | drawer only — no GL, no balance | **new return projection bridge**: movement(out) + GL reversal |
+| Treasury payment refunds | neither (`PaymentRefundService`) | port + GL reversal; **`lockForUpdate` original payment, compute refunded-total under lock, idempotency key on partial refunds** (review F10) |
+| POS deposit / account-payment bridges | GL only, **no balance** | **first convergence wave** (not later cleanup, review F9): port movement added; canonicalize on `gl_account_id` (review F14) |
 | MultiPayment split/deposit/on-account | balances only, no GL | port + GL (closes F16) |
 | **Inter-repo transfer** | impossible | **new**: `transfer()` — paired legs, GL when crossing GL accounts |
 | Adjustment | impossible | adjustment document (§7) |
@@ -113,13 +116,23 @@ Permission `treasury.adjust` (seeded to admin/owner roles). Endpoint + minimal F
 - **`journal_code` enum column on `journal_entries`** (FR journal codes: VT/AC/BQ/CA/OD mapping from `source_type`), populated going forward — makes future FEC export a query, not a migration. Exporter itself is out of scope.
 - debits==credits assertion: **already exists** (`:1984-1988`) — no work, covered by tests only.
 
+**`payment_repositories` schema changes (review F12/F14):**
+- Add `currency char(3)` (backfilled from company currency; the movement port's hard currency guard needs it — repositories carry none today, so payment/repository currency can diverge silently).
+- Add `frozen_at timestamptz null` + `frozen_reason` (reconciliation freeze, §9).
+- Add `next_movement_ordinal bigint default 0` (the gapless per-repo counter, §5 step 4).
+- **Canonicalize cash-GL resolution on `gl_account_id`.** Today `TreasuryDepositBridge` requires `account_id` (`:196-215`) while `TreasuryAccountPaymentBridge` falls back `account_id ?? gl_account_id` (`:216-226`) and `createPOSPaymentEntry` uses `gl_account_id` (`:2092-2133`) — a rejected-but-valid repository looks like a movement-port failure. Projection bridges + the movement port resolve one cash-GL account via `gl_account_id`; `account_id` kept only as a backfilled legacy alias, dropped from bridge validation.
+
 ## 9. Reconciliation — `treasury:reconcile` (scheduled, per tenant)
 
 1. Per repository: `balance == Σ(signed movements)` AND `balance_after`/`ordinal` chain continuity (gap ⇒ tamper/bug signal).
 2. Ledger↔GL coherence: every non-exempt movement's `journal_entry_id` exists with matching amount; every cash/bank journal line has a movement (completeness, both directions).
 3. Transfer clearing: every `transfer_group_id` nets to zero.
 
-**On drift: freeze the repository (writes via port rejected with explicit error) + alert. Never silently repair.** Results logged to `audit_events`. Full-scan is fine at our volume; watermark checkpoints deferred until row counts warrant.
+**On drift: freeze the repository + alert. Never silently repair.** Results logged to `audit_events`.
+
+**Freeze is interactive-only — it must NOT throw from queued fiscal projections** (review F5, BLOCKER-adjacent): a POS device is offline-first and keeps selling; if a frozen repository made `TreasuryReceiptBridge` throw, the fiscal-projection Horizon rows would retry then dead-letter (`ApplyFiscalEventProjectionJob.php:428-455`), stranding already-sealed sales. Policy: freeze rejects **interactive port writes** (HTTP: payments, expenses, adjustments, transfers) with an explicit 4xx, but **projection writes into a frozen repository still record, flagged `recorded_while_frozen=true`** on the movement, and raise an operator alert rather than an exception. The operator resolves the drift and clears the flag/freeze; the queue never stalls. `frozen_at` + `frozen_reason` columns on `payment_repositories`.
+
+Full-scan is fine at our volume; watermark checkpoints deferred until row counts warrant.
 
 ## 10. Read surface (minimal)
 
@@ -174,11 +187,36 @@ Routes: `['api','auth:sanctum',SetPermissionsTeam::class]` + `can:` permissions 
 
 ## 14. Execution model
 
-Worktree off dev (`feat/treasury-spine`). Implementation plan = bounded, independently-reviewable tasks sized for Codex/Opus dispatch (Codex quota caveat; CLI-brokered Codex cannot write to `apps/erp.*` worktrees → Codex Desktop or Claude agents). Rough task shape (plan will finalize): schema+model+trigger → port+DTOs+adapters → per-flow migrations (one task each) → new bridges → adjustments → GL hardening → reconcile command → read surface+FE → E2E.
+Worktree off dev (`feat/treasury-spine`). Implementation plan = bounded, independently-reviewable tasks sized for Codex/Opus dispatch (Codex quota caveat; CLI-brokered Codex cannot write to `apps/erp.*` worktrees → Codex Desktop or Claude agents). Rough task shape (plan will finalize): schema+model+trigger → `postEntryNow()` GL path + period-guard wiring → port+DTOs → **all-writers convergence in ONE wave** → new bridges (returns) → expense settlement → adjustments → GL hardening → reconcile command → read surface+FE → E2E.
 
-## 15. Open questions (for adversarial review, not blockers)
+**Migration safety (review F8 — no double-count window):** the balance-write cutover is NOT staged writer-by-writer. Within the convergence wave, all writers move onto the port together, the old `RepositoryInflow/OutflowService` are deleted, `balance` is removed from `$fillable`, and a DB trigger rejects direct `balance` UPDATEs except from the port's controlled session (belt-and-braces beyond the architecture test + PHPStan rule, which miss raw-query/`update()` paths). No deploy boundary exists where two balance-mutation paths coexist.
 
-1. Old port interfaces: keep as delegating adapters vs migrate the two callers and delete? (Lean: migrate + delete — fewer paths.)
-2. Freeze mechanism: column on `payment_repositories` (`frozen_at` + reason) vs settings row? (Lean: column.)
-3. Does `TreasuryDepositBridge`'s FIFO allocation GL interact with movement amounts 1:1 per tender or per allocation? Plan task must trace before writing the movement leg keys.
-4. `journal_code` mapping table for existing `source_type` strings — enum now vs config? (Lean: PHP enum with `fromSourceType()`.)
+## 15. Open questions
+
+Resolved by the adversarial review: old ports **deleted** not adapted (F8); freeze = **`frozen_at` column** (F5); `journal_code` = **PHP enum `fromSourceType()`** (Rev-1 lean confirmed).
+
+Remaining for the implementation plan to trace before writing code (not design blockers):
+1. `TreasuryDepositBridge` FIFO allocation GL: does it interact with movement amounts 1:1 per tender or per allocation? Determines whether the deposit-bridge movement leg is one row or N. Trace `PaymentAllocationService:251-347` first.
+2. Persisting the canonical `PaymentDTO` index onto `pos_receipt_payments` (for the F3/F4 idempotency key): new column vs derivable from canonical bytes? Plan task decides after reading `PosCoreReceiptProjection:733-801`.
+3. Expense settlement (`POST /expenses/{id}/pay`) reuses the movement port directly vs shares code with the supplier-payment path — trace for overlap, avoid a third outflow variant.
+
+## 16. Adversarial-review reconciliation (Codex, 2026-07-08)
+
+Full review: [reviews/2026-07-08-treasury-spine-codex-review.md](reviews/2026-07-08-treasury-spine-codex-review.md). All 14 findings accepted after firsthand verification of the two load-bearing claims. Resolutions:
+
+| # | Sev | Finding (short) | Resolution in this spec |
+|---|---|---|---|
+| 1 | BLOCKER | GL posts via `DB::afterCommit` → movement can commit while GL post fails later | §5.2 new **`postEntryNow()`** synchronous-in-transaction path; afterCommit path forbidden for spine flows |
+| 2 | BLOCKER | Period guard split between movement-time and post-time worsens the gap | §5.2 period validation happens **once, in-transaction**, alongside the synchronous post |
+| 3 | HIGH | Split-tender idempotency key collides (two CASH lines) | §4 key uses **canonical payment index**, not method label; §5.4 validate-semantic-fields-or-throw |
+| 4 | HIGH | Partial projection replay marked as success (any-payment-exists probe) | §6 POS bridges use **complete-set idempotency** — validate every expected leg, repair partial in-txn |
+| 5 | HIGH | Freeze throws from fiscal projections → queue dead-letters | §9 freeze is **interactive-only**; projections record with `recorded_while_frozen` + alert, never throw |
+| 6 | HIGH | Unpaid-expense AP fix has no settlement path (dead-end liability) | §2/§6 add **`POST /expenses/{id}/pay`** (movement + Dr AP/Cr Cash, atomic) |
+| 7 | HIGH | Transfer two-lock + GL atomicity underspecified | §5.3 `transfer()` = **single txn, both repos locked sorted-by-id before any insert**, never two `record()` calls |
+| 8 | HIGH | Migration window lets old + new balance writes coexist / double-count | §14 **one-wave cutover**: delete old ports, drop `balance` from fillable, DB trigger rejects direct writes |
+| 9 | HIGH | Account/deposit bridges create Payment+GL but no movement | §6 folded into the **first** convergence wave, not later cleanup |
+| 10 | HIGH | Refund flows lack original-payment locking / partial-refund idempotency | §6 **`lockForUpdate` original payment**, refunded-total under lock, idempotency key on partials |
+| 11 | MED | Savepoint recovery ordinal/balance consistency underspecified | §5.4 exact ordering: SAVEPOINT → ordinal → balance_after → insert → cached balance → release; rollback undoes all |
+| 12 | MED | Currency guard needs a repository currency column (none today) | §8 add **`payment_repositories.currency`**; §4/§5.1 guard against repo AND company currency |
+| 13 | MED | `RepositoryBalanceChanged` not subscribed to `audit_events` | §3/§5.5 **`RepositoryMovementRecorded`** registered in `DomainEventSubscriber` |
+| 14 | MED | `account_id` vs `gl_account_id` inconsistent across bridges | §8 **canonicalize on `gl_account_id`**; `account_id` legacy alias only, dropped from bridge validation |
