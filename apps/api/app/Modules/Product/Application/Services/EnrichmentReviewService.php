@@ -7,6 +7,7 @@ namespace App\Modules\Product\Application\Services;
 use App\Modules\Product\Application\DTOs\BrandResolution;
 use App\Modules\Product\Application\DTOs\EnrichedProductData;
 use App\Modules\Product\Application\Jobs\SendEnrichmentFeedbackJob;
+use App\Modules\Product\Application\Support\ImageDescriptorNormalizer;
 use App\Modules\Product\Domain\EnrichmentResult;
 use App\Modules\Product\Domain\Enums\BrandSource;
 use App\Modules\Product\Domain\Enums\EnrichmentResultOrigin;
@@ -367,27 +368,9 @@ final class EnrichmentReviewService
      */
     private function imagesFromPayload(mixed $value): array
     {
-        if (! is_array($value)) {
-            return [];
-        }
-
-        $images = [];
-        foreach ($value as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-
-            $url = $item['url'] ?? null;
-            $thumbnail = $item['thumbnail'] ?? null;
-            $type = $item['type'] ?? null;
-            $images[] = [
-                'url' => is_string($url) ? $url : null,
-                'thumbnail' => is_string($thumbnail) ? $thumbnail : null,
-                'type' => is_string($type) ? $type : null,
-            ];
-        }
-
-        return $images;
+        // Unbounded cap: this call site preserves the original (uncapped)
+        // display behavior. The persister applies the real cap of 6.
+        return ImageDescriptorNormalizer::normalize($value, PHP_INT_MAX);
     }
 
     private function payloadMatches(
