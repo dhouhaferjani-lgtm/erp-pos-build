@@ -33,7 +33,7 @@ enum JournalCode: string
         return match ($sourceType) {
             'invoice', 'credit_note' => self::Sales,
             'supplier_invoice' => self::Purchase,
-            'payment', 'customer_payment', 'supplier_payment' => self::Bank,
+            'payment', 'customer_payment', 'supplier_payment', 'customer_payment_refund' => self::Bank,
             'pos_payment', 'pos_receipt' => self::Cash,
             default => self::Misc,
         };

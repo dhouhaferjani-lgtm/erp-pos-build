@@ -4,18 +4,27 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Domain\Services;
 
+use App\Modules\Accounting\Domain\Enums\PostingMode;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\ProrationStrategy;
 use App\Modules\Treasury\Domain\Events\PaymentRefunded;
 use App\Modules\Treasury\Domain\Events\PaymentReversed;
+use App\Modules\Treasury\Domain\Exceptions\OverRefundException;
 use App\Modules\Treasury\Domain\Exceptions\RefundIdempotencyException;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -26,6 +35,8 @@ class PaymentRefundService
 {
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly GeneralLedgerService $glService,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     private function scale(): int
@@ -68,7 +79,8 @@ class PaymentRefundService
     public function refundPayment(
         Payment $payment,
         string $reason,
-        ?string $userId = null
+        ?string $userId = null,
+        ?string $refundRequestId = null,
     ): Payment {
         // Idempotent: if already reversed (refunded), find and return the existing refund
         if ($payment->status === PaymentStatus::Reversed) {
@@ -79,77 +91,115 @@ class PaymentRefundService
             throw new \RuntimeException('Only completed payments can be refunded');
         }
 
-        return DB::transaction(function () use ($payment, $reason, $userId): Payment {
-            // Double-check inside transaction (another request may have refunded it)
-            $payment->refresh();
-            if ($payment->status === PaymentStatus::Reversed) {
-                return $this->findExistingFullRefund($payment);
-            }
-            // Create refund payment (negative amount)
-            // IMPORTANT: payment_type is set explicitly to Refund to avoid the column
-            // default 'document_payment' (Codex review 2 additional finding).
-            //
-            // Spec §13 writer-inventory row 7 — `PaymentRefundService::refundPayment()`
-            // → inherit the original payment's `origin`. A refund of a POS-origin
-            // payment is itself POS-origin; a refund of a web_admin payment is
-            // web_admin. Task 22 round-2 (Codex T22-B2 BLOCKER): legacy rows
-            // pre-dating Task 12 have `origin = NULL`; `originForRefund()` falls
-            // back to `PaymentOrigin::UnknownLegacy` so the refund row still
-            // stamps a non-NULL origin per spec §17.6. DO NOT inline this —
-            // see the helper docblock for the deliberate-sentinel rationale.
-            // `fiscal_event_id` is NOT inherited — refunds are not authored by
-            // the device.
-            $refund = Payment::create([
-                'id' => Str::uuid()->toString(),
-                'tenant_id' => $payment->tenant_id,
-                'company_id' => $payment->company_id,
-                'partner_id' => $payment->partner_id,
-                'payment_method_id' => $payment->payment_method_id,
-                'instrument_id' => $payment->instrument_id,
-                'repository_id' => $payment->repository_id,
-                'amount' => bcmul($payment->amount, '-1', $this->scale()), // Negative amount
-                'currency' => $payment->currency,
-                'payment_date' => now(),
-                'status' => PaymentStatus::Completed,
-                'payment_type' => PaymentType::Refund,
-                'origin' => $this->originForRefund($payment),
-                'reference' => "Refund for payment {$payment->reference}",
-                'notes' => "Refund: {$reason}",
-                'created_by' => $userId,
-            ]);
+        // Task 18: a stable request id is REQUIRED for DB-level idempotency + the
+        // movement key. The admin endpoint supplies a client UUID; direct callers
+        // that omit one get a per-call UUID (each call is then its own request).
+        $refundRequestId ??= Str::uuid()->toString();
 
-            // Reverse original payment allocations
-            $originalAllocations = $payment->allocations;
+        try {
+            return DB::transaction(function () use ($payment, $reason, $userId, $refundRequestId): Payment {
+                // Lock the ORIGINAL payment row for the duration of the refund so
+                // concurrent refunds of the same payment serialise (F10). The
+                // over-refund guard below then reads a committed already-refunded
+                // total, not a stale snapshot.
+                /** @var Payment $original */
+                $original = Payment::query()
+                    ->where('tenant_id', $payment->tenant_id)
+                    ->where('company_id', $payment->company_id)
+                    ->lockForUpdate()
+                    ->findOrFail($payment->id);
 
-            foreach ($originalAllocations as $allocation) {
-                PaymentAllocation::create([
-                    'payment_id' => $refund->id,
-                    'document_id' => $allocation->document_id,
-                    'amount' => bcmul($allocation->amount, '-1', $this->scale()), // Negative amount
+                // Double-check inside the lock (another request may have refunded it)
+                if ($original->status === PaymentStatus::Reversed) {
+                    return $this->findExistingFullRefund($original);
+                }
+
+                // Idempotent replay: a refund row already exists for this
+                // (company, original payment, request id) triplet.
+                $existing = $this->findExistingRefundByRequestId($original, $refundRequestId);
+                if ($existing instanceof Payment) {
+                    return $existing;
+                }
+
+                /** @var numeric-string $originalAmount */
+                $originalAmount = (string) $original->amount;
+                $this->assertWithinRefundableBalance($original, $originalAmount);
+
+                // Create refund payment (negative amount)
+                // IMPORTANT: payment_type is set explicitly to Refund to avoid the column
+                // default 'document_payment' (Codex review 2 additional finding).
+                //
+                // Spec §13 writer-inventory row 7 — `PaymentRefundService::refundPayment()`
+                // → inherit the original payment's `origin`. Task 22 round-2
+                // (Codex T22-B2 BLOCKER): `originForRefund()` falls back to
+                // `PaymentOrigin::UnknownLegacy` for NULL-origin legacy originals.
+                $refund = Payment::create([
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $original->tenant_id,
+                    'company_id' => $original->company_id,
+                    'partner_id' => $original->partner_id,
+                    'payment_method_id' => $original->payment_method_id,
+                    'instrument_id' => $original->instrument_id,
+                    'repository_id' => $original->repository_id,
+                    'amount' => bcmul($originalAmount, '-1', $this->scale()), // Negative amount
+                    'currency' => $original->currency,
+                    'payment_date' => now(),
+                    'status' => PaymentStatus::Completed,
+                    'payment_type' => PaymentType::Refund,
+                    'origin' => $this->originForRefund($original),
+                    'original_payment_id' => $original->id,
+                    'refund_request_id' => $refundRequestId,
+                    'reference' => "Refund for payment {$original->reference}",
+                    'notes' => "Refund: {$reason}",
+                    'created_by' => $userId,
                 ]);
+
+                // Reverse original payment allocations
+                foreach ($original->allocations as $allocation) {
+                    PaymentAllocation::create([
+                        'payment_id' => $refund->id,
+                        'document_id' => $allocation->document_id,
+                        'amount' => bcmul($allocation->amount, '-1', $this->scale()), // Negative amount
+                    ]);
+                }
+
+                // GL reversal + cash movement OUT via the write port (atomic with
+                // this transaction). Skipped cleanly when the original payment has
+                // no repository (legacy admin payments without a till).
+                $this->postRefundGlAndMovement($original, $refund->id, $originalAmount, $refundRequestId, $userId);
+
+                // Mark original payment as reversed
+                $original->update([
+                    'status' => PaymentStatus::Reversed,
+                    'notes' => ($original->notes ?? '')."\n\nRefunded: {$reason}",
+                ]);
+
+                DB::afterCommit(function () use ($refund, $original, $reason): void {
+                    event(new PaymentRefunded(
+                        paymentId: $refund->id,
+                        tenantId: $refund->tenant_id,
+                        companyId: $refund->company_id,
+                        originalPaymentId: $original->id,
+                        amount: $refund->amount,
+                        currency: $refund->currency,
+                        reason: $reason,
+                        refundedAt: ($refund->created_at ?? now())->toIso8601String(),
+                    ));
+                });
+
+                return $refund;
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            // A concurrent refund with the same refund_request_id won the race and
+            // committed first; the partial unique index rejected our insert. Read
+            // back the committed row (transaction already rolled back) and return it.
+            $existing = $this->findExistingRefundByRequestId($payment, $refundRequestId);
+            if ($existing instanceof Payment) {
+                return $existing;
             }
 
-            // Mark original payment as reversed
-            $payment->update([
-                'status' => PaymentStatus::Reversed,
-                'notes' => ($payment->notes ?? '')."\n\nRefunded: {$reason}",
-            ]);
-
-            DB::afterCommit(function () use ($refund, $payment, $reason): void {
-                event(new PaymentRefunded(
-                    paymentId: $refund->id,
-                    tenantId: $refund->tenant_id,
-                    companyId: $refund->company_id,
-                    originalPaymentId: $payment->id,
-                    amount: $refund->amount,
-                    currency: $refund->currency,
-                    reason: $reason,
-                    refundedAt: ($refund->created_at ?? now())->toIso8601String(),
-                ));
-            });
-
-            return $refund;
-        });
+            throw $e;
+        }
     }
 
     /**
@@ -163,13 +213,15 @@ class PaymentRefundService
         Payment $payment,
         string $amount,
         string $reason,
-        ?string $userId = null
+        ?string $userId = null,
+        ?string $refundRequestId = null,
     ): Payment {
         if ($payment->status !== PaymentStatus::Completed) {
             throw new \RuntimeException('Only completed payments can be refunded');
         }
 
-        // Validate refund amount
+        // Validate refund amount (per-request bounds; the cumulative over-refund
+        // guard runs under the original-payment lock inside the transaction).
         /** @var numeric-string $amount */
         /** @var numeric-string $paymentAmount */
         $paymentAmount = $payment->amount;
@@ -181,55 +233,237 @@ class PaymentRefundService
             throw new \InvalidArgumentException('Refund amount cannot exceed original payment amount');
         }
 
-        return DB::transaction(function () use ($payment, $amount, $reason, $userId): Payment {
-            // Create partial refund payment (negative amount)
-            // IMPORTANT: payment_type is set explicitly to Refund to avoid the column
-            // default 'document_payment' (Codex review 2 additional finding).
-            //
-            // Spec §13 writer-inventory row 8 — `PaymentRefundService::partialRefund()`
-            // → inherit the original payment's `origin`. Same disposition as
-            // `refundPayment()` above. Task 22 round-2 (Codex T22-B2 BLOCKER):
-            // `originForRefund()` falls back to `PaymentOrigin::UnknownLegacy`
-            // for NULL-origin legacy originals — see helper docblock.
-            $refund = Payment::create([
-                'id' => Str::uuid()->toString(),
-                'tenant_id' => $payment->tenant_id,
-                'company_id' => $payment->company_id,
-                'partner_id' => $payment->partner_id,
-                'payment_method_id' => $payment->payment_method_id,
-                'instrument_id' => $payment->instrument_id,
-                'repository_id' => $payment->repository_id,
-                'amount' => bcmul($amount, '-1', $this->scale()), // Negative amount
-                'currency' => $payment->currency,
-                'payment_date' => now(),
-                'status' => PaymentStatus::Completed,
-                'payment_type' => PaymentType::Refund,
-                'origin' => $this->originForRefund($payment),
-                'reference' => "Partial refund for payment {$payment->reference}",
-                'notes' => "Partial refund ({$amount}): {$reason}",
-                'created_by' => $userId,
-            ]);
+        $refundRequestId ??= Str::uuid()->toString();
 
-            // Update original payment notes
-            $payment->update([
-                'notes' => ($payment->notes ?? '')."\n\nPartial refund of {$amount}: {$reason}",
-            ]);
+        try {
+            return DB::transaction(function () use ($payment, $amount, $reason, $userId, $refundRequestId): Payment {
+                // Lock the ORIGINAL payment (F10): two concurrent partial refunds of
+                // the same payment now serialise, so the cumulative guard below sees
+                // a committed already-refunded total rather than a stale read.
+                /** @var Payment $original */
+                $original = Payment::query()
+                    ->where('tenant_id', $payment->tenant_id)
+                    ->where('company_id', $payment->company_id)
+                    ->lockForUpdate()
+                    ->findOrFail($payment->id);
 
-            DB::afterCommit(function () use ($refund, $payment, $reason): void {
-                event(new PaymentRefunded(
-                    paymentId: $refund->id,
-                    tenantId: $refund->tenant_id,
-                    companyId: $refund->company_id,
-                    originalPaymentId: $payment->id,
-                    amount: $refund->amount,
-                    currency: $refund->currency,
-                    reason: $reason,
-                    refundedAt: ($refund->created_at ?? now())->toIso8601String(),
-                ));
+                // Idempotent replay for this (company, original payment, request id).
+                $existing = $this->findExistingRefundByRequestId($original, $refundRequestId);
+                if ($existing instanceof Payment) {
+                    return $existing;
+                }
+
+                // Cumulative over-refund guard under the lock.
+                $this->assertWithinRefundableBalance($original, $amount);
+
+                // Create partial refund payment (negative amount).
+                // Spec §13 writer-inventory row 8 — inherit the original `origin`
+                // (UnknownLegacy fallback for NULL-origin legacy originals).
+                $refund = Payment::create([
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $original->tenant_id,
+                    'company_id' => $original->company_id,
+                    'partner_id' => $original->partner_id,
+                    'payment_method_id' => $original->payment_method_id,
+                    'instrument_id' => $original->instrument_id,
+                    'repository_id' => $original->repository_id,
+                    'amount' => bcmul($amount, '-1', $this->scale()), // Negative amount
+                    'currency' => $original->currency,
+                    'payment_date' => now(),
+                    'status' => PaymentStatus::Completed,
+                    'payment_type' => PaymentType::Refund,
+                    'origin' => $this->originForRefund($original),
+                    'original_payment_id' => $original->id,
+                    'refund_request_id' => $refundRequestId,
+                    'reference' => "Partial refund for payment {$original->reference}",
+                    'notes' => "Partial refund ({$amount}): {$reason}",
+                    'created_by' => $userId,
+                ]);
+
+                // GL reversal + cash movement OUT via the write port.
+                $this->postRefundGlAndMovement($original, $refund->id, $amount, $refundRequestId, $userId);
+
+                // Update original payment notes
+                $original->update([
+                    'notes' => ($original->notes ?? '')."\n\nPartial refund of {$amount}: {$reason}",
+                ]);
+
+                DB::afterCommit(function () use ($refund, $original, $reason): void {
+                    event(new PaymentRefunded(
+                        paymentId: $refund->id,
+                        tenantId: $refund->tenant_id,
+                        companyId: $refund->company_id,
+                        originalPaymentId: $original->id,
+                        amount: $refund->amount,
+                        currency: $refund->currency,
+                        reason: $reason,
+                        refundedAt: ($refund->created_at ?? now())->toIso8601String(),
+                    ));
+                });
+
+                return $refund;
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            $existing = $this->findExistingRefundByRequestId($payment, $refundRequestId);
+            if ($existing instanceof Payment) {
+                return $existing;
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Sum the absolute amount already refunded against an original payment
+     * (all `payment_type = refund` rows keyed on `original_payment_id`), and
+     * reject when adding `$thisRefund` would exceed the original amount.
+     *
+     * MUST be called while holding a `lockForUpdate()` on `$original` — the lock
+     * is what makes the read-then-check atomic against a concurrent refund (F10).
+     *
+     * @param  numeric-string  $thisRefund  positive refund amount at currency scale
+     *
+     * @throws OverRefundException
+     */
+    private function assertWithinRefundableBalance(Payment $original, string $thisRefund): void
+    {
+        $scale = $this->scaleResolver->getScale($original->currency);
+        $alreadyRefunded = $this->alreadyRefundedForOriginal($original, $scale);
+
+        /** @var numeric-string $originalAmount */
+        $originalAmount = CurrencyScale::bcformat((string) $original->amount, $scale);
+        /** @var numeric-string $projected */
+        $projected = bcadd($alreadyRefunded, $thisRefund, $scale);
+
+        if (bccomp($projected, $originalAmount, $scale) > 0) {
+            throw new OverRefundException(
+                originalPaymentId: $original->id,
+                alreadyRefunded: $alreadyRefunded,
+                requestedRefund: $thisRefund,
+                originalAmount: $originalAmount,
+            );
+        }
+    }
+
+    /**
+     * Absolute total already refunded against an original payment.
+     *
+     * @return numeric-string
+     */
+    private function alreadyRefundedForOriginal(Payment $original, int $scale): string
+    {
+        /** @var numeric-string $total */
+        $total = '0';
+
+        Payment::query()
+            ->where('company_id', $original->company_id)
+            ->where('original_payment_id', $original->id)
+            ->where('payment_type', PaymentType::Refund->value)
+            ->get()
+            ->each(function (Payment $refundRow) use (&$total, $scale): void {
+                /** @var numeric-string $abs */
+                $abs = ltrim((string) $refundRow->amount, '-');
+                /** @var numeric-string $total */
+                $total = bcadd($total, $abs, $scale);
             });
 
-            return $refund;
-        });
+        return $total;
+    }
+
+    /**
+     * Find an existing refund row for a (company, original payment, request id)
+     * triplet — the same shape the partial unique index enforces. Used for the
+     * pre-insert idempotency short-circuit AND the post-race read-back.
+     */
+    private function findExistingRefundByRequestId(Payment $original, string $refundRequestId): ?Payment
+    {
+        return Payment::query()
+            ->where('company_id', $original->company_id)
+            ->where('original_payment_id', $original->id)
+            ->where('refund_request_id', $refundRequestId)
+            ->where('payment_type', PaymentType::Refund->value)
+            ->first();
+    }
+
+    /**
+     * Post the GL reversal (Dr AR / Cr Bank) SYNCHRONOUSLY and record the cash
+     * movement OUT of the repository through the single write port — atomically
+     * with the caller's refund transaction.
+     *
+     * Global lock order (BLOCKER-1): the GL post takes the company advisory lock
+     * FIRST; the port then takes the repository row lock inside record(). The
+     * repository is therefore NOT pre-locked here.
+     *
+     * No-ops cleanly when the original payment has no repository (a legacy admin
+     * payment recorded without a till) — the refund row still exists, but there is
+     * no cash box to move against.
+     *
+     * @param  numeric-string  $absAmount  positive refund amount at currency scale
+     */
+    private function postRefundGlAndMovement(
+        Payment $original,
+        string $refundPaymentId,
+        string $absAmount,
+        string $refundRequestId,
+        ?string $userId,
+    ): void {
+        if ($original->repository_id === null) {
+            return;
+        }
+
+        /** @var PaymentRepository|null $repository */
+        $repository = PaymentRepository::query()
+            ->where('tenant_id', $original->tenant_id)
+            ->where('company_id', $original->company_id)
+            ->find($original->repository_id);
+
+        if (! $repository instanceof PaymentRepository) {
+            return;
+        }
+
+        $user = $userId !== null ? User::find($userId) : null;
+
+        // GL reversal only when the repository is ledgered AND we have an actor to
+        // post as (synchronous posting seals the fiscal hash chain under $user).
+        /** @var string|null $journalEntryId */
+        $journalEntryId = null;
+        if ($repository->gl_account_id !== null && $user instanceof User) {
+            $entry = $this->glService->createPaymentRefundJournalEntry(
+                companyId: $original->company_id,
+                partnerId: $original->partner_id,
+                refundPaymentId: $refundPaymentId,
+                amount: $absAmount,
+                paymentMethodAccountId: $repository->gl_account_id,
+                date: now(),
+                user: $user,
+                description: "Refund for payment {$original->reference}",
+                currencyCode: $repository->currency,
+                mode: PostingMode::SynchronousInTransaction,
+            );
+            $journalEntryId = $entry->id;
+        }
+
+        // Money leaves the repository (refunding a customer payment). sourceType
+        // Refund, sourceId = ORIGINAL payment id, idempotencyLeg = refund_request_id
+        // → idempotency key "refund:{original_payment_id}:{refund_request_id}".
+        $this->movementService->record(new MovementIntent(
+            repositoryId: $repository->id,
+            tenantId: $original->tenant_id,
+            companyId: $original->company_id,
+            direction: MovementDirection::Out,
+            amount: $absAmount,
+            currency: $repository->currency,
+            sourceType: MovementSourceType::Refund,
+            sourceId: $original->id,
+            idempotencyLeg: $refundRequestId,
+            journalEntryId: $journalEntryId,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: $userId,
+            notes: null,
+            allowWhileFrozen: false,
+        ));
     }
 
     /**

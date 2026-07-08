@@ -404,7 +404,17 @@ final class GeneralLedgerService
         ?string $description = null,
         ?string $postedByUserId = null,
         ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        // Treasury spine (Task 18): SynchronousInTransaction posts the reversal
+        // via postEntryNow so the GL post is atomic with — and its company
+        // advisory lock is taken BEFORE — the movement port's repository row lock
+        // (global lock order, BLOCKER-1). It therefore requires an enclosing
+        // transaction; refuse to mint a Draft that postEntryNow would orphan.
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('reverseSupplierAdvanceJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierAdvance);
         $user = null;
         if ($postedByUserId !== null) {
@@ -457,7 +467,95 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        if ($user !== null) {
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            // postEntryNow tolerates a null actor (posted_by stays null); the
+            // supplier-refund flow always supplies one in practice.
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } elseif ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
+
+        return $entry;
+    }
+
+    /**
+     * Create the GL reversal for a REFUND of a customer payment received
+     * (Treasury spine, Task 18). Mirrors {@see createPaymentReceivedJournalEntry}
+     * with the legs flipped:
+     *   Debit:  Accounts Receivable (partner-tagged) — the receivable re-opens
+     *   Credit: Bank/Cash — money leaves the till, back to the customer
+     *
+     * source_type is 'customer_payment_refund' and source_id is the REFUND
+     * payment row id (not the original), so multiple partial refunds of one
+     * original payment each get their own entry without colliding on
+     * (source_type, source_id).
+     */
+    public function createPaymentRefundJournalEntry(
+        string $companyId,
+        string $partnerId,
+        string $refundPaymentId,
+        string $amount,
+        string $paymentMethodAccountId,
+        \DateTimeInterface $date,
+        User $user,
+        ?string $description = null,
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
+    ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createPaymentRefundJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
+        $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+
+        $entry = DB::transaction(function () use (
+            $companyId, $partnerId, $refundPaymentId, $amount, $paymentMethodAccountId,
+            $date, $description, $receivableAccount
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $company = Company::findOrFail($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description ?? 'Customer payment refund',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'customer_payment_refund',
+                'journal_code' => JournalCode::fromSourceType('customer_payment_refund')->value,
+                'source_id' => $refundPaymentId,
+            ]);
+
+            // Debit: Accounts Receivable (with partner for subledger) — re-open it
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $receivableAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Receivable reinstated (refund)',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Bank/Cash — money returned to the customer
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentMethodAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Payment refunded',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } else {
             $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         }
 
