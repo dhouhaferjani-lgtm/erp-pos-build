@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Modules\Product;
 
-use App\Modules\Media\Application\DTOs\FetchedImage;
-use App\Modules\Media\Application\Exceptions\RemoteImageFetchException;
 use App\Modules\Media\Application\Services\RemoteImageFetcher;
 use App\Modules\Media\Domain\Contracts\HostResolverInterface;
 use App\Modules\Media\Domain\Contracts\PinnedImageDownloaderInterface;
@@ -14,8 +12,10 @@ use App\Modules\Media\Domain\Enums\MediaOwnerType;
 use App\Modules\Media\Domain\Enums\MediaRole;
 use App\Modules\Media\Domain\Enums\MediaSource;
 use App\Modules\Media\Domain\Enums\MediaStatus;
+use App\Modules\Media\Domain\Exceptions\RemoteImageFetchException;
 use App\Modules\Media\Domain\Media\MediaAsset;
 use App\Modules\Media\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\ValueObjects\FetchedImage;
 use App\Modules\Product\Application\Services\EnrichmentImagePersister;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;

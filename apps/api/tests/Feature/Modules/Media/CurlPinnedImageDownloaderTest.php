@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Modules\Media;
 
-use App\Modules\Media\Application\Exceptions\RemoteImageFetchException;
+use App\Modules\Media\Domain\Exceptions\RemoteImageFetchException;
 use App\Modules\Media\Infrastructure\Net\CurlPinnedImageDownloader;
 use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;

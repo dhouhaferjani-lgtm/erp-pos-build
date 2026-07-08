@@ -6,11 +6,11 @@ namespace Tests\Feature\Modules\Product;
 
 use App\Jobs\Concerns\BindsTenantContext;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Media\Application\DTOs\FetchedImage;
-use App\Modules\Media\Application\Exceptions\RemoteImageFetchException;
 use App\Modules\Media\Domain\Contracts\HostResolverInterface;
 use App\Modules\Media\Domain\Contracts\PinnedImageDownloaderInterface;
+use App\Modules\Media\Domain\Exceptions\RemoteImageFetchException;
 use App\Modules\Media\Domain\Media\MediaAttachment;
+use App\Modules\Media\Domain\ValueObjects\FetchedImage;
 use App\Modules\Product\Application\Jobs\PersistEnrichmentImagesJob;
 use App\Modules\Product\Application\Services\EnrichmentImagePersister;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;

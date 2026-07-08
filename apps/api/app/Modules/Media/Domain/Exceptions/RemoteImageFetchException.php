@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Media\Application\Exceptions;
+namespace App\Modules\Media\Domain\Exceptions;
 
 use RuntimeException;
 

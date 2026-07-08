@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Media\Application\DTOs;
+namespace App\Modules\Media\Domain\ValueObjects;
 
 final class FetchedImage
 {

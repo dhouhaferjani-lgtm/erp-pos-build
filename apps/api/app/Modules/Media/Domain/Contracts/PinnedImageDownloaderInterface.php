@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Media\Domain\Contracts;
 
-use App\Modules\Media\Application\DTOs\FetchedImage;
-use App\Modules\Media\Application\Exceptions\RemoteImageFetchException;
-use App\Modules\Media\Application\Services\RemoteImageFetcher;
+use App\Modules\Media\Domain\Exceptions\RemoteImageFetchException;
 use App\Modules\Media\Domain\ValueObjects\ExternalUrlGuard;
+use App\Modules\Media\Domain\ValueObjects\FetchedImage;
 
 interface PinnedImageDownloaderInterface
 {
@@ -22,7 +21,6 @@ interface PinnedImageDownloaderInterface
      * SCHEME-TRUST BOUNDARY: this contract does NOT validate the URL scheme, host
      * safety, or port. Callers MUST pre-validate the URL with
      * {@see ExternalUrlGuard::assertHttpsHostAllowed}
-     * (as {@see RemoteImageFetcher} does)
      * and resolve/guard the IP before calling. Passing an unvalidated URL here is
      * an SSRF risk the downloader is not required to catch.
      *

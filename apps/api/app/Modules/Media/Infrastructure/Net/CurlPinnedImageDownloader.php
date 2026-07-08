@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Media\Infrastructure\Net;
 
-use App\Modules\Media\Application\DTOs\FetchedImage;
-use App\Modules\Media\Application\Exceptions\RemoteImageFetchException;
 use App\Modules\Media\Application\Services\RemoteImageFetcher;
 use App\Modules\Media\Domain\Contracts\PinnedImageDownloaderInterface;
+use App\Modules\Media\Domain\Exceptions\RemoteImageFetchException;
 use App\Modules\Media\Domain\ValueObjects\ExternalUrlGuard;
+use App\Modules\Media\Domain\ValueObjects\FetchedImage;
 
 /**
  * Default {@see PinnedImageDownloaderInterface} implementation over raw cURL.
