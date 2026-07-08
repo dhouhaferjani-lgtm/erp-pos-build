@@ -9,6 +9,7 @@ use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Domain\JournalEntry;
@@ -555,7 +556,8 @@ final class GeneralLedgerService
         \DateTimeInterface $date,
         User $user,
         ?string $description = null,
-        ?string $currencyCode = null
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
         $payableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
 
@@ -601,7 +603,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
 
         return $entry;
     }
@@ -622,7 +628,8 @@ final class GeneralLedgerService
         \DateTimeInterface $date,
         ?string $description = null,
         ?User $user = null,
-        ?string $currencyCode = null
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
 
@@ -672,7 +679,11 @@ final class GeneralLedgerService
         });
 
         if ($user !== null) {
-            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+            if ($mode === PostingMode::SynchronousInTransaction) {
+                $this->postEntryNow($entry, $user, $currencyCode);
+            } else {
+                $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+            }
         }
 
         return $entry;
@@ -1956,6 +1967,59 @@ final class GeneralLedgerService
 
     private function postEntryWithOptionalActor(JournalEntry $entry, ?User $user, ?string $currencyCode = null): void
     {
+        // Preserve historical semantics for every existing (non-spine) caller:
+        // seal + persist, then fire the event inline (synchronously).
+        $posted = $this->sealAndPersistEntry($entry, $user, $currencyCode);
+
+        event($posted);
+    }
+
+    /**
+     * Post a journal entry SYNCHRONOUSLY inside the current transaction.
+     *
+     * Unlike {@see postEntryAndDispatchPostedEventAfterCommit}, which defers the
+     * ENTIRE post (status seal + hash + event) to DB::afterCommit when inside a
+     * transaction, this seals + persists (status -> Posted, chain_sequence,
+     * fiscal_hash) durably-in-transaction and defers ONLY the JournalEntryPosted
+     * event to afterCommit. This makes a money movement and its GL posting atomic:
+     * they commit or roll back together.
+     *
+     * Used by the Treasury money-movement spine (PostingMode::SynchronousInTransaction).
+     *
+     * @param  string|null  $currencyCode  Pass the entity currency when calling
+     *                                     from a queued job, console command, or
+     *                                     projection — there is no CompanyContext
+     *                                     bound there, so no-arg scale resolution
+     *                                     throws (precision contract, F-RES-1).
+     */
+    public function postEntryNow(JournalEntry $entry, ?User $user, ?string $currencyCode = null): void
+    {
+        $posted = $this->sealAndPersistEntry($entry, $user, $currencyCode);
+
+        // The DB state change above is already durable within the caller
+        // transaction. Only the event is a side effect — defer it to afterCommit
+        // so listeners never observe an uncommitted (or rolled-back) post.
+        DB::afterCommit(function () use ($posted): void {
+            event($posted);
+        });
+    }
+
+    /**
+     * Seal + persist a draft journal entry into the fiscal hash chain and RETURN
+     * the JournalEntryPosted event (the caller decides when/how to dispatch it).
+     *
+     * This is the single source of truth for the hash-chain sealing sequence:
+     * Draft check -> balance assertion -> getLastChainHash / getNextChainSequence /
+     * calculateHash -> $entry->update([...]). The hash inputs, ordering and
+     * chain-sequence derivation MUST NOT change here — every posting path funnels
+     * through this method so the chain stays byte-identical.
+     *
+     * NOTE (Task 7): the getLastChainHash + getNextChainSequence reads are still
+     * unlocked; the advisory lock that closes the concurrent-post race is added by
+     * Task 7. Do not duplicate it here.
+     */
+    private function sealAndPersistEntry(JournalEntry $entry, ?User $user, ?string $currencyCode = null): JournalEntryPosted
+    {
         if ($entry->status !== JournalEntryStatus::Draft) {
             throw new \InvalidArgumentException('Only draft entries can be posted');
         }
@@ -2002,7 +2066,7 @@ final class GeneralLedgerService
             'posted_by' => $user?->id,
         ]);
 
-        event(new JournalEntryPosted(
+        return new JournalEntryPosted(
             entryId: $entry->id,
             tenantId: $entry->tenant_id,
             companyId: $entry->company_id,
@@ -2010,7 +2074,7 @@ final class GeneralLedgerService
             totalDebit: $eventTotalDebit,
             totalCredit: $eventTotalCredit,
             postedAt: $postedAt->toIso8601String(),
-        ));
+        );
     }
 
     /**
@@ -2257,7 +2321,7 @@ final class GeneralLedgerService
      * Debit: Expense Account (from category or default to GeneralExpense)
      * Credit: Cash/Bank Account (based on payment repository)
      */
-    public function createFromExpense(Document $expense, User $user): JournalEntry
+    public function createFromExpense(Document $expense, User $user, PostingMode $mode = PostingMode::AfterCommit): JournalEntry
     {
         $entry = DB::transaction(function () use ($expense): JournalEntry {
             $companyId = $expense->company_id;
@@ -2329,7 +2393,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, (string) $expense->currency);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        }
 
         return $entry;
     }
@@ -2346,7 +2414,7 @@ final class GeneralLedgerService
      * Credit: Income Account — the selected class-7 account
      *        (metadata->income_account_id) or ProductRevenue by default.
      */
-    public function createFromIncome(Document $income, User $user): JournalEntry
+    public function createFromIncome(Document $income, User $user, PostingMode $mode = PostingMode::AfterCommit): JournalEntry
     {
         $entry = DB::transaction(function () use ($income): JournalEntry {
             $companyId = $income->company_id;
@@ -2426,7 +2494,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $income->company_id, (string) $income->currency);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, (string) $income->currency);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $income->company_id, (string) $income->currency);
+        }
 
         return $entry;
     }
