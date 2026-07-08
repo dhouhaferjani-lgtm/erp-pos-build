@@ -1,8 +1,44 @@
 # Product Pricing Panel + Discount Policy Cascade — Design Spec
 
 **Date:** 2026-07-08
-**Status:** Rev 2 — reconciled against Codex adversarial review (`docs/superpowers/specs/reviews/2026-07-08-pricing-discount-spec-adversarial-review.md`, 14 BLOCKER / 16 MAJOR). Owner decisions recorded (§0). Pending final owner spec review.
+**Status:** **Rev 3** — reconciled against the M0 fresh adversarial review (`docs/superpowers/specs/reviews/2026-07-08-pricing-discount-spec-m0-rev2-review.md`, 4 parallel code-verified reviewers). Owner decisions D5/D6 recorded in the Rev 3 block below. **The "Rev 3 — M0 reconciliation" block OVERRIDES any conflicting earlier section — read it first.** (Rev 2 reconciled the earlier Codex review, `2026-07-08-pricing-discount-spec-adversarial-review.md`, 14 BLOCKER / 16 MAJOR.)
 **Origin:** Client demo feedback — the product page must surface WAC, last purchase price, margin, price HT (some clients: TTC), enable price-setting via margin or manual rounding, and enforce a per-product maximum discount with a "never lose on a sale" guarantee.
+
+---
+
+## Rev 3 — M0 reconciliation (2026-07-08, owner-confirmed). **THESE OVERRIDE ANY EARLIER SECTION.**
+
+M0 fresh adversarial review (`specs/reviews/2026-07-08-pricing-discount-spec-m0-rev2-review.md`, 4 parallel code-verified reviewers) supersedes Rev 2 wherever it conflicts. **Owner decisions this round: (D5) reuse the EXISTING minimum-margin system for the floor — do NOT build a parallel buffer; (D6) Phase-1 B2B document enforcement is advisory/Warn by default, hard-Block opt-in per company.**
+
+**R3-1 — Floor = existing minimum-margin cascade (supersedes §3.1 buffer row, §4.3 buffer formula).**
+- DROP the new `companies.margin_floor_buffer_percent` column. The "never lose" net floor is the EXISTING minimum-margin: `companies.default_minimum_margin` cascaded product→category→company via `MarginResolver` (`MarginResolver.php:187-209`) — the same threshold `MarginService` already enforces (LEVEL_ORANGE, `MarginService.php:43,316-321`). The Product-module provider surfaces the resolved minimum-margin net floor into `DiscountPolicySubject`; `DiscountPolicyService` does NOT recompute a buffer.
+- The existing below-**cost** gate (`allow_below_cost_sales` + `pricing.sell_below_cost`, `MarginService.php:355-371`) is UNCHANGED and remains authoritative for below-cost. The new floor concept = below-**minimum-margin**, layered above it.
+
+**R3-2 — Reuse existing permissions; no new `pricing.override_discount_floor` (supersedes §3.3 new-perm, §4.4).**
+- Floor override reuses `pricing.sell_below_minimum_margin` and `pricing.sell_below_cost` — the perms `MarginService` already checks (`:365,376`). VERIFY both are seeded in `PermissionSeeder` and role-mapped; if `pricing.sell_below_minimum_margin` is missing from the catalog/roles, ADD it and grant to `manager`+`admin` with a DENY-path test.
+- `pricing.view_cost_prices` gates the cost/margin panel AND `POST /pricing/discount-policy`. It is admin-only today and NOT web-enforced — GRANT it to `manager` (confirm the demo account's role) so the marquee panel is visible; this is a NEW enforcement point (F2).
+- Deploy owes `permission:cache-reset` PER TENANT DB (F6, tenant-blind cache key `config/permission.php:192`); the "fails before reseed, passes after" test is a merge blocker.
+
+**R3-3 — Per-product max-discount-% cap is the genuinely-new feature (refines §3.1/§4.1).**
+- KEEP `products.max_discount_percent`, `categories.max_discount_percent`, `companies.default_max_discount_percent` (nullable, nearest-wins cascade) — the demo's "per-product max discount."
+- Phase-1 web verdict cap = **product→category→company ONLY** (resolves the §4.1 `min(user,terminal,…)` BLOCKER): user/terminal caps live in the POS module and Phase-1 web has no terminal/operator context — that `min()` belongs to the Phase-2 device. `DiscountCapResolver` operates **only** on the `DiscountPolicySubject` DTO (no Product/Category/Company model access, M4); the Product-module provider assembles the category-chain caps into the DTO, mirroring `MarginResolver::resolveMany` (`:51-78`). New Pricing code is DTO-only regardless of the module's pre-existing Product/Company coupling (M5) — do NOT bolt the advisory endpoint onto the Product-coupled `PricingController`.
+
+**R3-4 — Phase-1 Document enforcement is Warn/advisory by default, Block opt-in (D6, supersedes §4.4.1 "authoritative/blocking" and the §5 truth table).**
+- Add `companies.discount_floor_mode` enum `{ Advisory, Block, WarnRequiresPermission }` default **`Advisory`** for ALL tenants. Migration does NOT remap `allow_below_cost_sales` and there is NO §5 truth table (B1 dissolved — no new blocking at go-live). Advisory = surface the verdict, do NOT 422 (matches today's advisory `LineEntryController.php:131`). Block / WarnRequiresPermission are per-company opt-in.
+- The Document check hooks `CreateDocumentRequest` / `UpdateDocumentRequest` via their EXISTING `withValidator()->after()` closure with the rule injected through the request constructor (NOT `app()`), route-name-gated to `invoices.*`/`orders.*` exactly like `AppliesDiscountToleranceRule::isPaymentDueDocumentRoute()` (M3). It EXTENDS the existing `canSellAtPrice` verdict, not a parallel gate. Resolve ALL document lines in ONE batch pass via the provider's `resolveMany`-style method (N+1).
+
+**R3-5 — Endpoint hardening (supersedes §4.8).**
+- `POST /pricing/discount-policy`: register INSIDE the existing Pricing route group (`Pricing/Presentation/routes.php:19`) with its full stack `['api','auth:sanctum',SetPermissionsTeam::class,EnforceTokenTenantClaim::class]` **+ `->middleware('can:pricing.view_cost_prices')`**. The verdict exposes `floorPriceNet` (a cost lower-bound) — never unguarded (F3).
+- Do NOT extend `GET /pos/discount-permissions` with any floor/cost field in Phase 1 — it is unguarded + POS-facing and §1 says POS shows nothing new in Phase 1; floor-on-sync is Phase-2 (F4). If touched at all: additive string keys only, never mutate the existing float `maxDiscountPercent`/`userMaxDiscountPercent` (consumers `operatorStore.ts:138,146`, `discountPermissions.ts:79-80`).
+
+**R3-6 — `sale_price` canonical basis = HT (resolves §6 ambiguity).**
+- Pin `sale_price` as **HT (net)** — matches the backend auto-pricer (`MarginService::updateSalePrice:235,248`) and the WAC cost basis. `ProductForm` currently treats it as TTC (`:761,773`); reconciling that (store/read HT, derive TTC for display) is IN Phase-1 scope. Panel + traffic-light use the SAME tax resolution as the backend contract — `default_tax_configuration_id`, fallback `tax_rate` — not `tax_rate`-only. Do NOT reuse `MarginService::getMarginLevel` for the no-cost case (it returns LEVEL_GREEN "No cost data", `:293-296`); the panel shows "—"/floor-disabled.
+
+**R3-7 — Corrections & clarifications.**
+- `Shared/Contracts` literal path = **`app/Shared/Contracts/`** (siblings `ProductServiceInterface`, `CatalogLookupInterface`) — there is NO `app/Modules/Shared/`. The DTO-via-Product-module-public-service pattern is idiomatic.
+- WAC is **net cost incl. non-recoverable VAT** (not pure HT), stored `decimal(19,6)` (6dp); floor intermediates at resolver-scale+1, round once; the min-margin contribution is SKIPPED (not zero) when cost ≤ 0.
+- §S3-03 rationale is factually wrong: `PricingService` converts percent at scale 4 (`:305,351`), not currency scale — no corruption. Don't-reuse still holds because (a) those are money-discount-amount helpers and (b) `PricingService::scale()` uses no-arg `getScale()` (`:24-27`) that throws in queue/ingestion. New code: bc/string, percent-at-scale-2, explicit currency to `getScale($currency)`.
+- `policyVersion`/`policyAsOf` have no Phase-1 store: derive `policyAsOf = company.updated_at`, `policyVersion = short hash of policy inputs`; full sealed versioning is Phase-2. Cite fixes: `MarginResolver:187-209`, `PermissionSeeder:145-146`.
 
 ---
 
@@ -87,7 +123,7 @@
 | `products` | `max_discount_percent` | `decimal(5,2)` nullable | null = inherit |
 | `categories` | `max_discount_percent` | `decimal(5,2)` nullable | own → ancestors, nearest wins |
 | `companies` | `default_max_discount_percent` | `decimal(5,2)` nullable | null = no company cap |
-| `companies` | `margin_floor_buffer_percent` | `decimal(5,2)` default `10.00` | 0 = break-even floor |
+| ~~`companies`~~ | ~~`margin_floor_buffer_percent`~~ | — | **SUPERSEDED (R3-1): column DROPPED — floor reuses the existing `default_minimum_margin` cascade** |
 | `companies` | `discount_floor_mode` | string(24) + enum `DiscountFloorMode` | see §5 for values/migration |
 | `companies` | `price_entry_mode` | string(4) + enum `PriceEntryMode { Ht, Ttc }` | default `Ht`; toggle always visible |
 
@@ -160,6 +196,8 @@ New code uses bc/string arithmetic + explicit currency + percent-at-scale-2; **d
 Extend `GET /pos/discount-permissions` (string-safe) and add `POST /pricing/discount-policy` (context → verdict) for the web panel's advisory display. Middleware `['api','auth:sanctum',SetPermissionsTeam::class]`.
 
 ## 5. Migration — `allow_below_cost_sales` → `discount_floor_mode`
+
+> **SUPERSEDED by R3-4.** No remap of `allow_below_cost_sales` (it stays UNCHANGED and authoritative for below-cost). Add `companies.discount_floor_mode` default `Advisory` for all tenants. The truth table below is VOID — kept only for historical context.
 
 `allow_below_cost_sales=true` today means "below-cost *permitted if* the user holds `pricing.sell_below_cost`" (`MarginService.php:355-371`) — NOT "warn for everyone." Flat `true→Warn` drops the permission gate (S5-01). Truth table:
 
