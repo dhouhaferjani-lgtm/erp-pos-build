@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Expense\Application\Services;
 
+use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -17,11 +18,15 @@ use App\Modules\Expense\Application\Exceptions\LinkedCostException;
 use App\Modules\Expense\Domain\Enums\ExpenseKind;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Document\OperationResolverInterface;
 use App\Shared\Contracts\Inventory\LinkedCostApplicatorInterface;
 use App\Shared\Contracts\Treasury\RepositoryInflowInterface;
 use App\Shared\Contracts\Treasury\RepositoryOutflowInterface;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -39,6 +44,7 @@ final class ExpenseService
         private readonly OperationResolverInterface $operationResolver,
         private readonly LinkedCostApplicatorInterface $linkedCostApplicator,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     /**
@@ -178,22 +184,54 @@ final class ExpenseService
                     $this->ledgerApplication($application, (string) $expense->currency),
                     $user,
                 );
-            } else {
-                // Create GL entry
-                $this->glService->createFromExpense($expense, $user);
-            }
 
-            // Decrement treasury cash balance when the expense is paid and linked
-            // to a payment repository. Amount and currency are passed as strings
-            // so the port handles all bcmath/scale operations (Rule 19).
-            if ($metadata?->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
-                $this->outflow->applyOutflow(
-                    $metadata->payment_repository_id,
-                    $expense->tenant_id,
-                    $expense->company_id,
-                    $expense->total,
-                    (string) $expense->currency,
-                );
+                // Linked-cost capitalization is a SEPARATE flow, not migrated onto
+                // the movement port in this task. Its capitalization entry already
+                // credits Cash, so a paid linked cost must still decrement the repo
+                // balance via the legacy outflow to keep GL and treasury in step.
+                if ($metadata->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
+                    $this->outflow->applyOutflow(
+                        $metadata->payment_repository_id,
+                        $expense->tenant_id,
+                        $expense->company_id,
+                        $expense->total,
+                        (string) $expense->currency,
+                    );
+                }
+            } else {
+                // Post the expense GL entry SYNCHRONOUSLY, in-transaction, so it
+                // returns the posted entry and — per the global lock order
+                // (BLOCKER-1) — takes the GL company advisory lock BEFORE the
+                // movement port takes the repository row lock below.
+                $entry = $this->glService->createFromExpense($expense, $user, PostingMode::SynchronousInTransaction);
+
+                // Move treasury cash ONLY for a PAID expense linked to a payment
+                // repository. This REPLACES the old inline outflow: the write port
+                // is the single writer of the repository balance + append-only
+                // movement row, atomically with the GL post above. An UNPAID
+                // expense moved no money — it booked an AP liability in the GL and
+                // records no movement (Wave D bug fix). Amount/currency are passed
+                // as strings so the port owns all bcmath/scale operations (Rule 19).
+                if ($metadata?->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
+                    $this->movementService->record(new MovementIntent(
+                        repositoryId: $metadata->payment_repository_id,
+                        tenantId: $expense->tenant_id,
+                        companyId: $expense->company_id,
+                        direction: MovementDirection::Out,
+                        amount: $expense->total,
+                        currency: (string) $expense->currency,
+                        sourceType: MovementSourceType::Expense,
+                        sourceId: $expense->id,
+                        idempotencyLeg: 'main',
+                        journalEntryId: $entry->id,
+                        occurredAt: null,
+                        reasonCode: null,
+                        reversesMovementId: null,
+                        createdBy: $user->id,
+                        notes: null,
+                        allowWhileFrozen: false,
+                    ));
+                }
             }
 
             $freshExpense = $expense->fresh(['expenseMetadata']);

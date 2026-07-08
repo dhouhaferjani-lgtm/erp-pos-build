@@ -2379,8 +2379,12 @@ final class GeneralLedgerService
      * Create journal entry from a posted expense.
      *
      * Expenses are typically non-fiscal operational documents.
-     * Debit: Expense Account (from category or default to GeneralExpense)
-     * Credit: Cash/Bank Account (based on payment repository)
+     * Debit: Expense Account (from category or default to GeneralExpense).
+     * Credit depends on whether the expense is paid:
+     *   - paid   → Cash/Bank Account (based on payment repository type) — money left treasury.
+     *   - unpaid → Accounts-Payable liability (SupplierPayable), tracked against the
+     *              vendor partner for the AP subledger. NO cash is credited: an unpaid
+     *              expense has not moved any money yet (Wave D bug fix).
      */
     public function createFromExpense(Document $expense, User $user, PostingMode $mode = PostingMode::AfterCommit): JournalEntry
     {
@@ -2410,12 +2414,25 @@ final class GeneralLedgerService
                 $expenseAccount = $this->getAccountByPurpose($companyId, $expenseAccountPurpose);
             }
 
-            // Determine payment account (Cash or Bank based on repository type)
-            $repositoryType = $metadata !== null && $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : RepositoryType::CashRegister;
-            $paymentAccount = match ($repositoryType) {
-                RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
-                default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
-            };
+            // Determine the credit account. A PAID expense credits the Cash/Bank
+            // account the money left from; an UNPAID expense has not moved any
+            // money yet, so it credits the Accounts-Payable liability instead
+            // (Wave D bug fix — previously it credited Cash unconditionally).
+            $isPaid = $metadata?->is_paid === true;
+            if ($isPaid) {
+                // $isPaid === true implies $metadata is non-null (is_paid was read off it).
+                $repositoryType = $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : RepositoryType::CashRegister;
+                $creditAccount = match ($repositoryType) {
+                    RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
+                    default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
+                };
+                $creditPartnerId = null;
+                $creditDescription = 'Expense payment';
+            } else {
+                $creditAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
+                $creditPartnerId = $expense->partner_id;
+                $creditDescription = 'Expense payable';
+            }
 
             $entryNumber = $this->generateEntryNumber($companyId);
             $vendorName = $metadata->vendor_name ?? 'General Expense';
@@ -2445,14 +2462,14 @@ final class GeneralLedgerService
                 'line_order' => $lineOrder++,
             ]);
 
-            // Credit: Cash/Bank Account
+            // Credit: Cash/Bank (paid) or Accounts-Payable liability (unpaid)
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
-                'account_id' => $paymentAccount->id,
-                'partner_id' => null,
+                'account_id' => $creditAccount->id,
+                'partner_id' => $creditPartnerId,
                 'debit' => '0',
                 'credit' => $expense->total ?? '0',
-                'description' => 'Expense payment',
+                'description' => $creditDescription,
                 'line_order' => $lineOrder,
             ]);
 
