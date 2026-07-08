@@ -335,8 +335,18 @@ final class GeneralLedgerService
         \DateTimeInterface $date,
         User $user,
         ?string $description = null,
-        ?string $currencyCode = null
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        // Mirror createPaymentReceivedJournalEntry: synchronous in-transaction posting
+        // (Task 19 — cash-moving deposit flow) must sit inside the caller's transaction
+        // so the returned entry is already POSTED and can be linked to the movement leg
+        // recorded through the write port. Refuse to create a Draft that postEntryNow
+        // would then orphan outside a transaction.
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createCustomerAdvanceJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
 
         $entry = DB::transaction(function () use (
@@ -382,7 +392,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
 
         return $entry;
     }

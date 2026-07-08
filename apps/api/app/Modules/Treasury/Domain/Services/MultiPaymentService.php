@@ -4,13 +4,21 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Domain\Services;
 
+use App\Modules\Accounting\Domain\Enums\PostingMode;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -19,6 +27,8 @@ class MultiPaymentService
 {
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly GeneralLedgerService $glService,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     /**
@@ -30,7 +40,8 @@ class MultiPaymentService
     public function createSplitPayment(
         Document $document,
         array $paymentSplits,
-        ?string $userId = null
+        ?string $userId = null,
+        ?string $idempotencyKey = null
     ): array {
         // Validate total matches document balance
         /** @var numeric-string $totalSplit */
@@ -55,10 +66,18 @@ class MultiPaymentService
             );
         }
 
-        return DB::transaction(function () use ($document, $paymentSplits, $userId): array {
+        return DB::transaction(function () use ($document, $paymentSplits, $userId, $idempotencyKey): array {
             $payments = [];
 
+            // Resolve the acting user once — synchronous in-transaction GL posting
+            // (Task 19) requires an actor. Only the ledgered cash-line branch below
+            // needs it; unledgered/nocash lines never touch it.
+            $actingUser = $userId !== null ? User::query()->find($userId) : null;
+
             foreach ($paymentSplits as $index => $split) {
+                /** @var numeric-string $lineAmount */
+                $lineAmount = $split['amount'];
+
                 // Spec §13 writer-inventory row 4 — `MultiPaymentService::createSplitPayment()`
                 // → `web_admin`. Non-fiscal admin-side split-payment authoring.
                 $payment = Payment::create([
@@ -69,7 +88,7 @@ class MultiPaymentService
                     'payment_method_id' => $split['payment_method_id'],
                     'instrument_id' => $split['instrument_id'] ?? null,
                     'repository_id' => $split['repository_id'] ?? null,
-                    'amount' => $split['amount'],
+                    'amount' => $lineAmount,
                     'currency' => $document->currency,
                     'payment_date' => now(),
                     'status' => PaymentStatus::Completed,
@@ -77,6 +96,12 @@ class MultiPaymentService
                     'reference' => $split['reference'] ?? 'Split payment '.($index + 1)." for {$document->document_number}",
                     'notes' => "Split payment {$split['amount']} (part ".($index + 1).' of '.count($paymentSplits).')',
                     'created_by' => $userId,
+                    // Task 19 idempotency: each line gets its own composed key (zero-padded
+                    // index) so the partial unique index (company_id, idempotency_key) allows
+                    // every line of one batch while still rejecting a duplicate batch replay.
+                    'idempotency_key' => $idempotencyKey !== null
+                        ? sprintf('%s:multi:%04d', $idempotencyKey, $index)
+                        : null,
                 ]);
 
                 // Create allocation
@@ -84,8 +109,24 @@ class MultiPaymentService
                     'id' => Str::uuid()->toString(),
                     'payment_id' => $payment->id,
                     'document_id' => $document->id,
-                    'amount' => $split['amount'],
+                    'amount' => $lineAmount,
                 ]);
+
+                // Task 19: a split line that carries a ledgered repository is REAL cash
+                // received against the document (customer AR payment, cash IN). Post the
+                // GL entry SYNCHRONOUSLY (it takes the company advisory lock FIRST), then
+                // record the movement through the single write port (which locks the repo
+                // row). Global lock order: advisory -> repo (BLOCKER-1). A line with a null
+                // repository_id — or a non-ledgered repository — is SKIPPED: the Payment +
+                // allocation still stand, but no cash moves and no GL posts.
+                $this->recordCashLine(
+                    document: $document,
+                    payment: $payment,
+                    repositoryId: $split['repository_id'] ?? null,
+                    amount: $lineAmount,
+                    idempotencyLeg: "line:{$index}",
+                    actingUser: $actingUser,
+                );
 
                 $payments[] = $payment;
             }
@@ -114,7 +155,8 @@ class MultiPaymentService
         ?string $instrumentId = null,
         ?string $reference = null,
         ?string $notes = null,
-        ?string $userId = null
+        ?string $userId = null,
+        ?string $idempotencyKey = null
     ): Payment {
         /** @var numeric-string $amount */
         if (bccomp($amount, '0', $this->scale()) <= 0) {
@@ -132,11 +174,12 @@ class MultiPaymentService
             $instrumentId,
             $reference,
             $notes,
-            $userId
+            $userId,
+            $idempotencyKey
         ): Payment {
             // Spec §13 writer-inventory row 5 — `MultiPaymentService::recordDeposit()`
             // → `web_admin`. Unallocated deposits / advances authored from the web admin.
-            return Payment::create([
+            $payment = Payment::create([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
@@ -152,7 +195,52 @@ class MultiPaymentService
                 'reference' => $reference ?? 'Deposit payment',
                 'notes' => ($notes ?? 'Advance payment/deposit').' [UNALLOCATED]',
                 'created_by' => $userId,
+                'idempotency_key' => $idempotencyKey,
             ]);
+
+            // Task 19: a deposit received into a ledgered repository is REAL cash IN.
+            // Book it as a customer advance (Dr Bank / Cr Customer Advance) posted
+            // SYNCHRONOUSLY (advisory lock first), then record the movement through the
+            // single write port (repo row lock second) — global order advisory -> repo.
+            // A deposit with a null repository_id — or a non-ledgered repository — is
+            // SKIPPED: the Payment stands, but no cash moves and no GL posts.
+            if ($repositoryId !== null) {
+                $repository = PaymentRepository::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->find($repositoryId);
+
+                if ($repository instanceof PaymentRepository && $repository->gl_account_id !== null) {
+                    $actingUser = $userId !== null ? User::query()->find($userId) : null;
+
+                    $journalEntry = $this->glService->createCustomerAdvanceJournalEntry(
+                        companyId: $companyId,
+                        partnerId: $partnerId,
+                        advanceId: $payment->id,
+                        amount: $amount,
+                        paymentMethodAccountId: $repository->gl_account_id,
+                        date: new \DateTimeImmutable,
+                        user: $this->requireActor($actingUser),
+                        description: "Deposit received - {$payment->reference}",
+                        currencyCode: $payment->currency,
+                        mode: PostingMode::SynchronousInTransaction,
+                    );
+
+                    $payment->journal_entry_id = $journalEntry->id;
+                    $payment->save();
+
+                    $this->recordInMovement(
+                        repository: $repository,
+                        payment: $payment,
+                        amount: $amount,
+                        idempotencyLeg: 'main',
+                        journalEntryId: $journalEntry->id,
+                        actingUserId: $actingUser?->id,
+                    );
+                }
+            }
+
+            return $payment;
         });
     }
 
@@ -365,6 +453,117 @@ class MultiPaymentService
 
         /** @var numeric-string $totalRequired */
         return bccomp($totalSplit, $totalRequired, $this->scale()) === 0;
+    }
+
+    /**
+     * Task 19: post the customer-payment GL entry and record the cash-in movement for
+     * one split line that carries a ledgered repository. A null repository_id — or a
+     * repository without a gl_account_id — is a non-cash line and is SKIPPED (no GL,
+     * no movement); the Payment + allocation created by the caller still stand.
+     *
+     * The GL post is SYNCHRONOUS (it takes the company advisory lock first); the port's
+     * record() then takes the repository row lock (global order advisory -> repo,
+     * BLOCKER-1). Both run inside the caller's DB::transaction — the single movement per
+     * line is keyed on the (stable, Task 16b) payment id + line index.
+     *
+     * @param  numeric-string  $amount
+     */
+    private function recordCashLine(
+        Document $document,
+        Payment $payment,
+        ?string $repositoryId,
+        string $amount,
+        string $idempotencyLeg,
+        ?User $actingUser,
+    ): void {
+        if ($repositoryId === null) {
+            return;
+        }
+
+        $repository = PaymentRepository::query()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('company_id', $document->company_id)
+            ->find($repositoryId);
+
+        if (! $repository instanceof PaymentRepository || $repository->gl_account_id === null) {
+            return;
+        }
+
+        // Customer AR payment received against the document: Dr Bank / Cr AR.
+        $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
+            companyId: $document->company_id,
+            partnerId: $document->partner_id,
+            paymentId: $payment->id,
+            amount: $amount,
+            paymentMethodAccountId: $repository->gl_account_id,
+            date: new \DateTimeImmutable,
+            description: "Split payment - {$payment->reference}",
+            user: $this->requireActor($actingUser),
+            currencyCode: $payment->currency,
+            mode: PostingMode::SynchronousInTransaction,
+        );
+
+        $payment->journal_entry_id = $journalEntry->id;
+        $payment->save();
+
+        $this->recordInMovement(
+            repository: $repository,
+            payment: $payment,
+            amount: $amount,
+            idempotencyLeg: $idempotencyLeg,
+            journalEntryId: $journalEntry->id,
+            actingUserId: $actingUser?->id,
+        );
+    }
+
+    /**
+     * Record exactly one cash-IN movement leg for a payment through the single write
+     * port. The movement fact is stated in the repository's own currency (the port's
+     * currency invariant), and keyed on the payment id + leg discriminator so a
+     * deduped/retried payment can never mint a second movement.
+     *
+     * @param  numeric-string  $amount
+     */
+    private function recordInMovement(
+        PaymentRepository $repository,
+        Payment $payment,
+        string $amount,
+        string $idempotencyLeg,
+        ?string $journalEntryId,
+        ?string $actingUserId,
+    ): void {
+        $this->movementService->record(new MovementIntent(
+            repositoryId: $repository->id,
+            tenantId: $payment->tenant_id,
+            companyId: $payment->company_id,
+            direction: MovementDirection::In,
+            amount: $amount,
+            currency: $repository->currency,
+            sourceType: MovementSourceType::Payment,
+            sourceId: $payment->id,
+            idempotencyLeg: $idempotencyLeg,
+            journalEntryId: $journalEntryId,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: $actingUserId,
+            notes: null,
+            allowWhileFrozen: false,
+        ));
+    }
+
+    /**
+     * Synchronous in-transaction GL posting requires an actor. When a cash line resolves
+     * to a ledgered repository but no acting user is available, fail loudly rather than
+     * moving cash with an unposted GL Draft.
+     */
+    private function requireActor(?User $actingUser): User
+    {
+        if (! $actingUser instanceof User) {
+            throw new \DomainException('A cash-moving payment line requires an acting user to post its journal entry.');
+        }
+
+        return $actingUser;
     }
 
     /**
