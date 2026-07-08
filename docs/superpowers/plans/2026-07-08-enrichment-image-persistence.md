@@ -8,7 +8,9 @@
 
 **Tech Stack:** Laravel 12 / PHP 8.2 strict types; PostgreSQL (per-tenant DB via Stancl); MinIO (`s3` disk); Laravel Horizon (`enrichment` + `images` queues); PHPUnit; Guzzle (via `Http`) with a cURL handler for IP pinning.
 
-**Spec:** `docs/superpowers/specs/2026-07-08-enrichment-image-persistence-design.md` (Rev 2). **Review:** `docs/superpowers/specs/reviews/2026-07-08-enrichment-image-persistence-spec-review.md`.
+**Spec:** `docs/superpowers/specs/2026-07-08-enrichment-image-persistence-design.md` (Rev 2). **Spec review:** `docs/superpowers/specs/reviews/2026-07-08-enrichment-image-persistence-spec-review.md`.
+
+**Status:** **Rev 2** — Codex adversarial plan review reconciled (4 BLOCKER / 12 MAJOR / 4 MINOR); findings in [`reviews/2026-07-08-enrichment-image-persistence-plan-review.md`](reviews/2026-07-08-enrichment-image-persistence-plan-review.md). **Read the "Rev 2 reconciliation" section below before executing any task — it overrides the task bodies where they conflict.**
 
 ## Global Constraints
 
@@ -22,7 +24,82 @@
 - **Events immutable** — no changes to existing event classes.
 - **Money/quantity precision** — N/A (no monetary values in this feature).
 - **Never run the full PHPUnit suite** without asking — run new tests **by path** only (memory: full suite can crash the laptop).
+- **Tests run on in-memory SQLite with `TENANCY_DB_PER_TENANT=false`** (`phpunit.xml`). Therefore: **every DB-backed test class MUST `use Illuminate\Foundation\Testing\RefreshDatabase;`** and build a real tenant/company/product via the project's existing setup (copy the arrangement from `tests/Feature/Modules/Catalog/Media/MediaUploadServiceTest.php`). **Never** run `php artisan migrate --database=tenant` in a test flow — `RefreshDatabase` migrates the tenant tables. Prefer DB-agnostic primitives (`Cache::lock`, not `pg_advisory_xact_lock`) so tests pass on SQLite.
 - **Branch discipline** — implement in a `git worktree` at `../erp.enrichment-images` on branch `feat/enrichment-image-persistence` off `origin/dev`; never commit on shared `dev`.
+
+---
+
+## Rev 2 reconciliation (Codex plan review — authoritative; overrides task bodies on conflict)
+
+### R1 — Correct symbol names (BLOCKER + MAJORs)
+- **`MediaAttachment` relation is `mediaAsset()`, NOT `asset()`.** Every `whereHas('asset', …)` becomes `whereHas('mediaAsset', …)` (Task 6 policy, Task 7 backstop). Confirm the reverse relation on `MediaAsset` for `attachments()`/`renditions()` used by `hardDeleteOrphan` — check `app/Modules/Media/Domain/Media/MediaAsset.php` for the exact relation method names and use those.
+- **Service providers are module-root classes:** `app/Modules/Product/ProductServiceProvider.php` (namespace `App\Modules\Product`) and `app/Modules/Media/MediaServiceProvider.php` — NOT under `/Providers/`. Fix the `HostResolverInterface` binding (Task 3) and the command registration (Task 11) to edit these real files.
+- **`vertical` is a TENANT column, not a product column** (`app/Modules/Tenant/Domain/Tenant.php`; products table has no `vertical`). In `RunEnrichmentCommand` (Task 11): drop `Product::where('vertical', …)` and drop `$product->vertical`. Derive the vertical once from the initialized tenant (read the tenant's `vertical`) and pass that literal into every `ApplyCatalogEnrichmentJob`. The `--vertical` option becomes an optional override validated against the tenant's vertical.
+- **Demo verify (Task 13) — no `Product::primaryMedia`.** Resolve via `CatalogMediaQueryInterface::forProduct()` (see `app/Modules/Catalog/Application/Queries/CatalogMediaQuery.php`) or assert on the POS `/sync` payload / product API `primary_image_url`.
+- **`uploadForProduct` 5th arg (`sourceRef`) does not exist until Task 2** — Task 2 is a hard prerequisite of Tasks 4/7; keep the order.
+
+### R2 — SSRF fetcher: testable pinning seam + incremental size cap (BLOCKER + MAJORs). Replaces Task 4 Step 3's `RemoteImageFetcher` body.
+
+Split the fetcher into a **guard/resolve** unit (unit-testable with `Http::fake` irrelevant) and an injected **downloader** that owns the actual pinned, streamed cURL transfer (integration-tested). This makes IP-pinning assertable and moves the byte cap onto the stream.
+
+```php
+// app/Modules/Media/Domain/Contracts/PinnedImageDownloaderInterface.php
+interface PinnedImageDownloaderInterface
+{
+    /** Download $url with the socket pinned to $pinnedIp (Host/SNI preserved),
+     *  redirects DENIED, aborting once maxBytes+1 is read. Verifies the connected
+     *  peer IP == $pinnedIp. Throws RemoteImageFetchException on any violation. */
+    public function download(string $url, string $host, string $pinnedIp, int $maxBytes): FetchedImage;
+}
+```
+
+`RemoteImageFetcher::fetch()` now only guards + resolves + validates every IP, picks `$pinnedIp = $ips[0]`, and delegates:
+```php
+public function fetch(string $url): FetchedImage
+{
+    try { ExternalUrlGuard::assertHttpsHostAllowed($url); }
+    catch (\Throwable $e) { throw new RemoteImageFetchException("Blocked URL: {$e->getMessage()}", 0, $e); }
+
+    $host = trim((string) parse_url($url, PHP_URL_HOST), '[]');
+    $ips = $this->resolver->resolve($host);
+    if ($ips === []) { throw new RemoteImageFetchException("Host does not resolve: {$host}"); }
+    foreach ($ips as $ip) {
+        if (PrivateIpRanges::isDisallowed($ip)) { throw new RemoteImageFetchException("Disallowed address: {$ip}"); }
+    }
+    return $this->downloader->download($url, $host, $ips[0], self::MAX_BYTES);
+}
+```
+
+Default `CurlPinnedImageDownloader` (Infrastructure) uses raw cURL: `CURLOPT_RESOLVE => ["{$host}:443:{$pinnedIp}"]`, `CURLOPT_FOLLOWLOCATION => false` (**redirects denied — this is the chosen redirect policy; a redirecting image URL is treated as unfetchable**, reconciled into spec §1), a `CURLOPT_WRITEFUNCTION` that appends to a temp handle and returns `-1` (aborting the transfer) once bytes exceed `maxBytes`, then post-transfer asserts `curl_getinfo($h, CURLINFO_PRIMARY_IP) === $pinnedIp` and the magic-byte sniff + content-type allowlist. On any check failure it deletes the temp file and throws.
+
+**Tests (replace Task 4's fetch tests):**
+- **Unit** `RemoteImageFetcher` with a fake `PinnedImageDownloaderInterface` (records args): asserts guard/resolve rejections (http, unresolvable, private-IP) happen *before* download, and that on the happy path `download()` is called with `pinnedIp === '41.226.11.20'`. No `Http::fake`.
+- **Integration** `CurlPinnedImageDownloaderTest` (Task 12): spin a loopback HTTP server fixture (or use a gated real fetch) to prove: peer-IP verification, `maxBytes+1` abort-before-full-buffer, redirect denied, magic-byte reject. Mark it `@group integration` so it's opt-in.
+
+### R3 — Persister concurrency + exception precision (MAJORs). Amends Task 7.
+- **Per-product serialization:** wrap the per-descriptor critical section (checksum backstop → attach) in `Cache::lock("enrich-img:{$tenantId}:{$productId}", 30)->block(10, function () { … })` — DB-agnostic (works on SQLite tests + Redis prod), eliminating the same-bytes/different-URL double-attach and the double-Primary race.
+- **Precise unique-violation handling:** `attachIdempotentWithRole` must only no-op when the caught `QueryException` is the owner/asset duplicate — check `$e->getCode() === '23505'` **and** `str_contains($e->getMessage(), 'media_attachments_owner_asset_unique')` (Postgres) **or** `str_contains($e->getMessage(), 'UNIQUE constraint failed')` for the same columns (SQLite). Any other `QueryException` rethrows. Same precision for the `source_ref` unique catch in `persist()` (match `media_assets_tenant_source_ref_unique`).
+
+### R4 — Migration dedupe preflight (MAJOR). Amends Task 2 Step 3.
+Before `CREATE UNIQUE INDEX … owner_asset`, delete pre-existing duplicate links keeping the lowest id:
+```php
+DB::statement("
+    DELETE FROM media_attachments a USING media_attachments b
+    WHERE a.id > b.id
+      AND a.tenant_id = b.tenant_id AND a.owner_type = b.owner_type
+      AND a.owner_id = b.owner_id AND a.media_asset_id = b.media_asset_id
+");
+```
+(The partial `source_ref` unique needs no preflight — existing rows have `source_ref IS NULL`, excluded by the `WHERE`.)
+
+### R5 — Added tests (MAJOR spec-coverage gaps).
+- **Task 8:** add a `handle()` test that `app(CompanyContext::class)->clear()`, builds a real tenant+product (RefreshDatabase), fakes the persister via container binding, and asserts `withTenantContext()` invokes it — proving the job runs with **no bound CompanyContext** (rule 20).
+- **Task 12 becomes two real integrations** (not persister-direct): (a) **Path A** — call `applyCatalogHit`, run the queued `PersistEnrichmentImagesJob` **synchronously** (`Queue::fake()` off; dispatch resolves inline or `Bus::dispatchSync`), mark/allow assets `READY` (run `GenerateRenditions` inline **or** explicitly transition the asset to `MediaStatus::Ready` in the fixture, since `CatalogMediaQuery` filters to READY), then assert `ProductData.primary_image_url` **and** the POS `SyncController` payload `image_url` are populated. (b) **Path B** — same through `accept()`.
+- **Task 4:** add redirect-denied and `MAX_BYTES+1`-abort tests (in the integration downloader test, R2).
+
+### R6 — Test hygiene (MINORs).
+- Queue-routing assertions use `Queue::fake()` + `Queue::assertPushed(…, fn($j)=>$j->queue==='enrichment')` (Task 11), matching `tests/Feature/Fiscal/RetryFiscalProjectionsCommandTest.php`. Reserve `Bus::fake()` for dispatch-intent (Tasks 9/10).
+- The `makeX()` helpers in test snippets are **not** on `Tests\TestCase` — each test class must define them concretely by copying the real setup from the named existing test (MediaUploadServiceTest for media; search `tests/` for `applyCatalogHit`/`EnrichmentReviewService` for the enrichment fixtures). Do not leave them as bare calls.
 
 ---
 
@@ -30,6 +107,7 @@
 
 **New files (shipped):**
 - `app/Modules/Media/Domain/ValueObjects/ExternalUrlGuard.php` — structural URL guard (https, length, host blocklist), shared.
+- `app/Modules/Media/Domain/Contracts/PinnedImageDownloaderInterface.php` + `app/Modules/Media/Infrastructure/Net/CurlPinnedImageDownloader.php` — pinned/streamed cURL download (R2).
 - `app/Modules/Media/Domain/Contracts/HostResolverInterface.php` — DNS resolution seam.
 - `app/Modules/Media/Infrastructure/Net/DnsHostResolver.php` — default resolver (`gethostbynamel`/`dns_get_record`).
 - `app/Modules/Media/Domain/ValueObjects/PrivateIpRanges.php` — private/loopback/link-local/CGNAT checker.
@@ -49,7 +127,8 @@
 - `app/Modules/Media/Application/Services/MediaAttachmentService.php` — add `hardDeleteOrphan(...)` (row+rendition cleanup the existing soft `deleteAsset` doesn't do).
 - `app/Modules/Product/Application/Services/EnrichmentReviewService.php` — delegate `imagesFromPayload` to normalizer; dispatch job on `accept` (auto + opt-out).
 - `app/Modules/Product/Application/Services/CatalogEnrichmentService.php` — dispatch job in `applyCatalogHit`.
-- `app/Modules/Product/Providers/ProductServiceProvider.php` — register `RunEnrichmentCommand`.
+- `app/Modules/Product/ProductServiceProvider.php` (module-root provider, namespace `App\Modules\Product`) — register `RunEnrichmentCommand`.
+- `app/Modules/Media/MediaServiceProvider.php` (module-root provider) — bind `HostResolverInterface` + `PinnedImageDownloaderInterface`.
 
 **Demo-only (NOT shipped as an integration path) — Task 13:**
 - `database/seeders/DemoImageProductsFromPlatformSeeder.php` — discovers platform products-with-images and seeds them into the demo tenant.
