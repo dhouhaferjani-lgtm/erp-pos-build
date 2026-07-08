@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Expense\Application\Services;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\PostingMode;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -14,6 +16,7 @@ use App\Modules\Document\Domain\Enums\CostApplicationPath;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\LandedCostSplitMethod;
+use App\Modules\Expense\Application\DTOs\PayExpenseRequestData;
 use App\Modules\Expense\Application\Exceptions\LinkedCostException;
 use App\Modules\Expense\Domain\Enums\ExpenseKind;
 use App\Modules\Expense\Domain\ExpenseMetadata;
@@ -21,6 +24,9 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Document\OperationResolverInterface;
 use App\Shared\Contracts\Inventory\LinkedCostApplicatorInterface;
@@ -28,6 +34,7 @@ use App\Shared\Contracts\Treasury\RepositoryInflowInterface;
 use App\Shared\Contracts\Treasury\RepositoryOutflowInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -240,6 +247,128 @@ final class ExpenseService
             }
 
             return $freshExpense;
+        });
+    }
+
+    /**
+     * Settle a posted, unpaid expense: pay down the AP liability booked by
+     * {@see post()} — POST /expenses/{id}/pay (Wave D, Task 15).
+     *
+     * Posts `Dr AP-liability (SupplierPayable) / Cr Cash` (via the existing
+     * `createSupplierPaymentJournalEntry` helper, `SynchronousInTransaction`)
+     * and writes an `out` movement through the treasury write port, keyed on
+     * idempotency leg `settlement` — distinct from `post()`'s `main` leg, so
+     * settlement is idempotent independently of the original post.
+     *
+     * Retry-safety: the movement port's idempotency guard does NOT protect
+     * the GL post (a replayed intent returns the OLD movement without
+     * checking `journal_entry_id` — see {@see TreasuryMovementServiceInterface}).
+     * A caller that posted a fresh GL entry and then replayed the same
+     * intent would orphan that entry. So this method checks for an existing
+     * settlement movement BEFORE creating any GL entry and short-circuits as
+     * a no-op retry when one is found.
+     */
+    public function settle(Document $expense, PayExpenseRequestData $data, User $user): Document
+    {
+        if ($expense->status !== DocumentStatus::Posted) {
+            throw new \DomainException('Only a posted expense can be settled.');
+        }
+
+        return DB::transaction(function () use ($expense, $data, $user): Document {
+            $metadata = ExpenseMetadata::query()
+                ->where('document_id', $expense->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($metadata === null) {
+                throw new \DomainException('This expense has no payment metadata to settle.');
+            }
+
+            $settlementKey = MovementSourceType::Expense->value.':'.$expense->id.':settlement';
+            $alreadySettled = RepositoryMovement::query()
+                ->where('idempotency_key', $settlementKey)
+                ->exists();
+
+            if ($alreadySettled) {
+                // Idempotent retry: the settlement was already recorded by a
+                // prior call. Do NOT create a second GL entry — return the
+                // current state as-is.
+                $fresh = $expense->fresh(['expenseMetadata']);
+                if ($fresh === null) {
+                    throw new \RuntimeException('Failed to refresh expense after settlement retry.');
+                }
+
+                return $fresh;
+            }
+
+            if ($metadata->is_paid === true) {
+                throw new \DomainException('This expense has already been paid.');
+            }
+
+            /** @var PaymentRepository $repository */
+            $repository = PaymentRepository::query()
+                ->where('tenant_id', $expense->tenant_id)
+                ->where('company_id', $expense->company_id)
+                ->whereKey($data->paymentRepositoryId)
+                ->firstOrFail();
+
+            $creditAccount = match ($repository->type) {
+                RepositoryType::BankAccount => Account::findByPurposeOrFail($expense->company_id, SystemAccountPurpose::Bank),
+                default => Account::findByPurposeOrFail($expense->company_id, SystemAccountPurpose::Cash),
+            };
+
+            $vendorName = $metadata->vendor_name ?? 'General Expense';
+
+            // Dr AP-liability (SupplierPayable) / Cr Cash-or-Bank, posted
+            // SYNCHRONOUSLY in-transaction so it takes the GL company advisory
+            // lock BEFORE the movement port's repository row lock below — the
+            // same global lock order as post() (spine BLOCKER-1).
+            $entry = $this->glService->createSupplierPaymentJournalEntry(
+                companyId: $expense->company_id,
+                partnerId: $expense->partner_id,
+                paymentId: $expense->id,
+                amount: (string) ($expense->total ?? '0'),
+                paymentMethodAccountId: $creditAccount->id,
+                date: Carbon::parse($data->paymentDate),
+                user: $user,
+                description: "Expense settlement: {$expense->document_number} - {$vendorName}",
+                currencyCode: (string) $expense->currency,
+                mode: PostingMode::SynchronousInTransaction,
+            );
+
+            $this->movementService->record(new MovementIntent(
+                repositoryId: $repository->id,
+                tenantId: $expense->tenant_id,
+                companyId: $expense->company_id,
+                direction: MovementDirection::Out,
+                amount: (string) ($expense->total ?? '0'),
+                currency: (string) $expense->currency,
+                sourceType: MovementSourceType::Expense,
+                sourceId: $expense->id,
+                idempotencyLeg: 'settlement',
+                journalEntryId: $entry->id,
+                occurredAt: null,
+                reasonCode: null,
+                reversesMovementId: null,
+                createdBy: $user->id,
+                notes: null,
+                allowWhileFrozen: false,
+            ));
+
+            $metadata->update([
+                'is_paid' => true,
+                'paid_at' => now(),
+                'payment_repository_id' => $repository->id,
+                'payment_method_id' => $data->paymentMethodId ?? $metadata->payment_method_id,
+                'payment_date' => $data->paymentDate,
+            ]);
+
+            $fresh = $expense->fresh(['expenseMetadata']);
+            if ($fresh === null) {
+                throw new \RuntimeException('Failed to refresh expense after settlement.');
+            }
+
+            return $fresh;
         });
     }
 

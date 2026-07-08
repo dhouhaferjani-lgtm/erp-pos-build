@@ -27,6 +27,7 @@ return [
     'deleted' => ':resource deleted successfully.',
     'restored' => ':resource restored successfully.',
     'income_posted' => 'Income posted successfully.',
+    'expense_settled' => 'Expense settled successfully.',
 
     // Documents
     'document' => [

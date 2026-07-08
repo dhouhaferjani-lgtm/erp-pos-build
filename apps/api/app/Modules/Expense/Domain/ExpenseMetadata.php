@@ -23,6 +23,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $payment_repository_id
  * @property Carbon|null $payment_date
  * @property bool $is_paid
+ * @property Carbon|null $paid_at
  * @property string|null $receipt_number
  * @property string|null $vendor_name
  * @property ExpenseKind $expense_kind
@@ -53,6 +54,7 @@ class ExpenseMetadata extends Model
         'payment_repository_id',
         'payment_date',
         'is_paid',
+        'paid_at',
         'receipt_number',
         'vendor_name',
         'expense_kind',
@@ -75,6 +77,7 @@ class ExpenseMetadata extends Model
         return [
             'payment_date' => 'date',
             'is_paid' => 'boolean',
+            'paid_at' => 'datetime',
             'expense_kind' => ExpenseKind::class,
         ];
     }

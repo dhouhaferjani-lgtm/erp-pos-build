@@ -43,6 +43,7 @@ class ExpenseResource extends JsonResource
                     'receipt_number' => $this->resource->expenseMetadata->receipt_number,
                     'payment_date' => $this->resource->expenseMetadata->payment_date?->toDateString(),
                     'is_paid' => $this->resource->expenseMetadata->is_paid,
+                    'paid_at' => $this->resource->expenseMetadata->paid_at?->toISOString(),
                     'expense_category_id' => $this->resource->expenseMetadata->expense_category_id,
                     'payment_method_id' => $this->resource->expenseMetadata->payment_method_id,
                     'payment_repository_id' => $this->resource->expenseMetadata->payment_repository_id,
