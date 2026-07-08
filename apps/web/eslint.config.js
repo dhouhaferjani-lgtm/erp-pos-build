@@ -209,6 +209,7 @@ export default tseslint.config(
       'src/features/workshop-bundles/**/*.{ts,tsx}',
       'src/features/workshop-technicians/**/*.{ts,tsx}',
       'src/features/workshop-work-orders/**/*.{ts,tsx}',
+      'src/features/document-ingestions/**/*.{ts,tsx}',
     ],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
@@ -300,6 +301,7 @@ export default tseslint.config(
       'src/features/parts-catalog/**/*.{ts,tsx}',
       'src/features/withholding/**/*.{ts,tsx}',
       'src/features/workshop-technicians/**/*.{ts,tsx}',
+      'src/features/document-ingestions/**/*.{ts,tsx}',
     ],
     rules: { 'local/no-untranslated-literal': 'error' },
   },

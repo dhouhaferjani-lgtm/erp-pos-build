@@ -1,0 +1,98 @@
+{
+  "actions": {
+    "cancel": "إلغاء",
+    "close": "إغلاق",
+    "commit": "اعتماد المستند",
+    "reExtract": "إعادة الاستخراج",
+    "reject": "رفض",
+    "review": "مراجعة",
+    "startExtraction": "بدء الاستخراج",
+    "upload": "رفع مسح"
+  },
+  "fields": {
+    "confidence": "الثقة",
+    "file": "الملف المصدر",
+    "kind": "نوع المستند",
+    "provider": "المزوّد",
+    "status": "الحالة"
+  },
+  "filters": {
+    "allKinds": "كل الأنواع",
+    "allStatuses": "كل الحالات"
+  },
+  "kinds": {
+    "supplier_delivery_note": "وصل تسليم",
+    "supplier_invoice": "فاتورة مورد"
+  },
+  "list": {
+    "confidencePercent": "{{value}}%",
+    "empty": "لا توجد مسوحات بعد.",
+    "filters": "مرشحات المسوحات",
+    "providerPending": "قيد الانتظار",
+    "subtitle": "ارفع فواتير الموردين ووصولات التسليم ثم راجع استخراج OCR قبل الاعتماد.",
+    "title": "مسوحات المستندات",
+    "unknownConfidence": "ثقة غير معروفة"
+  },
+  "messages": {
+    "committed": "تم اعتماد المستند.",
+    "rejected": "تم رفض المسح.",
+    "uploaded": "تم رفع المسح."
+  },
+  "review": {
+    "batchNumber": "رقم الدفعة",
+    "blockedReconciliation": "يجب حل المطابقة قبل الاعتماد.",
+    "blockedStatus": "لا يمكن اعتماد إلا المسوحات التي تحتاج مراجعة.",
+    "blockedUnparseable": "يجب تصحيح الحقول غير المقروءة قبل الاعتماد.",
+    "chooseLocation": "اختر موقعا",
+    "chooseProduct": "اختر منتجا",
+    "chooseSupplier": "اختر موردا",
+    "committed": "تم اعتماد المسح مسبقا",
+    "committedNoTarget": "هدف الاعتماد غير متاح بعد.",
+    "committedTarget": "{{type}} {{id}}",
+    "createSupplier": "إنشاء مورد",
+    "expiryDate": "تاريخ الانتهاء",
+    "extractedFields": "الحقول المستخرجة",
+    "lines": "السطور",
+    "loading": "جاري تحميل المسح…",
+    "location": "الموقع",
+    "meta": "{{provider}} / {{model}}",
+    "noExtraction": "الاستخراج غير متاح لهذا المسح.",
+    "noSupplierRef": "لا توجد مرجعية مورد",
+    "pages": "{{count}} صفحة",
+    "pendingReceipt": "البضاعة لم تصل بعد",
+    "product": "المنتج",
+    "providerUnknown": "غير معروف",
+    "quantity": "الكمية",
+    "reconciliationFlags": "تنبيهات المطابقة",
+    "rejectConfirm": "رفض هذا المسح؟",
+    "source": "المستند المصدر",
+    "sourceLine": "سطر الاستلام",
+    "sourceMissing": "معاينة المصدر غير متاحة.",
+    "supplier": "المورد",
+    "title": "مراجعة المسح",
+    "unitPrice": "سعر الوحدة",
+    "vatRate": "نسبة الضريبة"
+  },
+  "statuses": {
+    "committed": "معتمد",
+    "committing": "قيد الاعتماد",
+    "extracting": "قيد الاستخراج",
+    "failed": "فشل",
+    "needs_review": "يحتاج مراجعة",
+    "rejected": "مرفوض",
+    "uploaded": "مرفوع"
+  },
+  "upload": {
+    "errors": {
+      "duplicate": "هذا الملف المصدر موجود بالفعل في قائمة المسوحات.",
+      "fileRequired": "اختر ملفا مصدرا.",
+      "fileTooLarge": "الملف أكبر من حد الرفع.",
+      "kindRequired": "اختر نوع المستند."
+    },
+    "fileHint": "PDF أو صورة حتى 20 ميغابايت.",
+    "placeholders": {
+      "kind": "اختر نوع المستند"
+    },
+    "title": "رفع مسح"
+  }
+}

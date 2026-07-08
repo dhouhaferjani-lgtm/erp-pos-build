@@ -52,6 +52,7 @@ import enReports from '../locales/en/reports.json'
 import enStockTransfers from '../locales/en/stock-transfers.json'
 import enAdmin from '../locales/en/admin.json'
 import enPurchases from '../locales/en/purchases.json'
+import enDocumentIngestions from '../locales/en/documentIngestions.json'
 
 import frCommon from '../locales/fr/common.json'
 import frAuth from '../locales/fr/auth.json'
@@ -102,6 +103,7 @@ import frReports from '../locales/fr/reports.json'
 import frStockTransfers from '../locales/fr/stock-transfers.json'
 import frAdmin from '../locales/fr/admin.json'
 import frPurchases from '../locales/fr/purchases.json'
+import frDocumentIngestions from '../locales/fr/documentIngestions.json'
 
 // Arabic: fully translated AutoSpecs + shared foundations (🟠-4 Tunisia Go-Live).
 // Other namespaces still fall back to the EN bundle below.
@@ -125,6 +127,7 @@ import arChannels from '../locales/ar/channels.json'
 import arReports from '../locales/ar/reports.json'
 import arAdmin from '../locales/ar/admin.json'
 import arPurchases from '../locales/ar/purchases.json'
+import arDocumentIngestions from '../locales/ar/documentIngestions.json'
 import arProducts from '../locales/ar/products.json'
 import arSales from '../locales/ar/sales.json'
 import arFinance from '../locales/ar/finance.json'
@@ -198,6 +201,7 @@ const resources = {
     'stock-transfers': enStockTransfers,
     admin: enAdmin,
     purchases: enPurchases,
+    documentIngestions: enDocumentIngestions,
   },
   fr: {
     common: frCommon,
@@ -249,6 +253,7 @@ const resources = {
     'stock-transfers': frStockTransfers,
     admin: frAdmin,
     purchases: frPurchases,
+    documentIngestions: frDocumentIngestions,
   },
   ar: {
     // 🟠-4 Tunisia Go-Live: AutoSpecs namespaces + shared foundations are now
@@ -391,6 +396,7 @@ const resources = {
     'stock-transfers': enStockTransfers,
     admin: arAdmin,
     purchases: arPurchases,
+    documentIngestions: arDocumentIngestions,
   },
 }
 
@@ -401,7 +407,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'income', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'admin', 'purchases'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'income', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'admin', 'purchases', 'documentIngestions'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],
