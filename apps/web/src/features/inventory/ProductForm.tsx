@@ -14,7 +14,14 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { colors, tokens, textColors } from '../../lib/designTokens'
 import { CategorySelect } from '../../components/catalog/CategorySelect'
-import { Button, Checkbox, FormField, Input, Textarea, MoneyInput, Toggle, QuantityInput } from '../../components/atoms'
+import { Button } from '../../components/atoms/Button/Button'
+import { Checkbox } from '../../components/atoms/Checkbox/Checkbox'
+import { FormField } from '../../components/atoms/FormField/FormField'
+import { Input } from '../../components/atoms/Input/Input'
+import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
+import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
+import { Textarea } from '../../components/atoms/Textarea/Textarea'
+import { Toggle } from '../../components/atoms/Toggle/Toggle'
 import { CatalogBanner } from './components/CatalogBanner'
 import { EnrichmentCapturePanel, type EnrichmentAttributeRow } from './components/EnrichmentCapturePanel'
 import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
@@ -23,7 +30,9 @@ import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
 import type { SubmitForEnrichmentPayload } from './api/platformApi'
 import type { LookupState, SuggestedProduct } from './types/platform'
 import type { UploadedPhoto } from './api/enrichmentPhotos'
-import { ProductImageSection, ParapharmacyMetadataFields, CreateModeImageBuffer } from '../products/components'
+import { CreateModeImageBuffer } from '../products/components/CreateModeImageBuffer'
+import { ParapharmacyMetadataFields } from '../products/components/ParapharmacyMetadataFields'
+import { ProductImageSection } from '../products/components/ProductImageSection'
 import { uploadProductImage } from '../products/api/productImages'
 import { ProductVariantMatrixEditor } from '../catalog/components/ProductVariantMatrixEditor'
 import { useVariantsForProduct } from '../catalog/hooks/useVariants'
@@ -48,11 +57,16 @@ import type { ChecklistItem } from '../products/editor/components/BeforePublishC
 import { LivePosTile } from '../products/editor/components/LivePosTile'
 import { useScrollSpy } from '../products/editor/hooks/useScrollSpy'
 import { formatCurrency } from '../../lib/formatCurrency'
-import { bcadd, bccomp, bcsub, bcdiv, bcmul } from '../../lib/decimal'
 import { UnitDropdown } from '../uom/components/UnitDropdown'
 import { useUnits } from '../uom/hooks/useUnits'
 import { getQuantityDecimals } from '../../lib/quantityScale'
 import type { ProductType } from '../products/types'
+import {
+  marginFromCost,
+  priceHtFromMargin,
+  priceTtcFromHt,
+  priceHtFromTtc,
+} from './components/pricing/pricingMath'
 
 interface Product {
   id: string
@@ -180,32 +194,6 @@ const HERO_BLOCKS: HeroBlockDef[] = [
   { id: 'pricing.priceHt', component: 'pricing.priceHt', slot: 'strip' },
   { id: 'pricing.priceTtc', component: 'pricing.priceTtc', slot: 'strip' },
 ]
-
-function taxDivisor(taxRate: string): string {
-  const rate = taxRate.trim() === '' ? '0' : taxRate
-  return bcadd('1', bcdiv(rate, '100', 6), 6)
-}
-
-function priceHtFromTtc(ttc: string, taxRate: string, scale: number): string {
-  if (ttc.trim() === '') return ''
-  return bcdiv(ttc, taxDivisor(taxRate), scale)
-}
-
-function priceTtcFromHt(ht: string, taxRate: string, scale: number): string {
-  if (ht.trim() === '') return ''
-  return bcmul(ht, taxDivisor(taxRate), scale)
-}
-
-function marginFromCost(cost: string, priceHt: string): string {
-  if (cost.trim() === '' || priceHt.trim() === '' || bccomp(cost, '0') <= 0) return ''
-  return bcmul(bcdiv(bcsub(priceHt, cost, 4), cost, 6), '100', 2)
-}
-
-function priceHtFromMargin(cost: string, margin: string, scale: number): string {
-  if (cost.trim() === '' || margin.trim() === '') return ''
-  const factor = bcadd('1', bcdiv(margin, '100', 6), 6)
-  return bcmul(cost, factor, scale)
-}
 
 export interface ProductFormData {
   name: string
@@ -393,6 +381,7 @@ export function ProductForm() {
   // The per-product state derivations (canEnterOpening etc.) live AFTER
   // the useQuery that loads `product` — see below.
   const canAdjustInventory = hasPermission('inventory.adjust')
+  const canViewCostPrices = hasPermission('pricing.view_cost_prices')
   const showOpeningSection =
     hasModule('Inventory') && canAdjustInventory && watchIsPhysical
 
@@ -758,7 +747,8 @@ export function ProductForm() {
   const barcodeValue = watch('barcode')
 
   const moneyScale = decimals ?? 3
-  const priceHtValue = priceHtFromTtc(salePriceValue, taxRateValue, moneyScale)
+  const priceHtValue = salePriceValue
+  const priceTtcValue = priceTtcFromHt(priceHtValue, taxRateValue, moneyScale)
   const costBasisValue = isOpeningLocked ? product?.cost_price ?? '' : purchasePriceValue
   const marginPercentValue = marginFromCost(costBasisValue, priceHtValue)
 
@@ -770,14 +760,18 @@ export function ProductForm() {
   }
 
   const handlePriceHtChange = (value: string): void => {
-    setValue('sale_price', priceTtcFromHt(value, taxRateValue, moneyScale), { shouldDirty: true })
+    setValue('sale_price', value, { shouldDirty: true })
   }
 
   const handleMarginChange = (value: string): void => {
     const nextHt = priceHtFromMargin(costBasisValue, value, moneyScale)
     if (nextHt !== '') {
-      setValue('sale_price', priceTtcFromHt(nextHt, taxRateValue, moneyScale), { shouldDirty: true })
+      setValue('sale_price', nextHt, { shouldDirty: true })
     }
+  }
+
+  const handlePriceTtcChange = (value: string): void => {
+    setValue('sale_price', priceHtFromTtc(value, taxRateValue, moneyScale), { shouldDirty: true })
   }
 
   const heroEnrichmentState: EditorHeroEnrichmentState = (() => {
@@ -915,7 +909,7 @@ export function ProductForm() {
         )}
       </div>
     ),
-    'pricing.cost': () => (
+    'pricing.cost': () => canViewCostPrices ? (
       <div key="pricing.cost" className="rounded-md border border-gray-200 bg-white px-3 py-2">
         <label htmlFor="ready_cost_ht" className={cn('block text-start text-xs', textColors.tertiary)}>
           {isOpeningLocked ? t('inventory:products.costWac') : t('inventory:products.costHt')}
@@ -936,8 +930,8 @@ export function ProductForm() {
           />
         )}
       </div>
-    ),
-    'pricing.margin': () => (
+    ) : null,
+    'pricing.margin': () => canViewCostPrices ? (
       <div key="pricing.margin" className="rounded-md border border-gray-200 bg-white px-3 py-2">
         <label htmlFor="ready_margin_percent" className={cn('block text-start text-xs', textColors.tertiary)}>
           {t('inventory:products.marginPercent')}
@@ -951,7 +945,7 @@ export function ProductForm() {
           className="mt-1"
         />
       </div>
-    ),
+    ) : null,
     'pricing.priceHt': () => (
       <div key="pricing.priceHt" className="rounded-md border border-gray-200 bg-white px-3 py-2">
         <label htmlFor="ready_price_ht" className={cn('block text-start text-xs', textColors.tertiary)}>
@@ -983,8 +977,8 @@ export function ProductForm() {
           id="ready_price_ttc"
           aria-label={t('inventory:products.priceTtc')}
           currency={currency}
-          value={salePriceValue}
-          onChange={(value) => { setValue('sale_price', value, { shouldDirty: true }) }}
+          value={priceTtcValue}
+          onChange={handlePriceTtcChange}
           className="mt-1"
         />
       </div>
@@ -1278,25 +1272,27 @@ export function ProductForm() {
               title={t('catalog:editor.sectionLabels.pricing')}
             >
               {/* Purchase Price — ex-tax, from supplier */}
-              <FormField
-                label={t('inventory:products.purchasePrice')}
-                htmlFor="purchase_price"
-                helperText={t('inventory:products.purchasePriceHelper')}
-              >
-                <Controller
-                  name="purchase_price"
-                  control={control}
-                  render={({ field }) => (
-                    <MoneyInput
-                      id="purchase_price"
-                      currency={currency}
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                    />
-                  )}
-                />
-              </FormField>
+              {canViewCostPrices && (
+                <FormField
+                  label={t('inventory:products.purchasePrice')}
+                  htmlFor="purchase_price"
+                  helperText={t('inventory:products.purchasePriceHelper')}
+                >
+                  <Controller
+                    name="purchase_price"
+                    control={control}
+                    render={({ field }) => (
+                      <MoneyInput
+                        id="purchase_price"
+                        currency={currency}
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                      />
+                    )}
+                  />
+                </FormField>
+              )}
 
               <FormField label={t('inventory:products.salePrice')} htmlFor="sale_price">
                 <Controller
@@ -1315,7 +1311,7 @@ export function ProductForm() {
               </FormField>
 
               {/* Cost (WAC) - Read-only when editing */}
-              {isEditing && product && (
+              {isEditing && product && canViewCostPrices && (
                 <FormField
                   label={t('inventory:products.costWac')}
                   htmlFor="cost_wac"

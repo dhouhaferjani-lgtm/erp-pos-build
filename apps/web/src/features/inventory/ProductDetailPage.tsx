@@ -3,14 +3,12 @@ import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Edit, Trash2, Tag } from 'lucide-react'
-import { api, apiDelete } from '../../lib/api'
+import { api, apiDelete, apiPost } from '../../lib/api'
 import { useCompanyStore } from '../../stores/companyStore'
 import { useAuthStore } from '../../stores/authStore'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { usePermissions } from '../../hooks/usePermissions'
-import { formatCurrency } from '../../lib/format'
-import { bccomp, bcdiv, bcmul, bcsub } from '../../lib/decimal'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { Button } from '../../components/atoms/Button'
@@ -27,7 +25,6 @@ import { ProductMovementsTab } from './components/ProductMovementsTab'
 import { ProductDocumentsTab } from './components/ProductDocumentsTab'
 import { useProductRealtime } from '../products/hooks/useProductRealtime'
 import { ProductStockLevels } from './components'
-import { useTaxConfigName } from '../../hooks/useTaxConfigName'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
 import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
@@ -36,6 +33,10 @@ import {
   PRODUCT_DETAIL_SECTIONS,
   type EditorSectionRendererRegistry,
 } from '../products/editor/viewSections'
+import {
+  PricingIntelligencePanel,
+  type DiscountPolicyVerdict,
+} from './components/pricing/PricingIntelligencePanel'
 
 interface Product {
   id: string
@@ -46,8 +47,15 @@ interface Product {
   sale_price: string | null
   purchase_price: string | null
   cost_price: string | null
+  last_purchase_cost?: string | null
   tax_rate: string | null
   default_tax_configuration_id: string | null
+  max_discount_percent?: string | null
+  effective_margins?: {
+    target_margin: string
+    minimum_margin: string
+    source: string
+  } | null
   unit: string | null
   barcode: string | null
   is_active: boolean
@@ -102,6 +110,7 @@ export function ProductDetailPage() {
   }
 
   const { hasPermission } = usePermissions()
+  const canViewCostPrices = hasPermission('pricing.view_cost_prices')
 
   const { data, isLoading, error } = useQuery({
     queryKey: tenantScopedKey(['product', id]),
@@ -119,12 +128,6 @@ export function ProductDetailPage() {
     enabled: !!id,
   })
 
-  // Resolve the tax configuration display name. MUST be called unconditionally
-  // here (before the early returns below) — calling it after a `return` makes
-  // the hook count change between the loading and loaded renders, which throws
-  // "Rendered more hooks than during the previous render". The hook null-guards
-  // its argument internally, so `data?.…` is safe before the product loads.
-  const taxConfigName = useTaxConfigName(data?.default_tax_configuration_id)
   const fastPathState = useEnrichmentFastPath({
     productId: id ?? '',
     enabled: Boolean(
@@ -132,6 +135,24 @@ export function ProductDetailPage() {
       data?.enrichment_status === 'pending' &&
       hasPermission('enrichment.view'),
     ),
+  })
+
+  const { data: discountPolicyVerdict } = useQuery({
+    queryKey: tenantScopedKey(['pricing-discount-policy', data?.id, data?.sale_price, data?.tax_rate]),
+    queryFn: async () => {
+      if (data?.sale_price === null || data?.sale_price === undefined) throw new Error('Product sale price is required')
+
+      return apiPost<DiscountPolicyVerdict>('/pricing/discount-policy', {
+        productId: data.id,
+        effectiveUnitPrice: data.sale_price,
+        currency: companyCurrency,
+        quantity: '1.000',
+        taxRate: data.tax_rate ?? '0.00',
+        taxConfigurationId: data.default_tax_configuration_id,
+        priceBasis: 'HT',
+      })
+    },
+    enabled: canViewCostPrices && data?.sale_price !== null && data?.sale_price !== undefined && !!tenantId && !!companyId,
   })
 
   const deleteMutation = useMutation({
@@ -154,15 +175,6 @@ export function ProductDetailPage() {
   const confirmDelete = () => {
     deleteMutation.mutate()
     setShowDeleteDialog(false)
-  }
-
-  // Format currency using company settings
-  const formatAmount = (amount: string | null) => {
-    if (!amount) return '-'
-    return formatCurrency(amount, {
-      currency: companyCurrency,
-      locale: companyLocale,
-    })
   }
 
   const formatDate = (dateString: string) => {
@@ -198,16 +210,6 @@ export function ProductDetailPage() {
   }
 
   const product = data
-  const productMargin = product.sale_price !== null && product.cost_price !== null
-    ? bcsub(product.sale_price, product.cost_price, 3)
-    : null
-  const productMarginPercent = product.sale_price !== null && product.cost_price !== null && bccomp(product.cost_price, '0') > 0
-    ? bcmul(
-      bcdiv(bcsub(product.sale_price, product.cost_price, 4), product.cost_price, 4),
-      '100',
-      1,
-    )
-    : null
   const hasAutomotiveData = (product.oem_numbers?.length ?? 0) > 0 || (product.cross_references?.length ?? 0) > 0
   const sectionGateCtx = { isOtospex, hasAutomotiveData }
   const metadataSection = (
@@ -264,40 +266,12 @@ export function ProductDetailPage() {
       </div>
     ),
     pricing: () => (
-      <div className={cn('rounded-lg border bg-white', borderColors.light)}>
-        <div className={cn('border-b px-6 py-4', borderColors.light)}>
-          <h2 className={cn('text-base font-semibold', textColors.primary)}>{t('products.sections.pricing')}</h2>
-        </div>
-        <div className={cn('divide-y', borderColors.divideLight)}>
-          <div className="grid grid-cols-3 gap-x-6 px-6 py-3">
-            <div>
-              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.salePrice')}</div>
-              <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{formatAmount(product.sale_price)}</div>
-            </div>
-            <div>
-              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.costWac')}</div>
-              <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{formatAmount(product.cost_price)}</div>
-            </div>
-            <div>
-              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.fields.taxRate')}</div>
-              <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>{taxConfigName ?? (product.tax_rate ? `${product.tax_rate}%` : '-')}</div>
-            </div>
-          </div>
-          {productMargin !== null && (
-            <div className="px-6 py-3">
-              <div className={cn('text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('products.margin')}</div>
-              <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>
-                {formatAmount(productMargin)}
-                {productMarginPercent !== null && (
-                  <span className={cn('ms-2 text-sm font-normal', textColors.tertiary)}>
-                    ({productMarginPercent}%)
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      <PricingIntelligencePanel
+        product={product}
+        currency={companyCurrency}
+        locale={companyLocale}
+        verdict={discountPolicyVerdict}
+      />
     ),
     'stock-levels': () => (
       <ProductStockLevels
