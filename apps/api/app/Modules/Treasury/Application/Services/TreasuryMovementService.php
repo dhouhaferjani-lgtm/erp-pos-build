@@ -124,8 +124,16 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
                 throw $e;
             }
 
-            return $this->handleIdempotentHit($intent); // SELECT existing, validate semantics or throw
+            $result = $this->handleIdempotentHit($intent); // SELECT existing, validate semantics or throw
+            $this->closePort(); // MED-10: the port is done writing — reset the GUC
+
+            return $result;
         }
+
+        // MED-10: the port has finished its DML — reset the GUC so a later
+        // non-port write in the SAME outer transaction cannot ride the still-open
+        // guard once the Task-22 trigger lands. No-op today (no trigger yet).
+        $this->closePort();
 
         DB::afterCommit(fn () => event($this->buildRecordedEvent(
             $movementId,
@@ -141,6 +149,13 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
 
     public function transfer(TransferIntent $intent): TransferResult
     {
+        // Fix 4 (self-transfer guard): a repository cannot transfer to itself —
+        // it would take the same row lock twice and net to zero on one repo while
+        // burning two ordinals. Reject before any locking. \DomainException → 422.
+        if ($intent->fromRepositoryId === $intent->toRepositoryId) {
+            throw new \DomainException('transfer() requires distinct source and destination repositories.');
+        }
+
         $scale = $this->scaleResolver->getScale($intent->currency);
         $isPgsql = DB::connection()->getDriverName() === 'pgsql';
 
@@ -186,71 +201,106 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
                 throw new CurrencyMismatchException($toRepo->id, $toRepo->currency, $intent->currency);
             }
 
-            // 4. Open the port (Task-22 trigger gate). pgsql-only DDL.
+            // 4. Cross-GL-account legs MUST carry a JE (Fix 2 / spec invariant +
+            // reconciliation §9.2). When the two repositories map to DIFFERENT
+            // gl_account_id, a pre-posted balanced journalEntryId is mandatory —
+            // writing null-JE cross-account legs would silently skip the GL post
+            // and later FREEZE the repo during reconciliation. Refuse loudly.
+            // Same-GL-account transfers legitimately carry null journal_entry_id.
+            $crossGlAccount = $fromRepo->gl_account_id !== $toRepo->gl_account_id;
+            if ($crossGlAccount && $intent->journalEntryId === null) {
+                throw new \DomainException('transfer() across different GL accounts requires a journalEntryId (a pre-posted balanced JE); refusing to write null-JE cross-account legs.');
+            }
+
+            // 5. MED-10: open the port GUC in the OUTER transaction, BEFORE the
+            // savepoint, so a duplicate-key rollback-to-savepoint cannot unset it
+            // and trip the Task-22 trigger. pgsql-only DDL (invalid on sqlite).
             if ($isPgsql) {
                 DB::statement("SET LOCAL app.treasury_movement_port = 'on'");
             }
 
-            // 5. GL: post EXACTLY ONE journal entry — and only when the two
-            // repositories map to DIFFERENT gl_account_id. A transfer between two
-            // repositories backed by the same GL account has no net GL effect, so
-            // no entry is posted and both legs carry a null journal_entry_id (the
-            // spec's nullable exemption for same-GL-account transfer legs). The
-            // advisory lock (step 1) is already held, so postEntryNow's own
-            // re-acquire is a no-op and the global order is preserved.
-            $legJournalEntryId = null;
-            if ($fromRepo->gl_account_id !== $toRepo->gl_account_id && $intent->journalEntryId !== null) {
-                /** @var JournalEntry $entry */
-                $entry = JournalEntry::query()->whereKey($intent->journalEntryId)->firstOrFail();
-                $actor = $intent->createdBy !== null ? User::find($intent->createdBy) : null;
-                $this->generalLedger->postEntryNow($entry, $actor, $intent->currency);
-                $legJournalEntryId = $intent->journalEntryId;
-            }
-
             $occurredAt = $intent->occurredAt ?? CarbonImmutable::now();
 
-            // 6. Two legs — NOT two public record() calls. Each advances its own
-            // repository's gapless ordinal + cached balance; both share the
-            // intent's transfer_group_id and net to zero.
-            [$outId, $outBalance, $outOrdinal] = $this->insertMovementLeg(
-                repository: $fromRepo,
-                direction: MovementDirection::Out,
-                amount: $intent->amount,
-                currency: $intent->currency,
-                scale: $scale,
-                sourceType: MovementSourceType::Transfer,
-                sourceId: $intent->transferGroupId,
-                idempotencyKey: "transfer:{$intent->transferGroupId}:out",
-                journalEntryId: $legJournalEntryId,
-                transferGroupId: $intent->transferGroupId,
-                reversesMovementId: null,
-                reasonCode: null,
-                recordedWhileFrozen: false,
-                occurredAt: $occurredAt,
-                createdBy: $intent->createdBy,
-                notes: $intent->notes,
-            );
+            // 6. SAVEPOINT for paired-leg idempotency recovery (Fix 1, mirrors
+            // record()): the GL post + BOTH leg inserts + BOTH balance/ordinal
+            // updates run inside a nested transaction (PG SAVEPOINT). On a replay
+            // with the same transferGroupId, the out-leg's unique idempotency_key
+            // poisons the transaction — rollback-to-savepoint reverts the JE post
+            // and the ordinal/balance bumps, then handleTransferIdempotentHit
+            // returns the already-written pair. Nested beginTransaction → SAVEPOINT.
+            DB::beginTransaction();
+            try {
+                // GL: post EXACTLY ONE journal entry — only when the two
+                // repositories cross gl_account_id (guaranteed non-null by step 4).
+                // The advisory lock (step 1) is already held, so postEntryNow's own
+                // re-acquire is a no-op and the global order is preserved.
+                $legJournalEntryId = null;
+                if ($crossGlAccount) {
+                    /** @var JournalEntry $entry */
+                    $entry = JournalEntry::query()->whereKey($intent->journalEntryId)->firstOrFail();
+                    $actor = $intent->createdBy !== null ? User::find($intent->createdBy) : null;
+                    $this->generalLedger->postEntryNow($entry, $actor, $intent->currency);
+                    $legJournalEntryId = $intent->journalEntryId;
+                }
 
-            [$inId, $inBalance, $inOrdinal] = $this->insertMovementLeg(
-                repository: $toRepo,
-                direction: MovementDirection::In,
-                amount: $intent->amount,
-                currency: $intent->currency,
-                scale: $scale,
-                sourceType: MovementSourceType::Transfer,
-                sourceId: $intent->transferGroupId,
-                idempotencyKey: "transfer:{$intent->transferGroupId}:in",
-                journalEntryId: $legJournalEntryId,
-                transferGroupId: $intent->transferGroupId,
-                reversesMovementId: null,
-                reasonCode: null,
-                recordedWhileFrozen: false,
-                occurredAt: $occurredAt,
-                createdBy: $intent->createdBy,
-                notes: $intent->notes,
-            );
+                // Two legs — NOT two public record() calls. Each advances its own
+                // repository's gapless ordinal + cached balance; both share the
+                // intent's transfer_group_id and net to zero.
+                [$outId, $outBalance, $outOrdinal] = $this->insertMovementLeg(
+                    repository: $fromRepo,
+                    direction: MovementDirection::Out,
+                    amount: $intent->amount,
+                    currency: $intent->currency,
+                    scale: $scale,
+                    sourceType: MovementSourceType::Transfer,
+                    sourceId: $intent->transferGroupId,
+                    idempotencyKey: "transfer:{$intent->transferGroupId}:out",
+                    journalEntryId: $legJournalEntryId,
+                    transferGroupId: $intent->transferGroupId,
+                    reversesMovementId: null,
+                    reasonCode: null,
+                    recordedWhileFrozen: false,
+                    occurredAt: $occurredAt,
+                    createdBy: $intent->createdBy,
+                    notes: $intent->notes,
+                );
 
-            // 7. Fire RepositoryMovementRecorded for BOTH legs after commit — so
+                [$inId, $inBalance, $inOrdinal] = $this->insertMovementLeg(
+                    repository: $toRepo,
+                    direction: MovementDirection::In,
+                    amount: $intent->amount,
+                    currency: $intent->currency,
+                    scale: $scale,
+                    sourceType: MovementSourceType::Transfer,
+                    sourceId: $intent->transferGroupId,
+                    idempotencyKey: "transfer:{$intent->transferGroupId}:in",
+                    journalEntryId: $legJournalEntryId,
+                    transferGroupId: $intent->transferGroupId,
+                    reversesMovementId: null,
+                    reasonCode: null,
+                    recordedWhileFrozen: false,
+                    occurredAt: $occurredAt,
+                    createdBy: $intent->createdBy,
+                    notes: $intent->notes,
+                );
+
+                DB::commit(); // release savepoint
+            } catch (QueryException $e) {
+                DB::rollBack(); // to savepoint — reverts JE post + both legs, no gap
+                if (! $this->isUniqueViolation($e)) {
+                    throw $e;
+                }
+
+                $hit = $this->handleTransferIdempotentHit($intent); // SELECT both legs, validate or throw
+                $this->closePort(); // MED-10: the port is done writing — reset the GUC
+
+                return $hit;
+            }
+
+            // MED-10: the port has finished its DML — reset the GUC (no-op today).
+            $this->closePort();
+
+            // Fire RepositoryMovementRecorded for BOTH legs after commit — so
             // no listener observes an uncommitted (or rolled-back) transfer.
             DB::afterCommit(function () use (
                 $intent,
@@ -454,6 +504,91 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
             $existing->ordinal,
             true,
         );
+    }
+
+    /**
+     * Resolve a unique-violation collision on a transfer leg's idempotency_key:
+     * the paired legs were already written under this transfer_group_id (Fix 1,
+     * mirrors {@see handleIdempotentHit}). Both legs are SELECTed by their keys
+     * (`transfer:{group}:out` / `:in`) and each leg's semantic fields are
+     * validated against the intent. When both legs exist and every field matches
+     * it is a genuine replay — return both as idempotent hits. When either leg is
+     * missing (the unique violation was NOT a clean transfer replay — e.g. a
+     * foreign row occupying one key, or an ordinal race) or any field disagrees,
+     * fail loudly with IdempotencyConflictException rather than masking it.
+     */
+    private function handleTransferIdempotentHit(TransferIntent $intent): TransferResult
+    {
+        $outKey = "transfer:{$intent->transferGroupId}:out";
+        $inKey = "transfer:{$intent->transferGroupId}:in";
+
+        $existingOut = RepositoryMovement::query()->where('idempotency_key', $outKey)->first();
+        $existingIn = RepositoryMovement::query()->where('idempotency_key', $inKey)->first();
+
+        if ($existingOut === null || $existingIn === null) {
+            throw new IdempotencyConflictException(
+                $existingOut === null ? $outKey : $inKey,
+                'unique violation did not correspond to a complete existing transfer leg pair for this transfer_group_id',
+            );
+        }
+
+        $this->assertTransferLegMatches($existingOut, $intent, $intent->fromRepositoryId, MovementDirection::Out, $outKey);
+        $this->assertTransferLegMatches($existingIn, $intent, $intent->toRepositoryId, MovementDirection::In, $inKey);
+
+        return new TransferResult(
+            new MovementResult($existingOut->id, $existingOut->balance_after, $existingOut->ordinal, true),
+            new MovementResult($existingIn->id, $existingIn->balance_after, $existingIn->ordinal, true),
+        );
+    }
+
+    /**
+     * Validate one stored transfer leg against the replayed intent (repository,
+     * direction, amount, currency, transfer_group_id). Throws
+     * IdempotencyConflictException on any mismatch — the same key was reused for a
+     * materially different leg. journal_entry_id is deliberately NOT compared (a
+     * cross-account replay may re-derive the JE), mirroring record()'s contract.
+     */
+    private function assertTransferLegMatches(
+        RepositoryMovement $existing,
+        TransferIntent $intent,
+        string $expectedRepositoryId,
+        MovementDirection $expectedDirection,
+        string $key,
+    ): void {
+        $mismatches = [];
+        if ($existing->payment_repository_id !== $expectedRepositoryId) {
+            $mismatches[] = "repository {$existing->payment_repository_id} != {$expectedRepositoryId}";
+        }
+        if ($existing->direction !== $expectedDirection) {
+            $mismatches[] = "direction {$existing->direction->value} != {$expectedDirection->value}";
+        }
+        if (bccomp($existing->amount, $intent->amount, $this->scaleResolver->getScale($intent->currency)) !== 0) {
+            $mismatches[] = "amount {$existing->amount} != {$intent->amount}";
+        }
+        if ($existing->currency !== $intent->currency) {
+            $mismatches[] = "currency {$existing->currency} != {$intent->currency}";
+        }
+        if ($existing->transfer_group_id !== $intent->transferGroupId) {
+            $mismatches[] = "transfer_group_id {$existing->transfer_group_id} != {$intent->transferGroupId}";
+        }
+
+        if ($mismatches !== []) {
+            throw new IdempotencyConflictException($key, implode('; ', $mismatches));
+        }
+    }
+
+    /**
+     * MED-10: reset the port GUC after the port's DML completes, so a later
+     * non-port write in the SAME outer transaction cannot ride a still-open guard
+     * once the Task-22 trigger lands. Complements the `SET ... 'on'` issued before
+     * the savepoint. pgsql-only DDL; no-op on sqlite (test driver) and a no-op
+     * today (no trigger yet) — it just makes the Task-22 cutover airtight.
+     */
+    private function closePort(): void
+    {
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("SET LOCAL app.treasury_movement_port = 'off'");
+        }
     }
 
     private function buildRecordedEvent(

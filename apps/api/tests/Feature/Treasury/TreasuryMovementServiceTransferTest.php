@@ -18,10 +18,10 @@ use App\Modules\Treasury\Application\DTOs\TransferIntent;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded;
 use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
+use App\Modules\Treasury\Domain\Exceptions\IdempotencyConflictException;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
-use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -243,16 +243,25 @@ final class TreasuryMovementServiceTransferTest extends TestCase
         $this->service()->transfer($this->intent($from, $to, currency: 'TND'));
     }
 
-    // (c) A failure on the second leg rolls back BOTH — no half-transfer.
+    // (c) A failure on the second leg rolls back BOTH — no half-transfer. A
+    //     foreign row squatting one leg's idempotency_key is NOT a genuine replay
+    //     pair (the out-leg is rolled back by the savepoint, so no complete pair
+    //     exists): the port fails LOUDLY with IdempotencyConflictException while
+    //     preserving the rollback-both invariant. pgsql-only (savepoint recovery
+    //     is Postgres-shaped — a duplicate insert poisons the txn until rollback).
     public function test_failure_on_second_leg_rolls_back_both(): void
     {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Savepoint idempotency recovery is Postgres-shaped (duplicate-insert poisons the txn until rollback-to-savepoint).');
+        }
+
         $from = $this->seedRepository(balance: '100.000');
         $to = $this->seedRepository(balance: '0.000');
         $groupId = (string) Str::uuid();
 
         // Poison the in-leg: pre-seed a row carrying the exact idempotency_key
         // the in-leg will attempt, so the second insert violates the unique
-        // idempotency_key index and the whole dedicated transaction rolls back.
+        // idempotency_key index and the savepoint rolls back the whole pair.
         DB::table('repository_movements')->insert([
             'id' => (string) Str::uuid(),
             'tenant_id' => $this->tenant->id,
@@ -271,9 +280,9 @@ final class TreasuryMovementServiceTransferTest extends TestCase
 
         try {
             $this->service()->transfer($this->intent($from, $to, amount: '30.000', groupId: $groupId));
-            $this->fail('Expected a QueryException from the poisoned in-leg.');
-        } catch (QueryException) {
-            // expected
+            $this->fail('Expected IdempotencyConflictException — the poison leaves no complete replay pair.');
+        } catch (IdempotencyConflictException) {
+            // expected: out-leg was rolled back with the savepoint, so no pair exists.
         }
 
         // No out-leg survived on the source repository.
@@ -367,6 +376,101 @@ final class TreasuryMovementServiceTransferTest extends TestCase
 
         $this->assertSame($sortedExpected, $forwardOrder, 'A->B must lock repositories in id-sorted order.');
         $this->assertSame($sortedExpected, $reverseOrder, 'B->A must lock repositories in the SAME id-sorted order.');
+    }
+
+    // Fix 4 (self-transfer guard): source == destination throws before any lock.
+    public function test_self_transfer_throws(): void
+    {
+        $repo = $this->seedRepository(balance: '100.000');
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('distinct source and destination');
+
+        $this->service()->transfer($this->intent($repo, $repo, amount: '10.000'));
+    }
+
+    // Fix 2: a cross-GL-account transfer with a null journalEntryId must be
+    // refused — writing null-JE cross-account legs violates the GL invariant.
+    public function test_cross_gl_account_transfer_without_journal_entry_throws(): void
+    {
+        $drawerCash = $this->seedAccount('531001');
+        $bankCash = $this->seedAccount('512001');
+        $from = $this->seedRepository(balance: '100.000', glAccountId: $drawerCash->id);
+        $to = $this->seedRepository(balance: '0.000', glAccountId: $bankCash->id);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('requires a journalEntryId');
+
+        $this->service()->transfer($this->intent($from, $to, amount: '30.000', journalEntryId: null));
+
+        // Nothing written — no legs, balances untouched.
+        $this->assertSame(0, RepositoryMovement::count());
+    }
+
+    // Fix 1: replaying transfer() with the SAME transferGroupId yields exactly two
+    // rows total (not four), both balances applied once, the second call an
+    // idempotent hit returning the SAME movement ids. pgsql-only (savepoint
+    // recovery is Postgres-shaped).
+    public function test_idempotent_transfer_replay_returns_existing_legs_without_double_moving(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Transfer idempotency savepoint recovery is Postgres-shaped.');
+        }
+
+        Event::fake([RepositoryMovementRecorded::class]);
+
+        $from = $this->seedRepository(balance: '100.000');
+        $to = $this->seedRepository(balance: '0.000');
+        $intent = $this->intent($from, $to, amount: '30.000');
+
+        $first = $this->service()->transfer($intent);
+        $second = $this->service()->transfer($intent);
+
+        // Exactly TWO movement rows total for this group — NOT four.
+        $this->assertSame(2, RepositoryMovement::where('transfer_group_id', $intent->transferGroupId)->count());
+
+        // Both balances / ordinals applied EXACTLY once (the replay reverts via savepoint).
+        $from->refresh();
+        $to->refresh();
+        $this->assertSame('70.000', $from->balance);
+        $this->assertSame('30.000', $to->balance);
+        $this->assertSame(1, $from->next_movement_ordinal);
+        $this->assertSame(1, $to->next_movement_ordinal);
+
+        // First write genuine; replay is an idempotent hit with the SAME ids.
+        $this->assertFalse($first->outLeg->wasIdempotentHit);
+        $this->assertFalse($first->inLeg->wasIdempotentHit);
+        $this->assertTrue($second->outLeg->wasIdempotentHit);
+        $this->assertTrue($second->inLeg->wasIdempotentHit);
+        $this->assertSame($first->outLeg->movementId, $second->outLeg->movementId);
+        $this->assertSame($first->inLeg->movementId, $second->inLeg->movementId);
+        $this->assertSame($first->outLeg->ordinal, $second->outLeg->ordinal);
+        $this->assertSame($first->inLeg->balanceAfter, $second->inLeg->balanceAfter);
+
+        // The event fires twice total — both legs of the FIRST write, never for the replay.
+        Event::assertDispatchedTimes(RepositoryMovementRecorded::class, 2);
+    }
+
+    // Fix 3 (forward-looking): the port GUC is both OPENED and RESET around a
+    // transfer's DML, so once the Task-22 guard trigger lands a later non-port
+    // write in the same txn cannot ride a still-open guard. pgsql-only.
+    public function test_port_guc_is_opened_and_reset_around_a_transfer(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('The port GUC (SET LOCAL app.treasury_movement_port) is a Postgres concept.');
+        }
+
+        $from = $this->seedRepository(balance: '100.000');
+        $to = $this->seedRepository(balance: '0.000');
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->service()->transfer($this->intent($from, $to, amount: '10.000'));
+        $statements = array_map(static fn (array $e): string => $e['query'], DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $this->assertContains("SET LOCAL app.treasury_movement_port = 'on'", $statements);
+        $this->assertContains("SET LOCAL app.treasury_movement_port = 'off'", $statements);
     }
 
     /**

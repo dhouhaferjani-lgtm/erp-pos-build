@@ -9,6 +9,7 @@ use App\Modules\Treasury\Application\DTOs\MovementResult;
 use App\Modules\Treasury\Application\DTOs\TransferIntent;
 use App\Modules\Treasury\Application\DTOs\TransferResult;
 use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
+use App\Modules\Treasury\Domain\Exceptions\IdempotencyConflictException;
 
 /**
  * The single write port every treasury money-movement converges onto
@@ -66,10 +67,23 @@ interface TreasuryMovementServiceInterface
      * `gl_account_id`. A transfer between two repositories backed by the same GL
      * account has no net GL effect, so no entry is posted and both legs carry a
      * null `journal_entry_id` (the spec's nullable exemption for same-GL-account
-     * transfer legs).
+     * transfer legs). A CROSS-account transfer MUST supply a pre-posted balanced
+     * `journalEntryId` — omitting it throws \DomainException (writing null-JE
+     * cross-account legs would violate the GL invariant and later freeze the repo
+     * during reconciliation §9.2).
      *
+     * Idempotent on `transferGroupId` (leg keys `transfer:{group}:out` / `:in`):
+     * a replay with the same group returns the already-written leg pair (both
+     * `MovementResult::wasIdempotentHit === true`, no double-move) via a nested
+     * SAVEPOINT + unique-violation recovery mirroring {@see record()}; a reused
+     * group whose leg semantics disagree throws IdempotencyConflictException.
+     *
+     * @throws \DomainException When source and destination repositories are the
+     *                          same, or a cross-GL-account transfer omits a journalEntryId.
      * @throws CurrencyMismatchException
      *                                   When the intent currency does not match both repositories.
+     * @throws IdempotencyConflictException
+     *                                      When the transferGroupId was reused for a materially different transfer.
      */
     public function transfer(TransferIntent $intent): TransferResult;
 }
