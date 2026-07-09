@@ -321,7 +321,7 @@ describe('ReviewIngestionPage', () => {
     expect(await screen.findByText('Line 1 price is required.')).toBeInTheDocument()
   })
 
-  it('navigates to create-supplier with the extracted supplier as prefill state', async () => {
+  it('opens an in-page create-supplier dialog seeded from the extraction, without navigating away', async () => {
     const user = userEvent.setup()
     mockApiGet.mockResolvedValue(detailResponse())
 
@@ -329,9 +329,69 @@ describe('ReviewIngestionPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Create supplier' }))
 
-    expect(mockNavigate).toHaveBeenCalledWith('/purchases/suppliers/new', {
-      state: { partnerPrefill: { name: 'Pharma Distribution' } },
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText(/^name/i)).toHaveValue('Pharma Distribution')
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('selects the newly created supplier once AddPartnerModal succeeds', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(detailResponse())
+    mockApiPost.mockResolvedValueOnce({
+      id: 'sup-9',
+      name: 'PharmaDistrib',
+      type: 'supplier',
+      email: null,
+      phone: null,
+      address: null,
+      city: null,
+      postal_code: null,
+      country: null,
+      tax_id: null,
+      notes: null,
     })
+
+    renderReview()
+
+    await user.click(await screen.findByRole('button', { name: 'Create supplier' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.clear(within(dialog).getByLabelText(/^name/i))
+    await user.type(within(dialog).getByLabelText(/^name/i), 'PharmaDistrib')
+    await user.click(within(dialog).getByRole('button', { name: /create/i }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText('Supplier')).toHaveValue('sup-9')
+    expect(screen.getByRole('option', { name: 'PharmaDistrib' })).toBeInTheDocument()
+  })
+
+  it('posts only PartnerFormData keys when creating a supplier from the review page (no extraction-field leakage)', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(detailResponse())
+    mockApiPost.mockResolvedValueOnce({
+      id: 'sup-9',
+      name: 'Pharma Distribution',
+      type: 'supplier',
+      email: null,
+      phone: null,
+      address: null,
+      city: null,
+      postal_code: null,
+      country: null,
+      tax_id: null,
+      notes: null,
+    })
+
+    renderReview()
+
+    await user.click(await screen.findByRole('button', { name: 'Create supplier' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /create/i }))
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalledWith('/partners', expect.any(Object)))
+    const payload = mockApiPost.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(Object.keys(payload).sort()).toEqual(
+      ['address', 'city', 'country', 'email', 'name', 'notes', 'phone', 'postal_code', 'tax_id', 'type'].sort(),
+    )
   })
 
   afterEach(() => {

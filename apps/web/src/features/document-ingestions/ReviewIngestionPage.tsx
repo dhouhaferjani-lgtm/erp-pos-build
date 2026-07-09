@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Modal } from '@/components/organisms/Modal'
+import { AddPartnerModal } from '@/components/organisms'
 import { getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { textColors, tokens, typography } from '@/lib/designTokens'
@@ -14,7 +15,16 @@ import { LineMappingTable, type ReviewedLineState } from './components/LineMappi
 import { ProcessingState } from './components/ProcessingState'
 import { SourceViewer } from './components/SourceViewer'
 import { SupplierPicker } from './components/SupplierPicker'
-import type { DocumentIngestionDetail, IngestionStatus, ProductCandidate, ReceiptLineCandidate, ReviewedLinePayload, ReviewedPayload } from './types'
+import type { DocumentIngestionDetail, IngestionStatus, ProductCandidate, ReceiptLineCandidate, ReviewedLinePayload, ReviewedPayload, SupplierCandidate } from './types'
+
+interface CreatedPartner {
+  id: string
+  name: string
+}
+
+function toSupplierCandidate(partner: CreatedPartner): SupplierCandidate {
+  return { id: partner.id, name: partner.name }
+}
 
 function confidenceSummary(detail: DocumentIngestionDetail) {
   return detail.confidenceSummary ?? detail.confidence_summary ?? null
@@ -138,6 +148,8 @@ export function ReviewIngestionPage() {
   const rejectMutation = useRejectDocumentIngestion(id)
   const reExtractMutation = useReExtractDocumentIngestion(id)
   const [supplierId, setSupplierId] = useState('')
+  const [addSupplierOpen, setAddSupplierOpen] = useState(false)
+  const [createdSuppliers, setCreatedSuppliers] = useState<SupplierCandidate[]>([])
   const [locationId, setLocationId] = useState('')
   const [pendingReceipt, setPendingReceipt] = useState(false)
   const [lineStates, setLineStates] = useState<ReviewedLineState[]>([])
@@ -313,12 +325,10 @@ export function ReviewIngestionPage() {
 
           <section className={cn(tokens.card.base, 'space-y-4')}>
             <SupplierPicker
-              candidates={detail.suggestions?.supplierCandidates ?? []}
+              candidates={[...(detail.suggestions?.supplierCandidates ?? []), ...createdSuppliers]}
               value={supplierId}
               onChange={setSupplierId}
-              onCreateSupplier={() => {
-                void navigate('/purchases/suppliers/new', { state: { partnerPrefill: buildSupplierPrefill(detail.extraction?.supplier) } })
-              }}
+              onCreateSupplier={() => { setAddSupplierOpen(true) }}
             />
 
             {isDeliveryNote ? (
@@ -383,6 +393,18 @@ export function ReviewIngestionPage() {
           <SourceViewer sourceUrl={sourceUrl(detail)} />
         </Modal.Content>
       </Modal>
+
+      <AddPartnerModal
+        isOpen={addSupplierOpen}
+        onClose={() => { setAddSupplierOpen(false) }}
+        partnerType="supplier"
+        prefill={buildSupplierPrefill(detail.extraction?.supplier)}
+        onSuccess={(partner) => {
+          setCreatedSuppliers((current) => [...current, toSupplierCandidate(partner)])
+          setSupplierId(partner.id)
+          setAddSupplierOpen(false)
+        }}
+      />
     </div>
   )
 }
