@@ -36,9 +36,11 @@ use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -86,6 +88,16 @@ final class ReconcileTreasuryTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        // Safety net for test_repository_check_error_does_not_abort_later_repositories_and_exits_failure(),
+        // which pins Carbon::setTestNow() to order two repositories' created_at —
+        // guarantee it never leaks into a later test if an assertion fails first.
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     private function service(): TreasuryMovementServiceInterface
@@ -618,6 +630,79 @@ final class ReconcileTreasuryTest extends TestCase
         return $entry;
     }
 
+    // ── (g) per-repository/per-tenant failure isolation (2026-07-09 audit N1) ──
+    //
+    // A single repository's check throwing (corrupt row / resolver failure /
+    // audit-write failure / lock timeout) must NOT abort reconciliation for the
+    // rest of the run: it must be caught, logged, counted as an error (never as
+    // a freeze), and the run must continue to check every other repository —
+    // in this same tenant and in any tenant that follows.
+
+    public function test_repository_check_error_does_not_abort_later_repositories_and_exits_failure(): void
+    {
+        // $erroring is created strictly BEFORE $drifted (repositories are
+        // checked in created_at order) and carries a currency wired — via the
+        // decorator bound below — to make the very first line of detectDrift()
+        // (scale resolution) throw. Pre-fix, this uncaught throw would abort the
+        // bare foreach and $drifted would never be reached.
+        Carbon::setTestNow(Carbon::parse('2026-07-09 08:00:00'));
+        $erroring = PaymentRepository::factory()->for($this->company)->create([
+            'tenant_id' => $this->tenant->id,
+            'currency' => 'ZZZ',
+            'gl_account_id' => $this->cashAccount->id,
+            'next_movement_ordinal' => 0,
+            'frozen_at' => null,
+            'frozen_reason' => null,
+        ]);
+
+        $this->app->instance(
+            CurrencyScaleResolverInterface::class,
+            new ThrowingScaleResolverDecorator(
+                $this->app->make(CurrencyScaleResolverInterface::class),
+                'ZZZ',
+            ),
+        );
+
+        Carbon::setTestNow(Carbon::parse('2026-07-09 08:00:01'));
+        $drifted = $this->seedRepository();
+        $je = $this->postedCashEntry($this->cashAccount->id, '10.000');
+        $this->recordIn($drifted, '10.000', journalEntryId: $je->id);
+        // Raw ordinal-2 leg that breaks balance continuity — genuine drift.
+        $this->rawMovement(
+            repo: $drifted,
+            direction: MovementDirection::In,
+            amount: '5.000',
+            balanceAfter: '10.000',
+            ordinal: 2,
+            sourceType: MovementSourceType::OpeningBalance,
+            journalEntryId: null,
+        );
+        Carbon::setTestNow();
+
+        $logSpy = Log::spy();
+
+        $exit = $this->reconcile();
+
+        self::assertSame(1, $exit, 'A per-repository check error must surface a non-zero (FAILURE) exit.');
+
+        $erroring->refresh();
+        self::assertNull(
+            $erroring->frozen_at,
+            'An errored check is a check FAILURE, not a drift FINDING — it must NOT freeze the repository.',
+        );
+        self::assertSame(0, $this->driftEventCount($erroring->id));
+
+        $drifted->refresh();
+        self::assertNotNull(
+            $drifted->frozen_at,
+            'A genuinely drifted repository created AFTER the errored one must still be checked and frozen — proof the throw did not abort the run.',
+        );
+        self::assertSame(1, $this->driftEventCount($drifted->id));
+
+        self::assertInstanceOf(LegacyMockInterface::class, $logSpy);
+        $logSpy->shouldHaveReceived('error', ['treasury.reconcile.error', Mockery::type('array')]);
+    }
+
     // ── (f) REAL-BRIDGE green reconcile — the dominant FiscalEvent source type ──
     //
     // MAJOR 3: the clean cases above build movements from a hand-made Payment +
@@ -881,5 +966,38 @@ final class ReconcileTreasuryTest extends TestCase
             'is_primary' => true,
             'status' => MembershipStatus::Active,
         ]);
+    }
+}
+
+/**
+ * Test-only decorator that forces {@see CurrencyScaleResolverInterface::getScaleSafe()}
+ * to throw for one specific currency code while delegating everything else (and
+ * the strict {@see CurrencyScaleResolverInterface::getScale()}) to the real
+ * resolver. `getScaleSafe()` is designed to never throw in production (it always
+ * falls through to the static ISO 4217 map for an explicit currency code); this
+ * decorator simulates a genuine check-time failure (2026-07-09 audit N1 —
+ * "advisory/row-lock timeout, audit-write failure, corrupt row") for a single
+ * repository so the per-repository isolation contract can be exercised without
+ * depending on driver-specific corruption tricks.
+ */
+final class ThrowingScaleResolverDecorator implements CurrencyScaleResolverInterface
+{
+    public function __construct(
+        private readonly CurrencyScaleResolverInterface $inner,
+        private readonly string $throwForCurrency,
+    ) {}
+
+    public function getScale(?string $currencyCode = null): int
+    {
+        return $this->inner->getScale($currencyCode);
+    }
+
+    public function getScaleSafe(?string $currencyCode = null, int $fallback = 3): int
+    {
+        if ($currencyCode === $this->throwForCurrency) {
+            throw new \RuntimeException('simulated scale-resolution failure for currency '.$this->throwForCurrency);
+        }
+
+        return $this->inner->getScaleSafe($currencyCode, $fallback);
     }
 }

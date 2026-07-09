@@ -35,19 +35,30 @@ Schedule::command('fraud:detect')
 // Schedule: Treasury reconciliation (balance/ledger/GL/transfer coherence) —
 // freeze-on-drift, never repair — daily at 2:15 AM.
 //
-// A freeze returns a NON-ZERO exit (self::FAILURE). It must NOT be discarded:
+// A freeze OR a per-repository/per-tenant check failure returns a NON-ZERO
+// exit (self::FAILURE) — see ReconcileTreasuryCommand::executeCommand() and
+// TenantScopedCommand::forEachTenant(). It must NOT be discarded:
 // runInBackground() forks a detached process whose exit code the scheduler does
 // not observe in-process, so an ->onFailure() hook could silently never fire —
 // a FROZEN drawer would then surface only in audit_events, unnoticed until the
-// next drawer op fails. Run in-process so the exit code is observed, and raise
-// an error-level alert on any freeze (Task-24 fix B). The command itself already
-// writes the per-repository detail (error log + treasury.reconcile.drift audit
-// row); this hook is the proactive top-level signal ops watch.
+// next drawer op fails. Run in-process so the exit code is observed.
+//
+// 2026-07-09 audit finding N1: the command's own exit code does NOT
+// distinguish "froze on drift" from "a repository/tenant check errored"
+// (both collapse to FAILURE, and Laravel's Schedule::onFailure() callback
+// has no cheap access to a finer-grained signal than that single exit code)
+// — so this alert MUST NOT assert a freeze occurred. It only asserts that
+// the run ended non-clean and points the operator at BOTH possible sources
+// of truth: the `treasury.reconcile.drift` audit_events (freezes) and the
+// application error log (`treasury.reconcile.error` for a per-repository
+// failure, or the `TenantScopedCommand::forEachTenant` failure log for a
+// per-tenant failure). The command itself already writes the per-repository
+// detail; this hook is the proactive top-level signal ops watch.
 Schedule::command('treasury:reconcile')
     ->dailyAt('02:15')
     ->withoutOverlapping()
     ->onFailure(function (): void {
-        Log::error('treasury:reconcile reported drift — one or more payment repositories were FROZEN. Investigate the treasury.reconcile.drift audit_events immediately; the drawer stays locked until an operator clears the freeze.');
+        Log::error('treasury:reconcile exited non-zero — this run either detected drift (one or more payment repositories were FROZEN) or one or more repository/tenant checks failed with an error (left un-frozen), or both; it is NOT known which from this signal alone. Check the treasury.reconcile.drift audit_events for freezes AND the application error log (treasury.reconcile.error / forEachTenant tenant-iteration failures) for check errors before assuming either outcome. A frozen drawer stays locked until an operator clears the freeze; an errored repository was simply skipped this run and should be re-checked.');
     });
 
 // Schedule: Expire old stock reservations every 15 minutes

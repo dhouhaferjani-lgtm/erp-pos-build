@@ -19,6 +19,7 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * `php artisan treasury:reconcile {--tenant=}`
@@ -46,11 +47,28 @@ use Illuminate\Support\Facades\Log;
  * and resolves scale from each repository's own currency — never the no-arg
  * `getScale()`, which would throw here.
  *
+ * **Failure isolation** (2026-07-09 audit finding N1): a `\Throwable` from a
+ * single repository's check (advisory/row-lock timeout, audit-write failure,
+ * corrupt row) is caught, logged (`treasury.reconcile.error`), counted, and
+ * the run continues to the next repository — it never aborts reconciliation
+ * for the rest of the tenant or for later tenants. `forEachTenant()` applies
+ * the same isolation one level up, per-tenant. The exit code is FAILURE if
+ * ANY repository froze OR errored this run.
+ *
  * Scheduled DAILY in routes/console.php.
  */
 final class ReconcileTreasuryCommand extends TenantScopedCommand
 {
     private const DRIFT_EVENT_TYPE = 'treasury.reconcile.drift';
+
+    /**
+     * Per-repository check FAILURE (as opposed to a genuine drift FINDING).
+     * Logged only (2026-07-09 audit finding N1) — a repository that errors
+     * (advisory/row-lock timeout, audit-write failure, corrupt row) is left
+     * as-is (never frozen on the basis of an error alone) and the run moves
+     * on to the next repository; the operator must re-run reconcile for it.
+     */
+    private const ERROR_EVENT_TYPE = 'treasury.reconcile.error';
 
     /** @var string */
     protected $signature = 'treasury:reconcile
@@ -74,14 +92,19 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
 
         $checked = 0;
         $frozen = 0;
+        $errored = 0;
 
-        $this->forEachTenant(function (Tenant $tenant) use ($tenantFilter, &$checked, &$frozen): int {
+        $tenantExit = $this->forEachTenant(function (Tenant $tenant) use ($tenantFilter, &$checked, &$frozen, &$errored): int {
             if ($tenantFilter !== null && $tenant->id !== $tenantFilter) {
                 return self::SUCCESS;
             }
 
+            // Ordered so per-repository iteration is deterministic: a repository
+            // whose check throws (see catch below) must not affect whether
+            // repositories created after it are still reached this run.
             $repositories = PaymentRepository::query()
                 ->where('tenant_id', $tenant->id)
+                ->orderBy('created_at')
                 ->get();
 
             foreach ($repositories as $repository) {
@@ -93,10 +116,34 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
                     continue;
                 }
 
-                $reason = $this->detectDrift($repository);
-                if ($reason !== null) {
-                    $this->freezeAndAlert($repository, $reason);
-                    $frozen++;
+                // Per-repository failure isolation (2026-07-09 audit finding N1):
+                // a corrupt row, advisory/row-lock timeout, or audit-write failure
+                // for ONE repository must not abort reconciliation for the rest of
+                // this tenant's (or any later tenant's) repositories.
+                try {
+                    $reason = $this->detectDrift($repository);
+                    if ($reason !== null) {
+                        $this->freezeAndAlert($repository, $reason);
+                        $frozen++;
+                    }
+                } catch (Throwable $e) {
+                    $errored++;
+                    Log::error(self::ERROR_EVENT_TYPE, [
+                        'tenant_id' => $tenant->id,
+                        'company_id' => $repository->company_id,
+                        'repository_id' => $repository->id,
+                        'currency' => $repository->currency,
+                        'exception_class' => $e::class,
+                        'exception_message' => $e->getMessage(),
+                    ]);
+                    $this->error(sprintf(
+                        'ERROR checking repository %s (tenant %s): %s',
+                        $repository->id,
+                        $tenant->id,
+                        $e->getMessage(),
+                    ));
+
+                    continue;
                 }
             }
 
@@ -104,14 +151,18 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
         });
 
         $this->info(sprintf(
-            'treasury:reconcile — checked %d repository(ies); froze %d on drift.',
+            'treasury:reconcile — checked %d repository(ies); froze %d on drift; %d error(s).',
             $checked,
             $frozen,
+            $errored,
         ));
 
-        // A fresh freeze this run surfaces a non-zero exit so ops/CI notice.
-        // Subsequent runs skip the now-frozen repo and return SUCCESS.
-        return $frozen > 0 ? self::FAILURE : self::SUCCESS;
+        // A fresh freeze OR a per-repository/per-tenant error this run surfaces a
+        // non-zero exit so ops/CI notice. Subsequent runs skip the now-frozen repo
+        // and (barring a fresh error) return SUCCESS.
+        return ($frozen > 0 || $errored > 0 || $tenantExit !== self::SUCCESS)
+            ? self::FAILURE
+            : self::SUCCESS;
     }
 
     /**
