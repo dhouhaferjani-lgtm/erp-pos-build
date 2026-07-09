@@ -73,7 +73,7 @@ export function BarcodeChooserModal({
     >
       <div
         ref={dialogRef}
-        className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+        className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-panel bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-gray-200 px-4 py-3">
@@ -92,7 +92,7 @@ export function BarcodeChooserModal({
             type="button"
             onClick={onDismiss}
             aria-label={t('barcodeChooser.dismiss')}
-            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+            className="rounded-ctl p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
           >
             <X className="h-5 w-5" />
           </button>
@@ -161,7 +161,7 @@ export function BarcodeChooserModal({
           <button
             type="button"
             onClick={onDismiss}
-            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="w-full rounded-ctl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             {t('barcodeChooser.cancel')}
           </button>

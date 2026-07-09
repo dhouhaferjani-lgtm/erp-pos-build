@@ -263,7 +263,7 @@ export function CashReconciliationSection({
           onClick={() => setCommitted(true)}
           disabled={!allPhysicalFilled}
           data-testid="commit-counts-button"
-          className="rounded-md bg-action px-4 py-2 text-sm font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:bg-surface-sunken"
+          className="rounded-ctl bg-action px-4 py-2 text-sm font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:bg-surface-sunken"
         >
           {t('cash_count.commit_counts', { defaultValue: 'Commit Counts' })}
         </button>
@@ -286,7 +286,7 @@ export function CashReconciliationSection({
             data-testid="variance-reason-input"
             maxLength={500}
             rows={3}
-            className="w-full rounded-md border border-border-strong p-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            className="w-full rounded-ctl border border-border-strong p-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           />
         </div>
       )}

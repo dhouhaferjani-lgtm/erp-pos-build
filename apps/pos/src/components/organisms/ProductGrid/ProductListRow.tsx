@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { tokens } from '@/lib/designTokens';
 import { useCurrency } from '@/lib/currency';
 import { useProductImage } from '@/lib/images/useProductImage';
 import { ProductThumb, StockBadge } from '@/components/ui';
@@ -82,8 +83,12 @@ function ProductListRowInner({
         <p
           title={product.name}
           className={cn(
-            'w-full truncate text-[13.5px] font-semibold leading-[1.3]',
-            status === 'out' ? 'text-ink-faint' : 'text-ink',
+            // Shared productName recipe (owner polish 2026-07-09, sub-task d):
+            // the name reads the same in every density; rows truncate to 1 line.
+            'w-full',
+            tokens.productName.base,
+            tokens.productName.clamp1,
+            status === 'out' ? tokens.productName.inkDisabled : tokens.productName.ink,
           )}
         >
           {product.name}
@@ -135,7 +140,7 @@ function ProductListRowInner({
             e.stopPropagation();
             onViewDetails(product);
           }}
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-surface-sunken text-ink-muted transition-colors hover:bg-border-subtle hover:text-ink active:bg-border-subtle"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-ctl bg-surface-sunken text-ink-muted transition-colors hover:bg-border-subtle hover:text-ink active:bg-border-subtle"
           title={viewDetailsLabel}
         >
           <Eye className="h-5 w-5" />
@@ -152,7 +157,7 @@ function ProductListRowInner({
           handleAdd();
         }}
         className={cn(
-          'flex h-12 w-16 shrink-0 items-center justify-center rounded-lg font-semibold transition-colors',
+          'flex h-12 w-16 shrink-0 items-center justify-center rounded-ctl font-semibold transition-colors',
           isActivationBlocked
             ? 'cursor-not-allowed bg-surface-sunken text-ink-faint'
             : 'cursor-pointer bg-action text-ink-inverse hover:bg-action-hover active:bg-action-strong',

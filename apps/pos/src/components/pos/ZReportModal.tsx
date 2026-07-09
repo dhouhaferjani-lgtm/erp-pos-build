@@ -77,13 +77,13 @@ export function ZReportModal({
             <div className="flex gap-3">
               <button
                 onClick={handleClose}
-                className="flex-1 rounded-xl border border-border-strong bg-surface-raised px-4 py-3 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-sunken"
+                className="flex-1 rounded-ctl border border-border-strong bg-surface-raised px-4 py-3 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-sunken"
               >
                 {t('reports.zReportCancel')}
               </button>
               <button
                 onClick={() => void handleConfirm()}
-                className="flex-1 rounded-xl bg-warning px-4 py-3 text-sm font-semibold text-ink-inverse transition-colors hover:bg-warning-strong"
+                className="flex-1 rounded-ctl bg-warning px-4 py-3 text-sm font-semibold text-ink-inverse transition-colors hover:bg-warning-strong"
               >
                 {t('reports.zReportConfirm')}
               </button>
@@ -100,7 +100,7 @@ export function ZReportModal({
       )}
 
       {error && !isLoading && confirmed && (
-        <div className="rounded-lg bg-danger-surface p-4 text-center">
+        <div className="rounded-tile bg-danger-surface p-4 text-center">
           <p className="font-medium text-danger-strong">{t('reports.errorGenerating')}</p>
           <p className="mt-1 text-sm text-danger">{error}</p>
         </div>
@@ -111,7 +111,7 @@ export function ZReportModal({
           {/* Header: Z number + fiscal hash + timestamp */}
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <span className="rounded-lg bg-action-subtle px-3 py-1.5 text-sm font-bold text-action">
+              <span className="rounded-tile bg-action-subtle px-3 py-1.5 text-sm font-bold text-action">
                 {report.formatted_z_number}
               </span>
               <p className="font-mono text-xs text-ink-muted" title={report.fiscal_hash}>
@@ -124,7 +124,7 @@ export function ZReportModal({
           </div>
 
           {/* Cash Reconciliation */}
-          <div className="rounded-xl border border-action-subtle bg-action-subtle p-5">
+          <div className="rounded-card border border-action-subtle bg-action-subtle p-5">
             <h4 className="mb-3 text-sm font-semibold text-action">{t('reports.cashReconciliation')}</h4>
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
@@ -145,7 +145,7 @@ export function ZReportModal({
               </div>
             </div>
             {!report.has_variance && (
-              <div className="mt-3 flex items-start gap-2 rounded-lg bg-action-subtle/50 px-3 py-2">
+              <div className="mt-3 flex items-start gap-2 rounded-tile bg-action-subtle/50 px-3 py-2">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-action" />
                 <p className="text-xs text-action">{t('reports.varianceNote')}</p>
               </div>
@@ -162,7 +162,7 @@ export function ZReportModal({
 
           {/* Refunds */}
           {report.report_data.refunds_count > 0 && (
-            <div className="rounded-lg bg-warning-surface px-4 py-3">
+            <div className="rounded-tile bg-warning-surface px-4 py-3">
               <div className="flex justify-between text-sm font-medium text-warning-strong">
                 <span>{t('reports.refundsCount')}: {report.report_data.refunds_count}</span>
                 <span>{format(report.report_data.refunds_amount)}</span>
@@ -232,7 +232,7 @@ export function ZReportModal({
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-surface-sunken px-4 py-3 text-center">
+    <div className="rounded-tile bg-surface-sunken px-4 py-3 text-center">
       <p className="text-xs text-ink-muted">{label}</p>
       <p className="mt-1 text-lg font-bold text-ink">{value}</p>
     </div>

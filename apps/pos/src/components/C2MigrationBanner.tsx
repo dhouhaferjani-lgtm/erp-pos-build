@@ -34,7 +34,7 @@ export function C2MigrationBanner() {
       <button
         type="button"
         onClick={() => void dismiss()}
-        className="inline-flex h-7 items-center gap-1 rounded border border-rose-300 bg-white px-2 text-sm font-semibold text-rose-950 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-1"
+        className="inline-flex h-7 items-center gap-1 rounded-ctl border border-rose-300 bg-white px-2 text-sm font-semibold text-rose-950 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-1"
       >
         <X className="h-4 w-4" aria-hidden />
         {t('c2Migration.dismiss')}

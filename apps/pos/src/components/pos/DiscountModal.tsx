@@ -90,11 +90,11 @@ export function DiscountModal({
     <Modal isOpen={isOpen} onClose={onClose} title={t('discount.title')} size="lg">
       <div className="space-y-4">
         {/* Tabs */}
-        <div className="flex rounded-lg bg-gray-100 p-1">
+        <div className="flex rounded-ctl bg-gray-100 p-1">
           <button
             onClick={() => setTab('lineItem')}
             className={cn(
-              'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors',
               tab === 'lineItem'
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-500 hover:text-gray-700',
@@ -105,7 +105,7 @@ export function DiscountModal({
           <button
             onClick={() => setTab('transaction')}
             className={cn(
-              'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors',
               tab === 'transaction'
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-500 hover:text-gray-700',
@@ -117,11 +117,11 @@ export function DiscountModal({
 
         {/* Discount type toggle (only for line-item) */}
         {tab === 'lineItem' && (
-          <div className="flex rounded-lg bg-gray-100 p-1">
+          <div className="flex rounded-ctl bg-gray-100 p-1">
             <button
               onClick={() => setDiscountType('percentage')}
               className={cn(
-                'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors',
                 discountType === 'percentage'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700',
@@ -132,7 +132,7 @@ export function DiscountModal({
             <button
               onClick={() => setDiscountType('fixed')}
               className={cn(
-                'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors',
                 discountType === 'fixed'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700',
@@ -144,7 +144,7 @@ export function DiscountModal({
         )}
 
         {/* Value display */}
-        <div className="rounded-xl bg-gray-50 px-4 py-3 text-center text-3xl font-bold text-gray-900">
+        <div className="rounded-card bg-gray-50 px-4 py-3 text-center text-3xl font-bold text-gray-900">
           {value || '0'}
           {tab === 'lineItem' && discountType === 'percentage' ? '%' : ''}
         </div>
@@ -163,7 +163,7 @@ export function DiscountModal({
               key={key}
               onClick={() => handleNumpadPress(key)}
               className={cn(
-                'flex h-14 items-center justify-center rounded-xl text-lg font-semibold transition-colors',
+                'flex h-14 items-center justify-center rounded-ctl text-lg font-semibold transition-colors',
                 key === 'C'
                   ? 'bg-red-50 text-red-600 hover:bg-red-100'
                   : 'bg-gray-50 text-gray-900 hover:bg-gray-100 active:bg-gray-200',
@@ -184,7 +184,7 @@ export function DiscountModal({
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="w-full rounded-ctl border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
           />
         </div>
 
@@ -192,7 +192,7 @@ export function DiscountModal({
         <button
           onClick={handleApply}
           disabled={!isValid}
-          className="flex min-h-[48px] w-full items-center justify-center rounded-xl bg-blue-600 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-[48px] w-full items-center justify-center rounded-ctl bg-blue-600 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t('discount.apply')}
         </button>

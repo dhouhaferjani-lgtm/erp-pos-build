@@ -187,7 +187,7 @@ export function EndOfDayPreviewModal({
           <p className="text-center text-sm text-danger-strong">{errorMessage}</p>
           <button
             onClick={handleClose}
-            className="mt-4 rounded-xl border border-border-strong px-6 py-2.5 text-sm font-semibold text-ink-muted hover:bg-surface-sunken"
+            className="mt-4 rounded-ctl border border-border-strong px-6 py-2.5 text-sm font-semibold text-ink-muted hover:bg-surface-sunken"
           >
             {t('reports.endOfDay.cancel')}
           </button>
@@ -241,7 +241,7 @@ export function EndOfDayPreviewModal({
               redundant card MUST NOT render — otherwise it leaks the expected
               total. Only show it when there is no cash-count reconciliation. */}
           {!cashCountEnabled && (
-            <div className="rounded-xl border border-action-subtle bg-action-subtle p-5">
+            <div className="rounded-card border border-action-subtle bg-action-subtle p-5">
               <h4 className="mb-3 text-sm font-semibold text-action-strong">
                 {t('reports.endOfDay.cashReconciliation')}
               </h4>
@@ -333,7 +333,7 @@ export function EndOfDayPreviewModal({
             <button
               onClick={handleClose}
               disabled={phase === 'confirming'}
-              className="flex min-h-[48px] items-center justify-center flex-1 rounded-xl border border-border-strong bg-surface-raised px-4 py-3 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex min-h-[48px] items-center justify-center flex-1 rounded-ctl border border-border-strong bg-surface-raised px-4 py-3 text-sm font-semibold text-ink-muted transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t('reports.endOfDay.cancel')}
             </button>
@@ -342,7 +342,7 @@ export function EndOfDayPreviewModal({
               disabled={confirmDisabled}
               aria-label={t('reports.endOfDay.confirmLabel')}
               data-testid="end-of-day-confirm-button"
-              className="flex min-h-[48px] items-center justify-center flex-1 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-ink-inverse transition-colors hover:bg-danger-strong disabled:cursor-not-allowed disabled:opacity-75"
+              className="flex min-h-[48px] items-center justify-center flex-1 rounded-ctl bg-danger px-4 py-3 text-sm font-semibold text-ink-inverse transition-colors hover:bg-danger-strong disabled:cursor-not-allowed disabled:opacity-75"
             >
               {phase === 'confirming' ? (
                 <span className="flex items-center justify-center gap-2">
@@ -364,7 +364,7 @@ export function EndOfDayPreviewModal({
           <div className="text-center">
             <p className="mt-2 text-sm text-ink-muted">
               {t('reports.endOfDay.successZNumber')}: {' '}
-              <span className="rounded bg-action-subtle px-2 py-0.5 font-mono font-bold text-action-strong">
+              <span className="rounded-sm bg-action-subtle px-2 py-0.5 font-mono font-bold text-action-strong">
                 {result.formattedZNumber}
               </span>
             </p>
@@ -379,7 +379,7 @@ export function EndOfDayPreviewModal({
             {onPrintReceipt && (
               <button
                 onClick={() => onPrintReceipt(result)}
-                className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface-raised px-6 py-2.5 text-sm font-semibold text-ink-muted hover:bg-surface-sunken"
+                className="flex items-center gap-2 rounded-ctl border border-border-strong bg-surface-raised px-6 py-2.5 text-sm font-semibold text-ink-muted hover:bg-surface-sunken"
               >
                 <Printer className="h-4 w-4" />
                 {t('reports.endOfDay.printReceipt')}
@@ -387,7 +387,7 @@ export function EndOfDayPreviewModal({
             )}
             <button
               onClick={onClose}
-              className="flex min-h-[48px] items-center justify-center rounded-xl bg-action px-6 py-2.5 text-sm font-semibold text-ink-inverse hover:bg-action-hover"
+              className="flex min-h-[48px] items-center justify-center rounded-ctl bg-action px-6 py-2.5 text-sm font-semibold text-ink-inverse hover:bg-action-hover"
             >
               {t('reports.endOfDay.done')}
             </button>
@@ -400,7 +400,7 @@ export function EndOfDayPreviewModal({
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-surface-sunken px-4 py-3 text-center">
+    <div className="rounded-tile bg-surface-sunken px-4 py-3 text-center">
       <p className="text-xs text-ink-muted">{label}</p>
       <p className="mt-1 text-lg font-bold text-ink">{value}</p>
     </div>

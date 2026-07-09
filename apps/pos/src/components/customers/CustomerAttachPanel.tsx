@@ -249,7 +249,7 @@ export function CustomerAttachBody({
       )}
 
       {selectedCustomer ? (
-        <div className="space-y-2 rounded-md border border-border-subtle bg-surface-sunken p-2">
+        <div className="space-y-2 rounded-sm border border-border-subtle bg-surface-sunken p-2">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-ink">{selectedCustomer.name}</div>
@@ -261,7 +261,7 @@ export function CustomerAttachBody({
               type="button"
               onClick={detachCustomer}
               aria-label={t('customer.detach')}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-faint hover:bg-surface-sunken hover:text-ink"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-ctl text-ink-faint hover:bg-surface-sunken hover:text-ink"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -279,7 +279,7 @@ export function CustomerAttachBody({
               onChange={(event) => setAccountPaymentAmount(event.target.value)}
               inputMode="decimal"
               placeholder={t('customer.amount')}
-              className="min-w-0 rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+              className="min-w-0 rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
             />
             <button
               type="button"
@@ -305,21 +305,21 @@ export function CustomerAttachBody({
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
               placeholder={t('customer.name')}
-              className="rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+              className="rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
             />
             <input
               aria-label={t('customer.phone')}
               value={newPhone}
               onChange={(event) => setNewPhone(event.target.value)}
               placeholder={t('customer.phone')}
-              className="rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+              className="rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
             />
             <input
               aria-label={t('customer.email')}
               value={newEmail}
               onChange={(event) => setNewEmail(event.target.value)}
               placeholder={t('customer.email')}
-              className="rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+              className="rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
             />
           </div>
           <button

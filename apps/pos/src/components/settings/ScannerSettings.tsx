@@ -27,13 +27,13 @@ export function ScannerSettings() {
   });
 
   return (
-    <section className="rounded-xl bg-white p-4 shadow-sm">
+    <section className="rounded-card bg-white p-4 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
         <Barcode className="h-5 w-5 text-gray-700" />
         <h2 className="text-base font-bold text-gray-900">
           {t('settings.scanner')}
         </h2>
-        <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+        <span className="ml-auto rounded-pill bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
           {t('settings.scannerMode')}
         </span>
       </div>
@@ -74,12 +74,12 @@ export function ScannerSettings() {
             max={20}
             value={minBarcodeLength}
             onChange={(e) => setMinBarcodeLength(Math.min(20, Math.max(1, Number(e.target.value))))}
-            className="min-h-[44px] w-24 rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="min-h-[44px] w-24 rounded-ctl border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
 
         {/* Auto-add to cart */}
-        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+        <div className="flex items-center justify-between rounded-tile bg-gray-50 px-3 py-3">
           <div>
             <span className="text-sm font-medium text-gray-900">
               {t('settings.autoAddToCart')}
@@ -91,7 +91,7 @@ export function ScannerSettings() {
           <button
             onClick={() => setAutoAddToCart(!autoAddToCart)}
             className={cn(
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              'relative inline-flex h-6 w-11 items-center rounded-pill transition-colors',
               autoAddToCart ? 'bg-blue-600' : 'bg-gray-300',
             )}
             role="switch"
@@ -107,7 +107,7 @@ export function ScannerSettings() {
         </div>
 
         {/* Sound on scan */}
-        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+        <div className="flex items-center justify-between rounded-tile bg-gray-50 px-3 py-3">
           <div>
             <span className="text-sm font-medium text-gray-900">
               {t('settings.soundOnScan')}
@@ -119,7 +119,7 @@ export function ScannerSettings() {
           <button
             onClick={() => setSoundOnScan(!soundOnScan)}
             className={cn(
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              'relative inline-flex h-6 w-11 items-center rounded-pill transition-colors',
               soundOnScan ? 'bg-blue-600' : 'bg-gray-300',
             )}
             role="switch"
@@ -135,7 +135,7 @@ export function ScannerSettings() {
         </div>
 
         {/* Scan test area */}
-        <div className="rounded-lg border border-dashed border-gray-300 p-3 text-center">
+        <div className="rounded-tile border border-dashed border-gray-300 p-3 text-center">
           <p className="text-xs font-medium uppercase text-gray-500">
             {t('settings.scanTestArea')}
           </p>

@@ -122,7 +122,7 @@ export function RefundDestinationPicker({
               key={d}
               data-testid={`refund-destination-option-${d}`}
               className={[
-                'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+                'flex cursor-pointer items-start gap-3 rounded-tile border p-3 transition-colors',
                 allowed
                   ? value === d
                     ? 'border-accent bg-accent-tint'
@@ -152,7 +152,7 @@ export function RefundDestinationPicker({
       {prorationBreakdown !== undefined && prorationBreakdown.length > 0 && value === 'original' && (
         <div
           data-testid="proration-breakdown"
-          className="rounded-md border border-action-subtle bg-action-subtle p-3 text-sm"
+          className="rounded-sm border border-action-subtle bg-action-subtle p-3 text-sm"
         >
           <p className="mb-2 font-medium text-action">
             {t('refundFlow.destination.proration_title', { defaultValue: 'Refund breakdown' })}
@@ -206,7 +206,7 @@ export function RefundDestinationPickerStateful({
         type="button"
         onClick={() => onConfirm(selected)}
         data-testid="refund-destination-confirm"
-        className="flex min-h-[48px] items-center justify-center w-full rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover"
+        className="flex min-h-[48px] items-center justify-center w-full rounded-ctl bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover"
       >
         {t('refundFlow.destination.confirm', { defaultValue: 'Confirm destination' })}
       </button>

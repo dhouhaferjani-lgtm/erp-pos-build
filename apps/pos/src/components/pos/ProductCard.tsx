@@ -28,7 +28,7 @@ export function ProductCard({
         onClick={() => !isOutOfStock && onAddToCart(product)}
         disabled={isOutOfStock}
         className={cn(
-          'relative flex min-h-[160px] flex-col items-center rounded-xl border-2 p-4 text-center',
+          'relative flex min-h-[160px] flex-col items-center rounded-tile border-2 p-4 text-center',
           'transition-all duration-150 active:scale-[0.95]',
           isOutOfStock
             ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-70'
@@ -42,10 +42,10 @@ export function ProductCard({
           <img
             src={product.image_url}
             alt={product.name}
-            className="mb-3 h-20 w-20 rounded-xl object-cover"
+            className="mb-3 h-20 w-20 rounded-tile object-cover"
           />
         ) : (
-          <div className="mb-3 flex h-20 w-20 items-center justify-center rounded-xl bg-gray-100">
+          <div className="mb-3 flex h-20 w-20 items-center justify-center rounded-tile bg-gray-100">
             <Package className="h-8 w-8 text-gray-500" />
           </div>
         )}
@@ -87,7 +87,7 @@ export function ProductCard({
       onClick={() => !isOutOfStock && onAddToCart(product)}
       disabled={isOutOfStock}
       className={cn(
-        'relative flex min-h-[100px] flex-col items-start rounded-xl border-2 p-4 text-left',
+        'relative flex min-h-[100px] flex-col items-start rounded-tile border-2 p-4 text-left',
         'transition-all duration-150 active:scale-[0.95]',
         isOutOfStock
           ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-70'

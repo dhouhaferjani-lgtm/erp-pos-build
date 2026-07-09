@@ -46,14 +46,48 @@ export function tintForCategory(category?: string | null): CategoryTint {
   return hit ?? 'neutral';
 }
 
+/**
+ * Deterministic tint for products with no mapped category (owner polish
+ * 2026-07-09, sub-task b): hash the seed (product name) over the SAME
+ * `--cat-*` tint set so a grid of no-category placeholders isn't a uniform
+ * gray wall. Same seed → same tint, stable across renders and sessions. The
+ * tint carries no category meaning here — it is purely visual identity.
+ * Reuses existing tokens only; no new colors.
+ */
+export function tintFromSeed(seed: string): CategoryTint {
+  const s = seed.trim();
+  if (s.length === 0) return 'neutral';
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  }
+  return CATEGORY_TINTS[h % CATEGORY_TINTS.length] ?? 'neutral';
+}
+
+/**
+ * Tint surface = the category FOREGROUND mixed 18% into the theme surface
+ * (the same `color-mix(… , var(--surface))` pattern `src/index.css` uses for
+ * dark-mode status surfaces). This reads slightly stronger than the old
+ * pastel `--cat-*-bg` values (which were near-white-on-white — the
+ * "washed-out wall" from the owner's screenshots) AND stays theme-correct in
+ * dark mode, where the pastel light backgrounds never had a dark override.
+ * Initials keep the curated `--cat-*-fg` foreground.
+ */
 const TINT_CLASS: Record<CategoryTint, string> = {
-  visage: 'bg-[var(--cat-visage-bg)] text-[var(--cat-visage-fg)]',
-  solaire: 'bg-[var(--cat-solaire-bg)] text-[var(--cat-solaire-fg)]',
-  corps: 'bg-[var(--cat-corps-bg)] text-[var(--cat-corps-fg)]',
-  cheveux: 'bg-[var(--cat-cheveux-bg)] text-[var(--cat-cheveux-fg)]',
-  bebe: 'bg-[var(--cat-bebe-bg)] text-[var(--cat-bebe-fg)]',
-  complements: 'bg-[var(--cat-complements-bg)] text-[var(--cat-complements-fg)]',
-  hygiene: 'bg-[var(--cat-hygiene-bg)] text-[var(--cat-hygiene-fg)]',
+  visage:
+    'bg-[color-mix(in_srgb,var(--cat-visage-fg)_18%,var(--surface))] text-[var(--cat-visage-fg)]',
+  solaire:
+    'bg-[color-mix(in_srgb,var(--cat-solaire-fg)_18%,var(--surface))] text-[var(--cat-solaire-fg)]',
+  corps:
+    'bg-[color-mix(in_srgb,var(--cat-corps-fg)_18%,var(--surface))] text-[var(--cat-corps-fg)]',
+  cheveux:
+    'bg-[color-mix(in_srgb,var(--cat-cheveux-fg)_18%,var(--surface))] text-[var(--cat-cheveux-fg)]',
+  bebe:
+    'bg-[color-mix(in_srgb,var(--cat-bebe-fg)_18%,var(--surface))] text-[var(--cat-bebe-fg)]',
+  complements:
+    'bg-[color-mix(in_srgb,var(--cat-complements-fg)_18%,var(--surface))] text-[var(--cat-complements-fg)]',
+  hygiene:
+    'bg-[color-mix(in_srgb,var(--cat-hygiene-fg)_18%,var(--surface))] text-[var(--cat-hygiene-fg)]',
   neutral: 'bg-surface-sunken text-ink-muted',
 };
 
@@ -87,7 +121,10 @@ export function ProductThumb({
       />
     );
   }
-  const tint = tintForCategory(category);
+  // Category tint when the category maps; otherwise a deterministic tint
+  // derived from the name so no-category grids don't collapse to uniform gray.
+  const categoryTint = tintForCategory(category);
+  const tint = categoryTint === 'neutral' ? tintFromSeed(name) : categoryTint;
   const tintClass = TINT_CLASS[tint];
   // Square thumbs use large initials; full-width POS tiles match the mock's
   // compact 20px initials centered in an 88px-high image area.

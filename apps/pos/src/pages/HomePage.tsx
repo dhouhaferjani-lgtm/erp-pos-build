@@ -14,6 +14,7 @@ import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { dispatchScan } from '@/lib/scan/dispatcher';
 import { addItemGated, updateQuantityGated } from '@/lib/stock/cartIngress';
+import { sumSaleQuantities } from '@/lib/cartChipQuantities';
 import { resolveScannedCode } from '@/lib/scan/resolveScannedCode';
 import { routeScanResult } from '@/lib/scan/routeScanResult';
 import { setCachedScan } from '@/lib/scan/scanResolutionCache';
@@ -869,6 +870,13 @@ export function HomePage() {
     [cartItems],
   );
 
+  // Owner polish 2026-07-09 (sub-task a): per-product cart quantity for the
+  // in-cart count chip. Chip semantics = units being SOLD: sale-kind lines
+  // only — exchange-flow return lines (negative quantities) are excluded so
+  // the chip can never show "-1"/net-wrong counts; a return-only product has
+  // no entry and falls back to the check glyph. See sumSaleQuantities docs.
+  const cartQuantities = useMemo(() => sumSaleQuantities(cartItems), [cartItems]);
+
   // Task 52: Resume a persisted refund draft on app restart.
   // Bug 3 fix: branch cleanly — replaceCart only when there are buying items
   // (the first replaceReturnItems call was a no-op when replaceCart ran immediately
@@ -1437,7 +1445,7 @@ export function HomePage() {
       {/* Barcode scan feedback */}
       {scanMessage && (
         <div
-          className={`absolute left-1/2 top-2 z-50 -translate-x-1/2 rounded-lg px-4 py-2 text-sm font-medium shadow-lg transition-opacity ${
+          className={`absolute left-1/2 top-2 z-50 -translate-x-1/2 rounded-tile px-4 py-2 text-sm font-medium shadow-lg transition-opacity ${
             scanMessage.type === 'success'
               ? 'bg-green-600 text-white'
               : scanMessage.type === 'info'
@@ -1507,6 +1515,7 @@ export function HomePage() {
           onCustomize={handleCustomize}
           onViewDetails={handleViewDetails}
           cartProductIds={cartProductIds}
+          cartQuantities={cartQuantities}
           isLoading={productsLoading}
           locationStock={locationStock}
           hardBlockOutOfStock={posStockPolicy === 'block'}

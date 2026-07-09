@@ -64,6 +64,12 @@ export interface ProductGridProps {
   onAddToCart: (product: POSProduct) => void;
   onCustomize?: (product: POSProduct) => void;
   cartProductIds: string[];
+  /**
+   * Owner polish 2026-07-09 (sub-task a): per-product cart quantity, shown in
+   * the in-cart count chip on vitrine/compact cards. Optional — when absent
+   * the chip falls back to a check glyph. Keyed by `product.id`.
+   */
+  cartQuantities?: Record<string, number>;
   isLoading?: boolean;
   consumptionModeToggle?: ReactNode;
   /**
@@ -100,6 +106,7 @@ export function ProductGrid({
   onAddToCart,
   onCustomize,
   cartProductIds,
+  cartQuantities,
   isLoading = false,
   consumptionModeToggle,
   locationStock = EMPTY_LOCATION_STOCK,
@@ -476,7 +483,7 @@ export function ProductGrid({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('products.searchPlaceholder')}
-            className="w-full rounded-lg border border-border-subtle bg-surface-raised py-2 pl-10 pr-10 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-2 focus:ring-action"
+            className="w-full rounded-ctl border border-border-subtle bg-surface-raised py-2 pl-10 pr-10 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-2 focus:ring-action"
           />
           {searchQuery && (
             <button
@@ -755,6 +762,7 @@ export function ProductGrid({
                       onCustomize={onCustomize}
                       onViewDetails={onViewDetails}
                       isInCart={cartProductIds.includes(product.id)}
+                      cartQuantity={cartQuantities?.[product.id]}
                       displayMode={cardLayoutFor(displayMode)}
                       locationStock={locationStock[product.id]}
                       hardBlockOutOfStock={hardBlockOutOfStock}

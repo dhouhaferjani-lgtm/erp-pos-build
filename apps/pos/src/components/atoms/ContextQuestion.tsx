@@ -18,7 +18,7 @@ export function ContextQuestion({ field, value, onChange }: ContextQuestionProps
           <button
             key={option.value}
             type="button"
-            className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+            className={`rounded-pill border px-2.5 py-1 text-[11px] transition-colors ${
               value === option.value
                 ? 'border-indigo-500/40 bg-indigo-500/20 text-indigo-400'
                 : 'border-white/10 bg-white/5 text-gray-300 hover:bg-white/10'

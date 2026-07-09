@@ -69,7 +69,7 @@ export function ReportsMenu({
       <div className="absolute inset-0" onClick={onClose} />
       <div
         ref={menuRef}
-        className="relative z-10 w-72 rounded-2xl bg-surface-overlay py-2 shadow-2xl"
+        className="relative z-10 w-72 rounded-panel bg-surface-overlay py-2 shadow-2xl"
       >
         <h3 className="px-4 py-2 text-sm font-bold text-ink">
           {t('reports.title')}

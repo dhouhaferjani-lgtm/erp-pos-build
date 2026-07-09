@@ -111,19 +111,19 @@ export function TodaySalesPage() {
       {shiftId && (
         <>
           <div className="grid grid-cols-4 gap-4 px-6 py-4">
-            <div className="rounded-xl bg-action-subtle p-4">
+            <div className="rounded-card bg-action-subtle p-4">
               <p className="text-xs font-medium text-action">{t('reports.totalSales')}</p>
               <p className="mt-1 text-2xl font-bold text-ink">{format(totalSales)}</p>
             </div>
-            <div className="rounded-xl bg-surface-raised p-4 shadow-sm ring-1 ring-border-subtle">
+            <div className="rounded-card bg-surface-raised p-4 shadow-sm ring-1 ring-border-subtle">
               <p className="text-xs font-medium text-ink-muted">{t('reports.receiptCount')}</p>
               <p className="mt-1 text-2xl font-bold text-ink">{receipts.length}</p>
             </div>
-            <div className="rounded-xl bg-surface-raised p-4 shadow-sm ring-1 ring-border-subtle">
+            <div className="rounded-card bg-surface-raised p-4 shadow-sm ring-1 ring-border-subtle">
               <p className="text-xs font-medium text-ink-muted">{t('reports.avgTicket')}</p>
               <p className="mt-1 text-2xl font-bold text-ink">{format(avgTicket)}</p>
             </div>
-            <div className="rounded-xl bg-danger-surface p-4">
+            <div className="rounded-card bg-danger-surface p-4">
               <p className="text-xs font-medium text-danger-strong">{t('reports.returns')}</p>
               <p className="mt-1 text-2xl font-bold text-ink">
                 {returnReceipts.length}
@@ -143,7 +143,7 @@ export function TodaySalesPage() {
 
       {/* Receipt Table */}
       <div className="flex-1 overflow-y-auto px-6 pb-4">
-        <div className="rounded-xl bg-surface-raised shadow-sm ring-1 ring-border-subtle">
+        <div className="rounded-card bg-surface-raised shadow-sm ring-1 ring-border-subtle">
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <RotateCcw className="h-6 w-6 animate-spin text-ink-faint" />
@@ -177,7 +177,7 @@ export function TodaySalesPage() {
                         {receiptTime(receipt)}
                       </td>
                       <td className="px-5 py-3">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${status.className}`}>
+                        <span className={`inline-block rounded-pill px-2 py-0.5 text-xs font-medium ${status.className}`}>
                           {status.label}
                         </span>
                       </td>
@@ -202,7 +202,7 @@ export function TodaySalesPage() {
                         {format(receipt.total)}
                       </td>
                       <td className="px-5 py-3">
-                        <span className="rounded bg-surface-sunken px-2 py-0.5 text-xs font-medium text-ink-muted">
+                        <span className="rounded-sm bg-surface-sunken px-2 py-0.5 text-xs font-medium text-ink-muted">
                           {getPaymentLabel(receipt)}
                         </span>
                       </td>

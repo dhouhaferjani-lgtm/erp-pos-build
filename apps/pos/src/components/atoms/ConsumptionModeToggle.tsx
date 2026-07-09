@@ -13,11 +13,11 @@ export function ConsumptionModeToggle({ value, onChange, className }: Consumptio
   const { t } = useTranslation();
 
   return (
-    <div className={`inline-flex rounded-lg bg-gray-100 p-1 ${className ?? ''}`}>
+    <div className={`inline-flex rounded-ctl bg-gray-100 p-1 ${className ?? ''}`}>
       <button
         type="button"
         onClick={() => onChange('SUR_PLACE')}
-        className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-medium transition-colors ${
           value === 'SUR_PLACE'
             ? 'bg-white text-gray-900 shadow-sm'
             : 'text-gray-600 hover:text-gray-900'
@@ -29,7 +29,7 @@ export function ConsumptionModeToggle({ value, onChange, className }: Consumptio
       <button
         type="button"
         onClick={() => onChange('A_EMPORTER')}
-        className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+        className={`flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-medium transition-colors ${
           value === 'A_EMPORTER'
             ? 'bg-white text-gray-900 shadow-sm'
             : 'text-gray-600 hover:text-gray-900'

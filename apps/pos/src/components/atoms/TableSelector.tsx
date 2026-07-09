@@ -13,7 +13,7 @@ const STATUS_STYLES: Record<string, string> = {
 function TableStatusBadge({ status }: { status: string }) {
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-gray-100 text-gray-800'}`}
+      className={`inline-flex rounded-pill px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-gray-100 text-gray-800'}`}
     >
       {status}
     </span>
@@ -99,7 +99,7 @@ export function TableSelector({ selectedTableId, onSelectTable }: TableSelectorP
                     type="button"
                     disabled={!isAvailable && !isSelected}
                     onClick={() => onSelectTable(isSelected ? null : table.id)}
-                    className={`relative rounded-lg border-2 p-3 text-center transition-all ${
+                    className={`relative rounded-tile border-2 p-3 text-center transition-all ${
                       isSelected
                         ? 'border-blue-500 bg-blue-50'
                         : isAvailable

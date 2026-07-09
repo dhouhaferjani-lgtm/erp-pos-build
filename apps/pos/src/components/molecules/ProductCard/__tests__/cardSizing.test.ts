@@ -53,8 +53,12 @@ describe('getColumns — displayMode × density', () => {
 });
 
 describe('getCardMinH — virtualized row estimates', () => {
-  it('reserves enough visual-card height for stacked price and stock rows', () => {
-    expect(getCardMinH('visual', 'comfortable')).toBeGreaterThanOrEqual(244);
-    expect(getCardMinH('visual', 'dense')).toBeGreaterThanOrEqual(244);
+  it('reserves enough visual-card height for stacked price and stock rows (72px tile + 2-line name)', () => {
+    // Owner polish 2026-07-09 (sub-task b): tile 88→72px and name slot
+    // 2.5rem→2.25rem shrank the visual card; the estimate follows (244→224).
+    // Still only a first-paint estimate — real height is measured at runtime.
+    expect(getCardMinH('visual', 'comfortable')).toBeGreaterThanOrEqual(224);
+    expect(getCardMinH('visual', 'dense')).toBeGreaterThanOrEqual(224);
+    expect(getCardMinH('visual', 'comfortable')).toBeLessThan(244);
   });
 });

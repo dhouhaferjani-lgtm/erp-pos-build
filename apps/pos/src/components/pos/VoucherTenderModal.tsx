@@ -374,7 +374,7 @@ export function VoucherTenderModal({
               placeholder={t('voucherTender.codePlaceholder', { defaultValue: 'Scan or type code…' })}
               autoFocus
               data-testid="voucher-code-input"
-              className="w-full rounded-md border border-border-strong p-2 font-mono text-sm uppercase focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              className="w-full rounded-ctl border border-border-strong p-2 font-mono text-sm uppercase focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
 
             {lookupError !== null && (
@@ -389,7 +389,7 @@ export function VoucherTenderModal({
                 onClick={handleClose}
                 disabled={isLooking}
                 data-testid="voucher-cancel"
-                className="flex min-h-[48px] items-center justify-center flex-1 rounded-md border border-border-strong py-2 text-sm text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
+                className="flex min-h-[48px] items-center justify-center flex-1 rounded-ctl border border-border-strong py-2 text-sm text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
               >
                 {t('voucherTender.cancel', { defaultValue: 'Cancel' })}
               </button>
@@ -398,7 +398,7 @@ export function VoucherTenderModal({
                 onClick={() => void handleLookup()}
                 disabled={isLooking || code.trim() === ''}
                 data-testid="voucher-lookup-button"
-                className="flex min-h-[48px] items-center justify-center flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:opacity-50"
+                className="flex min-h-[48px] items-center justify-center flex-1 rounded-ctl bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:opacity-50"
               >
                 {isLooking
                   ? t('voucherTender.looking', { defaultValue: 'Looking up…' })
@@ -411,7 +411,7 @@ export function VoucherTenderModal({
           voucher !== null && (
             <div className="space-y-3" data-testid="voucher-found-section">
               {/* Voucher details */}
-              <div className="rounded-md border border-success-subtle bg-success-surface p-3 space-y-1 text-sm">
+              <div className="rounded-sm border border-success-subtle bg-success-surface p-3 space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-ink-muted">{t('voucherTender.balance', { defaultValue: 'Balance' })}</span>
                   <span className="font-semibold text-success-strong" data-testid="voucher-balance">
@@ -453,7 +453,7 @@ export function VoucherTenderModal({
                     value={amountInput}
                     onChange={handleAmountChange}
                     data-testid="voucher-amount-input"
-                    className="w-full rounded-md border border-border-strong p-2 text-right font-mono text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full rounded-ctl border border-border-strong p-2 text-right font-mono text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                   <span className="text-sm text-ink-muted">{currency}</span>
                 </div>
@@ -470,7 +470,7 @@ export function VoucherTenderModal({
                   type="button"
                   onClick={resetToScan}
                   data-testid="voucher-back"
-                  className="flex min-h-[48px] items-center justify-center flex-1 rounded-md border border-border-strong py-2 text-sm text-ink-muted hover:bg-surface-sunken"
+                  className="flex min-h-[48px] items-center justify-center flex-1 rounded-ctl border border-border-strong py-2 text-sm text-ink-muted hover:bg-surface-sunken"
                 >
                   {t('voucherTender.back', { defaultValue: 'Back' })}
                 </button>
@@ -478,7 +478,7 @@ export function VoucherTenderModal({
                   type="button"
                   onClick={handleApply}
                   data-testid="voucher-apply-button"
-                  className="flex min-h-[48px] items-center justify-center flex-1 rounded-md bg-success py-2 text-sm font-semibold text-ink-inverse hover:bg-success-hover"
+                  className="flex min-h-[48px] items-center justify-center flex-1 rounded-ctl bg-success py-2 text-sm font-semibold text-ink-inverse hover:bg-success-hover"
                 >
                   {t('voucherTender.apply', { defaultValue: 'Apply' })}
                 </button>

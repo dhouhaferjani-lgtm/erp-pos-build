@@ -46,7 +46,7 @@ function CustomerRow({ customer, isSelected, showSkin, onClick }: CustomerRowPro
       type="button"
       onClick={onClick}
       className={cn(
-        'flex min-h-[64px] w-full flex-col justify-center gap-1 rounded-xl px-4 py-3 text-left transition-colors',
+        'flex min-h-[64px] w-full flex-col justify-center gap-1 rounded-card px-4 py-3 text-left transition-colors',
         isSelected
           ? 'bg-action text-ink-inverse'
           : 'bg-surface-raised hover:bg-surface-sunken',
@@ -161,7 +161,7 @@ function SkinProfileForm({
           aria-label={t('customers.skinType')}
           value={skinType}
           onChange={(e) => setSkinType(e.target.value)}
-          className="min-h-12 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-12 rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         >
           <option value="">{t('customers.skinTypeNone')}</option>
           {SKIN_TYPES.map((st) => (
@@ -186,7 +186,7 @@ function SkinProfileForm({
           onChange={(e) => setSkinAdviceNote(e.target.value)}
           placeholder={t('customers.skinAdviceNotePlaceholder')}
           rows={3}
-          className="min-h-[96px] rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-[96px] rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
 
@@ -262,7 +262,7 @@ function CustomerDetail({
       : null;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl bg-surface-raised shadow-sm">
+    <div className="flex h-full flex-col overflow-hidden rounded-panel bg-surface-raised shadow-sm">
       {/* Header */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border-subtle px-5 py-4">
         <button
@@ -319,7 +319,7 @@ function CustomerDetail({
                 </button>
               </div>
 
-              <dl className="flex flex-col gap-2 rounded-xl bg-surface-sunken p-4">
+              <dl className="flex flex-col gap-2 rounded-card bg-surface-sunken p-4">
                 <div>
                   <dt className="text-xs text-ink-faint">{t('customers.skinType')}</dt>
                   <dd className="text-sm font-medium text-ink">
@@ -441,7 +441,7 @@ function AddCustomerForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t('customers.name')}
-          className="min-h-12 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-12 rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -454,7 +454,7 @@ function AddCustomerForm({
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder={t('customers.phone')}
-          className="min-h-12 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-12 rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -467,7 +467,7 @@ function AddCustomerForm({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder={t('customers.email')}
-          className="min-h-12 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-12 rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
 
@@ -651,7 +651,7 @@ export function CustomersPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('customers.search')}
-              className="min-h-12 w-full rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+              className="min-h-12 w-full rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
             />
           </div>
 

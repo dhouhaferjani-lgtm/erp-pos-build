@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowUpRight, Eye, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { tokens } from '@/lib/designTokens';
 import { useCurrency } from '@/lib/currency';
 import { useProductImage } from '@/lib/images/useProductImage';
 import { ProductThumb, StockBadge } from '@/components/ui';
@@ -211,8 +212,12 @@ const ProductTableRow = memo(function ProductTableRow({
           <p
             title={product.name}
             className={cn(
-              'w-full truncate text-[13px] font-semibold leading-[1.3]',
-              isOut ? 'text-ink-faint' : 'text-ink',
+              // Shared productName recipe (owner polish 2026-07-09, sub-task
+              // d): 13→13.5px so the name reads the same in every density.
+              'w-full',
+              tokens.productName.base,
+              tokens.productName.clamp1,
+              isOut ? tokens.productName.inkDisabled : tokens.productName.ink,
             )}
           >
             {product.name}
@@ -279,7 +284,7 @@ const ProductTableRow = memo(function ProductTableRow({
               e.stopPropagation();
               onViewDetails(product);
             }}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-ink-muted transition-colors hover:bg-border-subtle hover:text-ink active:bg-border-subtle"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-ctl bg-surface-sunken text-ink-muted transition-colors hover:bg-border-subtle hover:text-ink active:bg-border-subtle"
             title={viewDetailsLabel}
           >
             <Eye className="h-4 w-4" />
@@ -297,7 +302,7 @@ const ProductTableRow = memo(function ProductTableRow({
             activate();
           }}
           className={cn(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors',
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-sm transition-colors',
             isActivationBlocked
               ? 'cursor-not-allowed bg-surface-sunken text-ink-faint'
               : 'cursor-pointer bg-action text-ink-inverse hover:bg-action-hover active:bg-action-strong',

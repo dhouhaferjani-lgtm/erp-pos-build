@@ -36,7 +36,7 @@ export function ToleranceDrillDown({
 
   return (
     <div
-      className="rounded-md border border-warning-subtle bg-warning-surface p-3 text-sm"
+      className="rounded-sm border border-warning-subtle bg-warning-surface p-3 text-sm"
       data-testid="tolerance-drill"
     >
       <button

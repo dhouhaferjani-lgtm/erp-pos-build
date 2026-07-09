@@ -59,7 +59,7 @@ export function CashTenderedModal({
     <Modal isOpen={isOpen} onClose={onClose} title={t('cashTendered.title')} size="md">
       <div className="space-y-6">
         {/* Amount due */}
-        <div className="rounded-xl bg-surface-sunken p-4 text-center">
+        <div className="rounded-card bg-surface-sunken p-4 text-center">
           <p className="mb-1 text-sm font-medium text-ink-muted">
             {t('cashTendered.amountDue')}
           </p>
@@ -81,7 +81,7 @@ export function CashTenderedModal({
                 handleConfirm();
               }
             }}
-            className="w-full rounded-lg border border-border-strong px-4 py-3 text-right text-2xl font-semibold focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
+            className="w-full rounded-ctl border border-border-strong px-4 py-3 text-right text-2xl font-semibold focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
             autoFocus
           />
         </div>
@@ -91,7 +91,7 @@ export function CashTenderedModal({
           <button
             type="button"
             onClick={handleExact}
-            className="min-h-[48px] min-w-[80px] flex-1 rounded-lg border border-action-subtle bg-action-subtle px-3 py-2.5 text-sm font-medium text-action transition-colors hover:bg-action-subtle"
+            className="min-h-[48px] min-w-[80px] flex-1 rounded-ctl border border-action-subtle bg-action-subtle px-3 py-2.5 text-sm font-medium text-action transition-colors hover:bg-action-subtle"
           >
             {t('cashTendered.exactAmount')}
           </button>
@@ -100,7 +100,7 @@ export function CashTenderedModal({
               key={amount}
               type="button"
               onClick={() => handleDenomination(amount)}
-              className="min-h-[48px] min-w-[60px] flex-1 rounded-lg border border-border-subtle bg-surface-sunken px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-raised"
+              className="min-h-[48px] min-w-[60px] flex-1 rounded-ctl border border-border-subtle bg-surface-sunken px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-raised"
             >
               {format(amount)}
             </button>
@@ -109,7 +109,7 @@ export function CashTenderedModal({
 
         {/* Change due */}
         {bccomp(changeDue, '0') > 0 && (
-          <div className="rounded-xl border border-success-subtle bg-success-surface p-4 text-center">
+          <div className="rounded-card border border-success-subtle bg-success-surface p-4 text-center">
             <p className="mb-1 text-sm font-medium text-success-strong">
               {t('cashTendered.changeDue')}
             </p>
@@ -121,7 +121,7 @@ export function CashTenderedModal({
         <button
           onClick={handleConfirm}
           disabled={!isValid || isProcessing}
-          className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-xl bg-success px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-ctl bg-success px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Banknote className="h-5 w-5" />
           {isProcessing ? t('cashTendered.processing') : t('cashTendered.confirm')}

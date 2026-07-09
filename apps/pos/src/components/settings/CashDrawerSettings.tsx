@@ -38,11 +38,11 @@ export function CashDrawerSettings() {
 
   if (!isTauri || !printerConfig) {
     return (
-      <section className="rounded-xl bg-white p-4 shadow-sm">
+      <section className="rounded-card bg-white p-4 shadow-sm">
         <h2 className="mb-4 text-base font-bold text-gray-900">
           {t('settings.cashDrawer')}
         </h2>
-        <div className="rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-500">
+        <div className="rounded-tile bg-gray-50 p-3 text-center text-sm text-gray-500">
           {!isTauri
             ? t('settings.printerDesktopOnly')
             : t('settings.drawerRequiresPrinter')}
@@ -52,14 +52,14 @@ export function CashDrawerSettings() {
   }
 
   return (
-    <section className="rounded-xl bg-white p-4 shadow-sm">
+    <section className="rounded-card bg-white p-4 shadow-sm">
       <h2 className="mb-4 text-base font-bold text-gray-900">
         {t('settings.cashDrawer')}
       </h2>
 
       <div className="space-y-4">
         {/* Info banner */}
-        <div className="flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+        <div className="flex items-start gap-2 rounded-tile bg-blue-50 p-3 text-sm text-blue-700">
           <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <span>{t('settings.drawerConnectionInfo')}</span>
         </div>
@@ -69,11 +69,11 @@ export function CashDrawerSettings() {
           <label className="mb-2 block text-sm font-medium text-gray-700">
             {t('settings.drawerPin')}
           </label>
-          <div className="flex rounded-lg bg-gray-100 p-1">
+          <div className="flex rounded-ctl bg-gray-100 p-1">
             <button
               onClick={() => setPin(0)}
               className={cn(
-                'flex flex-1 items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex flex-1 items-center justify-center rounded-sm px-3 py-2 text-sm font-medium transition-colors',
                 pin === 0
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700',
@@ -84,7 +84,7 @@ export function CashDrawerSettings() {
             <button
               onClick={() => setPin(1)}
               className={cn(
-                'flex flex-1 items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex flex-1 items-center justify-center rounded-sm px-3 py-2 text-sm font-medium transition-colors',
                 pin === 1
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700',
@@ -108,7 +108,7 @@ export function CashDrawerSettings() {
                 max={255}
                 value={pulseOnTime}
                 onChange={(e) => setPulseOnTime(Math.min(255, Math.max(1, Number(e.target.value))))}
-                className="min-h-[44px] w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="min-h-[44px] w-full rounded-ctl border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               <span className="whitespace-nowrap text-xs text-gray-400">
                 ({pulseOnTime * 2}{t('settings.ms')})
@@ -126,7 +126,7 @@ export function CashDrawerSettings() {
                 max={255}
                 value={pulseOffTime}
                 onChange={(e) => setPulseOffTime(Math.min(255, Math.max(1, Number(e.target.value))))}
-                className="min-h-[44px] w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="min-h-[44px] w-full rounded-ctl border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               <span className="whitespace-nowrap text-xs text-gray-400">
                 ({pulseOffTime * 2}{t('settings.ms')})
@@ -136,7 +136,7 @@ export function CashDrawerSettings() {
         </div>
 
         {/* Open on cash sale toggle */}
-        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+        <div className="flex items-center justify-between rounded-tile bg-gray-50 px-3 py-3">
           <div>
             <span className="text-sm font-medium text-gray-900">
               {t('settings.openOnCashSale')}
@@ -148,7 +148,7 @@ export function CashDrawerSettings() {
           <button
             onClick={() => setOpenOnCashSale(!openOnCashSale)}
             className={cn(
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              'relative inline-flex h-6 w-11 items-center rounded-pill transition-colors',
               openOnCashSale ? 'bg-blue-600' : 'bg-gray-300',
             )}
             role="switch"
@@ -164,7 +164,7 @@ export function CashDrawerSettings() {
         </div>
 
         {/* Beep on open toggle */}
-        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+        <div className="flex items-center justify-between rounded-tile bg-gray-50 px-3 py-3">
           <div>
             <span className="text-sm font-medium text-gray-900">
               {t('settings.beepOnOpen')}
@@ -176,7 +176,7 @@ export function CashDrawerSettings() {
           <button
             onClick={() => setBeepOnOpen(!beepOnOpen)}
             className={cn(
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              'relative inline-flex h-6 w-11 items-center rounded-pill transition-colors',
               beepOnOpen ? 'bg-blue-600' : 'bg-gray-300',
             )}
             role="switch"
@@ -195,7 +195,7 @@ export function CashDrawerSettings() {
         <button
           onClick={() => void handleTestDrawer()}
           disabled={isTesting}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-ctl border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
           {isTesting && <Loader2 className="h-4 w-4 animate-spin" />}
           {t('settings.testDrawer')}

@@ -62,13 +62,13 @@ export function QuantityNumpad({
         className="absolute inset-0"
         onClick={onClose}
       />
-      <div className="relative z-10 w-72 rounded-2xl bg-surface-raised p-6 shadow-2xl">
+      <div className="relative z-10 w-72 rounded-panel bg-surface-raised p-6 shadow-2xl">
         <h3 className="mb-4 text-center text-lg font-bold text-ink">
           {t('quantity.title')}
         </h3>
 
         {/* Display */}
-        <div className="mb-4 rounded-xl bg-surface-sunken px-4 py-3 text-center text-3xl font-bold text-ink">
+        <div className="mb-4 rounded-card bg-surface-sunken px-4 py-3 text-center text-3xl font-bold text-ink">
           {value || '0'}
         </div>
 
@@ -80,7 +80,7 @@ export function QuantityNumpad({
                 <button
                   key={btn}
                   onClick={handleClear}
-                  className="flex h-16 w-16 items-center justify-center rounded-xl bg-danger-surface text-lg font-semibold text-danger-strong transition-colors hover:bg-danger-surface active:bg-danger-surface mx-auto"
+                  className="flex h-16 w-16 items-center justify-center rounded-ctl bg-danger-surface text-lg font-semibold text-danger-strong transition-colors hover:bg-danger-surface active:bg-danger-surface mx-auto"
                 >
                   {t('quantity.clear')}
                 </button>
@@ -93,7 +93,7 @@ export function QuantityNumpad({
                   onClick={handleConfirm}
                   disabled={!isValid}
                   className={cn(
-                    'flex h-16 w-16 items-center justify-center rounded-xl text-lg font-semibold transition-colors mx-auto',
+                    'flex h-16 w-16 items-center justify-center rounded-ctl text-lg font-semibold transition-colors mx-auto',
                     isValid
                       ? 'bg-success text-ink-inverse hover:bg-success-hover active:bg-success-hover'
                       : 'bg-surface-sunken text-ink-faint cursor-not-allowed',
@@ -107,7 +107,7 @@ export function QuantityNumpad({
               <button
                 key={btn}
                 onClick={() => handleDigit(btn)}
-                className="flex h-16 w-16 items-center justify-center rounded-xl bg-surface-sunken text-xl font-semibold text-ink transition-colors hover:bg-surface-raised active:bg-surface-raised mx-auto"
+                className="flex h-16 w-16 items-center justify-center rounded-ctl bg-surface-sunken text-xl font-semibold text-ink transition-colors hover:bg-surface-raised active:bg-surface-raised mx-auto"
               >
                 {btn}
               </button>

@@ -27,7 +27,8 @@ import { ProductGrid } from '@/components/organisms/ProductGrid';
 import { ProductCard } from '@/components/molecules/ProductCard';
 import { ProductListRow } from '@/components/organisms/ProductGrid/ProductListRow';
 import { ProductTable } from '@/components/organisms/ProductGrid/ProductTable';
-import { ProductDetailDrawer } from '@/components/organisms/ProductDetailDrawer';
+import { ProductDetailDrawer, ProductDetailSheet, type DetailTab } from '@/components/organisms/ProductDetailDrawer';
+import { PaymentSummary } from '@/components/pos/PaymentSummary';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { ShiftClosurePage } from '@/pages/ShiftClosurePage';
 import { ACCENTS, type AccentName, type Density } from '@/lib/theme';
@@ -37,6 +38,7 @@ import { formatCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { Search, Printer, ShoppingCart, Users, BarChart3, Wallet } from 'lucide-react';
 import type { CartItem } from '@/types/cart';
+import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { POSProduct } from '@/types/product';
 import type { FiltresFilters } from '@/components/organisms/FiltresDrawer';
 
@@ -110,6 +112,65 @@ const SELL_PRODUCTS: POSProduct[] = [
   seedProduct(26, 'Nutritic Intense Riche', 'La Roche-Posay', 'Visage', '46.000', 22, 'dry'),
   seedProduct(27, 'Capital Soleil Brume Invisible SPF50', 'Vichy', 'Solaire', '43.500', 17),
   seedProduct(28, 'Cold Cream Corps', 'Avène', 'Corps', '24.900', 30, 'dry'),
+];
+
+// ---------------------------------------------------------------------------
+// Payment-footer fixtures — a ready payment config (2 active methods + a cash
+// repository) so PaymentSummary shows BOTH actions: the dominant cash button
+// and the compact icon-only "Autres paiements" control. Monetary string
+// fields on the config objects follow the precision contract (strings);
+// PaymentSummary's own amount props are numbers (its actual prop shape).
+// ---------------------------------------------------------------------------
+const PREVIEW_PAYMENT_METHODS: PaymentMethod[] = [
+  {
+    id: 'preview-pm-cash',
+    code: 'CASH',
+    name: 'Espèces',
+    is_physical: true,
+    has_maturity: false,
+    requires_third_party: false,
+    is_push: false,
+    has_deducted_fees: false,
+    is_restricted: false,
+    fee_type: null,
+    fee_fixed: '0.000',
+    fee_percent: '0.00',
+    restriction_type: null,
+    is_active: true,
+    position: 1,
+  },
+  {
+    id: 'preview-pm-card',
+    code: 'CARD',
+    name: 'Carte bancaire',
+    is_physical: false,
+    has_maturity: false,
+    requires_third_party: false,
+    is_push: false,
+    has_deducted_fees: false,
+    is_restricted: false,
+    fee_type: null,
+    fee_fixed: '0.000',
+    fee_percent: '0.00',
+    restriction_type: null,
+    is_active: true,
+    position: 2,
+  },
+];
+
+const PREVIEW_PAYMENT_REPOSITORIES: PaymentRepository[] = [
+  {
+    id: 'preview-repo-caisse',
+    code: 'CAISSE1',
+    name: 'Caisse 1',
+    type: 'cash_register',
+    bank_name: null,
+    account_number: null,
+    iban: null,
+    bic: null,
+    balance: '0.000',
+    is_active: true,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -306,6 +367,8 @@ export function ThemePreviewPage() {
   const [expandedLine, setExpandedLine] = useState<string | null>('l2');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailProduct, setDetailProduct] = useState<POSProduct | null>(null);
+  // Inline (no-overlay) drawer-sheet preview — headless visual verification.
+  const [drawerPreviewTab, setDrawerPreviewTab] = useState<DetailTab>('details');
   // Sell-screen preview state
   const displayMode = useSettingsStore((s) => s.displayMode);
   const setDisplayMode = useSettingsStore((s) => s.setDisplayMode);
@@ -313,12 +376,14 @@ export function ThemePreviewPage() {
   const setDensity = useSettingsStore((s) => s.setDensity);
   const [gridFilters, setGridFilters] = useState<FiltresFilters>({ brands: [], categories: [], skinTypes: [], routines: [] });
   const [gridCart, setGridCart] = useState<string[]>(['seed-3']);
-  // Task 19 — tri-density fixtures (Vitrine/Liste/Tableau) share one cart-toggle
+  // Task 19 — tri-density fixtures (Vitrine/Liste/Tableau) share one cart
   // state; the three fixtures render disjoint id ranges (seed-100.. / seed-1000..)
-  // so there's no cross-fixture collision.
-  const [densityCartIds, setDensityCartIds] = useState<string[]>([]);
-  const toggleDensityCart = (p: POSProduct) =>
-    setDensityCartIds((prev) => (prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id]));
+  // so there's no cross-fixture collision. Owner polish 2026-07-09 (sub-task
+  // a): now a per-product COUNT map (tap adds 1) so the in-cart count chip is
+  // exercised; seed-102 starts in-cart at qty 2 for screenshot verification.
+  const [densityCart, setDensityCart] = useState<Record<string, number>>({ 'seed-102': 2 });
+  const addDensityCart = (p: POSProduct) =>
+    setDensityCart((prev) => ({ ...prev, [p.id]: (prev[p.id] ?? 0) + 1 }));
   // Enable the Merchandising surface (Filtres + product detail merchandising) in the harness.
   useEffect(() => {
     useProductStore.setState({
@@ -453,6 +518,65 @@ export function ThemePreviewPage() {
                   onRecall={() => undefined}
                   hasItems
                   recallCount={3}
+                />
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Pied de paiement (cash dominant + « Autres paiements » compact)">
+          <p className="mb-3 text-sm text-ink-muted">
+            Owner feedback fix: à largeur réelle du panier (~300-360px), les
+            deux boutons quasi égaux tronquaient « Autres paiements » en
+            « Autres paieme… ». L'espèces (action dominante) garde icône +
+            libellé complet et possède la ligne; « Autres paiements » devient
+            un contrôle compact icône-seule 64×64 (nom accessible via
+            aria-label/title) qui ne peut jamais tronquer.
+          </p>
+          <div className="flex flex-wrap items-start gap-6">
+            <div>
+              <span className="mb-1 block text-xs text-ink-muted">
+                Étroit (~300px)
+              </span>
+              <div
+                data-testid="payment-footer-preview-narrow"
+                className="rounded-panel bg-surface-canvas p-2"
+                style={{ width: 300 }}
+              >
+                <PaymentSummary
+                  subtotal={57.844}
+                  grossSubtotal={57.844}
+                  taxAmount={9.235}
+                  discountAmount={0}
+                  total={57.844}
+                  hasDiscount={false}
+                  onPayCash={() => undefined}
+                  onAdvancedPayments={() => undefined}
+                  paymentMethods={PREVIEW_PAYMENT_METHODS}
+                  paymentRepositories={PREVIEW_PAYMENT_REPOSITORIES}
+                />
+              </div>
+            </div>
+            <div>
+              <span className="mb-1 block text-xs text-ink-muted">
+                Large (~400px)
+              </span>
+              <div
+                data-testid="payment-footer-preview-wide"
+                className="rounded-panel bg-surface-canvas p-2"
+                style={{ width: 400 }}
+              >
+                <PaymentSummary
+                  subtotal={57.844}
+                  grossSubtotal={57.844}
+                  taxAmount={9.235}
+                  discountAmount={0}
+                  total={57.844}
+                  hasDiscount={false}
+                  onPayCash={() => undefined}
+                  onAdvancedPayments={() => undefined}
+                  paymentMethods={PREVIEW_PAYMENT_METHODS}
+                  paymentRepositories={PREVIEW_PAYMENT_REPOSITORIES}
                 />
               </div>
             </div>
@@ -636,6 +760,7 @@ export function ThemePreviewPage() {
                   )
                 }
                 cartProductIds={gridCart}
+                cartQuantities={Object.fromEntries(gridCart.map((id) => [id, 1]))}
                 filters={gridFilters}
                 onFiltersChange={setGridFilters}
                 onViewDetails={setDetailProduct}
@@ -650,6 +775,23 @@ export function ThemePreviewPage() {
               >
                 Ouvrir fiche produit
               </Button>
+            </div>
+          </Section>
+        </div>
+
+        <div className="lg:col-span-2">
+          <Section title="Fiche produit — sheet rendu inline (sans overlay, pour capture headless)">
+            <div
+              data-testid="product-drawer-preview"
+              className="overflow-x-auto rounded-panel border border-border-subtle bg-surface-canvas p-6"
+            >
+              <ProductDetailSheet
+                product={SELL_PRODUCTS[0]!}
+                onClose={() => undefined}
+                locationStock={{ available: '14.0000', incoming_transfer: '0.0000', incoming_po: '0.0000' }}
+                activeTab={drawerPreviewTab}
+                onTabChange={setDrawerPreviewTab}
+              />
             </div>
           </Section>
         </div>
@@ -675,8 +817,9 @@ export function ThemePreviewPage() {
                   key={p.id}
                   product={p}
                   displayMode="visual"
-                  isInCart={densityCartIds.includes(p.id)}
-                  onAddToCart={toggleDensityCart}
+                  isInCart={(densityCart[p.id] ?? 0) > 0}
+                  cartQuantity={densityCart[p.id]}
+                  onAddToCart={addDensityCart}
                   onViewDetails={setDetailProduct}
                 />
               ))}
@@ -693,7 +836,7 @@ export function ThemePreviewPage() {
                 <ProductListRow
                   key={p.id}
                   product={p}
-                  onAddToCart={toggleDensityCart}
+                  onAddToCart={addDensityCart}
                   onViewDetails={setDetailProduct}
                 />
               ))}
@@ -708,7 +851,7 @@ export function ThemePreviewPage() {
             >
               <ProductTable
                 products={LARGE_CATALOG}
-                onAddToCart={toggleDensityCart}
+                onAddToCart={addDensityCart}
                 onViewDetails={setDetailProduct}
               />
             </div>
@@ -737,7 +880,7 @@ export function ThemePreviewPage() {
               <div className="border-b border-border-subtle p-3">
                 <input
                   aria-label="Recherche clients"
-                  className="min-h-12 w-full rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink"
+                  className="min-h-12 w-full rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink"
                   defaultValue="Ben"
                 />
               </div>
@@ -747,7 +890,7 @@ export function ThemePreviewPage() {
                     key={name}
                     type="button"
                     className={cn(
-                      'flex min-h-[64px] w-full flex-col justify-center gap-1 rounded-xl px-4 py-3 text-left',
+                      'flex min-h-[64px] w-full flex-col justify-center gap-1 rounded-card px-4 py-3 text-left',
                       index === 0 ? 'bg-action text-ink-inverse' : 'bg-surface-raised text-ink',
                     )}
                   >
@@ -760,7 +903,7 @@ export function ThemePreviewPage() {
               </div>
             </aside>
             <div className="min-h-0 p-5">
-              <div className="flex h-full flex-col rounded-2xl bg-surface-raised shadow-sm">
+              <div className="flex h-full flex-col rounded-panel bg-surface-raised shadow-sm">
                 <header className="border-b border-border-subtle px-5 py-4">
                   <h3 className="text-lg font-bold text-ink">Ben Salem Amira</h3>
                 </header>
@@ -775,7 +918,7 @@ export function ThemePreviewPage() {
                       <dd className="text-ink">amira@example.test</dd>
                     </div>
                   </dl>
-                  <div className="rounded-xl bg-surface-sunken p-4">
+                  <div className="rounded-card bg-surface-sunken p-4">
                     <div className="mb-3 flex items-center justify-between">
                       <h4 className="text-sm font-semibold text-ink">Profil de peau</h4>
                       <Button variant="ghost" size="md">Modifier</Button>

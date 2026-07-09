@@ -9,6 +9,7 @@ vi.mock('@/lib/currency', () => ({
 }));
 
 import { CartLineItem } from './CartLineItem';
+import { tokens } from '@/lib/designTokens';
 import type { CartItem } from '@/types/cart';
 
 const baseItem: CartItem = {
@@ -162,6 +163,16 @@ describe('CartLineItem collapse/expand', () => {
     );
     expect(queryByLabelText('cart.confirmRemoveItem')).toBeNull();
     expect(getByLabelText('cart.removeItem')).toBeTruthy();
+  });
+
+  it('renders the product name with the shared tokens.productName recipe (unified typography)', () => {
+    const { getByText } = render(
+      <CartLineItem item={baseItem} onUpdateQuantity={vi.fn()} onRemove={vi.fn()} />,
+    );
+    const name = getByText('Crème Hydratante');
+    expect(name.className).toContain(tokens.productName.base);
+    expect(name.className).toContain('truncate');
+    expect(name.className).toContain('text-ink');
   });
 
   it('decrement at qty 1 removes the line', () => {

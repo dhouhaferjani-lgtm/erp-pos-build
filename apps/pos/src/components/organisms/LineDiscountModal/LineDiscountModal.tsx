@@ -213,7 +213,7 @@ export function LineDiscountModal({
       <div className="flex shrink-0 items-center justify-between border-b border-border-subtle bg-surface-raised px-4 py-3">
         <button
           onClick={onClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-muted hover:bg-surface-sunken hover:text-ink"
+          className="flex items-center gap-2 rounded-ctl px-3 py-2 text-sm text-ink-muted hover:bg-surface-sunken hover:text-ink"
         >
           <ArrowLeft className="h-4 w-4" />
           {t('discount.cancel')}
@@ -240,7 +240,7 @@ export function LineDiscountModal({
               </div>
 
               {/* PIN display */}
-              <div className="mb-3 rounded-xl bg-surface-sunken px-4 py-4 text-center text-4xl font-bold text-ink">
+              <div className="mb-3 rounded-card bg-surface-sunken px-4 py-4 text-center text-4xl font-bold text-ink">
                 {'•'.repeat(managerPin.length) || '\u00A0'}
               </div>
 
@@ -252,7 +252,7 @@ export function LineDiscountModal({
                     onClick={() => handlePinPress(key)}
                     disabled={key === ''}
                     className={cn(
-                      'flex items-center justify-center rounded-xl text-xl font-semibold transition-colors',
+                      'flex items-center justify-center rounded-ctl text-xl font-semibold transition-colors',
                       key === ''
                         ? 'invisible'
                         : key === 'C'
@@ -269,11 +269,11 @@ export function LineDiscountModal({
             <>
               {/* Normal discount entry mode */}
               {/* Discount type toggle */}
-              <div className="mb-3 flex rounded-lg bg-surface-sunken p-1">
+              <div className="mb-3 flex rounded-ctl bg-surface-sunken p-1">
                 <button
                   onClick={() => setDiscountType('percentage')}
                   className={cn(
-                    'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    'flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors',
                     discountType === 'percentage'
                       ? 'bg-surface-raised text-ink shadow-sm'
                       : 'text-ink-muted hover:text-ink',
@@ -284,7 +284,7 @@ export function LineDiscountModal({
                 <button
                   onClick={() => setDiscountType('fixed')}
                   className={cn(
-                    'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    'flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors',
                     discountType === 'fixed'
                       ? 'bg-surface-raised text-ink shadow-sm'
                       : 'text-ink-muted hover:text-ink',
@@ -295,7 +295,7 @@ export function LineDiscountModal({
               </div>
 
               {/* Value display */}
-              <div className="mb-3 rounded-xl bg-surface-sunken px-4 py-4 text-center text-4xl font-bold text-ink">
+              <div className="mb-3 rounded-card bg-surface-sunken px-4 py-4 text-center text-4xl font-bold text-ink">
                 {value || '0'}
                 {discountType === 'percentage' ? '%' : ''}
               </div>
@@ -308,7 +308,7 @@ export function LineDiscountModal({
                     onClick={() => handleNumpadPress(key)}
                     disabled={isDiscountDisabled}
                     className={cn(
-                      'flex items-center justify-center rounded-xl text-xl font-semibold transition-colors',
+                      'flex items-center justify-center rounded-ctl text-xl font-semibold transition-colors',
                       isDiscountDisabled && 'cursor-not-allowed opacity-50',
                       key === 'C'
                         ? 'bg-danger-surface text-danger-strong hover:bg-danger-surface'
@@ -326,14 +326,14 @@ export function LineDiscountModal({
         {/* Right: Item name + Summary + Reason + Apply/Authorize */}
         <div className="flex flex-[3] flex-col">
           {/* Item name — always visible */}
-          <div className="mb-3 rounded-lg bg-surface-sunken px-3 py-2 text-center text-sm font-medium text-ink-muted">
+          <div className="mb-3 rounded-tile bg-surface-sunken px-3 py-2 text-center text-sm font-medium text-ink-muted">
             {itemName}
           </div>
 
           {needsApproval ? (
             <>
               {/* Show the discount that will be applied */}
-              <div className="mb-3 rounded-lg bg-action-subtle border border-action-subtle p-3 text-center text-sm text-action">
+              <div className="mb-3 rounded-tile bg-action-subtle border border-action-subtle p-3 text-center text-sm text-action">
                 {discountType === 'percentage'
                   ? `${value}% ${t('cart.itemDiscount').toLowerCase()}`
                   : `${value} ${t('cart.itemDiscount').toLowerCase()}`}
@@ -341,7 +341,7 @@ export function LineDiscountModal({
 
               {/* Manager error */}
               {managerError && (
-                <div className="mb-3 rounded-lg border border-danger-subtle bg-danger-surface p-3 text-center text-sm text-danger-strong">
+                <div className="mb-3 rounded-tile border border-danger-subtle bg-danger-surface p-3 text-center text-sm text-danger-strong">
                   {managerError}
                 </div>
               )}
@@ -353,7 +353,7 @@ export function LineDiscountModal({
               <button
                 onClick={() => void handleManagerPinSubmit()}
                 disabled={managerPin.length < 4 || verifyingPin}
-                className="mb-2 flex min-h-[56px] w-full items-center justify-center rounded-xl bg-action px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
+                className="mb-2 flex min-h-[56px] w-full items-center justify-center rounded-ctl bg-action px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {verifyingPin ? t('discount.verifyingPin') : t('discount.authorize')}
               </button>
@@ -365,7 +365,7 @@ export function LineDiscountModal({
                   setManagerPin('');
                   setManagerError(null);
                 }}
-                className="flex min-h-[44px] w-full items-center justify-center rounded-xl border border-border-strong px-6 py-3 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken"
+                className="flex min-h-[44px] w-full items-center justify-center rounded-ctl border border-border-strong px-6 py-3 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken"
               >
                 {t('cashPayment.back')}
               </button>
@@ -374,13 +374,13 @@ export function LineDiscountModal({
             <>
               {/* Max exceeded warning — shown as info since manager can override */}
               {disabledReason && (
-                <div className="mb-3 rounded-lg border border-danger-subtle bg-danger-surface p-3 text-center text-sm text-danger-strong">
+                <div className="mb-3 rounded-tile border border-danger-subtle bg-danger-surface p-3 text-center text-sm text-danger-strong">
                   {disabledReason}
                 </div>
               )}
 
               {needsManagerOverride && numericValue > 0 && (
-                <div className="mb-3 rounded-lg border border-warning-subtle bg-warning-surface p-3 text-center text-sm text-warning-strong">
+                <div className="mb-3 rounded-tile border border-warning-subtle bg-warning-surface p-3 text-center text-sm text-warning-strong">
                   {!canDiscount
                     ? t('discount.managerApproval')
                     : t('discount.maxExceeded', { max: maxDiscountPercent })}
@@ -399,7 +399,7 @@ export function LineDiscountModal({
                   type="text"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  className="w-full rounded-lg border border-border-strong px-3 py-2.5 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
+                  className="w-full rounded-ctl border border-border-strong px-3 py-2.5 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
                 />
               </div>
 
@@ -407,7 +407,7 @@ export function LineDiscountModal({
               <button
                 onClick={handleApply}
                 disabled={!isValid}
-                className="flex min-h-[56px] w-full items-center justify-center rounded-xl bg-action px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex min-h-[56px] w-full items-center justify-center rounded-ctl bg-action px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t('cart.applyDiscount')}
               </button>

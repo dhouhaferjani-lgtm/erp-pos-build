@@ -126,7 +126,7 @@ export function ModifierSelectionModal({
     <Modal isOpen={isOpen} onClose={onClose} title={t('modifiers.customize')} size="full">
       <div className="flex flex-col">
         {/* Product header */}
-        <div className="mb-4 rounded-xl bg-surface-sunken px-4 py-3">
+        <div className="mb-4 rounded-card bg-surface-sunken px-4 py-3">
           <h3 className="text-lg font-bold text-ink">{product.name}</h3>
           <p className="text-sm text-ink-muted">
             {t('modifiers.basePrice')}: {format(product.sale_price ?? '0')}
@@ -171,7 +171,7 @@ export function ModifierSelectionModal({
                           key={modifier.id}
                           onClick={() => handleToggleModifier(group, modifier)}
                           className={cn(
-                            'flex items-center gap-2 rounded-full border-2 px-4 py-2 text-sm font-medium transition-all',
+                            'flex items-center gap-2 rounded-pill border-2 px-4 py-2 text-sm font-medium transition-all',
                             isSelected
                               ? 'border-accent bg-accent-tint text-accent-strong'
                               : 'border-border-subtle bg-surface-raised text-ink-muted hover:border-border-strong',
@@ -209,7 +209,7 @@ export function ModifierSelectionModal({
           <button
             onClick={handleConfirm}
             disabled={!allValid}
-            className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-action px-6 py-3 text-base font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-ctl bg-action px-6 py-3 text-base font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t('modifiers.addToCart')}
           </button>

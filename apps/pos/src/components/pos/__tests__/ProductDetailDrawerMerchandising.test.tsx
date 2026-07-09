@@ -201,6 +201,18 @@ describe('ProductDetailDrawer — Merchandising tabs (Task 28)', () => {
       expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ })).toBeTruthy();
     });
 
+    it('shows the count badge on tabs with count > 0 and hides it at 0 (owner defect 2)', () => {
+      renderDrawer();
+      // currentProduct: 2 equivalents, 1 complement, routine has 3 steps.
+      expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ }))
+        .toHaveTextContent('productDetail.merchandising.equivalents2');
+      expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.complements/ }))
+        .toHaveTextContent('productDetail.merchandising.complements1');
+      // Details tab has no count concept — never a badge.
+      expect(screen.getByRole('tab', { name: /productDetail\.tabs\.details/ }).textContent)
+        .toBe('productDetail.tabs.details');
+    });
+
     it('resolves equivalent_product_ids and renders a row per product', () => {
       renderDrawer();
       fireEvent.click(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ }));

@@ -29,7 +29,7 @@ export function StatusPill({ tone, label, pulse = false, className, ...rest }: S
     <div
       role="status"
       className={cn(
-        'inline-flex h-8 min-w-0 items-center gap-2 rounded-full px-3 text-sm font-medium',
+        'inline-flex h-8 min-w-0 items-center gap-2 rounded-pill px-3 text-sm font-medium',
         TONE[tone].pill,
         className,
       )}

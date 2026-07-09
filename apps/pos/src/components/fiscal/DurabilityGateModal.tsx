@@ -45,7 +45,7 @@ export function DurabilityGateModal() {
       data-testid="durability-gate-modal"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
     >
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 border border-red-300">
+      <div className="bg-white rounded-panel shadow-xl max-w-lg w-full p-6 border border-red-300">
         <h2
           id="durability-gate-title"
           className="text-lg font-semibold text-red-900 mb-2"
@@ -63,7 +63,7 @@ export function DurabilityGateModal() {
             type="button"
             data-testid="durability-gate-acknowledge"
             onClick={acknowledgeDurabilityGate}
-            className="bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-md text-sm"
+            className="bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-ctl text-sm"
           >
             {t('durabilityGate.acknowledgeButton')}
           </button>

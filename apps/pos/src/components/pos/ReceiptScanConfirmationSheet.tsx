@@ -62,14 +62,14 @@ export function ReceiptScanConfirmationSheet({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-md border border-border-strong bg-surface-raised px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken"
+            className="rounded-ctl border border-border-strong bg-surface-raised px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken"
           >
             {t('receiptScan.cancel')}
           </button>
           <button
             type="button"
             onClick={onAccept}
-            className="rounded-md bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover"
+            className="rounded-ctl bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover"
           >
             {t('receiptScan.startRefund')}
           </button>

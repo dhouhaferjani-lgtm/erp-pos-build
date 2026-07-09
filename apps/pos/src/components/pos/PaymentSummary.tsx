@@ -71,7 +71,7 @@ export function PaymentSummary({
     // discount rows keep their own self-contained `bg-danger-surface`
     // treatment (like a Badge/StatusPill) so their red signal stays
     // legible regardless of the navy parent.
-    <div className={cn(tokens.section.footer, 'space-y-1.5 rounded-xl px-3 py-2 shadow-sm')}>
+    <div className={cn(tokens.section.footer, 'space-y-1.5 rounded-card px-3 py-2 shadow-sm')}>
       {/* Sous-total — GROSS (before any discount). Falls back to net subtotal
        * when the caller doesn't supply a gross value. */}
       <div className={cn('flex justify-between text-xs', tokens.inverseOnNavy.muted)}>
@@ -81,7 +81,7 @@ export function PaymentSummary({
 
       {/* Remises produits — total of per-line discounts (only when present). */}
       {lineDiscountAmount > 0.0005 && (
-        <div className="flex items-center justify-between rounded-md border border-danger-subtle bg-danger-surface px-2 py-1 text-xs font-medium text-danger-strong">
+        <div className="flex items-center justify-between rounded-sm border border-danger-subtle bg-danger-surface px-2 py-1 text-xs font-medium text-danger-strong">
           <span>{t('pos:cart.lineDiscountsTotal')}</span>
           <span className="font-mono tabular-nums">−{format(lineDiscountAmount)}</span>
         </div>
@@ -90,7 +90,7 @@ export function PaymentSummary({
       {/* Remise panier — cart-level transaction discount (removable). */}
       {hasDiscount && (
         <div className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-2 rounded-md border border-danger-subtle bg-danger-surface px-2 py-1">
+          <div className="flex items-center gap-2 rounded-sm border border-danger-subtle bg-danger-surface px-2 py-1">
             <span className="font-medium text-danger-strong">{t('pos:cart.cartDiscount')}</span>
             <span className="font-mono font-medium tabular-nums text-danger-strong">-{format(discountAmount)}</span>
           </div>
@@ -124,7 +124,13 @@ export function PaymentSummary({
         <span className="font-mono text-2xl font-bold tabular-nums text-pay-navy-fg">{format(total)}</span>
       </div>
 
-      {/* Payment buttons */}
+      {/* Payment action row — cash is the dominant real-world action and
+       * visually OWNS the row (icon + full label, all remaining width).
+       * "Autres paiements" is demoted to a compact 64px icon-only control
+       * (matches the cash button's row height, ≥48px touch floor) so it can
+       * NEVER clip — its label lives on aria-label + title. The previous
+       * two-equal-width layout clipped "Autres paiements" → "Autres paieme…"
+       * at real cart width (~300-360px, owner-reported on Tauri). */}
       <div className="flex gap-2">
         <Button
           variant="confirm"
@@ -136,22 +142,22 @@ export function PaymentSummary({
             !paymentConfigReady ? t('pos:payment.configNotLoaded') : undefined
           }
           leftIcon={<Banknote className="h-5 w-5" />}
-          className="flex-[3]"
+          className="min-w-0 flex-1"
+          truncate
         >
           {t('pos:payment.cashPayment')}
         </Button>
 
         {showAdvancedPayments && (
-          <Button
+          <IconButton
             variant="secondary"
-            size="lg"
             onClick={onAdvancedPayments}
             disabled={disabled}
-            leftIcon={<Wallet className="h-5 w-5" />}
-            className="flex-1"
-          >
-            {t('pos:payment.advancedPayments')}
-          </Button>
+            aria-label={t('pos:payment.advancedPayments')}
+            title={t('pos:payment.advancedPayments')}
+            icon={<Wallet className="h-6 w-6" />}
+            className="h-16 w-16"
+          />
         )}
       </div>
     </div>

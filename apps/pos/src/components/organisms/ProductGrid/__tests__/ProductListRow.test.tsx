@@ -10,6 +10,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ProductListRow, type ProductListRowProps } from '../ProductListRow';
+import { tokens } from '@/lib/designTokens';
 import { makeProduct } from '@/test/helpers';
 
 // Task 16 — optional-field toggle. Mutable so individual tests can flip
@@ -134,6 +135,14 @@ describe('ProductListRow', () => {
 
     eye.click();
     expect(onViewDetails).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the product name with the shared tokens.productName recipe (1-line truncate)', () => {
+    renderRow();
+    const name = screen.getByText('Test Widget');
+    expect(name.className).toContain(tokens.productName.base);
+    expect(name.className).toContain('truncate');
+    expect(name.className).toContain('text-ink');
   });
 
   describe('showSkuOnRows (Task 16 — optional-field toggle, default off)', () => {

@@ -56,14 +56,14 @@ export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-sm rounded-lg bg-surface-raised p-6 shadow-xl">
+      <div className="w-full max-w-sm rounded-panel bg-surface-raised p-6 shadow-xl">
         <h3 className="text-lg font-bold text-ink">{t('pos:header.closeShift')}</h3>
         <p className="mt-1 text-sm text-ink-muted">
           {t('pos:header.shiftOpening', { number: shift.shift_number, amount: shift.opening_cash })}
         </p>
 
         {pendingReceiptCount > 0 && (
-          <div className="mt-3 flex items-start gap-2 rounded-md bg-warning-surface border border-warning-subtle p-3">
+          <div className="mt-3 flex items-start gap-2 rounded-sm bg-warning-surface border border-warning-subtle p-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-warning-strong" />
             <div className="text-sm text-warning-strong">
               <p className="font-medium">{t('pos:header.pendingSyncWarning')}</p>
@@ -84,26 +84,26 @@ export function CloseShiftModal({ isOpen, onClose, shift }: CloseShiftModalProps
             min="0"
             value={actualCash}
             onChange={setActualCash}
-            className="mt-1 block w-full rounded-md border border-border-strong px-3 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
+            className="mt-1 block w-full rounded-ctl border border-border-strong px-3 py-2 text-sm focus:border-accent focus:ring-1 focus:ring-accent focus:outline-none"
             autoFocus
           />
         </div>
 
         {error && (
-          <div className="mt-3 rounded-md bg-danger-surface p-3 text-sm text-danger-strong">{error}</div>
+          <div className="mt-3 rounded-sm bg-danger-surface p-3 text-sm text-danger-strong">{error}</div>
         )}
 
         <div className="mt-4 flex gap-3">
           <button
             onClick={onClose}
-            className="flex min-h-[48px] items-center justify-center flex-1 rounded-md border border-border-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken"
+            className="flex min-h-[48px] items-center justify-center flex-1 rounded-ctl border border-border-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken"
           >
             {t('common:cancel')}
           </button>
           <button
             onClick={() => void handleCloseShift()}
             disabled={closing || !actualCash}
-            className="flex min-h-[48px] items-center justify-center flex-1 rounded-md bg-danger px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-danger-strong disabled:opacity-50"
+            className="flex min-h-[48px] items-center justify-center flex-1 rounded-ctl bg-danger px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-danger-strong disabled:opacity-50"
           >
             {closing ? t('pos:header.closing') : t('pos:header.closeShift')}
           </button>
