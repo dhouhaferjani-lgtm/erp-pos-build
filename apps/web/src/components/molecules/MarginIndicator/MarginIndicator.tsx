@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { formatPercent } from '@/lib/format'
 
 export type MarginLevel = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -59,7 +60,7 @@ export function MarginIndicator({
 
   const formatMargin = (value: number | null): string => {
     if (value === null) return '-'
-    return `${value.toFixed(1)}%`
+    return formatPercent(value)
   }
 
   const formatCurrency = (value: number): string => {

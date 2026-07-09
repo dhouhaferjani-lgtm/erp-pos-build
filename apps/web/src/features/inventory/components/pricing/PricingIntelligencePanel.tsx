@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/atoms'
 import { usePermissions } from '@/hooks/usePermissions'
-import { formatCurrency } from '@/lib/format'
+import { formatCurrency, formatPercent } from '@/lib/format'
 import { bccomp } from '@/lib/decimal'
 import { cn } from '@/lib/utils'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
@@ -144,11 +144,11 @@ export function PricingIntelligencePanel({
               {t('products.fields.taxRate')}
             </div>
             <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>
-              {resolvedTaxRate !== null && resolvedTaxRate.trim() !== '' ? `${resolvedTaxRate}%` : '-'}
+              {resolvedTaxRate !== null && resolvedTaxRate.trim() !== '' ? formatPercent(resolvedTaxRate) : '-'}
             </div>
           </div>
           {maxDiscount !== null && maxDiscount !== undefined && (
-            metric(t('pricing.maxDiscount'), `${maxDiscount}%`, <ShieldCheck className="h-3.5 w-3.5" />)
+            metric(t('pricing.maxDiscount'), formatPercent(maxDiscount), <ShieldCheck className="h-3.5 w-3.5" />)
           )}
         </div>
 
@@ -163,13 +163,13 @@ export function PricingIntelligencePanel({
                   {t('pricing.margin')}
                 </div>
                 <div className={cn('mt-1 text-base font-semibold tabular-nums', marginTone)}>
-                  {marginState.marginPercent === '' ? '-' : `${marginState.marginPercent}%`}
+                  {marginState.marginPercent === '' ? '-' : formatPercent(marginState.marginPercent)}
                 </div>
                 {(targetMargin !== null || minimumMargin !== null) && (
                   <div className={cn('mt-1 text-xs', textColors.tertiary)}>
                     {t('pricing.marginThresholds', {
-                      target: targetMargin ?? '-',
-                      minimum: minimumMargin ?? '-',
+                      target: targetMargin === null ? '-' : formatPercent(targetMargin),
+                      minimum: minimumMargin === null ? '-' : formatPercent(minimumMargin),
                     })}
                   </div>
                 )}

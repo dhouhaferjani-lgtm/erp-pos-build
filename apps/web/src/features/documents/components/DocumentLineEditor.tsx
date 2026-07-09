@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Info, Plus, Trash2 } from 'lucide-react'
-import { formatCurrency } from '../../../lib/format'
+import { formatCurrency, formatPercent } from '../../../lib/format'
 import { bcadd, bccomp, bcdiv, bcmul, bcsub } from '../../../lib/decimal'
 import { apiPost } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
@@ -652,7 +652,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                     {' · '}
                     {t('sales:lineItems.pricing.lastBuy', { amount: pricingItem.last_purchase_cost ?? '-' })}
                     {' · '}
-                    {t('sales:lineItems.pricing.margin', { percent: pricingItem.target_margin_pct })}
+                    {t('sales:lineItems.pricing.margin', { percent: formatPercent(pricingItem.target_margin_pct).replace(/%$/, '') })}
                   </span>
                   <button
                     type="button"
@@ -679,7 +679,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                     {t('sales:lineItems.pricing.lastSale', { amount: pricingItem.last_sale_to_partner?.unit_price ?? '-' })}
                   </div>
                   <div className={textColors.secondary}>
-                    {t('sales:lineItems.pricing.minimumMargin', { percent: pricingItem.minimum_margin_pct })}
+                    {t('sales:lineItems.pricing.minimumMargin', { percent: formatPercent(pricingItem.minimum_margin_pct).replace(/%$/, '') })}
                   </div>
                 </div>
                 <button
@@ -708,7 +708,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       cellClassName: 'text-end',
       Cell: ({ line }) => (
         readonly ? (
-          <span className={`text-sm ${textColors.primary}`}>{line.discount_percent ?? '0'}%</span>
+          <span className={`text-sm ${textColors.primary}`}>{formatPercent(line.discount_percent ?? '0')}</span>
         ) : (
           <input
             type="number"
@@ -735,14 +735,14 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       cellClassName: 'text-end',
       Cell: ({ line }) => (
         readonly ? (
-          <span className={`text-sm ${textColors.disabled}`}>{line.tax_rate}%</span>
+          <span className={`text-sm ${textColors.disabled}`}>{formatPercent(line.tax_rate)}</span>
         ) : (
           <TaxConfigurationSelect
             value={line.tax_configuration_id ?? null}
             onChange={(configId, taxRate) => {
               handleUpdateLine(line.id, {
                 tax_configuration_id: configId,
-                tax_rate: Number(taxRate) || 0,
+                tax_rate: taxRate.trim() === '' ? '0' : taxRate,
               })
             }}
             {...(taxDocumentType !== undefined ? { documentType: taxDocumentType } : {})}

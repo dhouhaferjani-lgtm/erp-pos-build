@@ -7,6 +7,8 @@ import { useTranslation } from 'react-i18next'
 import { Info } from 'lucide-react'
 import { useToleranceSettings } from '../hooks/useSmartPayment'
 import { useCurrency } from '@/hooks/useCurrency'
+import { bcmul } from '@/lib/decimal'
+import { formatNumber, formatPercent } from '@/lib/format'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { StatusBadge } from '@/components/atoms/StatusBadge'
 
@@ -52,9 +54,9 @@ export function ToleranceSettingsDisplay() {
     return null
   }
 
-  // Convert decimal string to percentage (0.0050 → 0.5000%)
-  const percentageValue = (parseFloat(settings.percentage) * 100).toFixed(4)
-  const maxAmountValue = parseFloat(settings.max_amount).toFixed(decimals)
+  // Convert fraction string to percentage-value string (0.0050 -> 0.50).
+  const percentageValue = formatPercent(bcmul(settings.percentage, '100', 2)).replace(/%$/, '')
+  const maxAmountValue = formatNumber(settings.max_amount, decimals)
 
   return (
     <div className={`rounded-lg border ${borderColors.light} bg-white p-4`}>

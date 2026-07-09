@@ -730,7 +730,7 @@ describe('DocumentLineEditor — designation cells', () => {
         ],
       })
     })
-    expect(await screen.findByText('Cost 12.500000 · Last buy 11.900000 · Margin 30.00%')).toBeInTheDocument()
+    expect(await screen.findByText('Cost 12.500000 · Last buy 11.900000 · Margin 30%')).toBeInTheDocument()
   })
 
   it('shows server-driven blocked margin policy and applies suggested price', async () => {

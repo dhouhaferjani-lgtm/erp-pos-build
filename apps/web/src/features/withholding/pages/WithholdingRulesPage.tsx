@@ -5,7 +5,7 @@ import { useWithholdingRules, useDeleteWithholdingRule } from '../hooks/useWithh
 import { WithholdingRuleFormModal } from '../components/WithholdingRuleFormModal'
 import { cn } from '@/lib/utils'
 import { tokens, textColors } from '@/lib/designTokens'
-import { formatNumber } from '@/lib/format'
+import { formatNumber, formatPercent } from '@/lib/format'
 import { Button, Select, StatusBadge } from '@/components/atoms'
 import {
   DataTable,
@@ -86,7 +86,7 @@ export function WithholdingRulesPage() {
       header: t('rules.rate'),
       numeric: true,
       cellClassName: cn('font-mono font-semibold', textColors.primary),
-      render: (rule) => `${rule.rate_percentage}%`,
+      render: (rule) => formatPercent(rule.rate_percentage),
     },
     {
       key: 'minAmount',

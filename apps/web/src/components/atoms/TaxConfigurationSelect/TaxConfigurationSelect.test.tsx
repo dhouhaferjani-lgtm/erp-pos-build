@@ -54,31 +54,37 @@ describe('TaxConfigurationSelect', () => {
   it('renders a select with tax configurations', () => {
     setup()
     expect(screen.getByRole('combobox')).toBeInTheDocument()
-    expect(screen.getByText('TVA 19% (19.00%)')).toBeInTheDocument()
-    expect(screen.getByText('TVA 7% (7.00%)')).toBeInTheDocument()
+    expect(screen.getByText('TVA 19% (19%)')).toBeInTheDocument()
+    expect(screen.getByText('TVA 7% (7%)')).toBeInTheDocument()
     expect(screen.queryByText('Stamp Duty (1.000)')).not.toBeInTheDocument()
   })
 
   it('filters by documentType — keeps matching and universal configs', () => {
     setup({ documentType: 'SALES_INVOICE' })
     // TVA 19% has empty applicable_document_types → matches all
-    expect(screen.getByText('TVA 19% (19.00%)')).toBeInTheDocument()
+    expect(screen.getByText('TVA 19% (19%)')).toBeInTheDocument()
     // TVA 7% has SALES_INVOICE in its list → matches
-    expect(screen.getByText('TVA 7% (7.00%)')).toBeInTheDocument()
+    expect(screen.getByText('TVA 7% (7%)')).toBeInTheDocument()
     // Stamp Duty is DOCUMENT_TOTAL, so it is not offered for line-item tax selection.
     expect(screen.queryByText('Stamp Duty (1.000)')).not.toBeInTheDocument()
   })
 
   it('filters OUT configs that do not match documentType', () => {
     setup({ documentType: 'QUOTE' })
-    expect(screen.getByText('TVA 19% (19.00%)')).toBeInTheDocument()
-    expect(screen.queryByText('TVA 7% (7.00%)')).not.toBeInTheDocument()
+    expect(screen.getByText('TVA 19% (19%)')).toBeInTheDocument()
+    expect(screen.queryByText('TVA 7% (7%)')).not.toBeInTheDocument()
   })
 
   it('calls onChange with config ID and tax rate on selection', () => {
     const { onChange } = setup()
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tax-1' } })
     expect(onChange).toHaveBeenCalledWith('tax-1', '19.00')
+  })
+
+  it('emits a zero tax rate when cleared', () => {
+    const { onChange } = setup({ value: 'tax-1' })
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } })
+    expect(onChange).toHaveBeenCalledWith(null, '0')
   })
 
   it('pre-selects the value prop', () => {

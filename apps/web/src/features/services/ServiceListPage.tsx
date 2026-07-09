@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Plus, Wrench, Grid, List, Clock, DollarSign, Percent } from 'lucide-react'
 import { api } from '../../lib/api'
+import { formatCurrency as formatMoney, formatPercent } from '../../lib/format'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -75,13 +76,10 @@ export function ServiceListPage() {
     ]
   }, [t, total])
 
-  const formatCurrency = (amount: string | null) => {
+  const formatServiceCurrency = (amount: string | null) => {
     if (!amount) return '-'
     const currencyCode = currentCompany?.currency ?? 'USD'
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currencyCode,
-    }).format(parseFloat(amount))
+    return formatMoney(amount, { currency: currencyCode, locale: 'en-US' })
   }
 
   const formatDuration = (minutes: number | null) => {
@@ -293,10 +291,10 @@ export function ServiceListPage() {
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
                       {service.pricing_type === 'hourly'
-                        ? `${formatCurrency(service.hourly_rate)}/h`
+                        ? `${formatServiceCurrency(service.hourly_rate)}/h`
                         : service.pricing_type === 'percentage'
-                        ? `${service.base_price}%`
-                        : formatCurrency(service.base_price)
+                        ? formatPercent(service.base_price)
+                        : formatServiceCurrency(service.base_price)
                       }
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
@@ -355,10 +353,10 @@ export function ServiceListPage() {
                   <div className="flex items-center gap-1 text-sm font-medium text-gray-900">
                     <DollarSign className="h-4 w-4 text-gray-400" />
                     {service.pricing_type === 'hourly'
-                      ? `${formatCurrency(service.hourly_rate)}/h`
+                      ? `${formatServiceCurrency(service.hourly_rate)}/h`
                       : service.pricing_type === 'percentage'
-                      ? `${service.base_price}%`
-                      : formatCurrency(service.base_price)
+                      ? formatPercent(service.base_price)
+                      : formatServiceCurrency(service.base_price)
                     }
                   </div>
                   <span

@@ -100,7 +100,7 @@ describe('DocumentTotals', () => {
           {
             tax_type: 'percentage' as const,
             tax_name: 'TVA',
-            tax_rate: '19',
+            tax_rate: '19.0000',
             tax_base: '1000.000',
             tax_amount: '190.000',
           },
@@ -120,10 +120,11 @@ describe('DocumentTotals', () => {
       })
 
       // Check subtotal with 3 decimals
-      expect(screen.getByText('1000.000 TND')).toBeInTheDocument()
+      expect(screen.getByText('1,000.000 TND')).toBeInTheDocument()
 
       // Check tax line with rate
       expect(screen.getByText(/TVA 19%/)).toBeInTheDocument()
+      expect(screen.queryByText(/TVA 19\.0000%/)).not.toBeInTheDocument()
       expect(screen.getByText('190.000 TND')).toBeInTheDocument()
 
       // Check stamp duty
@@ -133,7 +134,7 @@ describe('DocumentTotals', () => {
 
       // Check total with 3 decimals
       expect(screen.getByText('Total')).toBeInTheDocument()
-      expect(screen.getByText('1191.000 TND')).toBeInTheDocument()
+      expect(screen.getByText('1,191.000 TND')).toBeInTheDocument()
     })
 
     it('should not show stamp duty when amount is zero', async () => {
@@ -205,9 +206,9 @@ describe('DocumentTotals', () => {
       })
 
       // Check EUR formatting with 2 decimals
-      expect(screen.getByText('1000.00 EUR')).toBeInTheDocument()
+      expect(screen.getByText('1,000.00 EUR')).toBeInTheDocument()
       expect(screen.getByText('200.00 EUR')).toBeInTheDocument()
-      expect(screen.getByText('1200.00 EUR')).toBeInTheDocument()
+      expect(screen.getByText('1,200.00 EUR')).toBeInTheDocument()
 
       // Stamp duty should not be shown
       expect(screen.queryByText('Stamp Duty')).not.toBeInTheDocument()
@@ -322,7 +323,7 @@ describe('DocumentTotals', () => {
       })
 
       // Balance due amount appears, check it exists (may appear multiple times with total)
-      const amounts = screen.getAllByText(/1200\.00 EUR/)
+      const amounts = screen.getAllByText(/1,200\.00 EUR/)
       expect(amounts.length).toBeGreaterThan(0)
     })
 

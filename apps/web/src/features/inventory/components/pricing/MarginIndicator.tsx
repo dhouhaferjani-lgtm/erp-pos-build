@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle, AlertTriangle, XCircle } from 'lucide-react'
 import { colors, textColors, borderColors } from '@/lib/designTokens'
+import { formatPercent } from '@/lib/format'
 
 type MarginLevel = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -93,7 +94,7 @@ export function MarginIndicator({
       </span>
       {showPercentage && marginPercent !== undefined && (
         <span className={`font-semibold ${config.textColor} ${sizeConfig.textSize}`}>
-          ({marginPercent.toFixed(1)}%)
+          ({formatPercent(marginPercent)})
         </span>
       )}
     </div>

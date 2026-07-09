@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Save, Plus, Pencil, Trash2, GripVertical } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, apiPut, getErrorMessage } from '../../lib/api'
+import { formatPercent } from '../../lib/format'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompany } from '../../hooks/useCompany'
 import { useAuthStore } from '../../stores/authStore'
@@ -411,7 +412,7 @@ export function TaxSettingsPage() {
                           {tax.tax_type === 'PERCENTAGE' ? t('settings:tax.configurations.form.typePercentage') : t('settings:tax.configurations.form.typeFixed')}
                         </td>
                         <td className={cn('px-6 py-4 whitespace-nowrap text-sm', textColors.primary)}>
-                          {tax.tax_type === 'PERCENTAGE' ? `${tax.percentage_rate}%` : tax.fixed_amount}
+                          {tax.tax_type === 'PERCENTAGE' ? formatPercent(tax.percentage_rate) : tax.fixed_amount}
                         </td>
                         <td className={cn('px-6 py-4 whitespace-nowrap text-sm', textColors.tertiary)}>
                           {tax.applies_to === 'LINE_ITEMS' ? t('settings:tax.configurations.form.appliesToLineItems') : t('settings:tax.configurations.form.appliesToDocument')}
