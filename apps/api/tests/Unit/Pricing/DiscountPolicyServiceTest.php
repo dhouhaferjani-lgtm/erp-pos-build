@@ -10,6 +10,7 @@ use App\Modules\Pricing\Domain\Services\DiscountCapResolver;
 use App\Modules\Pricing\Domain\Services\DiscountPolicyService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\DiscountPolicySubjectProviderInterface;
+use App\Shared\Contracts\RegulatoryFloorResolverInterface;
 use App\Shared\DTOs\DiscountPolicyContext;
 use App\Shared\DTOs\DiscountPolicyLineContext;
 use App\Shared\DTOs\DiscountPolicySubject;
@@ -82,7 +83,7 @@ final class DiscountPolicyServiceTest extends TestCase
     public function test_resolve_many_batches_subject_provider_calls(): void
     {
         $provider = new SpySubjectProvider($this->subject(wac: '100.000000'));
-        $service = new DiscountPolicyService($provider, new DiscountCapResolver, new FixedScaleResolver);
+        $service = new DiscountPolicyService($provider, new DiscountCapResolver, new FixedScaleResolver, new StubRegulatoryFloorResolver(false));
 
         $service->resolveMany([
             'line-0' => $this->context(productId: 'product-1'),
@@ -93,12 +94,13 @@ final class DiscountPolicyServiceTest extends TestCase
         self::assertSame(['line-0', 'line-1'], array_keys($provider->lastContexts));
     }
 
-    private function serviceWithSubject(DiscountPolicySubject $subject): DiscountPolicyService
+    private function serviceWithSubject(DiscountPolicySubject $subject, bool $regulatoryActive = false): DiscountPolicyService
     {
         return new DiscountPolicyService(
             new SpySubjectProvider($subject),
             new DiscountCapResolver,
             new FixedScaleResolver,
+            new StubRegulatoryFloorResolver($regulatoryActive),
         );
     }
 
@@ -121,12 +123,45 @@ final class DiscountPolicyServiceTest extends TestCase
         );
     }
 
+    public function test_regulatory_below_cost_floor_is_advisory_and_never_blocks(): void
+    {
+        // WAC 0 → no enforceable floor; only the FR/TN advisory floor from last purchase cost.
+        // Mode is Block, yet a regulatory-only breach must NOT block (advisory until sign-off).
+        $verdict = $this->serviceWithSubject(
+            $this->subject(wac: '0.000000', countryCode: 'TN', lastPurchaseCost: '8.000', discountFloorMode: 'Block'),
+            regulatoryActive: true,
+        )->resolve($this->context(price: '5.000', currency: 'TND'));
+
+        self::assertSame('8.000', $verdict->floorPriceNet);
+        self::assertSame(FloorBasis::LegalBelowCost->value, $verdict->floorBasis);
+        self::assertContains('legal_below_cost', $verdict->reasons);
+        self::assertFalse($verdict->blocksSale);
+        self::assertTrue($verdict->allowed);
+        self::assertNull($verdict->requiresPermission);
+        self::assertSame('warn', $verdict->severity);
+    }
+
+    public function test_regulatory_floor_absent_when_no_active_rule_for_country(): void
+    {
+        $verdict = $this->serviceWithSubject(
+            $this->subject(wac: '0.000000', countryCode: 'TN', lastPurchaseCost: '8.000'),
+            regulatoryActive: false,
+        )->resolve($this->context(price: '5.000', currency: 'TND'));
+
+        self::assertNull($verdict->floorPriceNet);
+        self::assertSame(FloorBasis::None->value, $verdict->floorBasis);
+        self::assertTrue($verdict->allowed);
+    }
+
     private function subject(
         ?string $productCap = null,
         ?string $salePriceNet = '150.00',
         ?string $wac = '100.000000',
         ?string $minimumMargin = '10.00',
         string $taxRate = '20.00',
+        ?string $countryCode = null,
+        ?string $lastPurchaseCost = '90.000000',
+        string $discountFloorMode = 'Advisory',
     ): DiscountPolicySubject {
         return DiscountPolicySubject::make(
             companyId: 'company-1',
@@ -137,15 +172,16 @@ final class DiscountPolicyServiceTest extends TestCase
             companyMaxDiscountPercent: null,
             salePriceNet: $salePriceNet,
             wacNet: $wac,
-            lastPurchaseCost: '90.000000',
+            lastPurchaseCost: $lastPurchaseCost,
             minimumMarginPercent: $minimumMargin,
             currency: 'EUR',
             taxConfigurationId: null,
             taxRate: $taxRate,
             resolvedTaxRate: $taxRate,
-            discountFloorMode: 'Advisory',
+            discountFloorMode: $discountFloorMode,
             priceEntryMode: 'Ht',
             policyAsOf: '2026-07-08T00:00:00+00:00',
+            countryCode: $countryCode,
         );
     }
 }
@@ -183,5 +219,15 @@ final class FixedScaleResolver implements CurrencyScaleResolverInterface
     public function getScaleSafe(?string $currencyCode = null, int $fallback = 3): int
     {
         return $this->getScale($currencyCode);
+    }
+}
+
+final class StubRegulatoryFloorResolver implements RegulatoryFloorResolverInterface
+{
+    public function __construct(private readonly bool $active) {}
+
+    public function belowCostFloorActive(string $countryCode): bool
+    {
+        return $this->active;
     }
 }

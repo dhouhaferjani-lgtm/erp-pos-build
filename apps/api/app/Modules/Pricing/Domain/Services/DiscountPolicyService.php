@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\Pricing\Domain\Services;
 
+use App\Modules\Company\Domain\Enums\DiscountFloorMode;
 use App\Modules\Pricing\Domain\Enums\FloorBasis;
 use App\Modules\Pricing\Domain\Enums\PriceBasis;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\DiscountPolicyInterface;
 use App\Shared\Contracts\DiscountPolicySubjectProviderInterface;
+use App\Shared\Contracts\RegulatoryFloorResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\DTOs\DiscountPolicyContext;
 use App\Shared\DTOs\DiscountPolicyLineContext;
@@ -28,6 +30,7 @@ final class DiscountPolicyService implements DiscountPolicyInterface
         private readonly DiscountPolicySubjectProviderInterface $subjects,
         private readonly DiscountCapResolver $capResolver,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly RegulatoryFloorResolverInterface $regulatory,
     ) {}
 
     public function resolve(DiscountPolicyContext $context): DiscountPolicyVerdict
@@ -88,30 +91,46 @@ final class DiscountPolicyService implements DiscountPolicyInterface
         $effectiveNet = $this->effectiveNetPrice($context, $subject, $scale);
         $maxDiscountPercent = $this->capResolver->resolve($subject);
         $discountPercent = $this->discountPercent($subject, $effectiveNet);
+
+        // Enforceable floors (cost / minimum-margin / discount-cap) follow the company mode.
         $contributions = $this->floorContributions($subject, $maxDiscountPercent, $scale);
-        $winner = $this->winningContribution($contributions, $scale);
-        $floorPriceNet = $winner['floor'];
-        $floorBasis = $winner['basis'];
+        $enforceableWinner = $this->winningContribution($contributions, $scale);
+        $enforceableFloor = $enforceableWinner['floor'];
+
+        // Regulatory below-cost floor (FR/TN) — ADVISORY-ONLY: it raises the displayed
+        // floor but never sets a permission, so it never blocks and is never rejected on
+        // documents, even under Block mode (spec Rev 3 §8, "advisory until counsel sign-off").
+        $advisoryFloor = $this->regulatoryAdvisoryFloor($subject, $scale);
+        [$floorPriceNet, $floorBasis] = $this->maxFloor($enforceableFloor, $enforceableWinner['basis'], $advisoryFloor, $scale);
+
         $reasons = [];
         $requiresPermission = null;
 
         $wacNet = $this->positiveNumericOrNull($subject->wacNet, $scale);
         $belowCost = $wacNet !== null
             && bccomp($effectiveNet, CurrencyScale::bcround($wacNet, $scale), $scale) < 0;
-        $belowFloor = $floorPriceNet !== null && bccomp($effectiveNet, $floorPriceNet, $scale) < 0;
+        $belowEnforceableFloor = $enforceableFloor !== null && bccomp($effectiveNet, $enforceableFloor, $scale) < 0;
+        $belowAdvisoryFloor = $advisoryFloor !== null && bccomp($effectiveNet, $advisoryFloor, $scale) < 0;
 
         if ($belowCost) {
             $reasons[] = 'below_cost';
             $requiresPermission = self::PERMISSION_BELOW_COST;
         }
 
-        if ($belowFloor) {
-            $reasons[] = $floorBasis === FloorBasis::DiscountCap->value ? 'discount_cap' : 'minimum_margin_floor';
+        if ($belowEnforceableFloor) {
+            $reasons[] = $enforceableWinner['basis'] === FloorBasis::DiscountCap->value ? 'discount_cap' : 'minimum_margin_floor';
             $requiresPermission ??= self::PERMISSION_BELOW_MINIMUM_MARGIN;
         }
 
-        $blocksSale = $requiresPermission !== null && $subject->discountFloorMode === 'Block';
-        $severity = $blocksSale ? 'block' : ($requiresPermission !== null ? 'warn' : 'ok');
+        if ($belowAdvisoryFloor) {
+            // Advisory only — reason surfaced for the panel; no permission, so never blocks.
+            $reasons[] = 'legal_below_cost';
+        }
+
+        $blocksSale = $requiresPermission !== null && $subject->discountFloorMode === DiscountFloorMode::Block->value;
+        $severity = $blocksSale
+            ? 'block'
+            : ($requiresPermission !== null || $belowAdvisoryFloor ? 'warn' : 'ok');
 
         return new DiscountPolicyVerdict(
             allowed: ! $blocksSale,
@@ -198,6 +217,53 @@ final class DiscountPolicyService implements DiscountPolicyInterface
         }
 
         return $winner;
+    }
+
+    /**
+     * FR/TN regulatory below-cost floor — advisory only. Uses last purchase (invoice)
+     * cost as the basis, falling back to WAC. Null when the subject's country has no
+     * active below-cost regulation or no positive cost basis exists.
+     *
+     * @return numeric-string|null
+     */
+    private function regulatoryAdvisoryFloor(DiscountPolicySubject $subject, int $scale): ?string
+    {
+        if ($subject->countryCode === null || $subject->countryCode === '') {
+            return null;
+        }
+
+        if (! $this->regulatory->belowCostFloorActive($subject->countryCode)) {
+            return null;
+        }
+
+        $basis = $this->positiveNumericOrNull($subject->lastPurchaseCost, $scale)
+            ?? $this->positiveNumericOrNull($subject->wacNet, $scale);
+
+        if ($basis === null) {
+            return null;
+        }
+
+        return CurrencyScale::bcround($basis, $scale);
+    }
+
+    /**
+     * The displayed floor is the highest of the enforceable and advisory floors.
+     *
+     * @param  numeric-string|null  $enforceableFloor
+     * @param  numeric-string|null  $advisoryFloor
+     * @return array{0: numeric-string|null, 1: string}
+     */
+    private function maxFloor(?string $enforceableFloor, string $enforceableBasis, ?string $advisoryFloor, int $scale): array
+    {
+        if ($advisoryFloor === null) {
+            return [$enforceableFloor, $enforceableBasis];
+        }
+
+        if ($enforceableFloor === null || bccomp($advisoryFloor, $enforceableFloor, $scale) > 0) {
+            return [$advisoryFloor, FloorBasis::LegalBelowCost->value];
+        }
+
+        return [$enforceableFloor, $enforceableBasis];
     }
 
     /**

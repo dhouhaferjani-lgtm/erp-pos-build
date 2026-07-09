@@ -84,6 +84,7 @@ final class DiscountPolicySubjectProvider implements DiscountPolicySubjectProvid
                 discountFloorMode: $company->discount_floor_mode->value,
                 priceEntryMode: $company->price_entry_mode->value,
                 policyAsOf: $policyAsOf,
+                countryCode: $company->country_code,
             );
         }
 

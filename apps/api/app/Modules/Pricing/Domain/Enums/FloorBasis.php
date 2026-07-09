@@ -10,4 +10,5 @@ enum FloorBasis: string
     case Cost = 'Cost';
     case MinimumMargin = 'MinimumMargin';
     case DiscountCap = 'DiscountCap';
+    case LegalBelowCost = 'LegalBelowCost';
 }

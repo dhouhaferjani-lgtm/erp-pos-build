@@ -1470,7 +1470,7 @@ declare namespace App.Modules.PlatformIntegration.Domain.Enums {
 export type PlatformLookupStatus = 'found' | 'not_found' | 'error' | 'cached';
 }
 declare namespace App.Modules.Pricing.Domain.Enums {
-export type FloorBasis = 'None' | 'Cost' | 'MinimumMargin' | 'DiscountCap';
+export type FloorBasis = 'None' | 'Cost' | 'MinimumMargin' | 'DiscountCap' | 'LegalBelowCost';
 export type PriceBasis = 'Ht' | 'Ttc';
 export type RegulatoryEnforcement = 'Advisory' | 'Block';
 export type RegulatoryRuleType = 'BelowCostFloor' | 'PharmaMarginSchedule';
@@ -2457,6 +2457,7 @@ discountFloorMode: string;
 priceEntryMode: string;
 policyAsOf: string;
 policyVersion: string;
+countryCode: string | null;
 };
 export type DiscountPolicyVerdict = {
 allowed: boolean;

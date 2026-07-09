@@ -18,6 +18,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\DiscountPolicyInterface;
 use App\Shared\DTOs\DiscountPolicyContext;
+use Database\Seeders\CountryPricingRegulationSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -169,6 +170,35 @@ final class DiscountPolicyEndpointTest extends TestCase
         self::assertSame('pricing.sell_below_minimum_margin', $belowFloor->requiresPermission);
         self::assertSame('orange', $marginService->getMarginLevel($this->product, '109.99')['level']);
         self::assertNotSame('orange', $marginService->getMarginLevel($this->product, '110.00')['level']);
+    }
+
+    public function test_regulatory_below_cost_floor_surfaces_as_advisory_for_zero_wac_product(): void
+    {
+        // FR below-cost regulation (advisory) + a product with no WAC but a last purchase cost:
+        // without the regulatory wiring this product would have NO floor at all (M0 review gap).
+        $this->seed(CountryPricingRegulationSeeder::class);
+
+        $wacZero = Product::factory()->for($this->tenant)->for($this->company)->create([
+            'cost_price' => '0.000000',
+            'last_purchase_cost' => '8.000000',
+            'sale_price' => '20.00',
+        ]);
+
+        $manager = $this->user('manager-regulatory@example.com');
+        $manager->assignRole('manager');
+        $this->attachToCompany($manager);
+
+        $this->actingAs($manager, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/pricing/discount-policy', [
+                ...$this->payload('5.00'),
+                'product_id' => $wacZero->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.floorPriceNet', '8.00')
+            ->assertJsonPath('data.floorBasis', FloorBasis::LegalBelowCost->value)
+            ->assertJsonPath('data.blocksSale', false)
+            ->assertJsonPath('data.requiresPermission', null);
     }
 
     /**

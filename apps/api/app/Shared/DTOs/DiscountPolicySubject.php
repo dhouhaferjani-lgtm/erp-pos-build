@@ -32,6 +32,7 @@ final class DiscountPolicySubject extends Data
         public string $priceEntryMode,
         public string $policyAsOf,
         public string $policyVersion,
+        public ?string $countryCode = null,
     ) {}
 
     /**
@@ -55,6 +56,7 @@ final class DiscountPolicySubject extends Data
         string $discountFloorMode,
         string $priceEntryMode,
         string $policyAsOf,
+        ?string $countryCode = null,
     ): self {
         return new self(
             companyId: $companyId,
@@ -91,7 +93,9 @@ final class DiscountPolicySubject extends Data
                 $resolvedTaxRate,
                 $discountFloorMode,
                 $priceEntryMode,
+                $countryCode,
             ]),
+            countryCode: $countryCode,
         );
     }
 
