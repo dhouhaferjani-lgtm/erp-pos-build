@@ -132,6 +132,25 @@ class ProductData extends Data
         );
     }
 
+    /**
+     * Redact cost/margin fields for callers lacking `pricing.view_cost_prices`.
+     *
+     * WAC/margin confidentiality is a real access-control concern, not merely advisory:
+     * the FE panel only hides these in the DOM, so the raw values must not leave the API
+     * for a non-holder. See pricing/discount spec Rev 3 (R3-2 / M0 finding F2). Mutates and
+     * returns $this — safe because callers redact a freshly-built instance.
+     */
+    public function withoutCostFields(): self
+    {
+        $this->purchase_price = null;
+        $this->cost_price = null;
+        $this->target_margin_override = null;
+        $this->minimum_margin_override = null;
+        $this->effective_margins = null;
+
+        return $this;
+    }
+
     private static function quantityDecimals(Product $product): int
     {
         if ($product->relationLoaded('unitOfMeasure') && $product->unitOfMeasure !== null) {

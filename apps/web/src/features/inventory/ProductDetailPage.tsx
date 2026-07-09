@@ -143,13 +143,13 @@ export function ProductDetailPage() {
       if (data?.sale_price === null || data?.sale_price === undefined) throw new Error('Product sale price is required')
 
       return apiPost<DiscountPolicyVerdict>('/pricing/discount-policy', {
-        productId: data.id,
-        effectiveUnitPrice: data.sale_price,
+        product_id: data.id,
+        effective_unit_price: data.sale_price,
         currency: companyCurrency,
-        quantity: '1.000',
-        taxRate: data.tax_rate ?? '0.00',
-        taxConfigurationId: data.default_tax_configuration_id,
-        priceBasis: 'HT',
+        quantity: '1',
+        tax_rate: data.tax_rate ?? undefined,
+        tax_configuration_id: data.default_tax_configuration_id ?? undefined,
+        price_basis: 'Ht',
       })
     },
     enabled: canViewCostPrices && data?.sale_price !== null && data?.sale_price !== undefined && !!tenantId && !!companyId,

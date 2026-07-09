@@ -242,12 +242,14 @@ describe('ProductDetailPage', () => {
     const firstRender = renderProductDetail()
 
     await waitFor(() => {
+      // Contract MUST match the backend validation (snake_case keys, PriceBasis enum value 'Ht').
+      // A camelCase / 'HT' payload 422s and the advisory block silently never renders.
       expect(mockApiPost).toHaveBeenCalledWith('/pricing/discount-policy', expect.objectContaining({
-        productId: 'product-1',
-        effectiveUnitPrice: '50.000',
-        priceBasis: 'HT',
-        quantity: '1.000',
-        taxRate: '19.00',
+        product_id: 'product-1',
+        effective_unit_price: '50.000',
+        price_basis: 'Ht',
+        quantity: '1',
+        tax_rate: '19.00',
       }))
     })
 

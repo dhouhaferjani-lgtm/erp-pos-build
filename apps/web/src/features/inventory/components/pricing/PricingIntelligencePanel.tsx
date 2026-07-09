@@ -89,8 +89,11 @@ export function PricingIntelligencePanel({
   const targetMargin = product.effective_margins?.target_margin ?? null
   const minimumMargin = product.effective_margins?.minimum_margin ?? null
   const marginState = resolveMarginState(product.cost_price, product.sale_price, targetMargin, minimumMargin)
+  // Prefer the backend-resolved rate (tax config → fallback) so TTC matches the floor's basis (R3-6).
+  const resolvedTaxRate =
+    (typeof verdict?.meta?.resolvedTaxRate === 'string' ? verdict.meta.resolvedTaxRate : null) ?? product.tax_rate
   const salePriceTtc = product.sale_price !== null
-    ? priceTtcFromHt(product.sale_price, product.tax_rate, moneyScale)
+    ? priceTtcFromHt(product.sale_price, resolvedTaxRate, moneyScale)
     : null
   const salePriceValue = basis === 'HT' ? product.sale_price : salePriceTtc
   const marginTone = marginState.level === 'success'
@@ -140,7 +143,7 @@ export function PricingIntelligencePanel({
               {t('products.fields.taxRate')}
             </div>
             <div className={cn('mt-1 text-base font-semibold tabular-nums', textColors.primary)}>
-              {product.tax_rate !== null && product.tax_rate.trim() !== '' ? `${product.tax_rate}%` : '-'}
+              {resolvedTaxRate !== null && resolvedTaxRate.trim() !== '' ? `${resolvedTaxRate}%` : '-'}
             </div>
           </div>
           {maxDiscount !== null && maxDiscount !== undefined && (

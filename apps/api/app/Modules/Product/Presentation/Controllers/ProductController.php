@@ -338,8 +338,18 @@ class ProductController extends Controller
 
         $media = $this->catalogMedia->forProduct($productModel->id, $company->tenant_id);
 
+        $data = ProductData::fromModel($productModel, $media, effective: $this->marginResolver->resolve($productModel));
+
+        // Cost/margin confidentiality: redact WAC/margins server-side for callers without
+        // pricing.view_cost_prices — the FE panel only hides them in the DOM (Rev 3 R3-2 / F2).
+        /** @var User $user */
+        $user = $request->user();
+        if (! $user->can('pricing.view_cost_prices')) {
+            $data->withoutCostFields();
+        }
+
         return response()->json([
-            'data' => ProductData::fromModel($productModel, $media, effective: $this->marginResolver->resolve($productModel)),
+            'data' => $data,
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),

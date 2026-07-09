@@ -133,6 +133,9 @@ final class DiscountPolicyService implements DiscountPolicyInterface
                 'effectiveUnitPriceNet' => $effectiveNet,
                 'priceBasis' => $context->priceBasis,
                 'currency' => $context->currency,
+                // Config-resolved effective tax rate (tax config → fallback tax_rate chain),
+                // so the FE derives TTC from the SAME rate as the backend floor (Rev 3 R3-6).
+                'resolvedTaxRate' => $subject->resolvedTaxRate,
             ],
         );
     }
