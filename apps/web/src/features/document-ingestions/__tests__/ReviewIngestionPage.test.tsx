@@ -308,4 +308,17 @@ describe('ReviewIngestionPage', () => {
 
     expect(await screen.findByText('Line 1 price is required.')).toBeInTheDocument()
   })
+
+  it('navigates to create-supplier with the extracted supplier as prefill state', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(detailResponse())
+
+    renderReview()
+
+    await user.click(await screen.findByRole('button', { name: 'Create supplier' }))
+
+    expect(mockNavigate).toHaveBeenCalledWith('/purchases/suppliers/new', {
+      state: { partnerPrefill: { name: 'Pharma Distribution' } },
+    })
+  })
 })
