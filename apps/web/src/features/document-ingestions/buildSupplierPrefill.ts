@@ -24,6 +24,9 @@ function resolveField(
     if (field === undefined) {
       continue
     }
+    if (typeof field.value !== 'string') {
+      continue
+    }
     const trimmed = field.value.trim()
     if (trimmed.length > 0) {
       return trimmed

@@ -117,4 +117,28 @@ describe('buildSupplierPrefill', () => {
     expect(buildSupplierPrefill({ zip: f('10001') })).toEqual({ postal_code: '10001' })
     expect(buildSupplierPrefill({ zip_code: f('10002') })).toEqual({ postal_code: '10002' })
   })
+
+  it('falls through to a later alias when an earlier alias has a non-string value, without throwing', () => {
+    const supplier = {
+      vat_number: { value: 42 as unknown as string, confidence: 0.9, sourceBbox: null },
+      tax_id: f('TN9876543'),
+    }
+
+    expect(() => buildSupplierPrefill(supplier)).not.toThrow()
+    expect(buildSupplierPrefill(supplier)).toEqual({
+      vat_number: 'TN9876543',
+    })
+  })
+
+  it('omits a target whose only candidate has a non-string value, without throwing', () => {
+    const supplier = {
+      name: f('Acme Supplies'),
+      vat_number: { value: 42 as unknown as string, confidence: 0.9, sourceBbox: null },
+    }
+
+    expect(() => buildSupplierPrefill(supplier)).not.toThrow()
+    expect(buildSupplierPrefill(supplier)).toEqual({
+      name: 'Acme Supplies',
+    })
+  })
 })
