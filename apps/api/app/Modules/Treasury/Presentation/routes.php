@@ -13,6 +13,7 @@ use App\Modules\Treasury\Presentation\Controllers\PaymentMethodController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentRefundController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentRepositoryController;
 use App\Modules\Treasury\Presentation\Controllers\RepositoryAdjustmentController;
+use App\Modules\Treasury\Presentation\Controllers\RepositoryMovementController;
 use App\Modules\Treasury\Presentation\Controllers\SmartPaymentController;
 use Illuminate\Support\Facades\Route;
 
@@ -65,6 +66,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/payment-repositories/{repository}/transactions', [PaymentRepositoryController::class, 'transactions'])
         ->middleware('can:repositories.view')
         ->name('payment-repositories.transactions');
+
+    // Repository movements drill-down — paginated read side of the append-only
+    // repository_movements ledger (Treasury spine Task 26).
+    Route::get('/payment-repositories/{repository}/movements', [RepositoryMovementController::class, 'index'])
+        ->middleware('can:treasury.view')
+        ->name('payment-repositories.movements');
 
     Route::post('/payment-repositories', [PaymentRepositoryController::class, 'store'])
         ->middleware('can:repositories.manage')
