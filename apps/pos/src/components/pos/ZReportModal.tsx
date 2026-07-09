@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
+import { formatPercent } from '@/lib/format';
 import { Modal } from './Modal';
 import { Loader2, Info, AlertTriangle } from 'lucide-react';
 import type { ZReportResponse } from '@/api/reportApi';
@@ -187,7 +188,7 @@ export function ZReportModal({
                   <tbody>
                     {report.report_data.vat_breakdown.map((row) => (
                       <tr key={row.tax_rate} className="border-b border-border-subtle">
-                        <td className="py-2">{row.tax_rate}%</td>
+                        <td className="py-2">{formatPercent(row.tax_rate)}</td>
                         <td className="py-2 text-right">{format(row.net_amount)}</td>
                         <td className="py-2 text-right">{format(row.vat_amount)}</td>
                         <td className="py-2 text-right">{format(row.gross_amount)}</td>

@@ -5,7 +5,10 @@
 // ─── Receipt Snapshot (per-receipt data stored inside each Z-report) ─────────
 
 export interface ReceiptSnapshotTaxLine {
-  /** Tax rate percentage — stored as number for sorting (not a monetary value) */
+  /**
+   * Tax rate percentage. Frozen as a number because receipt snapshots are part
+   * of the persisted Z-report shape; format at the UI boundary only.
+   */
   rate: number;
   net_amount: string;
   tax_amount: string;
@@ -17,7 +20,10 @@ export interface ReceiptSnapshotLine {
   quantity: number;
   unit_price: string;
   total: string;
-  /** Tax rate percentage — stored as number (not a monetary value) */
+  /**
+   * Tax rate percentage. Frozen as a number because receipt snapshots are part
+   * of the persisted Z-report shape; format at the UI boundary only.
+   */
   tax_rate: number;
   discount_amount: string;
 }
@@ -51,6 +57,10 @@ export interface ReceiptSnapshot {
 // ─── Z-Report Data (aggregated shift totals) ────────────────────────────────
 
 export interface ZReportVatBreakdown {
+  /**
+   * Tax rate percentage. Frozen as a number for persisted/report/fiscal event
+   * compatibility; do not change this to a formatted string.
+   */
   tax_rate: number;
   net_amount: string;
   vat_amount: string;

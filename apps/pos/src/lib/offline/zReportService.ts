@@ -805,6 +805,8 @@ function aggregateReportData(
     }
   }
 
+  // tax_rate intentionally remains a number in report_data because this shape is
+  // persisted and used for fiscal event authoring. UI formatting happens later.
   const vatBreakdown: ZReportVatBreakdown[] = [];
   for (const [rate, totals] of vatByRate) {
     vatBreakdown.push({
@@ -850,7 +852,8 @@ function buildReceiptSnapshots(
     // Map key is a numeric tax rate (percentage, not monetary) for sort stability.
     const taxByRate = new Map<number, { rate: number; net: string; vat: string; gross: string }>();
     for (const line of lines) {
-      // tax_rate is a percentage — parseFloat is intentional and correct here
+      // tax_rate is a percentage frozen as a number in receipt snapshots; parse
+      // here, format only when rendering.
       const rate = parseFloat(line.tax_rate ?? '0');
       const lineNet = line.line_total ?? '0';
       const lineVat = line.tax_amount ?? '0';
@@ -875,7 +878,8 @@ function buildReceiptSnapshots(
       quantity: line.quantity ?? 1,
       unit_price: line.unit_price ?? '0',
       total: line.line_total ?? '0',
-      // tax_rate is a percentage — parseFloat is intentional and correct here
+      // tax_rate is a percentage frozen as a number in receipt snapshots; parse
+      // here, format only when rendering.
       tax_rate: parseFloat(line.tax_rate ?? '0'),
       discount_amount: line.discount_amount ?? '0',
     }));
