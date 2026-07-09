@@ -2877,7 +2877,12 @@ final class GeneralLedgerService
         DocumentAdditionalCost $cost,
         array $application,
         User $user,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createLinkedCostCapitalizationEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $existing = JournalEntry::query()
             ->where('source_type', 'linked_cost_capitalization')
             ->where('source_id', $cost->id)
@@ -2943,7 +2948,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, (string) $expense->currency);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        }
 
         return $entry;
     }
@@ -2956,7 +2965,12 @@ final class GeneralLedgerService
         DocumentAdditionalCost $reversalCost,
         array $application,
         User $user,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createLinkedCostCapitalizationReversalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $existing = JournalEntry::query()
             ->where('source_type', 'linked_cost_capitalization_reversal')
             ->where('source_id', $reversalCost->id)
@@ -3022,7 +3036,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, (string) $expense->currency);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        }
 
         return $entry;
     }

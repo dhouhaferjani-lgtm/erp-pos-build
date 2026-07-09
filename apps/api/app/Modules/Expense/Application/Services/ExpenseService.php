@@ -30,8 +30,6 @@ use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Document\OperationResolverInterface;
 use App\Shared\Contracts\Inventory\LinkedCostApplicatorInterface;
-use App\Shared\Contracts\Treasury\RepositoryInflowInterface;
-use App\Shared\Contracts\Treasury\RepositoryOutflowInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Builder;
@@ -46,8 +44,6 @@ final class ExpenseService
 {
     public function __construct(
         private readonly GeneralLedgerService $glService,
-        private readonly RepositoryOutflowInterface $outflow,
-        private readonly RepositoryInflowInterface $inflow,
         private readonly CompanyContext $companyContext,
         private readonly OperationResolverInterface $operationResolver,
         private readonly LinkedCostApplicatorInterface $linkedCostApplicator,
@@ -186,25 +182,46 @@ final class ExpenseService
                 $application = $this->linkedCostApplicator->apply($expense, $cost, $user);
                 $expense->payload = array_merge($expense->payload ?? [], ['linked_cost_application' => $application]);
                 $expense->save();
-                $this->glService->createLinkedCostCapitalizationEntry(
+
+                // Post the capitalization entry SYNCHRONOUSLY, in-transaction, so it
+                // returns the posted entry and — per the global lock order (spine
+                // BLOCKER-1) — takes the GL company advisory lock BEFORE the movement
+                // port takes the repository row lock below.
+                $entry = $this->glService->createLinkedCostCapitalizationEntry(
                     $expense->loadMissing('expenseMetadata.paymentRepository'),
                     $cost,
                     $this->ledgerApplication($application, (string) $expense->currency),
                     $user,
+                    PostingMode::SynchronousInTransaction,
                 );
 
-                // Linked-cost capitalization is a SEPARATE flow, not migrated onto
-                // the movement port in this task. Its capitalization entry already
-                // credits Cash, so a paid linked cost must still decrement the repo
-                // balance via the legacy outflow to keep GL and treasury in step.
+                // The capitalization entry above already CREDITS Cash in the GL, so
+                // this movement records ONLY the treasury balance decrement + links to
+                // that same capitalization JE — it must NOT re-post cash. This REPLACES
+                // the legacy outflow: the write port is the single writer of the repo
+                // balance + append-only movement row, atomically with the GL post. The
+                // 'linked_cost' idempotency leg is distinct from the standard-expense
+                // 'main' leg so the two post() branches can never collide. Amount and
+                // currency are passed as strings so the port owns all bcmath/scale work.
                 if ($metadata->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
-                    $this->outflow->applyOutflow(
-                        $metadata->payment_repository_id,
-                        $expense->tenant_id,
-                        $expense->company_id,
-                        $expense->total,
-                        (string) $expense->currency,
-                    );
+                    $this->movementService->record(new MovementIntent(
+                        repositoryId: $metadata->payment_repository_id,
+                        tenantId: $expense->tenant_id,
+                        companyId: $expense->company_id,
+                        direction: MovementDirection::Out,
+                        amount: $expense->total,
+                        currency: (string) $expense->currency,
+                        sourceType: MovementSourceType::Expense,
+                        sourceId: $expense->id,
+                        idempotencyLeg: 'linked_cost',
+                        journalEntryId: $entry->id,
+                        occurredAt: null,
+                        reasonCode: null,
+                        reversesMovementId: null,
+                        createdBy: $user->id,
+                        notes: null,
+                        allowWhileFrozen: false,
+                    ));
                 }
             } else {
                 // Post the expense GL entry SYNCHRONOUSLY, in-transaction, so it
@@ -475,11 +492,18 @@ final class ExpenseService
             ]);
 
             $application = $this->linkedCostApplicator->reverse($expense, $originalCost, $reversalCost, $user);
+
+            // Post the reversal entry SYNCHRONOUSLY, in-transaction, so it returns the
+            // posted entry and takes the GL company advisory lock BEFORE the movement
+            // port takes the repository row lock below (spine BLOCKER-1 lock order).
+            // This reversal DEBITS the payment (cash) account — money returns to the
+            // books — so the inflow movement below links to a real reversing JE.
             $entry = $this->glService->createLinkedCostCapitalizationReversalEntry(
                 $expense->loadMissing('expenseMetadata.paymentRepository'),
                 $reversalCost,
                 $this->ledgerApplication($application, (string) $expense->currency),
                 $user,
+                PostingMode::SynchronousInTransaction,
             );
 
             $originalCost->reversed_at = now();
@@ -487,13 +511,30 @@ final class ExpenseService
 
             $cashReversed = false;
             if ($metadata->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
-                $this->inflow->applyInflow(
-                    $metadata->payment_repository_id,
-                    $expense->tenant_id,
-                    $expense->company_id,
-                    $expense->total,
-                    (string) $expense->currency,
-                );
+                // REPLACES the legacy inflow: the write port is the single writer of
+                // the repo balance + append-only movement row, atomically with the
+                // reversal GL post above. Keyed on the ORIGINAL expense id + the
+                // 'reversal' idempotency leg (distinct from post()'s 'linked_cost'),
+                // so a given expense's cash reversal is recorded exactly once. Amount
+                // and currency pass as strings so the port owns all bcmath/scale work.
+                $this->movementService->record(new MovementIntent(
+                    repositoryId: $metadata->payment_repository_id,
+                    tenantId: $expense->tenant_id,
+                    companyId: $expense->company_id,
+                    direction: MovementDirection::In,
+                    amount: $expense->total,
+                    currency: (string) $expense->currency,
+                    sourceType: MovementSourceType::Expense,
+                    sourceId: $expense->id,
+                    idempotencyLeg: 'reversal',
+                    journalEntryId: $entry->id,
+                    occurredAt: null,
+                    reasonCode: null,
+                    reversesMovementId: null,
+                    createdBy: $user->id,
+                    notes: null,
+                    allowWhileFrozen: false,
+                ));
                 $cashReversed = true;
             }
 
