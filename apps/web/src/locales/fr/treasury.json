@@ -288,7 +288,57 @@
     "transactionHistory": "Historique des transactions",
     "noTransactions": "Aucune transaction",
     "allocatedTo": "Alloué à",
-    "moreAllocations": "de plus"
+    "moreAllocations": "de plus",
+    "tabs": {
+      "overview": "Aperçu",
+      "movements": "Mouvements"
+    },
+    "movements": {
+      "title": "Mouvements du grand livre",
+      "subtitle": "{{count}} mouvement",
+      "subtitle_other": "{{count}} mouvements",
+      "filters": {
+        "direction": "Sens",
+        "directionAll": "Tous les sens",
+        "sourceType": "Origine",
+        "sourceTypeAll": "Toutes les origines",
+        "dateFrom": "Du",
+        "dateTo": "Au"
+      },
+      "directions": {
+        "in": "Entrée",
+        "out": "Sortie"
+      },
+      "sourceTypes": {
+        "payment": "Paiement",
+        "expense": "Dépense",
+        "income": "Recette",
+        "refund": "Remboursement",
+        "fiscal_event": "Événement fiscal",
+        "transfer": "Virement",
+        "adjustment": "Ajustement",
+        "opening_balance": "Solde d'ouverture",
+        "instrument": "Instrument"
+      },
+      "columns": {
+        "date": "Date",
+        "direction": "Sens",
+        "amount": "Montant",
+        "balanceAfter": "Solde après",
+        "source": "Origine",
+        "journalEntry": "Écriture comptable"
+      },
+      "frozenBadge": "Enregistré pendant le gel",
+      "noSourceLink": "—",
+      "noJournalEntry": "—",
+      "copyId": "Copier l'identifiant",
+      "idCopied": "Identifiant copié",
+      "empty": {
+        "title": "Aucun mouvement",
+        "description": "Aucun mouvement du grand livre ne correspond aux filtres actuels."
+      },
+      "loadError": "Échec du chargement des mouvements"
+    }
   },
   "smartPayment": {
     "title": "Allocation intelligente de paiement",

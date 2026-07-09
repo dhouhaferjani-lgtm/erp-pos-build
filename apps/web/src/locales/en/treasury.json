@@ -288,7 +288,57 @@
     "transactionHistory": "Transaction History",
     "noTransactions": "No transactions yet",
     "allocatedTo": "Allocated To",
-    "moreAllocations": "more"
+    "moreAllocations": "more",
+    "tabs": {
+      "overview": "Overview",
+      "movements": "Movements"
+    },
+    "movements": {
+      "title": "Ledger Movements",
+      "subtitle": "{{count}} movement",
+      "subtitle_other": "{{count}} movements",
+      "filters": {
+        "direction": "Direction",
+        "directionAll": "All directions",
+        "sourceType": "Source",
+        "sourceTypeAll": "All sources",
+        "dateFrom": "From",
+        "dateTo": "To"
+      },
+      "directions": {
+        "in": "In",
+        "out": "Out"
+      },
+      "sourceTypes": {
+        "payment": "Payment",
+        "expense": "Expense",
+        "income": "Income",
+        "refund": "Refund",
+        "fiscal_event": "Fiscal Event",
+        "transfer": "Transfer",
+        "adjustment": "Adjustment",
+        "opening_balance": "Opening Balance",
+        "instrument": "Instrument"
+      },
+      "columns": {
+        "date": "Date",
+        "direction": "Direction",
+        "amount": "Amount",
+        "balanceAfter": "Balance After",
+        "source": "Source",
+        "journalEntry": "Journal Entry"
+      },
+      "frozenBadge": "Recorded while frozen",
+      "noSourceLink": "—",
+      "noJournalEntry": "—",
+      "copyId": "Copy ID",
+      "idCopied": "ID copied",
+      "empty": {
+        "title": "No movements",
+        "description": "No ledger movements match the current filters."
+      },
+      "loadError": "Failed to load movements"
+    }
   },
   "smartPayment": {
     "title": "Smart Payment Allocation",

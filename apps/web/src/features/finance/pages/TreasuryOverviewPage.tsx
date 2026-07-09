@@ -8,11 +8,10 @@ import { useProfitLoss } from '@/features/finance/hooks/useProfitLoss'
 import { useUpcomingPayments } from '@/features/finance/hooks/useUpcomingPayments'
 import { OwnerChart } from '@/features/owner-dashboard/components/OwnerChart'
 import {
-  type PaymentRepository,
-  usePaymentRepositories,
-} from '@/features/treasury/hooks/usePaymentRepositories'
+  cashPositionGroupTotal,
+  useCashPosition,
+} from '@/features/treasury/hooks/useCashPosition'
 import { useCompany } from '@/hooks/useCompany'
-import { bcadd } from '@/lib/decimal'
 import { borderColors, chartColors, colors, textColors, tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import {
@@ -23,29 +22,6 @@ import {
 
 type UpcomingPaymentLine =
   App.Modules.Accounting.Application.DTOs.Reports.UpcomingPaymentLineData
-
-type CashRepositoryType = Extract<
-  PaymentRepository['type'],
-  'cash_register' | 'bank_account' | 'safe'
->
-
-function isCashRepositoryType(
-  type: PaymentRepository['type']
-): type is CashRepositoryType {
-  return type !== 'virtual'
-}
-
-function sumBalances(repositories: PaymentRepository[], type?: CashRepositoryType): string {
-  return repositories
-    .filter((repository) => repository.is_active)
-    .filter((repository) =>
-      type ? repository.type === type : isCashRepositoryType(repository.type)
-    )
-    .reduce(
-      (total, repository) => bcadd(total, repository.balance ?? '0', 3),
-      '0.000'
-    )
-}
 
 function sortByDueDate(lines: UpcomingPaymentLine[]): UpcomingPaymentLine[] {
   return [...lines].sort((first, second) =>
@@ -171,13 +147,13 @@ function UpcomingPaymentsPanel({
 export function TreasuryOverviewPage() {
   const { t } = useTranslation(['finance'])
   const { currentCompany } = useCompany()
-  const repositoriesQuery = usePaymentRepositories()
+  const cashPositionQuery = useCashPosition()
   const upcomingPaymentsQuery = useUpcomingPayments(30)
   const profitLossQuery = useProfitLoss({
     date_from: getCurrentMonthStartInputValue(),
     date_to: getTodayDateInputValue(),
   })
-  const repositories = repositoriesQuery.data ?? []
+  const cashPosition = cashPositionQuery.data
   const upcomingPayments = upcomingPaymentsQuery.data
   const profitLoss = profitLossQuery.data
 
@@ -213,15 +189,15 @@ export function TreasuryOverviewPage() {
         className="mb-0"
       />
 
-      {repositoriesQuery.isLoading ? (
+      {cashPositionQuery.isLoading ? (
         <p className={cn('py-8 text-center', textColors.tertiary)}>
           {t('finance:overview.cash.loading')}
         </p>
-      ) : repositoriesQuery.error ? (
+      ) : cashPositionQuery.error ? (
         <QueryError
-          error={repositoriesQuery.error}
+          error={cashPositionQuery.error}
           onRetry={() => {
-            void repositoriesQuery.refetch()
+            void cashPositionQuery.refetch()
           }}
           title={t('finance:overview.cash.loadError')}
         />
@@ -229,19 +205,19 @@ export function TreasuryOverviewPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label={t('finance:overview.cash.totalCash')}
-            value={formatMoney(sumBalances(repositories))}
+            value={formatMoney(cashPosition?.grand_total ?? '0.000')}
           />
           <StatCard
             label={t('finance:overview.cash.cashRegisters')}
-            value={formatMoney(sumBalances(repositories, 'cash_register'))}
+            value={formatMoney(cashPositionGroupTotal(cashPosition, 'cash_register'))}
           />
           <StatCard
             label={t('finance:overview.cash.bankAccounts')}
-            value={formatMoney(sumBalances(repositories, 'bank_account'))}
+            value={formatMoney(cashPositionGroupTotal(cashPosition, 'bank_account'))}
           />
           <StatCard
             label={t('finance:overview.cash.safes')}
-            value={formatMoney(sumBalances(repositories, 'safe'))}
+            value={formatMoney(cashPositionGroupTotal(cashPosition, 'safe'))}
           />
         </div>
       )}
