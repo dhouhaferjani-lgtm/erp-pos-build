@@ -95,7 +95,10 @@ export function AdminLayout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto bg-gray-50">
+      {/* `relative` makes <main> the containing block for absolutely-positioned
+          descendants so `overflow-y-auto` clips them instead of letting them inflate
+          document height into a phantom page scroll. See DashboardLayout for details. */}
+      <main className="relative flex-1 overflow-y-auto bg-gray-50">
         <Outlet />
       </main>
     </div>

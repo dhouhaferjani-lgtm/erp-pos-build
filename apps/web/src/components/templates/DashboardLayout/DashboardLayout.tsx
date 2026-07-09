@@ -47,7 +47,15 @@ export function DashboardLayout() {
         <CommandPalette isOpen={commandPaletteOpen} onClose={() => { setCommandPaletteOpen(false) }} />
         <WebSocketReconnectProvider>
           <ImportProgressSubscriber />
-          <main className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+          {/*
+            `relative` is load-bearing: it makes <main> the containing block for
+            absolutely-positioned descendants (e.g. Tailwind `sr-only` spans). Without
+            it, `overflow-y-auto` does NOT clip those escapees — they anchor to the
+            viewport and inflate documentElement.scrollHeight, producing a phantom
+            whole-page scroll / dead white space below the content that grows with row
+            count. See the products list at ?per_page=50/100.
+          */}
+          <main className="relative flex flex-1 flex-col overflow-y-auto p-4 sm:p-6">
             <Breadcrumb />
             <div className="flex flex-1 flex-col">
               <Outlet />
