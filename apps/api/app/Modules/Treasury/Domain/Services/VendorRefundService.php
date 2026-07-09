@@ -149,32 +149,44 @@ final class VendorRefundService
             // PO status stays confirmed — never transition to paid
             $lockedPo->save();
 
-            // Post the GL reversal SYNCHRONOUSLY (in-transaction) FIRST when the
-            // repository is ledgered — so its company advisory lock is taken
-            // before the movement port's repository row lock (BLOCKER-1). This
-            // REPLACES the old inline `$resolvedRepository->balance = bcsub(...)`
-            // write; the movement port below is now the single writer of the
-            // repository balance + the append-only movement row.
-            /** @var string|null $journalEntryId */
-            $journalEntryId = null;
-            if ($resolvedRepository->gl_account_id !== null) {
-                $journalEntry = $this->glService->reverseSupplierAdvanceJournalEntry(
-                    companyId: $lockedPo->company_id,
-                    partnerId: $lockedPo->partner_id,
-                    refundId: $payment->id,
-                    amount: $amount,
-                    paymentMethodAccountId: $resolvedRepository->gl_account_id,
-                    date: now(),
-                    description: "Supplier advance refund - {$lockedPo->document_number}".($reason ? " - {$reason}" : ''),
-                    postedByUserId: $userId,
-                    currencyCode: $payment->currency,
-                    mode: PostingMode::SynchronousInTransaction,
+            // A cash movement is about to leave this repository. The spine §9.2
+            // reconciliation invariant requires every cash movement to carry a
+            // linked journal_entry_id. Refund is NOT exempt in
+            // ReconcileTreasuryCommand::isJournalEntryExempt(), so a repository
+            // with no gl_account_id has no GL account to post the reversal to —
+            // refuse rather than record a null-JE movement that would freeze the
+            // repo at the next `treasury:reconcile` (mirrors the guard in
+            // PaymentRefundService::postRefundGlAndMovement).
+            if ($resolvedRepository->gl_account_id === null) {
+                throw new \DomainException(
+                    "a refund cash movement requires a GL-linked repository; repository {$resolvedRepository->id} has no gl_account_id"
                 );
-
-                $journalEntryId = $journalEntry->id;
-                $payment->journal_entry_id = $journalEntry->id;
-                $payment->save();
             }
+
+            // Post the GL reversal SYNCHRONOUSLY (in-transaction) FIRST — so its
+            // company advisory lock is taken before the movement port's
+            // repository row lock (BLOCKER-1). This REPLACES the old inline
+            // `$resolvedRepository->balance = bcsub(...)` write; the movement
+            // port below is now the single writer of the repository balance +
+            // the append-only movement row. ALWAYS posted now that the guard
+            // above has ruled out an unledgered repository — no null-JE refund
+            // movement is reachable.
+            $journalEntry = $this->glService->reverseSupplierAdvanceJournalEntry(
+                companyId: $lockedPo->company_id,
+                partnerId: $lockedPo->partner_id,
+                refundId: $payment->id,
+                amount: $amount,
+                paymentMethodAccountId: $resolvedRepository->gl_account_id,
+                date: now(),
+                description: "Supplier advance refund - {$lockedPo->document_number}".($reason ? " - {$reason}" : ''),
+                postedByUserId: $userId,
+                currencyCode: $payment->currency,
+                mode: PostingMode::SynchronousInTransaction,
+            );
+
+            $journalEntryId = $journalEntry->id;
+            $payment->journal_entry_id = $journalEntry->id;
+            $payment->save();
 
             // Move the cash OUT of the repository through the single write port
             // (money returned to the company from the supplier — the pre-migration
@@ -189,7 +201,16 @@ final class VendorRefundService
                 companyId: $lockedPo->company_id,
                 direction: MovementDirection::Out,
                 amount: $amount,
-                currency: $resolvedRepository->currency,
+                // Task 20 review Fix 2 (MINOR) pattern, aligned here: pass the
+                // PAYMENT's own currency (the currency `$amount` is denominated
+                // in — stamped on the Payment row above from $lockedPo->currency),
+                // NOT the repository's cached currency. Passing the repo currency
+                // makes the port's CurrencyMismatchException guard
+                // (`$repo->currency !== $intent->currency`) trivially always-equal
+                // and silently disarms it (see TreasuryReceiptBridge,
+                // TreasuryAccountPaymentBridge). Currencies match today so
+                // behavior is unchanged; the guard is restored.
+                currency: $payment->currency,
                 sourceType: MovementSourceType::Refund,
                 sourceId: $payment->id,
                 idempotencyLeg: 'main',

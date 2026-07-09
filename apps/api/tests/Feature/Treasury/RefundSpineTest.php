@@ -434,6 +434,67 @@ class RefundSpineTest extends TestCase
         $this->assertSame(0, $movementCount, 'no null-JE movement may be written');
     }
 
+    /**
+     * Final-review fix wave (Fix 1, BLOCKER): VendorRefundService::refundPrepayment
+     * must apply the SAME guard as PaymentRefundService — a repository with no
+     * gl_account_id has no GL account to post the reversal to, so the vendor
+     * refund must be rejected with a 422 DomainException rather than recording a
+     * null-journal_entry_id cash movement (Refund is NOT exempt in
+     * ReconcileTreasuryCommand::isJournalEntryExempt(), so an unguarded null-JE
+     * movement here guarantees a repository freeze at the next
+     * `treasury:reconcile`).
+     */
+    public function test_vendor_refund_on_repository_without_gl_account_is_rejected_422(): void
+    {
+        // Till WITHOUT a gl_account_id.
+        $unledgered = PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH-NOGL-VENDOR',
+            'name' => 'Unledgered Vendor Register',
+            'type' => RepositoryType::CashRegister,
+            'is_active' => true,
+            'balance' => '5000.00',
+            'gl_account_id' => null,
+        ]);
+
+        $po = $this->createConfirmedPurchaseOrder('1000.00');
+        $this->allocatePrepaymentToPo($po, '1000.00');
+
+        $threw = false;
+        try {
+            app(VendorRefundService::class)->refundPrepayment(
+                po: $po,
+                amount: '400.00',
+                paymentMethodId: $this->cashMethod->id,
+                repositoryId: $unledgered->id,
+                reason: 'refund against unledgered till',
+                userId: $this->user->id,
+            );
+        } catch (\DomainException $e) {
+            $threw = true;
+            $this->assertStringContainsString('no gl_account_id', $e->getMessage());
+        }
+        $this->assertTrue($threw, 'vendor refund on a repository without a gl_account_id must throw a DomainException (422)');
+
+        // The whole refund transaction rolled back: no refund payment row, no
+        // null-JE movement — the freeze-inducing outcome is impossible.
+        $refundCount = Payment::query()
+            ->where('partner_id', $this->vendor->id)
+            ->where('payment_type', PaymentType::Refund->value)
+            ->count();
+        $this->assertSame(0, $refundCount, 'no vendor refund row may be committed');
+
+        $movementCount = RepositoryMovement::query()
+            ->where('payment_repository_id', $unledgered->id)
+            ->count();
+        $this->assertSame(0, $movementCount, 'no null-JE movement may be written');
+
+        // The PO balance_due was NOT touched by the rolled-back refund.
+        $po->refresh();
+        $this->assertSame(0, bccomp($po->balance_due, '0.00', 2));
+    }
+
     // Helpers -----------------------------------------------------------------
 
     /**

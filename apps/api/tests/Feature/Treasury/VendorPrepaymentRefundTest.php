@@ -125,6 +125,14 @@ class VendorPrepaymentRefundTest extends TestCase
         ]);
 
         $this->refundService = app(VendorRefundService::class);
+
+        // Final-review fix wave (Fix 1): VendorRefundService now requires a
+        // GL-linked repository (a repository with no gl_account_id throws a
+        // DomainException rather than recording a null-JE cash movement — see
+        // RefundSpineTest::test_vendor_refund_on_repository_without_gl_account_is_rejected_422).
+        // Every test in this file exercises refundPrepayment(), so the GL
+        // accounts are seeded unconditionally here.
+        $this->seedSupplierAdvanceRefundAccounts();
     }
 
     private function seedSupplierAdvanceRefundAccounts(): void
@@ -197,7 +205,6 @@ class VendorPrepaymentRefundTest extends TestCase
 
     public function test_refund_prepayment_posts_supplier_advance_reversal_entry(): void
     {
-        $this->seedSupplierAdvanceRefundAccounts();
         $po = $this->createPurchaseOrder('1000.00');
         $this->allocatePaymentToPO($po, '1000.00');
 

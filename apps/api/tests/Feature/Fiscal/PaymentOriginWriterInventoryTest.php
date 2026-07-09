@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -508,13 +510,46 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             'currency' => 'EUR',
         ]);
 
+        // Final-review fix wave (Fix 1): VendorRefundService now requires a
+        // GL-linked repository. Use a repository dedicated to this test (not
+        // the shared $this->cashRegister, which other tests in this file
+        // deliberately leave unledgered) so only this refund exercises the
+        // GL-reversal path.
+        $bankAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '512-VR',
+            'name' => 'Bank (vendor refund)',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::Bank,
+            'is_active' => true,
+        ]);
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4091-VR',
+            'name' => 'Supplier Advances (vendor refund)',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::SupplierAdvance,
+            'is_active' => true,
+        ]);
+        $ledgeredRepository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH-VR',
+            'name' => 'Vendor Refund Register',
+            'type' => RepositoryType::CashRegister,
+            'is_active' => true,
+            'gl_account_id' => $bankAccount->id,
+        ]);
+
         // Seed a prepayment allocation so totalAllocated >= refund amount.
         $prepayment = Payment::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'partner_id' => $supplier->id,
             'payment_method_id' => $this->cashMethod->id,
-            'repository_id' => $this->cashRegister->id,
+            'repository_id' => $ledgeredRepository->id,
             'amount' => '200.00',
             'currency' => 'EUR',
             'status' => PaymentStatus::Completed,
@@ -531,7 +566,7 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             $po,
             amount: '100.00',
             paymentMethodId: $this->cashMethod->id,
-            repositoryId: $this->cashRegister->id,
+            repositoryId: $ledgeredRepository->id,
             reason: 'supplier credit',
             userId: $this->user->id,
         );

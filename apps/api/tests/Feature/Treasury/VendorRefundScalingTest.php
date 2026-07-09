@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Treasury;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Services\CompanyContext;
@@ -103,7 +105,35 @@ final class VendorRefundScalingTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Repository with an initial balance of 200.000 TND (no account_id → no GL reversal).
+        // Final-review fix wave (Fix 1): VendorRefundService now REQUIRES a
+        // GL-linked repository (an unledgered repository throws a
+        // DomainException rather than recording a null-JE cash movement — see
+        // RefundSpineTest::test_vendor_refund_on_repository_without_gl_account_is_rejected_422).
+        // This precision-regression test exercises the refund's bc* scale
+        // literals, which are independent of the GL path, so the repository
+        // and company are given the GL accounts the reversal requires.
+        $bankAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '512-TND',
+            'name' => 'Bank TND',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::Bank,
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4091-TND',
+            'name' => 'Supplier Advances TND',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::SupplierAdvance,
+            'is_active' => true,
+        ]);
+
+        // Repository with an initial balance of 200.000 TND, GL-linked so the
+        // refund posts its reversal (required post-Fix-1).
         // factory() is unguarded, so it seeds the port-managed (non-fillable) `balance` (Task 22).
         $this->repository = PaymentRepository::factory()->create([
             'id' => Str::uuid()->toString(),
@@ -114,7 +144,7 @@ final class VendorRefundScalingTest extends TestCase
             'type' => RepositoryType::CashRegister,
             'balance' => '200.000',
             'is_active' => true,
-            // account_id deliberately null to skip GL reversal path
+            'gl_account_id' => $bankAccount->id,
         ]);
 
         // PO with balance_due = 0 (fully prepaid)

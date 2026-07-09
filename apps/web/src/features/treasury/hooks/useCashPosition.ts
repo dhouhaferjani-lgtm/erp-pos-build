@@ -52,9 +52,15 @@ export function useCashPosition() {
 }
 
 /**
- * Look up a cash-position group's total by repository type. Returns the
- * zero-value fallback ('0.000') when the group is absent (e.g. a tenant with
- * no safes configured never gets a 'safe' group back from the endpoint).
+ * Look up a cash-position group's total by repository type.
+ *
+ * Final-review fix wave: the comment here previously claimed the endpoint
+ * only emits groups that have repositories, which is WRONG. `CashPositionController`
+ * always emits all three groups (cash_register/bank_account/safe) — a tenant
+ * with no safes configured still gets a 'safe' group back, with `total: '0.000'`
+ * and an empty `repositories` array. `.find()` above can therefore never
+ * actually miss; the `?? '0.000'` fallback is defensive-only, guarding against
+ * a future contract change rather than today's documented behavior.
  */
 export function cashPositionGroupTotal(
   position: CashPosition | undefined,
