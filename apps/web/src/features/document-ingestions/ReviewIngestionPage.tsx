@@ -9,13 +9,14 @@ import { cn } from '@/lib/utils'
 import { textColors, tokens, typography } from '@/lib/designTokens'
 import { useCommitDocumentIngestion, useDocumentIngestion, useLocationsForIngestion, useRejectDocumentIngestion, useReExtractDocumentIngestion } from './queries'
 import { buildSupplierPrefill } from './buildSupplierPrefill'
+import { initialLines } from './initialLines'
 import { CommitBar } from './components/CommitBar'
 import { ExtractedFieldsPanel } from './components/ExtractedFieldsPanel'
 import { LineMappingTable, type ReviewedLineState } from './components/LineMappingTable'
 import { ProcessingState } from './components/ProcessingState'
 import { SourceViewer } from './components/SourceViewer'
 import { SupplierPicker } from './components/SupplierPicker'
-import type { DocumentIngestionDetail, IngestionStatus, ProductCandidate, ReceiptLineCandidate, ReviewedLinePayload, ReviewedPayload, SupplierCandidate } from './types'
+import type { DocumentIngestionDetail, IngestionStatus, ReviewedLinePayload, ReviewedPayload, SupplierCandidate } from './types'
 
 interface CreatedPartner {
   id: string
@@ -50,14 +51,6 @@ function providerModel(detail: DocumentIngestionDetail): string | null {
   return detail.providerModel ?? detail.provider_model ?? null
 }
 
-function lineSourceId(candidate: ReceiptLineCandidate | undefined): string {
-  return candidate?.poLineId ?? candidate?.po_line_id ?? ''
-}
-
-function productTaxRate(candidate: ProductCandidate | undefined): string {
-  return candidate?.taxRate ?? candidate?.tax_rate ?? ''
-}
-
 function buildFlaggedPaths(detail: DocumentIngestionDetail): Set<string> {
   const summary = confidenceSummary(detail)
   const paths = new Set<string>(summary?.lowConfidenceFields ?? [])
@@ -88,24 +81,6 @@ function commitBlockedReason(detail: DocumentIngestionDetail, t: (key: string) =
     return t('review.blockedStatus')
   }
   return null
-}
-
-export function initialLines(detail: DocumentIngestionDetail): ReviewedLineState[] {
-  const extractionLines = detail.extraction?.lines ?? []
-  return extractionLines.map((line, index) => {
-    const product = detail.suggestions?.productCandidates[index]?.[0]
-    const receipt = detail.suggestions?.receiptLineCandidates[index]
-    return {
-      productId: product?.id ?? '',
-      quantity: line.quantity.value,
-      unitPrice: line.unitPrice?.value ?? '',
-      vatRate: line.taxRate?.value ?? productTaxRate(product),
-      freeQuantity: '0',
-      batchNumber: line.batchNumber?.value ?? '',
-      expiryDate: line.expiryDate?.value ?? '',
-      sourceLineId: lineSourceId(receipt),
-    }
-  })
 }
 
 function linePayload(line: ReviewedLineState, includeVatRate: boolean): ReviewedLinePayload {
