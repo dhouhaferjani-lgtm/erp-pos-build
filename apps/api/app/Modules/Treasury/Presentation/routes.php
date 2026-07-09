@@ -11,6 +11,7 @@ use App\Modules\Treasury\Presentation\Controllers\PaymentInstrumentController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentMethodController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentRefundController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentRepositoryController;
+use App\Modules\Treasury\Presentation\Controllers\RepositoryAdjustmentController;
 use App\Modules\Treasury\Presentation\Controllers\SmartPaymentController;
 use Illuminate\Support\Facades\Route;
 
@@ -65,6 +66,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::patch('/payment-repositories/{repository}', [PaymentRepositoryController::class, 'update'])
         ->middleware('can:repositories.manage')
         ->name('payment-repositories.update');
+
+    // Gated manual repository (cash) adjustment — count-variance / correction
+    // (Treasury spine Task 23).
+    Route::post('/payment-repositories/{repository}/adjustments', [RepositoryAdjustmentController::class, 'store'])
+        ->middleware('can:treasury.adjust')
+        ->name('payment-repositories.adjustments.store');
 
     // Payment Instruments
     Route::get('/payment-instruments', [PaymentInstrumentController::class, 'index'])

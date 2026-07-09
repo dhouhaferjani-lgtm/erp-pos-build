@@ -203,6 +203,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
             'treasury.view',
             'treasury.manage',
+            'treasury.adjust',
 
             // Accounting
             'journal.view',
@@ -446,7 +447,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'payments.view', 'payments.create', 'payments.allocate',
             'instruments.view', 'instruments.create', 'instruments.transfer',
             'repositories.view',
-            'treasury.view',
+            'treasury.view', 'treasury.adjust',
             'journal.view',
             'accounts.view', 'accounts.manage',
             'reports.financial', 'reports.operational', 'reports.manage', 'dashboard.owner',
@@ -662,7 +663,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'payments.view', 'payments.create', 'payments.allocate',
             'instruments.view', 'instruments.transfer', 'instruments.clear',
             'repositories.view', 'repositories.manage',
-            'treasury.view', 'treasury.manage',
+            'treasury.view', 'treasury.manage', 'treasury.adjust',
             'journal.view', 'journal.create', 'journal.post',
             'accounts.view', 'accounts.manage',
             'reports.financial', 'reports.manage',

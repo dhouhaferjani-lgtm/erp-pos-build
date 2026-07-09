@@ -24,6 +24,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -832,6 +833,116 @@ final class GeneralLedgerService
         } else {
             $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         }
+
+        return $entry;
+    }
+
+    /**
+     * Create + post the GL entry for a manual repository (cash) adjustment —
+     * count-variance / correction / theft-loss (Treasury spine Task 23).
+     *
+     * The 658/758 "payment tolerance" purposes ({@see SystemAccountPurpose::PaymentToleranceExpense}
+     * / {@see SystemAccountPurpose::PaymentToleranceIncome}) are reused as the
+     * cash-variance account rather than minting a new SystemAccountPurpose — a
+     * manual cash-count discrepancy is the same class of "small unexplained
+     * monetary gap" those tolerance accounts already model, and they are
+     * literally the 658/758-family purposes (see the enum's own inline
+     * comments). A company must have these purposes assigned in its chart of
+     * accounts (findByPurposeOrFail throws otherwise).
+     *
+     *   direction OUT (cash short — a loss): Dr PaymentToleranceExpense (658) / Cr Cash
+     *   direction IN  (cash over — a gain):   Dr Cash / Cr PaymentToleranceIncome (758)
+     *
+     * Always posts SYNCHRONOUSLY in the caller's transaction (never
+     * AfterCommit) — the spine's recon-readiness invariant requires every
+     * cash movement to carry a non-null journal_entry_id at the instant the
+     * movement row is written, so the caller can pass $entry->id into
+     * MovementIntent immediately after this returns.
+     */
+    public function createRepositoryAdjustmentJournalEntry(
+        string $companyId,
+        string $tenantId,
+        string $adjustmentId,
+        string $repositoryGlAccountId,
+        MovementDirection $direction,
+        string $amount,
+        \DateTimeInterface $date,
+        User $user,
+        string $description,
+        ?string $currencyCode = null,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('createRepositoryAdjustmentJournalEntry: requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
+        $varianceAccount = $direction === MovementDirection::Out
+            ? $this->getAccountByPurpose($companyId, SystemAccountPurpose::PaymentToleranceExpense)
+            : $this->getAccountByPurpose($companyId, SystemAccountPurpose::PaymentToleranceIncome);
+
+        $entry = DB::transaction(function () use (
+            $companyId, $tenantId, $adjustmentId, $repositoryGlAccountId, $direction, $amount, $date, $description, $varianceAccount
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description,
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'repository_adjustment',
+                'journal_code' => JournalCode::fromSourceType('repository_adjustment')->value,
+                'source_id' => $adjustmentId,
+            ]);
+
+            if ($direction === MovementDirection::Out) {
+                // Dr variance expense (cash short) / Cr cash — money "left"
+                // the repository to cover the shortfall.
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $varianceAccount->id,
+                    'partner_id' => null,
+                    'debit' => $amount,
+                    'credit' => '0',
+                    'description' => 'Cash count variance (short)',
+                    'line_order' => 0,
+                ]);
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $repositoryGlAccountId,
+                    'partner_id' => null,
+                    'debit' => '0',
+                    'credit' => $amount,
+                    'description' => 'Repository adjustment',
+                    'line_order' => 1,
+                ]);
+            } else {
+                // Dr cash / Cr variance income (cash over).
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $repositoryGlAccountId,
+                    'partner_id' => null,
+                    'debit' => $amount,
+                    'credit' => '0',
+                    'description' => 'Repository adjustment',
+                    'line_order' => 0,
+                ]);
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $varianceAccount->id,
+                    'partner_id' => null,
+                    'debit' => '0',
+                    'credit' => $amount,
+                    'description' => 'Cash count variance (over)',
+                    'line_order' => 1,
+                ]);
+            }
+
+            return $entry->load('lines');
+        });
+
+        $this->postEntryNow($entry, $user, $currencyCode);
 
         return $entry;
     }
