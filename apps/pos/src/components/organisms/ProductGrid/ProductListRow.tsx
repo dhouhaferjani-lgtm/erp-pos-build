@@ -116,7 +116,10 @@ function ProductListRowInner({
         className={cn(
           // Prices are data, not action — always ink, never accent/action
           // (designTokens.ts §1: "prices always use text-ink").
-          'w-16 shrink-0 text-right font-mono text-[15px] font-semibold tabular-nums',
+          // Fixed width fits the widest expected TND price (e.g. "242 400,000 DT")
+          // so the number never overflows into the eye/add controls; keeps
+          // right-edges aligned across rows.
+          'w-28 shrink-0 text-right font-mono text-[15px] font-semibold tabular-nums',
           status === 'out' ? 'text-ink-faint' : 'text-ink',
         )}
       >

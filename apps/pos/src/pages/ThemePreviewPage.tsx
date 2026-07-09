@@ -129,7 +129,11 @@ const SELL_PRODUCTS: POSProduct[] = [
  * placeholder.
  */
 const REAL_IMAGE_PRODUCTS: POSProduct[] = [
-  seedProduct(100, 'A-Derma Cytelium Spray 100ml', 'A-Derma', 'Visage', '32.500', 24, 'sensitive', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/46/034ad053-bf70-4e31-afbd-7515eaadd9a1_0.webp'),
+  // Deliberately WIDE price — stresses the Liste/Vitrine price-column width at
+  // TND scale ("242 400,00") so a long number is verified against the layout,
+  // not just short EUR prices. Guards the regression where the price overflowed
+  // the (too-narrow) column and collided with the eye control.
+  seedProduct(100, 'A-Derma Cytelium Spray 100ml', 'A-Derma', 'Visage', '242400.000', 24, 'sensitive', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/46/034ad053-bf70-4e31-afbd-7515eaadd9a1_0.webp'),
   seedProduct(101, 'Apivita Soin des Lèvres au Cassis', 'Apivita', 'Visage', '14.900', 40, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/5012/d930a71a-45c0-43fc-9a91-8af904a10526_0.webp'),
   seedProduct(102, 'Avène 50+ Émulsion 50ml', 'Avène', 'Solaire', '45.000', 18, 'sensitive', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/13564/2cffb696-0204-4819-bb11-10c7c6c91b40_0.webp'),
   seedProduct(103, 'Beurer Vessie à Glace 28cm', 'Beurer', 'Hygiene', '22.000', 9, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/14750/38e10b48-3d01-4aa4-ae62-afd78aeaf480_0.webp'),
