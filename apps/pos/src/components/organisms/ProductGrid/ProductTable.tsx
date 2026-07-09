@@ -45,7 +45,7 @@ const QTY_SCALE = 4;
  * Code / Catégorie / Stock / Prix / action aligned across all rows.
  */
 const GRID_COLS =
-  'minmax(84px,110px) minmax(0,1fr) minmax(96px,150px) minmax(96px,140px) minmax(72px,104px) 96px';
+  'minmax(84px,110px) minmax(0,1fr) minmax(96px,150px) minmax(96px,140px) minmax(96px,132px) 96px';
 
 /** Estimated row height (px) — real height is measured via `measureElement`. */
 const ROW_ESTIMATE = 44;
