@@ -11,7 +11,9 @@ use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Exceptions\IdempotencyConflictException;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -70,6 +72,112 @@ final class DirectBalanceWriteForbiddenTest extends TestCase
         try {
             DB::table('payment_repositories')->where('id', $repo->id)->update(['balance' => '999.000']);
             $this->fail('direct balance UPDATE should have been rejected by the trigger');
+        } catch (QueryException $e) {
+            $this->assertStringContainsString('TreasuryMovementService', $e->getMessage());
+        }
+    }
+
+    public function test_nonzero_balance_insert_outside_port_is_rejected(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('INSERT-with-nonzero-balance forbidden enforced by pgsql trigger');
+        }
+
+        // A repository BORN with a non-zero balance would mint a cached balance
+        // with NO backing movement — the INSERT escape the trigger must close. A
+        // RAW insert (no port GUC) is exactly the rogue write the trigger guards,
+        // and it bypasses the factory's fixture bracket. Clone a real born-at-zero
+        // row so every NOT NULL column is present, then flip only id/code/balance.
+        $seed = $this->seedRepository(balance: '0.000');
+
+        /** @var \stdClass $row */
+        $row = DB::table('payment_repositories')->where('id', $seed->id)->firstOrFail();
+        $insert = (array) $row;
+        $insert['id'] = (string) Str::uuid();
+        $insert['code'] = 'RAW-'.substr((string) Str::uuid(), 0, 6);
+        $insert['balance'] = '5000.000';
+
+        try {
+            DB::table('payment_repositories')->insert($insert);
+            $this->fail('INSERT with a non-zero balance should have been rejected by the trigger');
+        } catch (QueryException $e) {
+            $this->assertStringContainsString('TreasuryMovementService', $e->getMessage());
+        }
+    }
+
+    public function test_opening_balance_via_port_sets_balance_and_records_backing_movement(): void
+    {
+        // Runs on BOTH drivers: repo born at 0, opening established via the port,
+        // and the cached balance is BACKED by an opening_balance movement (so the
+        // ledger reconciles — the whole point of routing opening through the port).
+        $repo = $this->seedRepository(balance: '250.000');
+
+        $this->assertSame('250.000', $repo->balance);
+
+        $opening = RepositoryMovement::query()
+            ->where('payment_repository_id', $repo->id)
+            ->where('source_type', MovementSourceType::OpeningBalance->value)
+            ->first();
+
+        $this->assertNotNull($opening, 'opening balance must be backed by an opening_balance movement');
+        $this->assertSame('250.000', $opening->balance_after);
+    }
+
+    public function test_guc_is_reset_after_successful_port_call_so_a_later_direct_write_is_rejected(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('GUC reset is observable only via the pgsql trigger');
+        }
+
+        $repo = $this->seedRepository(balance: '100.000');
+
+        // Within ONE outer transaction: a SUCCESSFUL port call, then a direct
+        // balance UPDATE. The port must have reset the GUC to 'off' on its way out
+        // (Fix 2 finally), so the direct write trips the trigger.
+        try {
+            DB::transaction(function () use ($repo): void {
+                $this->service()->record($this->intent($repo, amount: '40.000', sourceId: (string) Str::uuid()));
+
+                DB::table('payment_repositories')->where('id', $repo->id)->update(['balance' => '999.000']);
+            });
+            $this->fail('direct balance UPDATE after a port call in the same txn should be rejected (GUC reset)');
+        } catch (QueryException $e) {
+            $this->assertStringContainsString('TreasuryMovementService', $e->getMessage());
+        }
+    }
+
+    public function test_guc_is_reset_when_the_port_throws_so_a_later_direct_write_is_rejected(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('GUC reset is observable only via the pgsql trigger');
+        }
+
+        $repo = $this->seedRepository(balance: '100.000');
+        $conflictSourceId = (string) Str::uuid();
+
+        // Establish the idempotency key with a committed movement.
+        DB::transaction(fn () => $this->service()->record(
+            $this->intent($repo, amount: '10.000', sourceId: $conflictSourceId),
+        ));
+
+        try {
+            DB::transaction(function () use ($repo, $conflictSourceId): void {
+                // Replay the SAME key with a DIFFERENT amount → unique violation →
+                // handleIdempotentHit detects the mismatch and THROWS, AFTER the
+                // port has already SET the GUC to 'on'. The Fix 2 finally must
+                // still reset it to 'off'.
+                try {
+                    $this->service()->record($this->intent($repo, amount: '999.000', sourceId: $conflictSourceId));
+                    $this->fail('a conflicting idempotency replay should have thrown');
+                } catch (IdempotencyConflictException) {
+                    // expected — the port threw after opening the GUC.
+                }
+
+                // Same outer transaction: the GUC must have been reset by the
+                // finally, so this direct write trips the trigger.
+                DB::table('payment_repositories')->where('id', $repo->id)->update(['balance' => '777.000']);
+            });
+            $this->fail('direct balance UPDATE after the port threw should be rejected (GUC reset in finally)');
         } catch (QueryException $e) {
             $this->assertStringContainsString('TreasuryMovementService', $e->getMessage());
         }
@@ -177,16 +285,49 @@ final class DirectBalanceWriteForbiddenTest extends TestCase
         return app(TreasuryMovementServiceInterface::class);
     }
 
+    /**
+     * @param  numeric-string  $balance
+     */
     private function seedRepository(string $currency = 'TND', string $balance = '100.000'): PaymentRepository
     {
-        return PaymentRepository::factory()->for($this->company)->create([
+        // Cutover-hardening (Fix 1): repositories are BORN at balance 0 — the
+        // INSERT guard rejects a non-zero balance minted with no backing movement.
+        // A non-zero opening balance is established through the PORT (which lays
+        // down the opening_balance movement so the ledger reconciles), mirroring
+        // production seeders. This runs on both drivers (the port round-trips on
+        // sqlite too).
+        $repo = PaymentRepository::factory()->for($this->company)->create([
             'tenant_id' => $this->tenant->id,
             'currency' => $currency,
-            'balance' => $balance,
+            'balance' => '0.000',
             'next_movement_ordinal' => 0,
             'frozen_at' => null,
             'frozen_reason' => null,
         ]);
+
+        if (bccomp($balance, '0', 3) === 1) {
+            DB::transaction(fn () => $this->service()->record(new MovementIntent(
+                repositoryId: $repo->id,
+                tenantId: $repo->tenant_id,
+                companyId: $repo->company_id,
+                direction: MovementDirection::In,
+                amount: $balance,
+                currency: $repo->currency,
+                sourceType: MovementSourceType::OpeningBalance,
+                sourceId: $repo->id,
+                idempotencyLeg: 'opening',
+                journalEntryId: null,
+                occurredAt: null,
+                reasonCode: null,
+                reversesMovementId: null,
+                createdBy: null,
+                notes: null,
+                allowWhileFrozen: false,
+            )));
+            $repo->refresh();
+        }
+
+        return $repo;
     }
 
     /**

@@ -94,57 +94,61 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
 
         $occurredAt = $intent->occurredAt ?? CarbonImmutable::now();
 
-        // 4. SAVEPOINT for idempotency recovery (a unique-violation poisons the
-        // transaction otherwise). Nested beginTransaction → PG SAVEPOINT.
-        DB::beginTransaction();
+        // Fix 2 (cutover-hardening): reset the GUC on EVERY exit path of the port's
+        // body via `finally` — success, idempotent hit, OR any exception (e.g. a
+        // non-unique QueryException rethrown below, or an IdempotencyConflict from
+        // handleIdempotentHit). A leaked 'on' would let a later NON-port
+        // `UPDATE … balance` in the SAME outer transaction slip past the Task-22
+        // trigger. The `SET … 'on'` above stays BEFORE the savepoint (MED-10).
         try {
-            [$movementId, $balanceAfter, $nextOrdinal] = $this->insertMovementLeg(
-                repository: $repo,
-                direction: $intent->direction,
-                amount: $intent->amount,
-                currency: $intent->currency,
-                scale: $scale,
-                sourceType: $intent->sourceType,
-                sourceId: $intent->sourceId,
-                idempotencyKey: $intent->idempotencyKey(),
-                journalEntryId: $intent->journalEntryId,
-                transferGroupId: null,
-                reversesMovementId: $intent->reversesMovementId,
-                reasonCode: $intent->reasonCode,
-                recordedWhileFrozen: $recordedWhileFrozen,
-                occurredAt: $occurredAt,
-                createdBy: $intent->createdBy,
-                notes: $intent->notes,
-            );
+            // 4. SAVEPOINT for idempotency recovery (a unique-violation poisons the
+            // transaction otherwise). Nested beginTransaction → PG SAVEPOINT.
+            DB::beginTransaction();
+            try {
+                [$movementId, $balanceAfter, $nextOrdinal] = $this->insertMovementLeg(
+                    repository: $repo,
+                    direction: $intent->direction,
+                    amount: $intent->amount,
+                    currency: $intent->currency,
+                    scale: $scale,
+                    sourceType: $intent->sourceType,
+                    sourceId: $intent->sourceId,
+                    idempotencyKey: $intent->idempotencyKey(),
+                    journalEntryId: $intent->journalEntryId,
+                    transferGroupId: null,
+                    reversesMovementId: $intent->reversesMovementId,
+                    reasonCode: $intent->reasonCode,
+                    recordedWhileFrozen: $recordedWhileFrozen,
+                    occurredAt: $occurredAt,
+                    createdBy: $intent->createdBy,
+                    notes: $intent->notes,
+                );
 
-            DB::commit(); // release savepoint
-        } catch (QueryException $e) {
-            DB::rollBack(); // to savepoint — undoes ordinal + balance, no gap
-            if (! $this->isUniqueViolation($e)) {
-                throw $e;
+                DB::commit(); // release savepoint
+            } catch (QueryException $e) {
+                DB::rollBack(); // to savepoint — undoes ordinal + balance, no gap
+                if (! $this->isUniqueViolation($e)) {
+                    throw $e;
+                }
+
+                return $this->handleIdempotentHit($intent); // SELECT existing, validate semantics or throw
             }
 
-            $result = $this->handleIdempotentHit($intent); // SELECT existing, validate semantics or throw
-            $this->closePort(); // MED-10: the port is done writing — reset the GUC
+            DB::afterCommit(fn () => event($this->buildRecordedEvent(
+                $movementId,
+                $intent,
+                $balanceAfter,
+                $nextOrdinal,
+                $occurredAt,
+                $recordedWhileFrozen,
+            )));
 
-            return $result;
+            return new MovementResult($movementId, $balanceAfter, $nextOrdinal, false);
+        } finally {
+            // MED-10 + Fix 2: the port is done — reset the GUC so a later non-port
+            // write in the SAME outer transaction cannot ride the still-open guard.
+            $this->closePort();
         }
-
-        // MED-10: the port has finished its DML — reset the GUC so a later
-        // non-port write in the SAME outer transaction cannot ride the still-open
-        // guard once the Task-22 trigger lands. No-op today (no trigger yet).
-        $this->closePort();
-
-        DB::afterCommit(fn () => event($this->buildRecordedEvent(
-            $movementId,
-            $intent,
-            $balanceAfter,
-            $nextOrdinal,
-            $occurredAt,
-            $recordedWhileFrozen,
-        )));
-
-        return new MovementResult($movementId, $balanceAfter, $nextOrdinal, false);
     }
 
     public function transfer(TransferIntent $intent): TransferResult
@@ -221,126 +225,132 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
 
             $occurredAt = $intent->occurredAt ?? CarbonImmutable::now();
 
-            // 6. SAVEPOINT for paired-leg idempotency recovery (Fix 1, mirrors
-            // record()): the GL post + BOTH leg inserts + BOTH balance/ordinal
-            // updates run inside a nested transaction (PG SAVEPOINT). On a replay
-            // with the same transferGroupId, the out-leg's unique idempotency_key
-            // poisons the transaction — rollback-to-savepoint reverts the JE post
-            // and the ordinal/balance bumps, then handleTransferIdempotentHit
-            // returns the already-written pair. Nested beginTransaction → SAVEPOINT.
-            DB::beginTransaction();
+            // Fix 2 (cutover-hardening): reset the GUC on EVERY exit path of the
+            // port's body via `finally` — success, idempotent hit, OR any exception
+            // (a non-unique QueryException, a failed GL post, or an
+            // IdempotencyConflict from handleTransferIdempotentHit). The `SET …
+            // 'on'` above stays BEFORE the savepoint (MED-10).
             try {
-                // GL: post EXACTLY ONE journal entry — only when the two
-                // repositories cross gl_account_id (guaranteed non-null by step 4).
-                // The advisory lock (step 1) is already held, so postEntryNow's own
-                // re-acquire is a no-op and the global order is preserved.
-                $legJournalEntryId = null;
-                if ($crossGlAccount) {
-                    /** @var JournalEntry $entry */
-                    $entry = JournalEntry::query()->whereKey($intent->journalEntryId)->firstOrFail();
-                    $actor = $intent->createdBy !== null ? User::find($intent->createdBy) : null;
-                    $this->generalLedger->postEntryNow($entry, $actor, $intent->currency);
-                    $legJournalEntryId = $intent->journalEntryId;
+                // 6. SAVEPOINT for paired-leg idempotency recovery (Fix 1, mirrors
+                // record()): the GL post + BOTH leg inserts + BOTH balance/ordinal
+                // updates run inside a nested transaction (PG SAVEPOINT). On a replay
+                // with the same transferGroupId, the out-leg's unique idempotency_key
+                // poisons the transaction — rollback-to-savepoint reverts the JE post
+                // and the ordinal/balance bumps, then handleTransferIdempotentHit
+                // returns the already-written pair. Nested beginTransaction → SAVEPOINT.
+                DB::beginTransaction();
+                try {
+                    // GL: post EXACTLY ONE journal entry — only when the two
+                    // repositories cross gl_account_id (guaranteed non-null by step 4).
+                    // The advisory lock (step 1) is already held, so postEntryNow's own
+                    // re-acquire is a no-op and the global order is preserved.
+                    $legJournalEntryId = null;
+                    if ($crossGlAccount) {
+                        /** @var JournalEntry $entry */
+                        $entry = JournalEntry::query()->whereKey($intent->journalEntryId)->firstOrFail();
+                        $actor = $intent->createdBy !== null ? User::find($intent->createdBy) : null;
+                        $this->generalLedger->postEntryNow($entry, $actor, $intent->currency);
+                        $legJournalEntryId = $intent->journalEntryId;
+                    }
+
+                    // Two legs — NOT two public record() calls. Each advances its own
+                    // repository's gapless ordinal + cached balance; both share the
+                    // intent's transfer_group_id and net to zero.
+                    [$outId, $outBalance, $outOrdinal] = $this->insertMovementLeg(
+                        repository: $fromRepo,
+                        direction: MovementDirection::Out,
+                        amount: $intent->amount,
+                        currency: $intent->currency,
+                        scale: $scale,
+                        sourceType: MovementSourceType::Transfer,
+                        sourceId: $intent->transferGroupId,
+                        idempotencyKey: "transfer:{$intent->transferGroupId}:out",
+                        journalEntryId: $legJournalEntryId,
+                        transferGroupId: $intent->transferGroupId,
+                        reversesMovementId: null,
+                        reasonCode: null,
+                        recordedWhileFrozen: false,
+                        occurredAt: $occurredAt,
+                        createdBy: $intent->createdBy,
+                        notes: $intent->notes,
+                    );
+
+                    [$inId, $inBalance, $inOrdinal] = $this->insertMovementLeg(
+                        repository: $toRepo,
+                        direction: MovementDirection::In,
+                        amount: $intent->amount,
+                        currency: $intent->currency,
+                        scale: $scale,
+                        sourceType: MovementSourceType::Transfer,
+                        sourceId: $intent->transferGroupId,
+                        idempotencyKey: "transfer:{$intent->transferGroupId}:in",
+                        journalEntryId: $legJournalEntryId,
+                        transferGroupId: $intent->transferGroupId,
+                        reversesMovementId: null,
+                        reasonCode: null,
+                        recordedWhileFrozen: false,
+                        occurredAt: $occurredAt,
+                        createdBy: $intent->createdBy,
+                        notes: $intent->notes,
+                    );
+
+                    DB::commit(); // release savepoint
+                } catch (QueryException $e) {
+                    DB::rollBack(); // to savepoint — reverts JE post + both legs, no gap
+                    if (! $this->isUniqueViolation($e)) {
+                        throw $e;
+                    }
+
+                    return $this->handleTransferIdempotentHit($intent); // SELECT both legs, validate or throw
                 }
 
-                // Two legs — NOT two public record() calls. Each advances its own
-                // repository's gapless ordinal + cached balance; both share the
-                // intent's transfer_group_id and net to zero.
-                [$outId, $outBalance, $outOrdinal] = $this->insertMovementLeg(
-                    repository: $fromRepo,
-                    direction: MovementDirection::Out,
-                    amount: $intent->amount,
-                    currency: $intent->currency,
-                    scale: $scale,
-                    sourceType: MovementSourceType::Transfer,
-                    sourceId: $intent->transferGroupId,
-                    idempotencyKey: "transfer:{$intent->transferGroupId}:out",
-                    journalEntryId: $legJournalEntryId,
-                    transferGroupId: $intent->transferGroupId,
-                    reversesMovementId: null,
-                    reasonCode: null,
-                    recordedWhileFrozen: false,
-                    occurredAt: $occurredAt,
-                    createdBy: $intent->createdBy,
-                    notes: $intent->notes,
-                );
-
-                [$inId, $inBalance, $inOrdinal] = $this->insertMovementLeg(
-                    repository: $toRepo,
-                    direction: MovementDirection::In,
-                    amount: $intent->amount,
-                    currency: $intent->currency,
-                    scale: $scale,
-                    sourceType: MovementSourceType::Transfer,
-                    sourceId: $intent->transferGroupId,
-                    idempotencyKey: "transfer:{$intent->transferGroupId}:in",
-                    journalEntryId: $legJournalEntryId,
-                    transferGroupId: $intent->transferGroupId,
-                    reversesMovementId: null,
-                    reasonCode: null,
-                    recordedWhileFrozen: false,
-                    occurredAt: $occurredAt,
-                    createdBy: $intent->createdBy,
-                    notes: $intent->notes,
-                );
-
-                DB::commit(); // release savepoint
-            } catch (QueryException $e) {
-                DB::rollBack(); // to savepoint — reverts JE post + both legs, no gap
-                if (! $this->isUniqueViolation($e)) {
-                    throw $e;
-                }
-
-                $hit = $this->handleTransferIdempotentHit($intent); // SELECT both legs, validate or throw
-                $this->closePort(); // MED-10: the port is done writing — reset the GUC
-
-                return $hit;
-            }
-
-            // MED-10: the port has finished its DML — reset the GUC (no-op today).
-            $this->closePort();
-
-            // Fire RepositoryMovementRecorded for BOTH legs after commit — so
-            // no listener observes an uncommitted (or rolled-back) transfer.
-            DB::afterCommit(function () use (
-                $intent,
-                $fromRepo,
-                $toRepo,
-                $legJournalEntryId,
-                $occurredAt,
-                $outId,
-                $outBalance,
-                $outOrdinal,
-                $inId,
-                $inBalance,
-                $inOrdinal,
-            ): void {
-                event($this->buildTransferLegEvent(
-                    $outId,
-                    $fromRepo->id,
+                // Fire RepositoryMovementRecorded for BOTH legs after commit — so
+                // no listener observes an uncommitted (or rolled-back) transfer.
+                DB::afterCommit(function () use (
                     $intent,
-                    MovementDirection::Out,
+                    $fromRepo,
+                    $toRepo,
+                    $legJournalEntryId,
+                    $occurredAt,
+                    $outId,
                     $outBalance,
                     $outOrdinal,
-                    $legJournalEntryId,
-                    $occurredAt,
-                ));
-                event($this->buildTransferLegEvent(
                     $inId,
-                    $toRepo->id,
-                    $intent,
-                    MovementDirection::In,
                     $inBalance,
                     $inOrdinal,
-                    $legJournalEntryId,
-                    $occurredAt,
-                ));
-            });
+                ): void {
+                    event($this->buildTransferLegEvent(
+                        $outId,
+                        $fromRepo->id,
+                        $intent,
+                        MovementDirection::Out,
+                        $outBalance,
+                        $outOrdinal,
+                        $legJournalEntryId,
+                        $occurredAt,
+                    ));
+                    event($this->buildTransferLegEvent(
+                        $inId,
+                        $toRepo->id,
+                        $intent,
+                        MovementDirection::In,
+                        $inBalance,
+                        $inOrdinal,
+                        $legJournalEntryId,
+                        $occurredAt,
+                    ));
+                });
 
-            return new TransferResult(
-                new MovementResult($outId, $outBalance, $outOrdinal, false),
-                new MovementResult($inId, $inBalance, $inOrdinal, false),
-            );
+                return new TransferResult(
+                    new MovementResult($outId, $outBalance, $outOrdinal, false),
+                    new MovementResult($inId, $inBalance, $inOrdinal, false),
+                );
+            } finally {
+                // MED-10 + Fix 2: the port is done — reset the GUC on EVERY exit
+                // path (success, idempotent hit, OR exception) so a later non-port
+                // write in the SAME outer transaction cannot ride the still-open guard.
+                $this->closePort();
+            }
         });
     }
 
@@ -602,11 +612,12 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
     }
 
     /**
-     * MED-10: reset the port GUC after the port's DML completes, so a later
-     * non-port write in the SAME outer transaction cannot ride a still-open guard
-     * once the Task-22 trigger lands. Complements the `SET ... 'on'` issued before
-     * the savepoint. pgsql-only DDL; no-op on sqlite (test driver) and a no-op
-     * today (no trigger yet) — it just makes the Task-22 cutover airtight.
+     * MED-10 + Fix 2: reset the port GUC after the port's DML completes, so a
+     * later non-port write in the SAME outer transaction cannot ride a still-open
+     * guard past the Task-22 trigger. Complements the `SET ... 'on'` issued before
+     * the savepoint, and is invoked from a `finally` in record()/transfer() so it
+     * runs on EVERY exit path — success, idempotent hit, or exception. pgsql-only
+     * DDL; no-op on sqlite (test driver).
      */
     private function closePort(): void
     {
