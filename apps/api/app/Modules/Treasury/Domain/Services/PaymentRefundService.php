@@ -6,7 +6,6 @@ namespace App\Modules\Treasury\Domain\Services;
 
 use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
-use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
@@ -421,27 +420,35 @@ class PaymentRefundService
             return;
         }
 
-        $user = $userId !== null ? User::find($userId) : null;
-
-        // GL reversal only when the repository is ledgered AND we have an actor to
-        // post as (synchronous posting seals the fiscal hash chain under $user).
-        /** @var string|null $journalEntryId */
-        $journalEntryId = null;
-        if ($repository->gl_account_id !== null && $user instanceof User) {
-            $entry = $this->glService->createPaymentRefundJournalEntry(
-                companyId: $original->company_id,
-                partnerId: $original->partner_id,
-                refundPaymentId: $refundPaymentId,
-                amount: $absAmount,
-                paymentMethodAccountId: $repository->gl_account_id,
-                date: now(),
-                user: $user,
-                description: "Refund for payment {$original->reference}",
-                currencyCode: $repository->currency,
-                mode: PostingMode::SynchronousInTransaction,
+        // A cash movement is about to leave this repository. The spine §9.2
+        // reconciliation invariant requires every cash movement to carry a
+        // linked journal_entry_id. A repository with no gl_account_id has no GL
+        // account to post the reversal to — refuse rather than record a null-JE
+        // movement that would freeze the repo at Wave-F reconcile (same principle
+        // Fix 2 applied to payments).
+        if ($repository->gl_account_id === null) {
+            throw new \DomainException(
+                "a refund cash movement requires a GL-linked repository; repository {$repository->id} has no gl_account_id"
             );
-            $journalEntryId = $entry->id;
         }
+
+        // GL reversal ALWAYS posted synchronously (in-transaction, atomic with the
+        // refund). Actor-nullable: createPaymentRefundJournalEntry seals the
+        // reversal via postEntryNow even when the actor can't be resolved, so the
+        // movement below ALWAYS has a JE to link — no null-JE refund movement.
+        $entry = $this->glService->createPaymentRefundJournalEntry(
+            companyId: $original->company_id,
+            partnerId: $original->partner_id,
+            refundPaymentId: $refundPaymentId,
+            amount: $absAmount,
+            paymentMethodAccountId: $repository->gl_account_id,
+            date: now(),
+            description: "Refund for payment {$original->reference}",
+            postedByUserId: $userId,
+            currencyCode: $repository->currency,
+            mode: PostingMode::SynchronousInTransaction,
+        );
+        $journalEntryId = $entry->id;
 
         // Money leaves the repository (refunding a customer payment). sourceType
         // Refund, sourceId = ORIGINAL payment id, idempotencyLeg = refund_request_id

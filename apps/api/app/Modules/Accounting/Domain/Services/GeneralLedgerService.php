@@ -511,8 +511,8 @@ final class GeneralLedgerService
         string $amount,
         string $paymentMethodAccountId,
         \DateTimeInterface $date,
-        User $user,
         ?string $description = null,
+        ?string $postedByUserId = null,
         ?string $currencyCode = null,
         PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
@@ -521,6 +521,18 @@ final class GeneralLedgerService
         }
 
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+
+        // Actor-nullable (reconciliation-readiness Fix 3): mirror
+        // reverseSupplierAdvanceJournalEntry — resolve the poster when supplied,
+        // tolerate its absence. A refund whose actor can't be resolved (automated
+        // refund, unresolvable posted_by) STILL posts the reversal via
+        // postEntryNow (which tolerates a null poster), so the cash movement it
+        // backs always carries a linked, POSTED journal entry (spine §9.2).
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
 
         $entry = DB::transaction(function () use (
             $companyId, $partnerId, $refundPaymentId, $amount, $paymentMethodAccountId,
@@ -568,8 +580,10 @@ final class GeneralLedgerService
         });
 
         if ($mode === PostingMode::SynchronousInTransaction) {
+            // postEntryNow tolerates a null actor (posted_by stays null); this is
+            // what guarantees the reversal is POSTED even for an unresolvable actor.
             $this->postEntryNow($entry, $user, $currencyCode);
-        } else {
+        } elseif ($user !== null) {
             $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         }
 

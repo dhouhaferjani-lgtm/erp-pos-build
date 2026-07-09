@@ -52,12 +52,20 @@ final class TreasuryBalanceWritePortTest extends TestCase
      */
     private const ALLOWED_BASENAME = 'TreasuryMovementService.php';
 
+    /**
+     * The PaymentRepositoryFactory seeds `balance` on INSERT inside a documented
+     * test-only GUC bracket (Task 22). It lives under database/ (outside the app/
+     * scan) but is excluded by basename too, so a future move into app/ stays safe.
+     */
+    private const ALLOWED_FACTORY_BASENAME = 'PaymentRepositoryFactory.php';
+
     #[Test]
     public function only_the_movement_port_writes_payment_repository_balance(): void
     {
         $violations = array_merge(
             $this->scanTreasuryModule(),
             $this->scanRawPaymentRepositoryWrites(),
+            $this->scanPaymentRepositoryModelWrites(),
         );
 
         $this->assertSame(
@@ -158,6 +166,120 @@ final class TreasuryBalanceWritePortTest extends TestCase
         }
 
         return $violations;
+    }
+
+    /**
+     * Phase C: PaymentRepository-MODEL balance writes anywhere under app/.
+     *
+     * Phase A only covers the Treasury module; Phase B only covers query-builder /
+     * raw-SQL `payment_repositories` writes. A cross-module Eloquent
+     * `PaymentRepository` model balance write (e.g. authored from Accounting or POS)
+     * would slip past both. This phase catches, app-wide:
+     *   - `PaymentRepository::query()/where(...)->update([… 'balance' …])`
+     *   - `PaymentRepository::…->increment('balance')/decrement('balance')`
+     *   - `PaymentRepository::forceCreate([… 'balance' …])`
+     *   - `$repo->balance = …`, `$repo->increment('balance')/decrement('balance')`,
+     *     `$repo->forceFill([… 'balance' …])` where `$repo` is bound to a
+     *     PaymentRepository in the same file (typehint, `@var`, or `= PaymentRepository::`).
+     *
+     * Excludes the port (TreasuryMovementService.php) and the PaymentRepositoryFactory
+     * (its documented test-only GUC-bracketed balance seed on INSERT). Scoped to files
+     * that reference the model, so report-tier `$account->balance = …` on Account /
+     * report-node objects is out of scope by construction.
+     *
+     * @return list<array{file: string, line: int, rule: string}>
+     */
+    private function scanPaymentRepositoryModelWrites(): array
+    {
+        $base = base_path('app');
+        if (! is_dir($base)) {
+            return [];
+        }
+
+        $violations = [];
+
+        foreach ($this->phpFiles($base) as $path) {
+            $basename = basename($path);
+            if ($basename === self::ALLOWED_BASENAME || $basename === self::ALLOWED_FACTORY_BASENAME) {
+                continue;
+            }
+
+            $content = (string) file_get_contents($path);
+
+            // Only a file that references the model can write its balance.
+            if (! str_contains($content, 'PaymentRepository')) {
+                continue;
+            }
+
+            $relative = $this->relativePath($path);
+
+            // 1. Static class-anchored builder writes:
+            //    PaymentRepository::query()/where(...)->…->update([…'balance'…])
+            //    / increment('balance') / decrement('balance'), before the `;`.
+            $staticBuilder = '/PaymentRepository::(?:(?!;).)*?'
+                .'->\s*(?:update\((?:(?!;).)*[\'"]balance[\'"]|increment\(\s*[\'"]balance[\'"]|decrement\(\s*[\'"]balance[\'"])/s';
+            foreach ($this->matchLines($content, $staticBuilder) as $line) {
+                $violations[] = ['file' => $relative, 'line' => $line, 'rule' => 'PaymentRepository::…->update/increment/decrement(balance)'];
+            }
+
+            // 2. PaymentRepository::forceCreate([…'balance'…]).
+            foreach ($this->matchLines($content, '/PaymentRepository::forceCreate\(\s*\[[^\]]*[\'"]balance[\'"]\s*=>/s') as $line) {
+                $violations[] = ['file' => $relative, 'line' => $line, 'rule' => 'PaymentRepository::forceCreate([balance])'];
+            }
+
+            // 3. Instance writes on a variable bound to a PaymentRepository here.
+            foreach ($this->paymentRepositoryVariables($content) as $var) {
+                $q = preg_quote($var, '/');
+
+                // $var->balance = … (not ==/>=, not ->balance_after, not a comment).
+                foreach ($this->matchLines($content, '/\$'.$q.'->balance\b\s*=(?!=)/') as $line) {
+                    if (! $this->isCommentLine($content, $line)) {
+                        $violations[] = ['file' => $relative, 'line' => $line, 'rule' => "\${$var}->balance = (PaymentRepository)"];
+                    }
+                }
+
+                // $var->increment('balance') / decrement('balance').
+                foreach ($this->matchLines($content, '/\$'.$q.'->(?:increment|decrement)\(\s*[\'"]balance[\'"]/') as $line) {
+                    $violations[] = ['file' => $relative, 'line' => $line, 'rule' => "\${$var}->increment/decrement(balance) (PaymentRepository)"];
+                }
+
+                // $var->forceFill([…'balance'…]).
+                foreach ($this->matchLines($content, '/\$'.$q.'->forceFill\(\s*\[[^\]]*[\'"]balance[\'"]\s*=>/s') as $line) {
+                    $violations[] = ['file' => $relative, 'line' => $line, 'rule' => "\${$var}->forceFill([balance]) (PaymentRepository)"];
+                }
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Variable names ($foo → "foo") bound to a PaymentRepository in $content via a
+     * typehint (`PaymentRepository $foo`), a `@var PaymentRepository|null $foo`
+     * annotation, or an assignment from `= …PaymentRepository::…`.
+     *
+     * @return list<string>
+     */
+    private function paymentRepositoryVariables(string $content): array
+    {
+        /** @var array<string, true> $names */
+        $names = [];
+
+        // `PaymentRepository $foo` / `PaymentRepository|null $foo` (typehints, @var).
+        if (preg_match_all('/PaymentRepository(?:\|null)?\s+\$(\w+)/', $content, $m) !== 0) {
+            foreach ($m[1] as $name) {
+                $names[$name] = true;
+            }
+        }
+
+        // `$foo = …PaymentRepository::…` (query()/where()/find()/factory() etc.).
+        if (preg_match_all('/\$(\w+)\s*=\s*[^;]*PaymentRepository::/', $content, $m) !== 0) {
+            foreach ($m[1] as $name) {
+                $names[$name] = true;
+            }
+        }
+
+        return array_keys($names);
     }
 
     /**

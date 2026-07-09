@@ -310,6 +310,130 @@ class RefundSpineTest extends TestCase
         $this->assertSame("refund:{$payment->id}:{$requestId}", $movement->idempotency_key);
     }
 
+    // (d) reconciliation-readiness Fix 3 -------------------------------------
+
+    /**
+     * A customer refund with NO resolvable actor (automated refund, userId null)
+     * STILL posts the GL reversal and links it to the OUT movement — the spine
+     * §9.2 invariant forbids a null-JE cash movement.
+     */
+    public function test_customer_refund_with_null_actor_posts_and_links_gl_reversal(): void
+    {
+        $service = app(PaymentRefundService::class);
+        $payment = $this->createCompletedCustomerPayment('100.00');
+
+        // Automated refund: no actor.
+        $refund = $service->refundPayment($payment, 'automated refund', userId: null);
+
+        // GL reversal POSTED (sealed) even with a null poster.
+        $entry = JournalEntry::query()
+            ->where('source_type', 'customer_payment_refund')
+            ->where('source_id', $refund->id)
+            ->firstOrFail();
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+
+        // The Refund movement carries the JE (never null on a cash-moving refund).
+        $movement = RepositoryMovement::query()
+            ->where('payment_repository_id', $this->cashRegister->id)
+            ->where('source_type', MovementSourceType::Refund->value)
+            ->firstOrFail();
+        $this->assertNotNull($movement->journal_entry_id, 'refund movement must carry a JE');
+        $this->assertSame($entry->id, $movement->journal_entry_id);
+    }
+
+    /**
+     * A vendor prepayment refund with a null actor likewise seals + links its GL
+     * reversal onto the OUT movement.
+     */
+    public function test_vendor_refund_with_null_actor_posts_and_links_gl_reversal(): void
+    {
+        $service = app(VendorRefundService::class);
+
+        $po = $this->createConfirmedPurchaseOrder('1000.00');
+        $this->allocatePrepaymentToPo($po, '1000.00');
+
+        $refund = $service->refundPrepayment(
+            po: $po,
+            amount: '400.00',
+            paymentMethodId: $this->cashMethod->id,
+            repositoryId: $this->cashRegister->id,
+            reason: 'automated cancellation',
+            userId: null,
+        );
+
+        $entry = JournalEntry::query()
+            ->where('source_type', 'supplier_advance_refund')
+            ->where('source_id', $refund->id)
+            ->firstOrFail();
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+
+        $movement = RepositoryMovement::query()
+            ->where('payment_repository_id', $this->cashRegister->id)
+            ->where('source_type', MovementSourceType::Refund->value)
+            ->firstOrFail();
+        $this->assertNotNull($movement->journal_entry_id, 'vendor refund movement must carry a JE');
+        $this->assertSame($entry->id, $movement->journal_entry_id);
+        $this->assertSame($entry->id, $refund->journal_entry_id);
+    }
+
+    /**
+     * A refund whose repository has NO gl_account_id (cash would move but there is
+     * no GL account to post the reversal to) is rejected with a 422 DomainException
+     * — it must NEVER record a null-JE cash movement.
+     */
+    public function test_refund_on_repository_without_gl_account_is_rejected_422(): void
+    {
+        // Till WITHOUT a gl_account_id.
+        $unledgered = PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH-NOGL',
+            'name' => 'Unledgered Register',
+            'type' => RepositoryType::CashRegister,
+            'is_active' => true,
+            'balance' => '5000.00',
+            'gl_account_id' => null,
+        ]);
+
+        $payment = Payment::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $unledgered->id,
+            'amount' => '100.00',
+            'currency' => 'EUR',
+            'payment_date' => now(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+            'reference' => 'PMT-NOGL',
+            'created_by' => $this->user->id,
+        ]);
+
+        $threw = false;
+        try {
+            app(PaymentRefundService::class)
+                ->refundPayment($payment, 'refund', $this->user->id, Str::uuid()->toString());
+        } catch (\DomainException $e) {
+            $threw = true;
+            $this->assertStringContainsString('no gl_account_id', $e->getMessage());
+        }
+        $this->assertTrue($threw, 'refund on a repository without a gl_account_id must throw a DomainException (422)');
+
+        // The whole refund transaction rolled back: no refund row, no null-JE movement.
+        $refundCount = Payment::query()
+            ->where('original_payment_id', $payment->id)
+            ->where('payment_type', PaymentType::Refund->value)
+            ->count();
+        $this->assertSame(0, $refundCount, 'no refund row may be committed');
+
+        $movementCount = RepositoryMovement::query()
+            ->where('payment_repository_id', $unledgered->id)
+            ->count();
+        $this->assertSame(0, $movementCount, 'no null-JE movement may be written');
+    }
+
     // Helpers -----------------------------------------------------------------
 
     /**
