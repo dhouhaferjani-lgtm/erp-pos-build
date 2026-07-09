@@ -120,11 +120,18 @@ describe('ProductListRow', () => {
     expect(screen.getByTestId('add-button').getAttribute('aria-disabled')).not.toBe('true');
   });
 
-  it('renders the view-details eye button when onViewDetails is provided', () => {
+  it('renders the view-details eye button when onViewDetails is provided, sized as a 48px touch target', () => {
     const onViewDetails = vi.fn();
     renderRow({ onViewDetails });
 
     const eye = screen.getByTestId('view-details-button');
+    // 48px touch target (matches the + add button's height) — owner feedback
+    // 2026-07-08: the previous h-10 (40px) read too small on a 15" touchscreen.
+    expect(eye.className).toContain('h-12');
+    expect(eye.className).toContain('w-12');
+    // Persistent rest surface so it reads as tappable without hover (touch).
+    expect(eye.className).toContain('bg-surface-sunken');
+
     eye.click();
     expect(onViewDetails).toHaveBeenCalledTimes(1);
   });

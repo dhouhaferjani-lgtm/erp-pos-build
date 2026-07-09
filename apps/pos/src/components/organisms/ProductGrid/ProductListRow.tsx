@@ -132,10 +132,10 @@ function ProductListRowInner({
             e.stopPropagation();
             onViewDetails(product);
           }}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm text-ink-muted transition-colors hover:text-ink active:bg-surface-sunken"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-surface-sunken text-ink-muted transition-colors hover:bg-border-subtle hover:text-ink active:bg-border-subtle"
           title={viewDetailsLabel}
         >
-          <Eye className="h-4 w-4" />
+          <Eye className="h-5 w-5" />
         </button>
       )}
 

@@ -141,4 +141,23 @@ describe('ProductTable', () => {
     expect(screen.getByText('Rupture')).toBeTruthy();
     expect(screen.getAllByTestId('price-row')[0]).toBeInTheDocument();
   });
+
+  it('renders a visible view-details eye button per row and calls onViewDetails without adding to cart', () => {
+    const onViewDetails = vi.fn();
+    const onAddToCart = vi.fn();
+    renderTable({ onViewDetails, onAddToCart });
+
+    const eyeButtons = screen.getAllByTestId('view-details-button');
+    expect(eyeButtons).toHaveLength(3);
+
+    eyeButtons[0]!.click();
+    expect(onViewDetails).toHaveBeenCalledTimes(1);
+    expect(onViewDetails).toHaveBeenCalledWith(p1);
+    expect(onAddToCart).not.toHaveBeenCalled();
+  });
+
+  it('does not render the eye button when onViewDetails is not provided', () => {
+    renderTable({ onViewDetails: undefined });
+    expect(screen.queryByTestId('view-details-button')).not.toBeInTheDocument();
+  });
 });

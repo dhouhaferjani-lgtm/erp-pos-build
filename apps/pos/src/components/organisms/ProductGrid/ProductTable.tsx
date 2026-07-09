@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowUpRight, Plus } from 'lucide-react';
+import { ArrowUpRight, Eye, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
 import { useProductImage } from '@/lib/images/useProductImage';
@@ -26,6 +26,12 @@ import type { GridLocationStockMap, LocationStockDisplay } from '@/lib/stock/gri
  * and keyboard nav all working with CSS grid columns for alignment. The SAME
  * `gridTemplateColumns` string aligns the header and every data row.
  *
+ * Owner feedback (2026-07-08) — the eye/"view details" affordance was
+ * MISSING here (only a hidden `onDoubleClick`, undiscoverable). The action
+ * column now holds a visible eye button (desktop-dense ~40px target) beside
+ * the `+` add button; the action track widened from 48px → 96px to fit both
+ * without clipping, in the SAME `GRID_COLS` string the header uses.
+ *
  * Reuses `useStockDisplay` (the three `locationStock` paths — DRY with
  * `ProductCard` / `ProductListRow`) and `useCurrency`. Quantities stay decimal
  * STRINGS end-to-end (`bccomp` / `bcsum`, never `Number()` / `parseFloat`).
@@ -39,7 +45,7 @@ const QTY_SCALE = 4;
  * Code / Catégorie / Stock / Prix / action aligned across all rows.
  */
 const GRID_COLS =
-  'minmax(84px,110px) minmax(0,1fr) minmax(96px,150px) minmax(96px,140px) minmax(72px,104px) 48px';
+  'minmax(84px,110px) minmax(0,1fr) minmax(96px,150px) minmax(96px,140px) minmax(72px,104px) 96px';
 
 /** Estimated row height (px) — real height is measured via `measureElement`. */
 const ROW_ESTIMATE = 44;
@@ -117,6 +123,7 @@ const ProductTableRow = memo(function ProductTableRow({
   }
 
   const addLabel = t('productDetail.addToCart');
+  const viewDetailsLabel = t('products.viewDetails');
 
   const activate = useCallback(() => {
     if (!isActivationBlocked) {
@@ -258,9 +265,27 @@ const ProductTableRow = memo(function ProductTableRow({
         {format(product.sale_price ?? '0')}
       </div>
 
-      {/* Action — the add affordance. tabIndex -1: roving focus stays on the
-          row (Enter/Space adds); the button is a mouse affordance. */}
-      <div role="gridcell" className="flex items-center justify-center px-1 py-1">
+      {/* Action — view-details eye + the add affordance. tabIndex -1 on both:
+          roving focus stays on the row (Enter/Space adds); the buttons are
+          mouse/touch affordances. */}
+      <div role="gridcell" className="flex items-center justify-center gap-1 px-1 py-1">
+        {onViewDetails && (
+          <button
+            type="button"
+            data-testid="view-details-button"
+            tabIndex={-1}
+            aria-label={viewDetailsLabel}
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewDetails(product);
+            }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-ink-muted transition-colors hover:bg-border-subtle hover:text-ink active:bg-border-subtle"
+            title={viewDetailsLabel}
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+        )}
+
         <button
           type="button"
           data-testid="add-button"
