@@ -30,6 +30,7 @@ use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
@@ -296,6 +297,7 @@ final class TreasuryDepositBridgeTest extends TestCase
         return new TreasuryDepositBridge(
             canonicalReader: new CanonicalPayloadReader,
             allocationService: $this->allocationService,
+            movementService: $this->app->make(TreasuryMovementServiceInterface::class),
         );
     }
 

@@ -17,14 +17,18 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -57,6 +61,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
     public function __construct(
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentAllocationService $allocationService,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     public function name(): string
@@ -108,36 +113,66 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                     actorUserId: $actorUserId,
                 );
 
-                return;
+                $payment = $existing;
+            } else {
+                $payment = Payment::query()->create([
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $event->tenant_id,
+                    'company_id' => $event->company_id,
+                    'partner_id' => $partner->id,
+                    'payment_method_id' => $paymentMethod->id,
+                    'repository_id' => $repository->id,
+                    'amount' => $this->paymentAmount($event, $view),
+                    'currency' => $view->payload->currencyCode,
+                    'payment_date' => $view->payload->businessDate,
+                    'status' => PaymentStatus::Completed,
+                    'payment_type' => PaymentType::DocumentPayment,
+                    'origin' => PaymentOrigin::BackOffice,
+                    'fiscal_event_id' => $event->id,
+                    'created_by' => $actorUserId,
+                    'reference' => 'Back-Office Deposit '.$view->payload->depositReceiptUuid,
+                    'notes' => $this->paymentNotes($view),
+                ]);
+
+                $this->allocationService->applyAllocationFromCommand(new ApplyPaymentAllocationCommand(
+                    tenantId: $event->tenant_id,
+                    companyId: $event->company_id,
+                    paymentId: $payment->id,
+                    allocationMethod: AllocationMethod::FIFO,
+                    actorUserId: $actorUserId,
+                    source: 'fiscal_event:DEPOSIT_RECEIPT',
+                    manualAllocations: null,
+                ));
             }
 
-            $payment = Payment::query()->create([
-                'id' => Str::uuid()->toString(),
-                'tenant_id' => $event->tenant_id,
-                'company_id' => $event->company_id,
-                'partner_id' => $partner->id,
-                'payment_method_id' => $paymentMethod->id,
-                'repository_id' => $repository->id,
-                'amount' => $this->paymentAmount($event, $view),
-                'currency' => $view->payload->currencyCode,
-                'payment_date' => $view->payload->businessDate,
-                'status' => PaymentStatus::Completed,
-                'payment_type' => PaymentType::DocumentPayment,
-                'origin' => PaymentOrigin::BackOffice,
-                'fiscal_event_id' => $event->id,
-                'created_by' => $actorUserId,
-                'reference' => 'Back-Office Deposit '.$view->payload->depositReceiptUuid,
-                'notes' => $this->paymentNotes($view),
-            ]);
-
-            $this->allocationService->applyAllocationFromCommand(new ApplyPaymentAllocationCommand(
+            // Task 20 — move the repository balance through the single write
+            // port. ONE movement per deposit event, keyed on the canonical
+            // `payment:0` leg (a deposit has a single tender). Recorded on BOTH
+            // the create AND the idempotent-existing path so a partial prior
+            // write (Payment + allocation landed, movement did not) is COMPLETED
+            // on replay — record() is idempotent on the leg key.
+            //
+            // allowWhileFrozen is FALSE: DEPOSIT_RECEIPT `isServerOnly()`, so it
+            // is a SERVER-authored back-office deposit, NOT offline device
+            // replay. A frozen repo must reject it (HIGH-5). Decided from the
+            // event type, never inferred from the movement sourceType.
+            $this->movementService->record(new MovementIntent(
+                repositoryId: $repository->id,
                 tenantId: $event->tenant_id,
                 companyId: $event->company_id,
-                paymentId: $payment->id,
-                allocationMethod: AllocationMethod::FIFO,
-                actorUserId: $actorUserId,
-                source: 'fiscal_event:DEPOSIT_RECEIPT',
-                manualAllocations: null,
+                direction: MovementDirection::In,
+                amount: $this->paymentAmount($event, $view),
+                currency: $repository->currency,
+                sourceType: MovementSourceType::FiscalEvent,
+                sourceId: $event->id,
+                idempotencyLeg: 'payment:0',
+                journalEntryId: $payment->fresh()?->journal_entry_id,
+                occurredAt: null,
+                reasonCode: null,
+                reversesMovementId: null,
+                createdBy: $actorUserId,
+                notes: null,
+                allowWhileFrozen: ! $event->event_type->isServerOnly(),
             ));
         });
     }
@@ -192,7 +227,15 @@ final class TreasuryDepositBridge implements FiscalEventProjector
             throw $this->invariant($event, 'payment_repository_not_found:repository_id='.$view->payment->repositoryId);
         }
 
-        if ($repository->account_id === null) {
+        // Task 20 (review F14) — canonicalize on `gl_account_id`. The prior
+        // `account_id`-ONLY check rejected repositories that carry a
+        // `gl_account_id` but no legacy `account_id` (every other bridge —
+        // TreasuryReceiptBridge, TreasuryAccountPaymentBridge, MultiPaymentService
+        // — resolves the cash GL account via `gl_account_id`). Fall back to the
+        // legacy `account_id` for repositories seeded before the gl_account_id
+        // column landed, so both shapes resolve consistently.
+        $accountId = $repository->gl_account_id ?? $repository->account_id;
+        if ($accountId === null) {
             throw $this->invariant($event, 'payment_repository_missing_account_id:repository_id='.$repository->id);
         }
 
@@ -200,7 +243,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
             ->where('tenant_id', $event->tenant_id)
             ->where('company_id', $event->company_id)
             ->where('is_active', true)
-            ->whereKey($repository->account_id)
+            ->whereKey($accountId)
             ->exists();
 
         if (! $accountExists) {
@@ -209,7 +252,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                 'payment_repository_account_not_found:repository_id='.
                     $repository->id.
                     ':account_id='.
-                    $repository->account_id,
+                    $accountId,
             );
         }
 
