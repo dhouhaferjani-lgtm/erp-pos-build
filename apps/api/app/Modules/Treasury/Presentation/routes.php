@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Treasury\Presentation\Controllers\BankReconciliationController;
+use App\Modules\Treasury\Presentation\Controllers\CashPositionController;
 use App\Modules\Treasury\Presentation\Controllers\MultiPaymentController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentInstrumentController;
@@ -41,6 +42,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::patch('/payment-methods/{paymentMethod}', [PaymentMethodController::class, 'update'])
         ->middleware('can:treasury.manage')
         ->name('payment-methods.update');
+
+    // Cash position — server-side aggregation over payment_repositories,
+    // grouped by type (Treasury spine Task 25; replaces the FE client-side sum).
+    Route::get('/treasury/cash-position', [CashPositionController::class, 'index'])
+        ->middleware('can:treasury.view')
+        ->name('treasury.cash-position');
 
     // Payment Repositories
     Route::get('/payment-repositories', [PaymentRepositoryController::class, 'index'])
