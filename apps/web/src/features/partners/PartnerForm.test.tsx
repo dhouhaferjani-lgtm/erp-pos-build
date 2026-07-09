@@ -233,6 +233,38 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     expect(screen.getByLabelText(/Country \(VAT\)/)).toHaveValue('FR')
   })
 
+  it('create mode: rejects a prefill country_code with no matching country option, keeping the default', async () => {
+    mockGetCountries.mockResolvedValue([makeCountry('FR', 'France'), makeCountry('TN', 'Tunisia')])
+
+    renderPartnerForm(
+      [
+        {
+          pathname: '/purchases/suppliers/new',
+          state: {
+            partnerPrefill: {
+              name: 'Cooper Labs',
+              // Syntactically valid 2-letter code, but not a real/known country —
+              // must NOT be applied (else it is held in form state and submitted,
+              // then rejected by the backend at save time).
+              country_code: 'XX',
+            },
+          },
+        },
+      ],
+      '/purchases/suppliers/new',
+    )
+
+    // Wait for the country list to resolve (France option present) so validation
+    // has had its data, then confirm both country selects kept the company default
+    // 'TN' and never took the bogus 'XX'. The rest of the prefill still applied.
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'France' })).toBeInTheDocument()
+    })
+    expect(screen.getByLabelText(/^Country$/)).toHaveValue('TN')
+    expect(screen.getByLabelText(/Country \(VAT\)/)).toHaveValue('TN')
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Cooper Labs')
+  })
+
   it('create mode: prefill never populates commercial fields even when bogus commercial keys are present in navigation state', () => {
     renderPartnerForm(
       [
