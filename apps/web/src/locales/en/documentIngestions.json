@@ -56,6 +56,7 @@
     "loading": "Loading scan…",
     "location": "Location",
     "meta": "{{provider}} / {{model}}",
+    "newSupplierHint": "No match found — this looks like a new supplier. Use + to create it.",
     "noExtraction": "Extraction is not available for this scan.",
     "noSupplierRef": "No supplier reference",
     "pages": "{{count}} page",

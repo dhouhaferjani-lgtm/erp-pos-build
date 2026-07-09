@@ -6,6 +6,7 @@ import { getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { textColors, tokens, typography } from '@/lib/designTokens'
 import { useCommitDocumentIngestion, useDocumentIngestion, useLocationsForIngestion, useRejectDocumentIngestion, useReExtractDocumentIngestion } from './queries'
+import { buildSupplierPrefill } from './buildSupplierPrefill'
 import { CommitBar } from './components/CommitBar'
 import { ExtractedFieldsPanel } from './components/ExtractedFieldsPanel'
 import { LineMappingTable, type ReviewedLineState } from './components/LineMappingTable'
@@ -263,8 +264,7 @@ export function ReviewIngestionPage() {
               value={supplierId}
               onChange={setSupplierId}
               onCreateSupplier={() => {
-                const name = detail.extraction?.supplier['name']?.value ?? ''
-                void navigate(`/purchases/suppliers/new?name=${encodeURIComponent(name)}`)
+                void navigate('/purchases/suppliers/new', { state: { partnerPrefill: buildSupplierPrefill(detail.extraction?.supplier) } })
               }}
             />
 

@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
-import { tokens } from '@/lib/designTokens'
+import { textColors, tokens } from '@/lib/designTokens'
 import type { SupplierCandidate } from '../types'
 
 interface SupplierPickerProps {
@@ -43,6 +43,11 @@ export function SupplierPicker({ candidates, value, onChange, onCreateSupplier }
           <Plus className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
+      {candidates.length === 0 && (
+        <p data-testid="new-supplier-hint" className={textColors.tertiary}>
+          {t('review.newSupplierHint')}
+        </p>
+      )}
     </div>
   )
 }
