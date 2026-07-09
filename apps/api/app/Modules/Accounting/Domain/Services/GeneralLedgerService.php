@@ -3397,6 +3397,20 @@ final class GeneralLedgerService
         return Account::findByPurposeOrFail($companyId, $purpose);
     }
 
+    /**
+     * Non-throwing existence check for a system-purpose account, exposed so
+     * callers outside this module (Treasury's RepositoryAdjustmentController —
+     * Audit fix 4 / K2) can validate a chart of accounts BEFORE attempting a
+     * GL post and return a graceful 422 instead of letting
+     * {@see Account::findByPurposeOrFail}'s bare RuntimeException escape as a
+     * 500. Does not change findByPurposeOrFail's own throwing semantics for
+     * any other caller.
+     */
+    public function hasAccountForPurpose(string $companyId, SystemAccountPurpose $purpose): bool
+    {
+        return Account::findByPurpose($companyId, $purpose) !== null;
+    }
+
     private function generateEntryNumber(string $companyId): string
     {
         // Same per-company advisory lock as sealAndPersistEntry so entry-number and

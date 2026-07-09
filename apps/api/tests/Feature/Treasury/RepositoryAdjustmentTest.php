@@ -46,7 +46,6 @@ final class RepositoryAdjustmentTest extends TestCase
         [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
         app(CompanyContext::class)->setCompanyId($company->id);
         app(ChartOfAccountsService::class)->seedForCompany($company);
-        $this->seedToleranceAccounts($user, $company);
 
         $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
 
@@ -112,7 +111,6 @@ final class RepositoryAdjustmentTest extends TestCase
         [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
         app(CompanyContext::class)->setCompanyId($company->id);
         app(ChartOfAccountsService::class)->seedForCompany($company);
-        $this->seedToleranceAccounts($user, $company);
 
         $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
 
@@ -168,7 +166,6 @@ final class RepositoryAdjustmentTest extends TestCase
         [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
         app(CompanyContext::class)->setCompanyId($company->id);
         app(ChartOfAccountsService::class)->seedForCompany($company);
-        $this->seedToleranceAccounts($user, $company);
 
         $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
 
@@ -203,7 +200,6 @@ final class RepositoryAdjustmentTest extends TestCase
         [$user, $company] = $this->makeUserWithPermissions(['treasury.view']); // no treasury.adjust
         app(CompanyContext::class)->setCompanyId($company->id);
         app(ChartOfAccountsService::class)->seedForCompany($company);
-        $this->seedToleranceAccounts($user, $company);
 
         $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
 
@@ -262,7 +258,6 @@ final class RepositoryAdjustmentTest extends TestCase
         [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
         app(CompanyContext::class)->setCompanyId($company->id);
         app(ChartOfAccountsService::class)->seedForCompany($company);
-        $this->seedToleranceAccounts($user, $company);
 
         $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
 
@@ -292,6 +287,144 @@ final class RepositoryAdjustmentTest extends TestCase
         $this->assertSame(1, $auditEventCount);
     }
 
+    /**
+     * Audit fix 4 (K2): the Tunisia chart-of-accounts seeder now wires the
+     * 658/758 "payment tolerance" purposes (see
+     * TunisiaChartOfAccountsSeeder::getAccountsDefinition, codes 6580/7580),
+     * so a plain `seedForCompany()` is sufficient for the 'out' direction —
+     * no missing-purpose 422 should surface.
+     */
+    public function test_out_adjustment_succeeds_with_only_tunisia_seeder_no_manual_tolerance_accounts(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'out',
+                'amount' => '25.000',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ])
+            ->assertCreated();
+
+        $freshRepo = $repo->fresh();
+        $this->assertNotNull($freshRepo);
+        $this->assertSame('475.000', $freshRepo->balance);
+    }
+
+    /**
+     * Audit fix 4 (K2): defense in depth for any tenant whose chart was seeded
+     * before this fix (or any custom chart that never assigned the 658/758
+     * purposes). Previously `Account::findByPurposeOrFail` threw a bare
+     * `RuntimeException` here, uncaught → HTTP 500. Must now be a translated
+     * 422 with no money moved and no GL entry created.
+     */
+    public function test_out_adjustment_returns_422_when_chart_lacks_payment_tolerance_expense_purpose(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        // Deliberately do NOT run a chart-of-accounts seeder — only create the
+        // one account the repository itself needs (Cash). No account carries
+        // the PaymentToleranceExpense purpose.
+        $cashAccount = Account::create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'code' => '53',
+            'name' => 'Caisse',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::Cash,
+            'is_active' => true,
+        ]);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $cashAccount->id,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'out',
+                'amount' => '25.000',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertIsString($response->json('error'));
+
+        // No money moved, no movement/GL row created.
+        $freshRepo = $repo->fresh();
+        $this->assertNotNull($freshRepo);
+        $this->assertSame('500.000', $freshRepo->balance);
+
+        $movements = DB::table('repository_movements')
+            ->where('payment_repository_id', $repo->id)
+            ->where('source_type', 'adjustment')
+            ->count();
+        $this->assertSame(0, $movements);
+    }
+
+    /**
+     * Same defense-in-depth guarantee for the 'in' direction / income purpose.
+     */
+    public function test_in_adjustment_returns_422_when_chart_lacks_payment_tolerance_income_purpose(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        $cashAccount = Account::create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'code' => '53',
+            'name' => 'Caisse',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::Cash,
+            'is_active' => true,
+        ]);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $cashAccount->id,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'in',
+                'amount' => '10.000',
+                'reason_code' => 'correction',
+                'reason_text' => 'Found extra cash during count.',
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertIsString($response->json('error'));
+
+        $freshRepo = $repo->fresh();
+        $this->assertNotNull($freshRepo);
+        $this->assertSame('500.000', $freshRepo->balance);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
@@ -303,37 +436,6 @@ final class RepositoryAdjustmentTest extends TestCase
             ->where('company_id', $company->id)
             ->where('system_purpose', $purpose->value)
             ->firstOrFail();
-    }
-
-    /**
-     * The Tunisia chart-of-accounts seeder does not wire the 658/758
-     * "payment tolerance" purposes to an account by default (they are only
-     * auto-seeded by the generic chart). Manually assign them here — mirrors
-     * the precedent in SmartPaymentIntegrationTest — so
-     * createRepositoryAdjustmentJournalEntry() can resolve the variance
-     * account for a TN company.
-     */
-    private function seedToleranceAccounts(User $user, Company $company): void
-    {
-        Account::create([
-            'tenant_id' => $user->tenant_id,
-            'company_id' => $company->id,
-            'code' => '658',
-            'name' => 'Payment Tolerance Expense',
-            'type' => 'expense',
-            'system_purpose' => SystemAccountPurpose::PaymentToleranceExpense,
-            'is_active' => true,
-        ]);
-
-        Account::create([
-            'tenant_id' => $user->tenant_id,
-            'company_id' => $company->id,
-            'code' => '758',
-            'name' => 'Payment Tolerance Income',
-            'type' => 'revenue',
-            'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome,
-            'is_active' => true,
-        ]);
     }
 
     /**

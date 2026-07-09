@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
@@ -66,6 +67,26 @@ final class RepositoryAdjustmentController extends Controller
                 "Cannot post an adjustment: payment repository '{$repository->name}' ({$repository->code}) ".
                 'has no linked GL account. Assign a GL account to this repository first.'
             );
+        }
+
+        // Audit fix 4 (K2): defense in depth for any tenant whose chart of
+        // accounts predates the TN/FR seeder fix (or a custom chart that never
+        // assigned these purposes) — check BEFORE the transaction so a missing
+        // 658/758 purpose is a graceful, translated 422 rather than letting
+        // Account::findByPurposeOrFail's bare RuntimeException escape
+        // createRepositoryAdjustmentJournalEntry() as an HTTP 500. Scoped to
+        // this endpoint only; findByPurposeOrFail's throwing semantics for
+        // every other GL caller are untouched.
+        $requiredPurpose = $direction === MovementDirection::Out
+            ? SystemAccountPurpose::PaymentToleranceExpense
+            : SystemAccountPurpose::PaymentToleranceIncome;
+
+        if (! $this->generalLedger->hasAccountForPurpose($companyId, $requiredPurpose)) {
+            return response()->json([
+                'error' => __('messages.treasury.adjustment_tolerance_account_missing', [
+                    'purpose' => $requiredPurpose->label(),
+                ]),
+            ], 422);
         }
 
         $result = DB::transaction(function () use (

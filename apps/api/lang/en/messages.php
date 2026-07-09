@@ -66,6 +66,7 @@ return [
         'instrument_not_available' => 'Payment instrument is not available.',
         'insufficient_funds' => 'Insufficient funds in repository.',
         'transfer_completed' => 'Transfer completed successfully.',
+        'adjustment_tolerance_account_missing' => 'Cannot post this adjustment: the chart of accounts has no account assigned to the \':purpose\' purpose. Go to Settings → Chart of Accounts and assign an account to this purpose, then try again.',
     ],
 
     // Inventory
