@@ -78,6 +78,10 @@ function formatOccurredAt(iso: string): string {
   })
 }
 
+function copyToClipboard(id: string): void {
+  void navigator.clipboard.writeText(id)
+}
+
 export function RepositoryMovementsTab({ repositoryId }: RepositoryMovementsTabProps) {
   const { t } = useTranslation(['treasury', 'common'])
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
@@ -104,10 +108,6 @@ export function RepositoryMovementsTab({ repositoryId }: RepositoryMovementsTabP
 
   const formatAmount = (amount: string) =>
     formatCurrency(amount, { currency: companyCurrency, locale: companyLocale })
-
-  const handleCopy = (id: string) => {
-    void navigator.clipboard.writeText(id)
-  }
 
   if (isLoading) {
     return (
@@ -304,7 +304,7 @@ export function RepositoryMovementsTab({ repositoryId }: RepositoryMovementsTabP
                                 </code>
                                 <button
                                   type="button"
-                                  onClick={() => { handleCopy(movement.source_id ?? ''); }}
+                                  onClick={() => { copyToClipboard(movement.source_id ?? ''); }}
                                   className={cn('rounded p-1', textColors.disabled, textColors.hoverSecondary)}
                                   aria-label={t('treasury:repositories.movements.copyId')}
                                 >
