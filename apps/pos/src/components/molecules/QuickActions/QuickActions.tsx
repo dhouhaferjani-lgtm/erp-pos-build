@@ -76,18 +76,32 @@ export function QuickActions({
               size="md"
               onClick={action.onClick}
               disabled={action.disabled}
+              title={action.label}
+              aria-label={action.label}
               leftIcon={<Icon className="h-4 w-4 shrink-0" />}
-              className="relative min-w-0 flex-1"
+              // `@container` turns this button's OWN rendered width into a
+              // container-query context (Tailwind v4 native, no plugin) —
+              // the label span below queries THAT, not the viewport. Icon
+              // stays icon-forward and always visible; the label only
+              // renders once the button itself has room, so this degrades
+              // to a clean icon-only tappable button at narrow cart widths
+              // instead of the unreadable "Rem…/Sus…/Rap…" hard-truncation
+              // the owner flagged. The full label is never lost — it's
+              // always on `title` + `aria-label` above, so the action stays
+              // discoverable (tooltip) and announced (a11y) icon-only.
+              className="@container relative min-w-0 flex-1"
             >
               {/*
-               * The ellipsis must target ONLY the label text box, not the
-               * whole flex row (icon + label + badge siblings) — text-overflow:
-               * ellipsis on a flex container with element children is
-               * unreliable (can hard-clip with no ellipsis, or shrink the
-               * icon/badge instead of the label). min-w-0 lets this span
-               * shrink below its content size inside the flex-1 button.
+               * Hidden by default; becomes a label once the button's own
+               * container width clears the threshold where the longest
+               * label ("Suspendre"/"Rappeler") comfortably fits alongside
+               * the icon + padding. `truncate`/`min-w-0` still guard the
+               * shown state: text-overflow:ellipsis must target only this
+               * label box, not the whole flex row (icon + label + badge
+               * siblings) — that combo hard-clips or shrinks the wrong
+               * sibling instead of ellipsizing the label.
                */}
-              <span className="min-w-0 truncate">{action.label}</span>
+              <span className="hidden min-w-0 truncate @[9rem]:inline">{action.label}</span>
               {action.count > 0 && (
                 // A count is neither selection, stock, nor money — off accent
                 // (Strategy A whole-branch review fix A): a neutral surface

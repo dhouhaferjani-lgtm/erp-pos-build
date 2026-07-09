@@ -22,6 +22,7 @@ import {
 } from '@/components/ui';
 import { NavRail } from '@/components/NavRail';
 import { CartLineItem } from '@/components/molecules/CartLineItem';
+import { QuickActions } from '@/components/molecules/QuickActions';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
 import { ProductCard } from '@/components/molecules/ProductCard';
 import { ProductListRow } from '@/components/organisms/ProductGrid/ProductListRow';
@@ -406,6 +407,55 @@ export function ThemePreviewPage() {
             <Button variant="destructive">Vider</Button>
             <IconButton aria-label="Rechercher" variant="secondary" icon={<Search className="h-5 w-5" />} />
             <IconButton aria-label="Imprimer" variant="ghost" icon={<Printer className="h-5 w-5" />} />
+          </div>
+        </Section>
+
+        <Section title="Actions rapides du panier (icon-forward, responsive @container)">
+          <p className="mb-3 text-sm text-ink-muted">
+            Owner feedback fix: at the real narrow cart width the three labels
+            ("Remise" / "Suspendre" / "Rappeler") hard-truncated to unreadable
+            fragments. Each button is now icon-forward — icon always visible,
+            label shown only once the button itself (a CSS container-query
+            context) has room, collapsing to icon-only when narrow. The full
+            label is always on `title` / `aria-label`.
+          </p>
+          <div className="flex flex-wrap items-start gap-6">
+            <div>
+              <span className="mb-1 block text-xs text-ink-muted">
+                Étroit (~300px) — icon-only attendu
+              </span>
+              <div
+                data-testid="quickactions-narrow"
+                className="rounded-panel border border-border-subtle bg-surface-canvas p-2"
+                style={{ width: 300 }}
+              >
+                <QuickActions
+                  onDiscount={() => undefined}
+                  onHold={() => undefined}
+                  onRecall={() => undefined}
+                  hasItems
+                  recallCount={3}
+                />
+              </div>
+            </div>
+            <div>
+              <span className="mb-1 block text-xs text-ink-muted">
+                Large (~640px) — icône + libellé attendus
+              </span>
+              <div
+                data-testid="quickactions-wide"
+                className="rounded-panel border border-border-subtle bg-surface-canvas p-2"
+                style={{ width: 640 }}
+              >
+                <QuickActions
+                  onDiscount={() => undefined}
+                  onHold={() => undefined}
+                  onRecall={() => undefined}
+                  hasItems
+                  recallCount={3}
+                />
+              </div>
+            </div>
           </div>
         </Section>
 
