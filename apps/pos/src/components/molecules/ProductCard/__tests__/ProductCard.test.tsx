@@ -89,14 +89,22 @@ describe('ProductCard', () => {
     expect(screen.getByText('Stable Product')).toBeInTheDocument();
   });
 
-  it('shows in-cart visual state via a full accent border + corner badge (no side-stripe)', () => {
+  it('shows in-cart visual state via a full action (blue) border + corner badge (no side-stripe)', () => {
     renderCard({ isInCart: true });
     const btn = screen.getByRole('button');
-    // Full accent border (Task 24 restyle), not an asymmetric thick side-stripe.
-    expect(btn.className).toContain('border-accent');
+    // Full action border (Task 11 restyle — selection is blue, not accent/green),
+    // not an asymmetric thick side-stripe.
+    expect(btn.className).toContain('border-action');
     expect(btn.className).not.toContain('border-l-4');
     // Corner badge signals the selected state.
     expect(screen.getByTestId('in-cart-badge')).toBeInTheDocument();
+  });
+
+  it('price is ink, never accent (Task 11)', () => {
+    renderCard();
+    const price = screen.getByTestId('price-row');
+    expect(price.className).toContain('text-ink');
+    expect(price.className).not.toContain('accent');
   });
 });
 
@@ -223,7 +231,8 @@ describe('ProductCard layout regressions', () => {
     const price = container.querySelector('[data-testid="price-row"]');
     const stock = container.querySelector('[data-testid="stock-row"]');
 
-    expect(brand.className).toContain('text-[10px]');
+    // Task 11 — brand label bumped from 10px to 11px for legibility (contrast fix).
+    expect(brand.className).toContain('text-[11px]');
     expect(brand.className).toContain('leading-[1.2]');
     expect(name.className).toContain('text-[13.5px]');
     expect(name.className).toContain('leading-[1.3]');
@@ -294,7 +303,8 @@ describe('ProductCard layout regressions', () => {
     const price = container.querySelector('[data-testid="price-row"]');
     const stock = container.querySelector('[data-testid="stock-row"]');
 
-    expect(brand.className).toContain('text-[10px]');
+    // Task 11 — brand label bumped from 10px to 11px for legibility (contrast fix).
+    expect(brand.className).toContain('text-[11px]');
     expect(name.className).toContain('text-[13.5px]');
     expect(name.className).toContain('leading-[1.3]');
     expect(price?.className).toContain('text-[15px]');
@@ -401,23 +411,26 @@ describe('ProductCard — Task 24 restyle', () => {
     expect(withoutBrandContainer.querySelector('.uppercase')).not.toBeInTheDocument();
   });
 
-  it('(c) in-cart accent treatment: accent border, accent-tint bg, accent badge, 3px bar', () => {
+  it('(c) in-cart action (blue) treatment: action border, action-subtle bg, action badge, 3px bar (Task 11 — selection is blue, not accent/green)', () => {
     renderCard({ isInCart: true });
     const btn = screen.getByRole('button');
 
-    // Accent border and tinted background
-    expect(btn.className).toContain('border-accent');
-    expect(btn.className).toContain('bg-accent-tint');
+    // Action border and tinted background — no accent anywhere on the card.
+    expect(btn.className).toContain('border-action');
+    expect(btn.className).toContain('bg-action-subtle');
+    expect(btn.className).not.toContain('accent');
 
-    // 3px top accent bar — an absolute <span> with bg-accent
+    // 3px top bar — an absolute <span> with bg-action
     const bars = Array.from(btn.querySelectorAll('span[aria-hidden]'));
     const topBar = bars.find((el) => el.className.includes('h-[3px]'));
     expect(topBar).toBeDefined();
-    expect(topBar?.className).toContain('bg-accent');
+    expect(topBar?.className).toContain('bg-action');
+    expect(topBar?.className).not.toContain('accent');
 
-    // In-cart badge uses accent text token
+    // In-cart badge uses action text token, not accent
     const badge = screen.getByTestId('in-cart-badge');
     expect(badge).toBeInTheDocument();
-    expect(badge.className).toContain('text-accent-strong');
+    expect(badge.className).toContain('text-action');
+    expect(badge.className).not.toContain('accent');
   });
 });

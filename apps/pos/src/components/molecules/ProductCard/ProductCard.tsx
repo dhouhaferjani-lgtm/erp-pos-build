@@ -202,15 +202,17 @@ function ProductCardInner({
 
   // Card surface — three visual states:
   // 1. Out-of-stock (any policy): desaturated/dimmed. Cursor differs by policy.
-  // 2. In-cart: full accent border + accent-tint background.
-  // 3. Default: raised surface, accent border on hover.
+  // 2. In-cart: full action (blue) border + action-subtle background. Selection
+  //    is ALWAYS blue (Strategy A) — accent/green are reserved for the brand
+  //    wordmark and stock/money, never for the selected state.
+  // 3. Default: raised surface, action border on hover.
   const cardSurface = isOutOfStock
     ? cn(
         'border-subtle bg-surface-sunken text-ink-faint opacity-70',
         isActivationBlocked ? 'cursor-not-allowed' : 'cursor-pointer',
       )
     : isInCart
-      ? 'cursor-pointer border-accent bg-accent-tint shadow-sm'
+      ? 'cursor-pointer border-action bg-action-subtle shadow-sm'
       : 'cursor-pointer border-subtle bg-surface-raised hover:border-action hover:shadow-md';
 
   const viewDetailsLabel = t('products.viewDetails');
@@ -235,11 +237,11 @@ function ProductCardInner({
         cardSurface,
       )}
     >
-      {/* 3px top accent bar — visible in the in-cart/selected state */}
+      {/* 3px top action (blue) bar — visible in the in-cart/selected state */}
       {isInCart && (
         <span
           aria-hidden
-          className="absolute top-0 right-3.5 left-3.5 h-[3px] rounded-b-pill bg-accent"
+          className="absolute top-0 right-3.5 left-3.5 h-[3px] rounded-b-pill bg-action"
         />
       )}
 
@@ -248,7 +250,7 @@ function ProductCardInner({
           data-testid="in-cart-badge"
           className={cn(
             tokens.badge.neutral,
-            'absolute top-1.5 left-1.5 border-accent/40 bg-accent-tint text-accent-strong',
+            'absolute top-1.5 left-1.5 border-action/40 bg-action-subtle text-action',
           )}
           title={t('products.inCart')}
         >
@@ -309,7 +311,8 @@ function ProductCardInner({
             {product.brand_name && (
               <p
                 className={cn(
-                  'w-full truncate text-[10px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
+                  // Task 11 — 10px read as washed-out; bumped to 11px for legibility.
+                  'w-full truncate text-[11px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
                   isOutOfStock ? 'text-ink-faint' : 'text-ink-muted',
                 )}
               >
@@ -341,7 +344,7 @@ function ProductCardInner({
                 data-testid="in-cart-badge"
                 className={cn(
                   tokens.badge.neutral,
-                  'border-accent/40 bg-accent-tint text-accent-strong',
+                  'border-action/40 bg-action-subtle text-action',
                 )}
                 title={t('products.inCart')}
               >
@@ -365,7 +368,8 @@ function ProductCardInner({
           {product.brand_name && (
             <p
               className={cn(
-                'w-full text-[10px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
+                // Task 11 — 10px read as washed-out; bumped to 11px for legibility.
+                'w-full text-[11px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
                 isOutOfStock ? 'text-ink-faint' : 'text-ink-muted',
               )}
             >
@@ -403,8 +407,10 @@ function ProductCardInner({
         <p
           data-testid="price-row"
           className={cn(
+            // Prices are data, not action — always ink, never accent/action
+            // (designTokens.ts §1: "prices always use text-ink").
             'shrink-0 font-mono text-[15px] font-semibold tabular-nums',
-            isOutOfStock ? 'text-ink-faint' : 'text-accent-strong',
+            isOutOfStock ? 'text-ink-faint' : 'text-ink',
           )}
         >
           {format(product.sale_price ?? '0')}
