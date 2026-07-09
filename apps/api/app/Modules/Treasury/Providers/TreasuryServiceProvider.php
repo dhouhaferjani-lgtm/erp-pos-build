@@ -13,6 +13,7 @@ use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
 use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
 use App\Modules\Treasury\Presentation\Console\AuditDiscountsCommand;
+use App\Modules\Treasury\Presentation\Console\ReconcileTreasuryCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
@@ -79,6 +80,7 @@ class TreasuryServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 AuditDiscountsCommand::class,
+                ReconcileTreasuryCommand::class,
             ]);
         }
     }

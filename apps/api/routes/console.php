@@ -31,6 +31,13 @@ Schedule::command('fraud:detect')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Schedule: Treasury reconciliation (balance/ledger/GL/transfer coherence) —
+// freeze-on-drift, never repair — daily at 2:15 AM.
+Schedule::command('treasury:reconcile')
+    ->dailyAt('02:15')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Schedule: Expire old stock reservations every 15 minutes
 Schedule::job(ExpireReservationsJob::class)
     ->everyFifteenMinutes()
