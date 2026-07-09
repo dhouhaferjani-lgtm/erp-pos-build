@@ -68,7 +68,7 @@ final class GoodsReceiptData extends Data
             purchase_order_id: $receipt->purchase_order_id,
             purchase_order_number: $purchaseOrder->document_number,
             supplier_id: $purchaseOrder->partner_id,
-            supplier_name: $purchaseOrder->partner?->name,
+            supplier_name: $purchaseOrder->partner->name,
             receipt_number: $receipt->receipt_number,
             status: $receipt->status->value,
             received_at: $receipt->received_at->toIso8601String(),

@@ -10,6 +10,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { ProductDetailPage } from './ProductDetailPage'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
+const mockApiPost = vi.hoisted(() => vi.fn())
 const mockApiDelete = vi.hoisted(() => vi.fn())
 const mockNavigate = vi.hoisted(() => vi.fn())
 const mockHasPermission = vi.hoisted(() => vi.fn())
@@ -20,6 +21,7 @@ vi.mock('@/lib/api', async () => {
   return {
     ...actual,
     api: { get: mockApiGet },
+    apiPost: mockApiPost,
     apiDelete: mockApiDelete,
   }
 })
@@ -149,6 +151,8 @@ describe('ProductDetailPage', () => {
   beforeEach(() => {
     setTenant('tenant-1', 'company-1')
     mockApiGet.mockReset()
+    mockApiPost.mockReset()
+    mockApiPost.mockResolvedValue(makeVerdict())
     mockApiDelete.mockReset()
     mockNavigate.mockReset()
     mockHasPermission.mockImplementation(() => true)
@@ -203,7 +207,7 @@ describe('ProductDetailPage', () => {
 
     renderProductDetail()
 
-    await screen.findByRole('heading', { name: 'Brake Pad' })
+    await screen.findByRole('heading', { level: 1, name: 'Brake Pad' })
     await user.click(screen.getByRole('tab', { name: 'products.tabs.financialOperations' }))
 
     expect(screen.getByTestId('documents-tab')).toBeInTheDocument()
@@ -229,7 +233,58 @@ describe('ProductDetailPage', () => {
       enabled: true,
     })
   })
+
+  it('requests the discount policy verdict only when the user can view cost prices', async () => {
+    mockApiGet.mockResolvedValue({ data: { data: productFixture() } })
+    mockApiPost.mockResolvedValue(makeVerdict())
+    mockHasPermission.mockImplementation((permission: string) => permission === 'pricing.view_cost_prices')
+
+    const firstRender = renderProductDetail()
+
+    await waitFor(() => {
+      // Contract MUST match the backend validation (snake_case keys, PriceBasis enum value 'Ht').
+      // A camelCase / 'HT' payload 422s and the advisory block silently never renders.
+      expect(mockApiPost).toHaveBeenCalledWith('/pricing/discount-policy', expect.objectContaining({
+        product_id: 'product-1',
+        effective_unit_price: '50.000',
+        price_basis: 'Ht',
+        quantity: '1',
+        tax_rate: '19.00',
+      }))
+    })
+
+    mockApiGet.mockResolvedValue({ data: { data: productFixture() } })
+    mockApiPost.mockClear()
+    mockHasPermission.mockReturnValue(false)
+    firstRender.unmount()
+
+    renderProductDetail('/inventory/products/product-1?tab=details')
+
+    await screen.findByRole('heading', { level: 1, name: 'Brake Pad' })
+    expect(mockApiPost).not.toHaveBeenCalled()
+  })
 })
+
+function makeVerdict() {
+  return {
+    allowed: true,
+    blocksSale: false,
+    severity: 'info',
+    requiresPermission: null,
+    maxDiscountPercent: '12.50',
+    discountPercent: '0.00',
+    floorPriceNet: '34.500',
+    floorBasis: 'minimum_margin',
+    floorEnforcement: 'advisory',
+    mode: 'Advisory',
+    overridable: true,
+    requiresReason: false,
+    policyVersion: '2026-07-08',
+    policyAsOf: '2026-07-08T00:00:00Z',
+    reasons: [],
+    meta: {},
+  }
+}
 
 function makeResult() {
   return {

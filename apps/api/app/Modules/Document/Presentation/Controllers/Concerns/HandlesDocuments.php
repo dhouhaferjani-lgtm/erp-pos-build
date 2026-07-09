@@ -51,22 +51,28 @@ trait HandlesDocuments
      *
      * @param  int  $statusCode  HTTP status code (default 200)
      */
-    protected function documentResponse(Document $document, int $statusCode = 200, int $scale = 3): JsonResponse
+    protected function documentResponse(Document $document, int $statusCode = 200, int $scale = 3, ?Request $request = null): JsonResponse
     {
+        $meta = [
+            'timestamp' => now()->toIso8601String(),
+        ];
+        $warnings = $request?->attributes->get('discount_policy_warnings');
+        if (is_array($warnings) && $warnings !== []) {
+            $meta['discount_policy_warnings'] = $warnings;
+        }
+
         return response()->json([
             'data' => DocumentData::fromModel($document, true, $scale),
-            'meta' => [
-                'timestamp' => now()->toIso8601String(),
-            ],
+            'meta' => $meta,
         ], $statusCode);
     }
 
     /**
      * Format a Document model as a created response (201).
      */
-    protected function documentCreatedResponse(Document $document, int $scale = 3): JsonResponse
+    protected function documentCreatedResponse(Document $document, int $scale = 3, ?Request $request = null): JsonResponse
     {
-        return $this->documentResponse($document, 201, $scale);
+        return $this->documentResponse($document, 201, $scale, $request);
     }
 
     /**

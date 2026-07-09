@@ -43,20 +43,21 @@ function withMdVariant(url: string | null | undefined): string | null {
   return `${url}${url.includes('?') ? '&' : '?'}variant=md`
 }
 
-function salePriceExcludingTax(product: ProductHeroProduct): string | null {
+// `sale_price` is the canonical HT (net) price — spec Rev 3 R3-6. TTC is derived from it,
+// and margin is computed net-to-net against WAC (not off a TTC-back-solved HT).
+function salePriceIncludingTax(product: ProductHeroProduct): string | null {
   if (product.sale_price === null) return null
   const taxRate = product.tax_rate ?? '0'
-  const divisor = bcadd('1', bcdiv(taxRate, '100', 6), 6)
-  return bcdiv(product.sale_price, divisor, 3)
+  const factor = bcadd('1', bcdiv(taxRate, '100', 6), 6)
+  return bcmul(product.sale_price, factor, 3)
 }
 
 function marginPercent(product: ProductHeroProduct): string | null {
-  const priceHt = salePriceExcludingTax(product)
-  if (priceHt === null || product.cost_price === null || bccomp(product.cost_price, '0') <= 0) {
+  if (product.sale_price === null || product.cost_price === null || bccomp(product.cost_price, '0') <= 0) {
     return null
   }
 
-  return bcmul(bcdiv(bcsub(priceHt, product.cost_price, 4), product.cost_price, 4), '100', 1)
+  return bcmul(bcdiv(bcsub(product.sale_price, product.cost_price, 4), product.cost_price, 4), '100', 1)
 }
 
 function formatMaybeCurrency(value: string | null, currency: string, locale: string): string {
@@ -67,7 +68,8 @@ function formatMaybeCurrency(value: string | null, currency: string, locale: str
 export function ProductHero({ product, currency, locale }: ProductHeroProps) {
   const { t } = useTranslation(['inventory', 'common'])
   const imageUrl = withMdVariant(product.primary_image_url)
-  const priceHt = salePriceExcludingTax(product)
+  const priceHt = product.sale_price
+  const priceTtc = salePriceIncludingTax(product)
   const margin = marginPercent(product)
   const stockQuantity = product.stock_quantity !== null && product.stock_quantity !== undefined
     ? formatQuantity(product.stock_quantity, 4, locale)
@@ -78,7 +80,7 @@ export function ProductHero({ product, currency, locale }: ProductHeroProps) {
     { label: t('inventory:products.costWac'), value: formatMaybeCurrency(product.cost_price, currency, locale) },
     { label: t('inventory:products.marginPercent'), value: margin !== null ? `${margin}%` : '-' },
     { label: t('inventory:products.priceHt'), value: formatMaybeCurrency(priceHt, currency, locale) },
-    { label: t('inventory:products.priceTtc'), value: formatMaybeCurrency(product.sale_price, currency, locale) },
+    { label: t('inventory:products.priceTtc'), value: formatMaybeCurrency(priceTtc, currency, locale) },
   ]
 
   return (

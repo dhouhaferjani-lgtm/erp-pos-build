@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Company\Presentation\Requests;
 
+use App\Modules\Company\Domain\Enums\DiscountFloorMode;
+use App\Modules\Company\Domain\Enums\PriceEntryMode;
 use App\Modules\Product\Presentation\Requests\Concerns\ValidatesMarginBand;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use Illuminate\Foundation\Http\FormRequest;
@@ -50,6 +52,9 @@ class UpdateCompanyRequest extends FormRequest
             // Margin defaults
             'default_target_margin' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'default_minimum_margin' => ['sometimes', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'default_max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'discount_floor_mode' => ['sometimes', Rule::enum(DiscountFloorMode::class)],
+            'price_entry_mode' => ['sometimes', Rule::enum(PriceEntryMode::class)],
         ];
     }
 

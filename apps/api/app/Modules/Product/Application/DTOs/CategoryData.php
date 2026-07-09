@@ -32,6 +32,7 @@ class CategoryData extends Data
         public ?array $children,
         public ?string $default_tax_rate = null,
         public ?string $default_tax_configuration_id = null,
+        public ?string $max_discount_percent = null,
     ) {}
 
     public static function fromModel(Category $category, bool $includeChildren = false): self
@@ -55,6 +56,7 @@ class CategoryData extends Data
                 : null,
             default_tax_rate: $category->default_tax_rate,
             default_tax_configuration_id: $category->default_tax_configuration_id,
+            max_discount_percent: $category->max_discount_percent !== null ? (string) $category->max_discount_percent : null,
         );
     }
 }

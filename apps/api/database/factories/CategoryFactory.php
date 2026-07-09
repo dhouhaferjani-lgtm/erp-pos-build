@@ -33,6 +33,7 @@ class CategoryFactory extends Factory
             'depth' => 0,
             'sort_order' => 0,
             'is_active' => true,
+            'max_discount_percent' => null,
         ];
     }
 

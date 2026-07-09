@@ -6,7 +6,9 @@ namespace App\Modules\Company\Domain;
 
 use App\Models\Country;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\DiscountFloorMode;
 use App\Modules\Company\Domain\Enums\PosStockPolicy;
+use App\Modules\Company\Domain\Enums\PriceEntryMode;
 use App\Modules\Company\Domain\Enums\VerificationStatus;
 use App\Modules\Company\Domain\Enums\VerificationTier;
 use App\Modules\Company\Domain\Events\CompanyCreated;
@@ -102,6 +104,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $default_target_margin Default target margin percentage
  * @property string $default_minimum_margin Default minimum margin percentage
  * @property bool $allow_below_cost_sales Whether below-cost sales are allowed
+ * @property string|null $default_max_discount_percent Company-level discount cap percentage
+ * @property DiscountFloorMode $discount_floor_mode Phase-1 B2B discount-floor enforcement mode
+ * @property PriceEntryMode $price_entry_mode Company product price entry/display preference
  * @property bool $allow_cross_location_stock_view Whether the POS may show stock levels from all locations
  * @property string|null $fiscal_chain_seed Unique 256-bit seed for fiscal hash chain genesis
  * @property Carbon $created_at
@@ -260,6 +265,9 @@ class Company extends Model
         'default_target_margin',
         'default_minimum_margin',
         'allow_below_cost_sales',
+        'default_max_discount_percent',
+        'discount_floor_mode',
+        'price_entry_mode',
         'payment_tolerance_enabled',
         'payment_tolerance_percentage',
         'max_payment_tolerance_amount',
@@ -302,6 +310,9 @@ class Company extends Model
             'status' => CompanyStatus::class,
             'tax_status' => CompanyTaxStatus::class,
             'allow_below_cost_sales' => 'boolean',
+            'default_max_discount_percent' => 'decimal:2',
+            'discount_floor_mode' => DiscountFloorMode::class,
+            'price_entry_mode' => PriceEntryMode::class,
             'payment_tolerance_enabled' => 'boolean',
             'payment_tolerance_percentage' => 'string',
             'max_payment_tolerance_amount' => 'string',

@@ -8,6 +8,7 @@ use App\Modules\Catalog\Presentation\Rules\TaxConfigurationCountryCoherent;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Enums\PriceEntryMode;
 use App\Modules\Document\Presentation\Requests\Concerns\AppliesDiscountToleranceRule;
+use App\Modules\Document\Presentation\Validation\DiscountPolicyDocumentValidator;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Services\CompanyConfigService;
@@ -24,6 +25,7 @@ class CreateDocumentRequest extends FormRequest
         private readonly CompanyContext $companyContext,
         private readonly CompanyConfigService $configService,
         private readonly PurchaseBonusGate $purchaseBonusGate,
+        private readonly DiscountPolicyDocumentValidator $discountPolicyValidator,
     ) {
         parent::__construct();
     }
@@ -198,6 +200,8 @@ class CreateDocumentRequest extends FormRequest
                     $validator->errors()->add("lines.{$index}.line_total", 'Line total is required when price entry mode is total.');
                 }
             }
+
+            $this->discountPolicyValidator->validate($this, $validator);
         });
     }
 }

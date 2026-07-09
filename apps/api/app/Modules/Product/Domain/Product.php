@@ -50,6 +50,7 @@ use Illuminate\Support\Carbon;
  * @property string $cost_price
  * @property string|null $target_margin_override
  * @property string|null $minimum_margin_override
+ * @property string|null $max_discount_percent
  * @property string|null $last_purchase_cost
  * @property Carbon|null $cost_updated_at
  * @property string|null $platform_product_id
@@ -117,6 +118,7 @@ class Product extends Model implements SellableContract
         'cost_price',
         'target_margin_override',
         'minimum_margin_override',
+        'max_discount_percent',
         'last_purchase_cost',
         'cost_updated_at',
         'platform_product_id',
@@ -163,6 +165,7 @@ class Product extends Model implements SellableContract
             'last_purchase_cost' => 'decimal:6',
             'target_margin_override' => 'decimal:3',
             'minimum_margin_override' => 'decimal:3',
+            'max_discount_percent' => 'decimal:2',
             'tax_rate' => 'decimal:2',
             'units_per_pack' => 'integer',
             'reorder_point' => 'decimal:4',

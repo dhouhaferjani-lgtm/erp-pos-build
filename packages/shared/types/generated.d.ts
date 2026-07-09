@@ -533,6 +533,7 @@ export type SyncOperationType = 'product_push' | 'stock_push' | 'price_update' |
 }
 declare namespace App.Modules.Company.Domain.Enums {
 export type CompanyStatus = 'active' | 'suspended' | 'closed';
+export type DiscountFloorMode = 'Advisory' | 'WarnRequiresPermission' | 'Block';
 export type DocumentReviewStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'expired';
 export type HashChainType = 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'receipt' | 'payment' | 'journal_entry' | 'z_report';
 export type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile';
@@ -540,6 +541,7 @@ export type MembershipRole = 'owner' | 'admin' | 'manager' | 'accountant' | 'cas
 export type MembershipStatus = 'active' | 'pending' | 'suspended' | 'revoked';
 export type PeriodStatus = 'open' | 'closed' | 'locked';
 export type PosStockPolicy = 'block' | 'warn' | 'off';
+export type PriceEntryMode = 'Ht' | 'Ttc';
 export type SequenceType = 'invoice' | 'credit_note' | 'quote' | 'sales_order' | 'purchase_order' | 'delivery_note' | 'receipt' | 'journal_entry';
 export type VerificationStatus = 'pending' | 'submitted' | 'in_review' | 'verified' | 'rejected';
 export type VerificationTier = 'basic' | 'standard' | 'enhanced' | 'certified';
@@ -1467,6 +1469,12 @@ message: string | null;
 declare namespace App.Modules.PlatformIntegration.Domain.Enums {
 export type PlatformLookupStatus = 'found' | 'not_found' | 'error' | 'cached';
 }
+declare namespace App.Modules.Pricing.Domain.Enums {
+export type FloorBasis = 'None' | 'Cost' | 'MinimumMargin' | 'DiscountCap' | 'LegalBelowCost';
+export type PriceBasis = 'Ht' | 'Ttc';
+export type RegulatoryEnforcement = 'Advisory' | 'Block';
+export type RegulatoryRuleType = 'BelowCostFloor' | 'PharmaMarginSchedule';
+}
 declare namespace App.Modules.Procurement.Application.DTOs {
 export type ProcurementPolicyData = {
 id: string | null;
@@ -1593,6 +1601,7 @@ breadcrumb: Array<any> | null;
 children: Array<App.Modules.Product.Application.DTOs.CategoryData> | null;
 default_tax_rate: string | null;
 default_tax_configuration_id: string | null;
+max_discount_percent: string | null;
 };
 export type CertificationData = {
 id: string;
@@ -1755,6 +1764,7 @@ oem_numbers: Array<any> | null;
 cross_references: Array<any> | null;
 target_margin_override: string | null;
 minimum_margin_override: string | null;
+max_discount_percent: string | null;
 platform_product_id: string | null;
 created_at: string;
 updated_at: string | null;
@@ -2410,6 +2420,63 @@ reason: string | null;
 }
 declare namespace App.Shared.Contracts.Treasury.Enums {
 export type ToleranceType = 'underpayment' | 'overpayment' | 'none';
+}
+declare namespace App.Shared.DTOs {
+export type DiscountPolicyContext = {
+companyId: string;
+productId: string;
+variantId: string | null;
+effectiveUnitPrice: string;
+currency: string;
+quantity: string;
+taxRate: string | null;
+taxConfigurationId: string | null;
+priceBasis: string;
+userId: string | null;
+};
+export type DiscountPolicyLineContext = {
+productId: string;
+variantId: string | null;
+};
+export type DiscountPolicySubject = {
+companyId: string;
+productId: string;
+variantId: string | null;
+productMaxDiscountPercent: string | null;
+categoryMaxDiscountPercents: Array<any>;
+companyMaxDiscountPercent: string | null;
+salePriceNet: string | null;
+wacNet: string | null;
+lastPurchaseCost: string | null;
+minimumMarginPercent: string | null;
+currency: string;
+taxConfigurationId: string | null;
+taxRate: string | null;
+resolvedTaxRate: string;
+discountFloorMode: string;
+priceEntryMode: string;
+policyAsOf: string;
+policyVersion: string;
+countryCode: string | null;
+};
+export type DiscountPolicyVerdict = {
+allowed: boolean;
+blocksSale: boolean;
+severity: string;
+requiresPermission: string | null;
+maxDiscountPercent: string;
+discountPercent: string | null;
+floorPriceNet: string | null;
+floorBasis: string;
+floorEnforcement: string;
+mode: string;
+overridable: boolean;
+requiresReason: boolean;
+policyVersion: string;
+policyAsOf: string;
+reasons: Array<any>;
+meta: Array<any>;
+};
 }
 declare namespace App.Shared.Domain.Enums {
 export type SkinType = 'normal' | 'oily' | 'dry' | 'combination' | 'sensitive';

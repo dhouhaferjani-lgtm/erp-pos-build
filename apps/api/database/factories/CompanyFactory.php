@@ -6,6 +6,8 @@ namespace Database\Factories;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\DiscountFloorMode;
+use App\Modules\Company\Domain\Enums\PriceEntryMode;
 use App\Modules\Company\Domain\Enums\VerificationStatus;
 use App\Modules\Company\Domain\Enums\VerificationTier;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -71,6 +73,9 @@ class CompanyFactory extends Factory
             'default_target_margin' => '30.00',
             'default_minimum_margin' => '15.00',
             'allow_below_cost_sales' => false,
+            'default_max_discount_percent' => null,
+            'discount_floor_mode' => DiscountFloorMode::Advisory,
+            'price_entry_mode' => PriceEntryMode::Ht,
             'fiscal_chain_seed' => bin2hex(random_bytes(32)), // 256-bit random seed for fiscal chain
         ];
     }

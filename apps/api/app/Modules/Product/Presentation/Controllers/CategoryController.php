@@ -136,6 +136,7 @@ class CategoryController extends Controller
             ],
             'target_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'minimum_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
         ]);
 
         if ($this->marginBandInverts($validated['minimum_margin_override'] ?? null, $validated['target_margin_override'] ?? null)) {
@@ -174,6 +175,7 @@ class CategoryController extends Controller
             'default_tax_configuration_id' => $validated['default_tax_configuration_id'] ?? null,
             'target_margin_override' => $validated['target_margin_override'] ?? null,
             'minimum_margin_override' => $validated['minimum_margin_override'] ?? null,
+            'max_discount_percent' => $validated['max_discount_percent'] ?? null,
         ]);
 
         $category->refresh();
@@ -208,6 +210,7 @@ class CategoryController extends Controller
             ],
             'target_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'minimum_margin_override' => ['sometimes', 'nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
+            'max_discount_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
         ]);
 
         if ($this->marginBandInverts($validated['minimum_margin_override'] ?? null, $validated['target_margin_override'] ?? null)) {

@@ -202,7 +202,7 @@ class InvoiceController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        return DB::transaction(function () use ($tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
+        return DB::transaction(function () use ($request, $tenantId, $companyId, $company, $validated, $lines, $vehicleContext): JsonResponse {
             // Generate document number
             $documentNumber = $this->numberingService->generateNumber($tenantId, $companyId, DocumentType::Invoice);
 
@@ -317,7 +317,7 @@ class InvoiceController extends Controller
             /** @var Document $freshDocument */
             $freshDocument = $document->fresh($this->defaultRelations());
 
-            return $this->documentCreatedResponse($freshDocument, $this->scale());
+            return $this->documentCreatedResponse($freshDocument, $this->scale(), $request);
         });
     }
 
@@ -370,7 +370,7 @@ class InvoiceController extends Controller
 
         $company = $this->companyContext->requireCompany();
 
-        return DB::transaction(function () use ($documentModel, $validated, $lines, $vehicleContext, $hasVehicleContext, $company): JsonResponse {
+        return DB::transaction(function () use ($request, $documentModel, $validated, $lines, $vehicleContext, $hasVehicleContext, $company): JsonResponse {
             // Update document fields (excluding lines)
             $documentModel->update($validated);
 
@@ -455,7 +455,7 @@ class InvoiceController extends Controller
             /** @var Document $freshDocument */
             $freshDocument = $documentModel->fresh($this->defaultRelations());
 
-            return $this->documentResponse($freshDocument, 200, $this->scale());
+            return $this->documentResponse($freshDocument, 200, $this->scale(), $request);
         });
     }
 

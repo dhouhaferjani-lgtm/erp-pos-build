@@ -6,6 +6,7 @@ namespace App\Modules\Taxation\Providers;
 
 use App\Modules\Taxation\Application\Services\CertificatePDFService;
 use App\Modules\Taxation\Application\Services\SalesWithholdingTrackingService;
+use App\Modules\Taxation\Application\Services\TaxConfigurationLookupService;
 use App\Modules\Taxation\Application\Services\TEJExportService;
 use App\Modules\Taxation\Application\Services\VatExportService;
 use App\Modules\Taxation\Application\Services\VatPeriodManagementService;
@@ -31,6 +32,7 @@ use App\Modules\Taxation\Infrastructure\Repositories\EloquentVatDataRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentVatPeriodRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingCertificateRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingTaxRuleRepository;
+use App\Shared\Contracts\TaxConfigurationLookupInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
 use Illuminate\Support\ServiceProvider;
 
@@ -41,6 +43,7 @@ class TaxationServiceProvider extends ServiceProvider
         // Register taxation services as singletons
         $this->app->singleton(TaxResolutionService::class);
         $this->app->bind(TaxDefaultResolverInterface::class, fn ($app): TaxResolutionService => $app->make(TaxResolutionService::class));
+        $this->app->bind(TaxConfigurationLookupInterface::class, TaxConfigurationLookupService::class);
         $this->app->singleton(TaxCalculationService::class);
 
         // Register withholding tax repositories

@@ -594,6 +594,12 @@ class CompanyController extends Controller
                 (string) $company->default_minimum_margin,
                 2
             ),
+            'default_max_discount_percent' => CurrencyScale::bcformatOrNull(
+                $company->default_max_discount_percent !== null ? (string) $company->default_max_discount_percent : null,
+                2
+            ),
+            'discount_floor_mode' => $company->discount_floor_mode->value,
+            'price_entry_mode' => $company->price_entry_mode->value,
             'created_at' => $company->created_at->toIso8601String(),
             'updated_at' => $company->updated_at->toIso8601String(),
         ];

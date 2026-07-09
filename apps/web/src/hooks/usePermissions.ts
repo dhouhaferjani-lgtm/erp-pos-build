@@ -105,6 +105,9 @@ export const PERMISSIONS = {
   // Pricing
   'pricing.view': ['admin', 'sales', 'manager'],
   'pricing.manage': ['admin', 'manager'],
+  'pricing.view_cost_prices': ['admin', 'manager'],
+  'pricing.sell_below_minimum_margin': ['admin', 'manager'],
+  'pricing.sell_below_cost': ['admin'],
 
   // Services
   'services.view': ['admin', 'sales', 'manager'],

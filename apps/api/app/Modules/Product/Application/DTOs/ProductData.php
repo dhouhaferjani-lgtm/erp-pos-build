@@ -48,6 +48,7 @@ class ProductData extends Data
         public ?array $cross_references,
         public ?string $target_margin_override,
         public ?string $minimum_margin_override,
+        public ?string $max_discount_percent,
         public ?string $platform_product_id,
         public string $created_at,
         public ?string $updated_at,
@@ -97,6 +98,7 @@ class ProductData extends Data
             cross_references: $product->cross_references,
             target_margin_override: $product->target_margin_override !== null ? (string) $product->target_margin_override : null,
             minimum_margin_override: $product->minimum_margin_override !== null ? (string) $product->minimum_margin_override : null,
+            max_discount_percent: $product->max_discount_percent !== null ? (string) $product->max_discount_percent : null,
             platform_product_id: $product->platform_product_id,
             created_at: $product->created_at?->toIso8601String() ?? '',
             updated_at: $product->updated_at?->toIso8601String(),
@@ -128,6 +130,25 @@ class ProductData extends Data
             pricing_mode: $product->pricing_mode ?? PricingMode::Manual,
             effective_margins: $effective,
         );
+    }
+
+    /**
+     * Redact cost/margin fields for callers lacking `pricing.view_cost_prices`.
+     *
+     * WAC/margin confidentiality is a real access-control concern, not merely advisory:
+     * the FE panel only hides these in the DOM, so the raw values must not leave the API
+     * for a non-holder. See pricing/discount spec Rev 3 (R3-2 / M0 finding F2). Mutates and
+     * returns $this — safe because callers redact a freshly-built instance.
+     */
+    public function withoutCostFields(): self
+    {
+        $this->purchase_price = null;
+        $this->cost_price = null;
+        $this->target_margin_override = null;
+        $this->minimum_margin_override = null;
+        $this->effective_margins = null;
+
+        return $this;
     }
 
     private static function quantityDecimals(Product $product): int
