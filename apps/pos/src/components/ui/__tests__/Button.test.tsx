@@ -45,15 +45,50 @@ describe('Button atom', () => {
     expect(btn.className).toContain('min-h-[64px]');
   });
 
-  it('button never wraps its label and respects min-w-0 parent', () => {
+  it('truncate renders a REAL ellipsis: label in a min-w-0 truncate span, never a root-level truncate class', () => {
     const { getByRole } = render(
       <div className="flex min-w-0">
         <Button truncate>Rappeler la transaction</Button>
       </div>,
     );
     const btn = getByRole('button');
+    // Still never wraps.
     expect(btn.className).toContain('whitespace-nowrap');
-    expect(btn.className).toContain('truncate');
+    // text-overflow: ellipsis does NOT apply to a flex container: putting
+    // `truncate` on the button root produced a double-sided hard clip
+    // (icon sliced left, label mid-glyph right, no ellipsis). The root must
+    // NOT carry the `truncate` utility itself…
+    expect(btn.classList.contains('truncate')).toBe(false);
+    // …the LABEL span does: a shrinkable (min-w-0) flex item where
+    // text-overflow:ellipsis actually works.
+    const label = btn.querySelector('span.truncate');
+    expect(label).not.toBeNull();
+    expect(label).toHaveClass('min-w-0');
+    expect(label).toHaveTextContent('Rappeler la transaction');
+  });
+
+  it('truncate keeps icon slots shrink-0 so only the label gives up width', () => {
+    const { getByRole, getByTestId } = render(
+      <Button
+        truncate
+        leftIcon={<svg data-testid="left-icon" />}
+        rightIcon={<svg data-testid="right-icon" />}
+      >
+        Paiement en espèces
+      </Button>,
+    );
+    const btn = getByRole('button', { name: 'Paiement en espèces' });
+    // Accessible name is unaffected by the label span (span is transparent
+    // to the accname computation).
+    expect(btn).toBeInTheDocument();
+    expect(getByTestId('left-icon').parentElement).toHaveClass('shrink-0');
+    expect(getByTestId('right-icon').parentElement).toHaveClass('shrink-0');
+  });
+
+  it('without truncate, children render directly (no wrapper span imposed)', () => {
+    const { getByRole } = render(<Button>Payer</Button>);
+    const btn = getByRole('button', { name: 'Payer' });
+    expect(btn.querySelector('span.truncate')).toBeNull();
   });
 
   it('size scale maps to ergonomic min-heights', () => {

@@ -229,6 +229,37 @@ describe('PaymentSummary — compact other-payments control (caisse redesign)', 
     expect(onAdvancedPayments).not.toHaveBeenCalled();
   });
 
+  it('cash button label ellipsizes via a min-w-0 truncate span (F1: no double-sided hard clip at narrow footer width)', () => {
+    render(<PaymentSummary {...readyProps} />);
+
+    const cashButton = screen.getByRole('button', { name: /cashPayment/i });
+    // The truncate prop must place text-overflow on a shrinkable label span
+    // — NOT on the flex button root, where ellipsis never applies and the
+    // label spills past both edges before overflow-hidden hard-clips it
+    // (the 300px payment-footer-preview-narrow failure).
+    const label = cashButton.querySelector('span.truncate');
+    expect(label).not.toBeNull();
+    expect(label).toHaveClass('min-w-0');
+    expect(label).toHaveTextContent('pos:payment.cashPayment');
+    expect(cashButton.classList.contains('truncate')).toBe(false);
+  });
+
+  it('disabled other-payments control keeps a visible sunken surface, symmetric with the disabled cash button (F2)', () => {
+    render(<PaymentSummary {...readyProps} disabled />);
+
+    const otherButton = screen.getByRole('button', {
+      name: 'pos:payment.advancedPayments',
+    });
+    const cashButton = screen.getByRole('button', { name: /cashPayment/i });
+    expect(otherButton).toBeDisabled();
+    expect(cashButton).toBeDisabled();
+    // Both halves of the payment action row must share the disabled recipe:
+    // a visible sunken chip, never a transparent square on the navy footer.
+    expect(otherButton.className).toContain('disabled:bg-surface-sunken');
+    expect(otherButton.className).not.toContain('disabled:bg-transparent');
+    expect(cashButton.className).toContain('disabled:bg-surface-sunken');
+  });
+
   it('other-payments control is still hidden with fewer than 2 active methods', () => {
     render(
       <PaymentSummary

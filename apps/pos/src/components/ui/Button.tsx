@@ -26,6 +26,14 @@ import { cn } from '@/lib/utils';
  * still works. Opt into ellipsis truncation (rather than nowrap overflow)
  * with the `truncate` prop when the parent needs to clip long labels.
  *
+ * How `truncate` works (and why it is NOT a class on the root): the button is
+ * a flex container, and `text-overflow: ellipsis` does not apply to flex
+ * containers — a root-level `truncate` utility just hard-clips the overflow
+ * on both edges (icon sliced left, label mid-glyph right, no ellipsis). So
+ * `truncate` instead wraps the label in a `min-w-0 truncate` span (a
+ * shrinkable flex item where ellipsis DOES apply) and pins the icon slots
+ * `shrink-0` so only the label gives up width.
+ *
  * All 8 states are covered: default · hover · focus-visible (global ring) ·
  * active · disabled · loading · plus error/success are expressed via variant.
  */
@@ -104,18 +112,34 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         VARIANT[variant],
         SIZE[size],
         fullWidth && 'w-full',
-        truncate && 'truncate',
+        // Safety net only — the actual ellipsis lives on the label span
+        // below (text-overflow never applies to a flex container root).
+        truncate && 'overflow-hidden',
         className,
       )}
       {...rest}
     >
       {loading ? (
         <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+      ) : truncate && leftIcon ? (
+        <span className="inline-flex shrink-0">{leftIcon}</span>
       ) : (
         leftIcon
       )}
-      {children}
-      {!loading && rightIcon}
+      {truncate ? (
+        // min-w-0 lets this flex item shrink below its content width;
+        // `truncate` then ellipsizes INSIDE the span. Transparent to the
+        // accessible-name computation (getByRole queries are unaffected).
+        <span className="min-w-0 truncate">{children}</span>
+      ) : (
+        children
+      )}
+      {!loading &&
+        (truncate && rightIcon ? (
+          <span className="inline-flex shrink-0">{rightIcon}</span>
+        ) : (
+          rightIcon
+        ))}
     </button>
   );
 });
