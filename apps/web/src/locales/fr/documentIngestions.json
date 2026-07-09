@@ -56,6 +56,7 @@
     "loading": "Chargement du scan…",
     "location": "Emplacement",
     "meta": "{{provider}} / {{model}}",
+    "newSupplierHint": "Aucune correspondance — ce fournisseur semble nouveau. Utilisez + pour le créer.",
     "noExtraction": "L'extraction n'est pas disponible pour ce scan.",
     "noSupplierRef": "Aucune référence fournisseur",
     "pages": "{{count}} page",

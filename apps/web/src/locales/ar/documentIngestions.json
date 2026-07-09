@@ -56,6 +56,7 @@
     "loading": "جاري تحميل المسح…",
     "location": "الموقع",
     "meta": "{{provider}} / {{model}}",
+    "newSupplierHint": "لا توجد مطابقة — يبدو أن هذا مورّد جديد. استخدم + لإنشائه.",
     "noExtraction": "الاستخراج غير متاح لهذا المسح.",
     "noSupplierRef": "لا توجد مرجعية مورد",
     "pages": "{{count}} صفحة",
