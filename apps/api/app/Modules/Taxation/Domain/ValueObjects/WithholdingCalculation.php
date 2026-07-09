@@ -112,6 +112,8 @@ final readonly class WithholdingCalculation
 
     /**
      * Get withholding rate as percentage (e.g., 0.0500 becomes 5.00).
+     *
+     * @return numeric-string
      */
     public function getRateAsPercentage(): string
     {

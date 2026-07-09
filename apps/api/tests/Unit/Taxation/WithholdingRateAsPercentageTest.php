@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Taxation;
 
+use App\Modules\Taxation\Application\DTOs\WithholdingCalculationData;
 use App\Modules\Taxation\Application\DTOs\WithholdingRuleData;
 use App\Modules\Taxation\Domain\Entities\WithholdingTaxRule;
+use App\Modules\Taxation\Domain\ValueObjects\WithholdingCalculation;
 use Carbon\Carbon;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -53,6 +55,28 @@ final class WithholdingRateAsPercentageTest extends TestCase
 
         // assertSame against a string literal proves both the value and the type.
         $this->assertSame('1.00', $result);
+        $this->assertSame('1.00', $data->toArray()['rate_percentage']);
+    }
+
+    /**
+     * Regression: WithholdingCalculationData::$ratePercentage was typed `float`
+     * while getRateAsPercentage() returns a string, so fromValueObject() threw a
+     * TypeError under strict_types and 500'd the /withholding/preview endpoint.
+     */
+    #[Test]
+    public function calculation_dto_from_value_object_returns_percentage_as_string(): void
+    {
+        $calculation = new WithholdingCalculation(
+            grossAmount: '1000.000',
+            withholdingRate: '0.0100',
+            withholdingAmount: '10.000',
+            netAmount: '990.000',
+            currency: 'TND',
+        );
+
+        $data = WithholdingCalculationData::fromValueObject($calculation);
+
+        $this->assertSame('1.00', $data->ratePercentage);
         $this->assertSame('1.00', $data->toArray()['rate_percentage']);
     }
 }

@@ -118,7 +118,7 @@ export function ProductPricingCard({
           </p>
           {bccomp(currentMargin, '0') > 0 && (
             <p className={`text-right text-xs tabular-nums ${textColors.tertiary}`}>
-              {t('pricing.marginValue', { value: formatPercent(currentMargin) })}
+              {t('pricing.marginValue', { value: formatPercent(currentMargin).replace(/%$/, '') })}
             </p>
           )}
         </div>
@@ -134,7 +134,7 @@ export function ProductPricingCard({
               {formatPercent(targetMargin)}
             </p>
             <p className={`text-right text-xs tabular-nums ${textColors.tertiary}`}>
-              {t('pricing.minMargin', { margin: formatPercent(minimumMargin) })}
+              {t('pricing.minMargin', { margin: formatPercent(minimumMargin).replace(/%$/, '') })}
             </p>
           </div>
         )}
@@ -150,7 +150,7 @@ export function ProductPricingCard({
               {formatMoney(suggestedPrice)}
             </p>
             <p className={`text-right text-xs tabular-nums ${textColors.tertiary}`}>
-              {t('pricing.atMargin', { margin: formatPercent(targetMargin) })}
+              {t('pricing.atMargin', { margin: formatPercent(targetMargin).replace(/%$/, '') })}
             </p>
           </div>
         )}

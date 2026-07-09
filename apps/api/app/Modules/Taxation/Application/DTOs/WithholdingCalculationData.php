@@ -19,6 +19,7 @@ readonly class WithholdingCalculationData
      * @param  numeric-string  $withholdingRate
      * @param  numeric-string  $withholdingAmount
      * @param  numeric-string  $netAmount
+     * @param  numeric-string  $ratePercentage
      */
     public function __construct(
         public string $grossAmount,
@@ -26,7 +27,7 @@ readonly class WithholdingCalculationData
         public string $withholdingAmount,
         public string $netAmount,
         public string $currency,
-        public float $ratePercentage,
+        public string $ratePercentage,
         public ?string $ruleId,
         public ?string $ruleCode,
         public ?string $ruleName,

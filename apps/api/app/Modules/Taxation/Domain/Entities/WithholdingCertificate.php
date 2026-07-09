@@ -225,6 +225,8 @@ class WithholdingCertificate extends Model
 
     /**
      * Get the withholding rate as a percentage (e.g., 0.05 becomes 5.00).
+     *
+     * @return numeric-string
      */
     public function getRateAsPercentage(): string
     {

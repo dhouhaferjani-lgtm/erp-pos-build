@@ -168,8 +168,9 @@ export function PricingIntelligencePanel({
                 {(targetMargin !== null || minimumMargin !== null) && (
                   <div className={cn('mt-1 text-xs', textColors.tertiary)}>
                     {t('pricing.marginThresholds', {
-                      target: targetMargin === null ? '-' : formatPercent(targetMargin),
-                      minimum: minimumMargin === null ? '-' : formatPercent(minimumMargin),
+                      // the i18n template already appends '%' — strip the formatter's suffix to avoid '25%%'
+                      target: targetMargin === null ? '-' : formatPercent(targetMargin).replace(/%$/, ''),
+                      minimum: minimumMargin === null ? '-' : formatPercent(minimumMargin).replace(/%$/, ''),
                     })}
                   </div>
                 )}

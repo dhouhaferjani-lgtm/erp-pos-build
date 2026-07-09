@@ -245,6 +245,10 @@ final class FacturXService
         foreach ($taxGroups as $group) {
             $categoryCode = bccomp($group['rate'], '0', 3) === 0 ? 'Z' : 'S';
 
+            // Precision boundary (audit Root Fix 2, m3): the Factur-X XML builder's
+            // addDocumentTax() signature is float-only. $group values are bcmath-computed
+            // and rounded to 3dp / 2dp immediately upstream, so the cast here is lossless
+            // at the exact scale and the emitted XML matches the fiscal figures.
             $builder->addDocumentTax(
                 $categoryCode,
                 'VAT',

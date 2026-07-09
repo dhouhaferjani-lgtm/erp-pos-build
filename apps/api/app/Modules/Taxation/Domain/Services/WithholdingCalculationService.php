@@ -105,7 +105,7 @@ class WithholdingCalculationService
      * Returns suggested rate and calculation for UI display.
      *
      * @param  numeric-string  $amount
-     * @return array{should_withhold: bool, calculation: WithholdingCalculation|null, suggested_rate: float|null}
+     * @return array{should_withhold: bool, calculation: WithholdingCalculation|null, suggested_rate: numeric-string|null}
      */
     public function preview(
         Partner $partner,
