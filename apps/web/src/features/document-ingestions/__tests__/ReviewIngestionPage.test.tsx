@@ -231,7 +231,7 @@ describe('ReviewIngestionPage', () => {
     await user.selectOptions(screen.getByLabelText('Location'), 'loc-1')
 
     const line = screen.getByTestId('review-line-0')
-    await user.selectOptions(within(line).getByLabelText('Product'), 'product-1')
+    await user.click(within(line).getByRole('button', { name: 'Serum C 30ml' }))
     await user.type(within(line).getByLabelText('Batch number'), 'LOT-7')
     await user.type(within(line).getByLabelText('Expiry date'), '2027-12-31')
     await user.click(screen.getByRole('button', { name: 'Commit document' }))
@@ -302,7 +302,7 @@ describe('ReviewIngestionPage', () => {
     await user.selectOptions(await screen.findByLabelText('Supplier'), 'supplier-1')
     await user.selectOptions(screen.getByLabelText('Location'), 'loc-1')
     const line = screen.getByTestId('review-line-0')
-    await user.selectOptions(within(line).getByLabelText('Product'), 'product-1')
+    await user.click(within(line).getByRole('button', { name: 'Serum C 30ml' }))
     await user.type(within(line).getByLabelText('Batch number'), 'LOT-7')
     await user.type(within(line).getByLabelText('Expiry date'), '2027-12-31')
     mockApiPost.mockRejectedValueOnce({
