@@ -41,6 +41,25 @@ describe('Button atom', () => {
     );
     const btn = screen.getByRole('button', { name: 'Charge' });
     expect(btn.className).toContain('bg-success');
-    expect(btn.className).toContain('min-h-14');
+    // lg size scale updated 40/48/64 (Task 3) — was min-h-14 (56px).
+    expect(btn.className).toContain('min-h-[64px]');
+  });
+
+  it('button never wraps its label and respects min-w-0 parent', () => {
+    const { getByRole } = render(
+      <div className="flex min-w-0">
+        <Button truncate>Rappeler la transaction</Button>
+      </div>,
+    );
+    const btn = getByRole('button');
+    expect(btn.className).toContain('whitespace-nowrap');
+    expect(btn.className).toContain('truncate');
+  });
+
+  it('size scale maps to ergonomic min-heights', () => {
+    const { getByRole, rerender } = render(<Button size="md">A</Button>);
+    expect(getByRole('button').className).toContain('min-h-[48px]');
+    rerender(<Button size="lg">A</Button>);
+    expect(getByRole('button').className).toContain('min-h-[64px]');
   });
 });

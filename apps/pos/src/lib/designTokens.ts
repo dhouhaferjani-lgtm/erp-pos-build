@@ -35,34 +35,41 @@
  * ```
  */
 
+// Task 3 (label non-clip): every recipe below carries `whitespace-nowrap` so
+// a raw <button> built from these tokens never silently wraps its label, the
+// same guarantee the `Button` atom's base class gives. These recipes are
+// plain strings (no size prop), so — unlike Button.tsx's SIZE map — the
+// `px-*` here stays: several call sites (e.g. CashPaymentScreen's confirm
+// button) rely on it as their only horizontal padding.
+
 /** Primary interactive button (the one strong action per view). */
 const buttonPrimary =
-  'inline-flex items-center justify-center gap-2 rounded-xl bg-action px-4 font-semibold text-ink-inverse transition-colors ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-action px-4 font-semibold text-ink-inverse transition-colors ' +
   'hover:bg-action-hover active:bg-action-strong ' +
   'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-faint';
 
 /** Confirm-money button (complete sale, take payment). */
 const buttonConfirm =
-  'inline-flex items-center justify-center gap-2 rounded-xl bg-success px-4 font-semibold text-ink-inverse transition-colors ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-success px-4 font-semibold text-ink-inverse transition-colors ' +
   'hover:bg-success-hover ' +
   'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-faint';
 
 /** Secondary / neutral action. */
 const buttonSecondary =
-  'inline-flex items-center justify-center gap-2 rounded-xl border border-border-subtle bg-surface-raised px-4 font-medium text-ink transition-colors ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-border-subtle bg-surface-raised px-4 font-medium text-ink transition-colors ' +
   'hover:bg-surface-sunken active:bg-surface-sunken ' +
   'disabled:cursor-not-allowed disabled:text-ink-faint';
 
 /** Low-emphasis button — still carries a PERSISTENT filled surface so it reads
  * as tappable at rest on a touchscreen (no hover state). */
 const buttonGhost =
-  'inline-flex items-center justify-center gap-2 rounded-lg px-3 font-medium text-ink transition-colors ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 font-medium text-ink transition-colors ' +
   'bg-surface-sunken hover:bg-border-subtle active:bg-border-subtle ' +
   'disabled:cursor-not-allowed disabled:bg-transparent disabled:text-ink-faint';
 
 /** Destructive action (irreversible). */
 const buttonDestructive =
-  'inline-flex items-center justify-center gap-2 rounded-xl bg-danger px-4 font-semibold text-ink-inverse transition-colors ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-danger px-4 font-semibold text-ink-inverse transition-colors ' +
   'hover:opacity-90 ' +
   'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-faint';
 
