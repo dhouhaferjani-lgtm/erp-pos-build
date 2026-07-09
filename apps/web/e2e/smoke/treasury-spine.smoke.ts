@@ -47,6 +47,11 @@ const API_BASE = process.env['TREASURY_SPINE_API_BASE'] || 'http://127.0.0.1:801
 const CREDENTIALS = { email: 'owner@pharmabio.tn', password: 'password' }
 const CURRENCY_CODE = 'TND'
 
+test.skip(
+  !!process.env.CI && !process.env.TREASURY_SPINE_API_BASE,
+  'requires local db-per-tenant stack — set TREASURY_SPINE_API_BASE to run in CI',
+)
+
 // This smoke test targets the locally running demo stack, not the smoke
 // config's default STAGING_URL — override baseURL for this file only.
 test.use({ baseURL: FRONTEND_BASE_URL })
