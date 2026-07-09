@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
@@ -20,6 +20,7 @@ import { getCountries } from '../settings/api/country'
 import type { Country } from '../settings/types/country'
 import type { PartnerType } from './PartnerListPage'
 import { partnersInvalidationPredicate } from './_invalidation'
+import { readPartnerPrefill } from './partnerPrefill'
 
 const PINNED_COUNTRY_CODES = ['FR', 'TN', 'GB', 'IT', 'MA', 'DZ', 'US']
 
@@ -224,6 +225,36 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     },
     enabled: isEditing && hasTenantScope,
   })
+
+  // Prefill create-mode form from scan-review navigation state (Scan-to-Document).
+  // Additive only: never runs in edit mode (where `reset(partner)` below owns the
+  // form), never touches commercial fields, and applies at most once per mount.
+  const prefillAppliedRef = useRef(false)
+  useEffect(() => {
+    if (isEditing || prefillAppliedRef.current) {
+      return
+    }
+
+    const prefill = readPartnerPrefill(location.state)
+    if (!prefill) {
+      return
+    }
+
+    prefillAppliedRef.current = true
+
+    if (prefill.name !== undefined) setValue('name', prefill.name)
+    if (prefill.vat_number !== undefined) setValue('vat_number', prefill.vat_number)
+    if (prefill.phone !== undefined) setValue('phone', prefill.phone)
+    if (prefill.email !== undefined) setValue('email', prefill.email)
+    if (prefill.street_address !== undefined) setValue('street_address', prefill.street_address)
+    if (prefill.city !== undefined) setValue('city', prefill.city)
+    if (prefill.state !== undefined) setValue('state', prefill.state)
+    if (prefill.postal_code !== undefined) setValue('postal_code', prefill.postal_code)
+    if (prefill.country_code !== undefined) {
+      setValue('country_code', prefill.country_code)
+      setValue('country', prefill.country_code)
+    }
+  }, [isEditing, location.state, setValue])
 
   // Populate form when partner data loads
   useEffect(() => {
