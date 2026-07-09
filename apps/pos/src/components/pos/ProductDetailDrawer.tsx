@@ -133,8 +133,9 @@ export function ProductDetailSheet({
   const routineSteps = showMerchandising ? buildRoutineSteps(product, allProducts) : [];
   const benefitLabels = meta?.suitable_skin_types ?? [];
   const ingredientLabels = [product.category, product.brand_name].filter((v): v is string => Boolean(v));
+  // The formatter already renders the currency marker for every currency
+  // (TND/fr-TN → "9,990 DT", EUR/fr-FR → "38,50 €") — never append one here.
   const priceText = format(product.sale_price ?? '0');
-  const showDtSuffix = !priceText.toUpperCase().includes('DT');
   const brand = product.brand_name ?? t('productDetail.brandFallback');
 
   const tabs: { id: DetailTab; label: string; count?: number }[] = [
@@ -194,7 +195,6 @@ export function ProductDetailSheet({
             <div className="text-sm text-ink-faint">{t('productDetail.priceTtc')}</div>
             <div className="font-mono text-[28px] leading-tight font-semibold tabular-nums text-ink-strong">
               {priceText}
-              {showDtSuffix && <span className="ml-1 text-sm text-ink-faint">DT</span>}
             </div>
           </div>
           <div className="text-right font-mono text-[11px] leading-relaxed text-ink-faint">

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -16,7 +16,16 @@ vi.mock('react-i18next', () => ({
       opts && 'count' in opts ? `${k}:${String(opts.count)}` : k,
   }),
 }));
-vi.mock('@/lib/currency', () => ({ useCurrency: () => ({ format: (n: string | number) => `${n}` }) }));
+// Configurable currency stub: defaults to the identity formatter (legacy
+// fixture behavior); the hero-price suite swaps in real formatter shapes
+// ("38,50 €" / "9,990 DT") to pin that the drawer renders formatter output
+// verbatim.
+const currencyState = vi.hoisted(() => ({
+  format: (n: string | number): string => `${n}`,
+}));
+vi.mock('@/lib/currency', () => ({
+  useCurrency: () => ({ format: (n: string | number) => currencyState.format(n) }),
+}));
 // F8 — the drawer now renders CrossLocationStockSection, which pulls two network
 // hooks (one wraps useQuery and needs a QueryClientProvider). Stub them so this
 // own-location test stays isolated; the gate (canView=false from the default
@@ -239,6 +248,32 @@ describe('ProductDetailDrawer — OOS-policy alignment (Task 18)', () => {
       />,
     );
     expect(screen.getByRole('button', { name: 'productDetail.addToCart' })).not.toBeDisabled();
+  });
+});
+
+// The hero price must render EXACTLY what the currency formatter emits — no
+// hardcoded 'DT' suffix (repo rule 11). The formatter already emits the
+// marker for every currency (TND/fr-TN → "9,990 DT", EUR/fr-FR → "38,50 €");
+// the old suffix hack double-rendered "38,50 € DT" under any non-TND config.
+describe('ProductDetailDrawer — hero price trusts the currency formatter', () => {
+  afterEach(() => {
+    currencyState.format = (n: string | number): string => `${n}`;
+  });
+
+  it('renders a non-DT formatter output (EUR) verbatim with no appended DT', () => {
+    currencyState.format = () => '38,50 €';
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    const price = screen.getByText('38,50 €');
+    expect(price.textContent).toBe('38,50 €');
+    expect(price.textContent).not.toMatch(/DT/);
+  });
+
+  it('renders a TND formatter output with exactly one DT marker', () => {
+    currencyState.format = () => '9,990 DT';
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    const price = screen.getByText('9,990 DT');
+    expect(price.textContent).toBe('9,990 DT');
+    expect((price.textContent ?? '').match(/DT/g)).toHaveLength(1);
   });
 });
 
