@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import type { Country } from '../settings/types/country'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApiPost = vi.hoisted(() => vi.fn())
@@ -65,6 +66,29 @@ function makeExistingPartner() {
     exemption_certificate_path: null,
     exemption_valid_until: null,
     notes: null,
+  }
+}
+
+/**
+ * Minimal valid Country DTO for populating the getCountries() mock, used by
+ * the country_code dual-set test to give the country <select> elements a
+ * matching <option> to select.
+ */
+function makeCountry(code: string, name: string): Country {
+  return {
+    code,
+    name,
+    native_name: null,
+    currency_code: 'EUR',
+    currency_symbol: null,
+    phone_prefix: null,
+    date_format: 'DD/MM/YYYY',
+    default_locale: null,
+    default_timezone: null,
+    is_active: true,
+    tax_id_label: null,
+    tax_id_regex: null,
+    created_at: '2026-01-01T00:00:00.000Z',
   }
 }
 
@@ -180,5 +204,64 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     expect(screen.getByLabelText(/^Phone$/i)).toHaveValue('+21699999999')
     expect(screen.getByLabelText(/street address/i)).toHaveValue('Existing Street')
     expect(screen.getByLabelText(/^City$/i)).toHaveValue('Sfax')
+  })
+
+  it('create mode: country_code prefill dual-sets both the country and country_code form fields', async () => {
+    mockGetCountries.mockResolvedValue([makeCountry('FR', 'France'), makeCountry('TN', 'Tunisia')])
+
+    renderPartnerForm(
+      [
+        {
+          pathname: '/purchases/suppliers/new',
+          state: {
+            partnerPrefill: {
+              name: 'Cooper Labs',
+              vat_number: 'TN123',
+              country_code: 'FR',
+            },
+          },
+        },
+      ],
+      '/purchases/suppliers/new',
+    )
+
+    // The countries query resolves asynchronously; once the <option value="FR">
+    // exists, both country selects should reflect the prefilled 'FR' value.
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^Country$/)).toHaveValue('FR')
+    })
+    expect(screen.getByLabelText(/Country \(VAT\)/)).toHaveValue('FR')
+  })
+
+  it('create mode: prefill never populates commercial fields even when bogus commercial keys are present in navigation state', () => {
+    renderPartnerForm(
+      [
+        {
+          pathname: '/purchases/suppliers/new',
+          state: {
+            partnerPrefill: {
+              name: 'Cooper Labs',
+              vat_number: 'TN123',
+              // Not in PartnerPrefill's whitelist — must be structurally dropped.
+              credit_limit: '9999',
+              discount_percentage: '50',
+              payment_terms: 'NET90',
+            },
+          },
+        },
+      ],
+      '/purchases/suppliers/new',
+    )
+
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Cooper Labs')
+
+    // Commercial fields live in B2BFieldsSection, only rendered once
+    // customer_category is 'business' — switch to it to expose them and
+    // confirm the prefill never reached them.
+    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+
+    expect(screen.getByLabelText(/credit limit/i)).toHaveValue(null)
+    expect(screen.getByLabelText(/discount percentage/i)).toHaveValue(null)
+    expect(screen.getByLabelText(/^payment terms$/i)).toHaveValue('')
   })
 })
