@@ -6,6 +6,9 @@ import { PaymentSummary } from '@/components/organisms/PaymentSummary';
 import { QuickActions } from '@/components/molecules/QuickActions';
 import { Button, IconButton } from '@/components/ui';
 import { useCurrency } from '@/lib/currency';
+import { bcabs } from '@/lib/decimal';
+import { tokens } from '@/lib/designTokens';
+import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { CartItem } from '@/types/cart';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
@@ -91,6 +94,17 @@ export function TransactionCart({
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
   const confirmLineDelete = useSettingsStore((s) => s.confirmLineDelete);
+  const cartPosition = useSettingsStore((s) => s.cartPosition);
+
+  // Cart-panel seam border must face the CANVAS, mirroring NavRail's
+  // seamSide handling (Task 5): the cart flips side with `cartPosition`
+  // (AppShell's `railOnLeft = cartPosition === 'end'`). cart-on-right
+  // (cartPosition 'end') -> canvas is to the left -> border-l; cart-on-left
+  // (default 'start') -> canvas is to the right -> border-r.
+  // `tokens.section.cartPanel` bakes in a fixed `border-l`, so the surface
+  // is rebuilt here (same bg/border-color/shadow) with a dynamic side —
+  // the same approach NavRail.tsx takes for `tokens.section.rail`.
+  const cartSeamSide = cartPosition === 'end' ? 'border-l' : 'border-r';
 
   // Cart-line accordion (mock pattern): collapsed by default so more items fit;
   // tapping a line expands it (and collapses any previously-open line).
@@ -114,7 +128,12 @@ export function TransactionCart({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-raised">
+    <div
+      className={cn(
+        'flex h-full min-h-0 flex-col overflow-hidden bg-surface-raised shadow-sm border-border-strong',
+        cartSeamSide,
+      )}
+    >
       {/* ── Unified cart header zone ──────────────────────────────────────
        * Row A = context (what + who): title + count on the left, the
        * customer-assignment control inline on the right. Row B = operations
@@ -122,8 +141,10 @@ export function TransactionCart({
        * standalone customer row above the cart + a separate quick-actions
        * strip) with one coherent header that reads who → what → operate. */}
       <div className="shrink-0 border-b border-subtle">
-        {/* Row A — context */}
-        <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-1.5">
+        {/* Row A — context. px-4 (not px-3) so the cart icon always has
+         * clearance from the panel's outer edge — it sat flush against the
+         * screen bezel at px-3 (the reported clip). */}
+        <div className="flex items-center justify-between gap-2 px-4 pt-2 pb-1.5">
           <div className="flex min-w-0 items-center gap-2">
             <ShoppingCart className="h-5 w-5 shrink-0 text-ink-muted" />
             <h2 className="text-lg font-bold text-ink">{t('cart.title')}</h2>
@@ -291,16 +312,17 @@ export function TransactionCart({
               (paymentRepositories?.length ?? 0) > 0;
             const netButtonDisabled = checkoutDisabled || !paymentConfigReady;
             return (
-              <div className="space-y-1 border-t border-subtle pt-1.5">
-                <div className="rounded-lg bg-action px-3 py-2 text-ink-inverse">
-                  <div className="flex items-center justify-between">
-                    <span className="text-lg font-medium">{t('common.total')}</span>
-                    <span
-                      className={`font-mono text-2xl font-bold tabular-nums ${netTotal < -0.005 ? 'opacity-80' : ''}`}
-                    >
-                      {netTotal < -0.005 ? '−' : ''}{format(Math.abs(netTotal))}
-                    </span>
-                  </div>
+              // Navy footer card — restyled to match PaymentSummary's sale-mode
+              // footer (both echo the header's navy chrome, "bookending" the
+              // cart). Total sits flat on the navy (no nested bg-action pill)
+              // in `text-pay-navy-fg`, verified >=7:1 against `--pay-navy`
+              // (see task-6-report.md contrast table).
+              <div className={cn(tokens.section.footer, 'space-y-1.5 rounded-xl px-3 py-2 shadow-sm')}>
+                <div className="flex items-center justify-between">
+                  <span className="text-lg font-medium">{t('common.total')}</span>
+                  <span className="font-mono text-2xl font-bold tabular-nums text-pay-navy-fg">
+                    {netTotal < -0.005 ? '−' : ''}{format(Math.abs(netTotal))}
+                  </span>
                 </div>
                 <Button
                   variant="confirm"
@@ -369,7 +391,13 @@ function ReturnLineItem({
   t,
 }: ReturnLineItemProps) {
   const absQty = Math.abs(item.quantity);
-  const absTotal = Math.abs(parseFloat(item.line_total));
+  // `item.line_total` is a canonical decimal string (never a float) — use
+  // the decimal-safe `bcabs` helper (Big.js) instead of
+  // `Math.abs(parseFloat(...))`, which would round-trip the value through
+  // an IEEE-754 float and trips the `no-parsefloat-on-money` ESLint rule.
+  // `format()` re-parses the string for display exactly as it already does
+  // for `item.unit_price` below, so the displayed value is unchanged.
+  const absTotal = bcabs(item.line_total);
 
   // Decrement on a return line means reducing the return qty (closer to 0)
   const handleDecrement = () => {

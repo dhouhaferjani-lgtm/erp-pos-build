@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
 import { Banknote, Wallet, X } from 'lucide-react';
-import { Button, IconButton } from '@/components/ui';
+import { Button, Divider, IconButton } from '@/components/ui';
+import { tokens } from '@/lib/designTokens';
+import { cn } from '@/lib/utils';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
 interface PaymentSummaryProps {
@@ -62,17 +64,24 @@ export function PaymentSummary({
     paymentConfigReady && hasMultipleMethods && Boolean(onAdvancedPayments);
 
   return (
-    <div className="space-y-1 border-t border-border-subtle pt-1.5">
+    // Navy footer card — echoes the header's navy chrome so header/footer
+    // "bookend" the cart (design spec §4). Breakdown lines use
+    // `text-pay-navy-fg` / `tokens.inverseOnNavy.muted` (theme-constant,
+    // verified >=7:1 against `--pay-navy` — see task-6-report.md); the two
+    // discount rows keep their own self-contained `bg-danger-surface`
+    // treatment (like a Badge/StatusPill) so their red signal stays
+    // legible regardless of the navy parent.
+    <div className={cn(tokens.section.footer, 'space-y-1.5 rounded-xl px-3 py-2 shadow-sm')}>
       {/* Sous-total — GROSS (before any discount). Falls back to net subtotal
        * when the caller doesn't supply a gross value. */}
-      <div className="flex justify-between text-xs text-ink-muted">
+      <div className={cn('flex justify-between text-xs', tokens.inverseOnNavy.muted)}>
         <span>{t('common:subtotal')}</span>
-        <span className="font-mono tabular-nums text-ink">{format(grossSubtotal ?? subtotal)}</span>
+        <span className="font-mono tabular-nums text-pay-navy-fg">{format(grossSubtotal ?? subtotal)}</span>
       </div>
 
       {/* Remises produits — total of per-line discounts (only when present). */}
       {lineDiscountAmount > 0.0005 && (
-        <div className="flex justify-between text-xs text-danger-strong">
+        <div className="flex items-center justify-between rounded-md border border-danger-subtle bg-danger-surface px-2 py-1 text-xs font-medium text-danger-strong">
           <span>{t('pos:cart.lineDiscountsTotal')}</span>
           <span className="font-mono tabular-nums">−{format(lineDiscountAmount)}</span>
         </div>
@@ -81,37 +90,38 @@ export function PaymentSummary({
       {/* Remise panier — cart-level transaction discount (removable). */}
       {hasDiscount && (
         <div className="flex items-center justify-between text-sm">
-          <span className="font-medium text-danger-strong">{t('pos:cart.cartDiscount')}</span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-md border border-danger-subtle bg-danger-surface px-2 py-1">
+            <span className="font-medium text-danger-strong">{t('pos:cart.cartDiscount')}</span>
             <span className="font-mono font-medium tabular-nums text-danger-strong">-{format(discountAmount)}</span>
-            {onRemoveDiscount && (
-              <IconButton
-                variant="destructive"
-                size="md"
-                onClick={onRemoveDiscount}
-                aria-label={t('pos:discount.remove')}
-                title={t('pos:discount.remove')}
-                icon={<X className="h-4 w-4" />}
-              />
-            )}
           </div>
+          {onRemoveDiscount && (
+            <IconButton
+              variant="destructive"
+              size="md"
+              onClick={onRemoveDiscount}
+              aria-label={t('pos:discount.remove')}
+              title={t('pos:discount.remove')}
+              icon={<X className="h-4 w-4" />}
+            />
+          )}
         </div>
       )}
 
       {/* dont TVA — VAT is INCLUDED in the TTC prices (B2C POS), so this is an
        * "of which" line, not an addition. Generic "TVA" label keeps it correct
        * for mixed VAT-rate carts (owner decision — not "dont TVA 19%"). */}
-      <div className="flex justify-between text-xs text-ink-muted">
+      <div className={cn('flex justify-between text-xs', tokens.inverseOnNavy.muted)}>
         <span>{t('common:tax')}</span>
-        <span className="font-mono tabular-nums text-ink">{format(taxAmount)}</span>
+        <span className="font-mono tabular-nums text-pay-navy-fg">{format(taxAmount)}</span>
       </div>
 
-      {/* Total */}
-      <div className="rounded-lg bg-action px-3 py-2 text-ink-inverse">
-        <div className="flex items-center justify-between">
-          <span className="text-lg font-medium">{t('common:total')}</span>
-          <span className="font-mono text-2xl font-bold tabular-nums">{format(total)}</span>
-        </div>
+      <Divider className={tokens.inverseOnNavy.divider} />
+
+      {/* Total — sits flat on the navy card (no nested bg-action pill); mono
+       * amount-due in `text-pay-navy-fg` clears AAA (>=7:1) on `--pay-navy`. */}
+      <div className="flex items-center justify-between">
+        <span className="text-lg font-medium text-pay-navy-fg">{t('common:total')}</span>
+        <span className="font-mono text-2xl font-bold tabular-nums text-pay-navy-fg">{format(total)}</span>
       </div>
 
       {/* Payment buttons */}

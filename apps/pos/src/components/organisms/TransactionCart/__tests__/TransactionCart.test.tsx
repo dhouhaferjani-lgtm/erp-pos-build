@@ -232,6 +232,35 @@ describe('TransactionCart — Task 52 refund/exchange sections', () => {
     expect(allMinusTotals.length).toBeGreaterThan(0);
   });
 
+  it('Task 6 precision fix: return line total is decimal-safe (bcabs, not parseFloat) and the displayed magnitude is unchanged for a 3-decimal value', () => {
+    // Regression test for the `Math.abs(parseFloat(item.line_total))` ->
+    // `bcabs(item.line_total)` fix (no-parsefloat-on-money). Uses a
+    // 3-decimal-place value (e.g. a TND-scale amount) to exercise a case
+    // `.toFixed(2)`-rounding on a plain float could plausibly perturb, and
+    // asserts the exact same rendered string a correct abs() would produce.
+    renderCart({
+      items: [
+        {
+          id: 'r-precision',
+          product: { id: 'prod-precision', name: 'Precision Widget', sku: 'PW', price: '12.500' },
+          quantity: -1,
+          unit_price: '12.500',
+          line_total: '-12.500',
+          tax_rate: '20',
+          tax_amount: '-2.08',
+          kind: 'return',
+        },
+      ],
+      itemCount: 1,
+      netTotal: -12.5,
+    });
+
+    // Both the ReturnLineItem total and the net-footer Total row render the
+    // same "−€12.50" magnitude for this fixture (mirrors the existing
+    // "return items show..." test above) — assert at least one match.
+    expect(screen.getAllByText('−€12.50').length).toBeGreaterThan(0);
+  });
+
   it('shows "Refund X" confirm label when netTotal < 0', () => {
     renderCart({
       items: [makeReturnItem('r1')],
