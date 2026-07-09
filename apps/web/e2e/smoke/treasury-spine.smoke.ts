@@ -6,11 +6,17 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
 /**
  * Treasury Money-Movement Spine — LIVE end-to-end verification (spine Task 29).
  *
- * This spec runs against the RUNNING db-per-tenant stack (API :8010, Vite :5173,
- * tenant demo-pharmacy-tn). It is NOT a mocked test — it exercises the real
- * append-only `repository_movements` ledger, the single write port, the GL
- * links and the server-side cash-position, and it proves the read surface
- * (Movements tab + Total Cash) reflects the chain.
+ * This is a SMOKE test (repo convention: live/no-mock tests live under
+ * e2e/smoke/*.smoke.ts + playwright.smoke.config.ts, never under the default
+ * mocked e2e suite). It runs against the RUNNING db-per-tenant stack (API
+ * :8010, Vite :5173, tenant demo-pharmacy-tn) — NOT the staging URL the smoke
+ * config defaults to — so both endpoints are parameterized via env vars
+ * (TREASURY_SPINE_API_BASE / TREASURY_SPINE_BASE_URL) with the current local
+ * values as defaults; override them to point at a different stack. It is NOT
+ * a mocked test — it exercises the real append-only `repository_movements`
+ * ledger, the single write port, the GL links and the server-side
+ * cash-position, and it proves the read surface (Movements tab + Total Cash)
+ * reflects the chain.
  *
  * Chain proven, all on the Main Cash Register:
  *   money IN  (customer payment  +50.000)
@@ -36,11 +42,18 @@ import { test, expect, type APIRequestContext } from '@playwright/test'
  * baseline captured at step 2, so the spec stays green across repeated runs.
  */
 
-const API_BASE = 'http://127.0.0.1:8010/api/v1'
+const FRONTEND_BASE_URL = process.env['TREASURY_SPINE_BASE_URL'] || 'http://localhost:5173'
+const API_BASE = process.env['TREASURY_SPINE_API_BASE'] || 'http://127.0.0.1:8010/api/v1'
 const CREDENTIALS = { email: 'owner@pharmabio.tn', password: 'password' }
+const CURRENCY_CODE = 'TND'
+
+// This smoke test targets the locally running demo stack, not the smoke
+// config's default STAGING_URL — override baseURL for this file only.
+test.use({ baseURL: FRONTEND_BASE_URL })
 
 const SCREENSHOT_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
+  '..',
   '..',
   '..',
   '..',
@@ -82,6 +95,19 @@ function tolerantMoneyRegExp(value: string): RegExp {
   const digits = value.replace('-', '').replace('.', '')
   const pattern = digits.split('').join('[\\s\\u00a0\\u202f.,]?')
   return new RegExp(pattern)
+}
+
+/**
+ * Exact-cell matcher for a money value as the movements table actually renders
+ * it: `formatCurrency` appends the currency code, and signed cells (the amount
+ * column) prefix a bare '-' for direction=out (see RepositoryMovementsTab.tsx).
+ * Anchored start-to-end so it only matches the whole cell content, not an
+ * ambiguous substring shared with another row/column.
+ */
+function exactRenderedMoneyText(value: string, options: { negative?: boolean } = {}): RegExp {
+  const sign = options.negative ? '-' : ''
+  const digits = tolerantMoneyRegExp(value).source
+  return new RegExp(`^${sign}${digits}[\\s\\u00a0\\u202f]*${CURRENCY_CODE}$`)
 }
 
 interface CashPositionRepository {
@@ -302,11 +328,34 @@ test.describe.serial('Treasury spine — live E2E', () => {
       `adjustment row balance_after ${afterAdjust}`,
     ).toBeVisible()
 
-    // Amounts for payment (+50.000) and refund/adjustment appear.
+    // Positive assertion on the REFUND row itself (not just "opening_balance
+    // disappeared" and not the ambiguous generic '50.000' text, which matches
+    // both the payment row and the refund row). The ledger is append-only, so
+    // after repeated spec runs there are MULTIPLE historical "Refund" rows —
+    // disambiguate THIS run's row by combining the Refund source badge with
+    // its balance_after, which is unique to this run's baseline (each prior
+    // run captured a different, strictly-increasing baseline).
+    const refundRow = table
+      .locator('tr')
+      .filter({ has: page.getByText('Refund', { exact: true }) })
+      .filter({ has: page.getByText(exactRenderedMoneyText(baselineMainBalance)) })
     await expect(
-      table.getByText(tolerantMoneyRegExp('50.000')).first(),
-      'a 50.000 movement amount is shown',
-    ).toBeVisible()
+      refundRow,
+      `exactly one Refund-source row with balance_after ${baselineMainBalance}`,
+    ).toHaveCount(1)
+
+    const refundAmountCell = refundRow.locator('td').nth(2)
+    const refundBalanceCell = refundRow.locator('td').nth(3)
+
+    await expect(
+      refundAmountCell,
+      `refund row renders the amount as -${PAYMENT_AMOUNT} ${CURRENCY_CODE}`,
+    ).toHaveText(exactRenderedMoneyText(PAYMENT_AMOUNT, { negative: true }))
+
+    await expect(
+      refundBalanceCell,
+      `refund row balance_after equals the pre-payment baseline (${baselineMainBalance})`,
+    ).toHaveText(exactRenderedMoneyText(baselineMainBalance))
 
     await page.screenshot({
       path: path.join(SCREENSHOT_DIR, '02-movements-tab-all.png'),
