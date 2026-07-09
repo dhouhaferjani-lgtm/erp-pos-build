@@ -72,33 +72,64 @@ const mockPayments = [
   },
 ]
 
+// Mirrors `PaymentInstrumentController::formatInstrument` exactly — see
+// apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentInstrumentController.php.
+// There is no `instrument_number`, `type`, `partner_name`, `issue_date`, or
+// `repository_name` on the real response (audit finding G3): a mock cementing
+// that phantom shape would hide the bug instead of catching it.
 const mockInstruments = [
   {
     id: '1',
-    instrument_number: 'CHK-001',
-    type: 'check',
-    amount: 2500.0,
-    issue_date: '2025-01-16',
-    maturity_date: '2025-02-16',
+    payment_method_id: 'method-2',
+    payment_method: { id: 'method-2', code: 'CHECK', name: 'Check' },
+    reference: 'CHK-001',
     partner_id: 'partner-2',
-    partner_name: 'Client Inc',
+    partner: { id: 'partner-2', name: 'Client Inc' },
+    drawer_name: null,
+    amount: '2500.000',
+    currency: 'TND',
+    received_date: '2025-01-16',
+    maturity_date: '2025-02-16',
+    expiry_date: null,
     status: 'received',
     repository_id: 'repo-1',
-    repository_name: 'Main Cash Register',
+    repository: { id: 'repo-1', code: 'CASH-01', name: 'Main Cash Register' },
+    bank_name: null,
+    bank_branch: null,
+    bank_account: null,
+    deposited_at: null,
+    deposited_to_id: null,
+    deposited_to: null,
+    cleared_at: null,
+    bounced_at: null,
+    bounce_reason: null,
     created_at: '2025-01-16T10:00:00Z',
   },
   {
     id: '2',
-    instrument_number: 'CHK-002',
-    type: 'check',
-    amount: 1000.0,
-    issue_date: '2025-01-10',
-    maturity_date: '2025-02-10',
+    payment_method_id: 'method-2',
+    payment_method: { id: 'method-2', code: 'CHECK', name: 'Check' },
+    reference: 'CHK-002',
     partner_id: 'partner-1',
-    partner_name: 'Acme Corp',
+    partner: { id: 'partner-1', name: 'Acme Corp' },
+    drawer_name: null,
+    amount: '1000.000',
+    currency: 'TND',
+    received_date: '2025-01-10',
+    maturity_date: '2025-02-10',
+    expiry_date: null,
     status: 'deposited',
     repository_id: 'repo-2',
-    repository_name: 'Bank Account',
+    repository: { id: 'repo-2', code: 'BANK-01', name: 'Bank Account' },
+    bank_name: null,
+    bank_branch: null,
+    bank_account: null,
+    deposited_at: '2025-01-20T10:00:00Z',
+    deposited_to_id: 'repo-2',
+    deposited_to: { id: 'repo-2', code: 'BANK-01', name: 'Bank Account' },
+    cleared_at: null,
+    bounced_at: null,
+    bounce_reason: null,
     created_at: '2025-01-10T10:00:00Z',
   },
 ]
@@ -374,7 +405,8 @@ describe('Treasury Management', () => {
 
   describe('InstrumentListPage', () => {
     it('renders the instrument list page with title', () => {
-      mockApi.get.mockResolvedValue({ data: { data: [], meta: { total: 0 } } })
+      // The real endpoint returns a plain `{ data: [...] }` — no `meta`.
+      mockApi.get.mockResolvedValue({ data: { data: [] } })
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -393,7 +425,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays list of instruments', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: mockInstruments, meta: { total: 2 } } })
+      mockApi.get.mockResolvedValue({ data: { data: mockInstruments } })
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -404,7 +436,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays empty state when no instruments', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: [], meta: { total: 0 } } })
+      mockApi.get.mockResolvedValue({ data: { data: [] } })
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -414,7 +446,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays instrument status badges', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: mockInstruments, meta: { total: 2 } } })
+      mockApi.get.mockResolvedValue({ data: { data: mockInstruments } })
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -425,7 +457,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays maturity dates', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: mockInstruments, meta: { total: 2 } } })
+      mockApi.get.mockResolvedValue({ data: { data: mockInstruments } })
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 

@@ -17,24 +17,55 @@ import {
   ListPageLayout,
 } from '../../components/molecules'
 
-interface Instrument {
+interface InstrumentPartner {
   id: string
-  instrument_number: string
-  type: 'check' | 'promissory_note' | 'voucher'
-  amount: number
-  issue_date: string
-  maturity_date: string | null
-  partner_id: string
-  partner_name: string
-  status: 'received' | 'deposited' | 'cleared' | 'bounced' | 'cancelled'
-  repository_id: string
-  repository_name: string
-  created_at: string
+  name: string
 }
 
+interface InstrumentRepository {
+  id: string
+  code: string
+  name: string
+}
+
+/**
+ * Mirrors `PaymentInstrumentController::formatInstrument` (apps/api
+ * `App\Modules\Treasury\Presentation\Controllers\PaymentInstrumentController`).
+ * There is no `instrument_number`, `type`, or `partner_name` — those were
+ * phantom fields the API never sent (audit finding G3).
+ */
+interface Instrument {
+  id: string
+  reference: string
+  partner_id: string | null
+  partner: InstrumentPartner | null
+  drawer_name: string | null
+  amount: string
+  currency: string
+  received_date: string
+  maturity_date: string | null
+  status:
+    | 'received'
+    | 'in_transit'
+    | 'deposited'
+    | 'clearing'
+    | 'cleared'
+    | 'bounced'
+    | 'expired'
+    | 'cancelled'
+    | 'collected'
+  repository_id: string | null
+  repository: InstrumentRepository | null
+  created_at: string | null
+}
+
+/**
+ * `GET /payment-instruments` returns a plain `{ data: [...] }` — it is NOT
+ * paginated (the controller calls `->get()`, never `->paginate()`), so there
+ * is no `meta` to read.
+ */
 interface InstrumentsResponse {
   data: Instrument[]
-  meta?: { total: number }
 }
 
 /**
@@ -60,11 +91,6 @@ export function InstrumentListPage() {
     return t(`treasury:instruments.statuses.${status}`, status)
   }
 
-  // Get translated type label
-  const getTypeLabel = (type: Instrument['type']) => {
-    return t(`treasury:instruments.types.${type}`, type)
-  }
-
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale?.replace('_', '-') ?? 'en-US'
@@ -79,10 +105,13 @@ export function InstrumentListPage() {
   })
 
   const instruments = data?.data ?? []
-  const total = data?.meta?.total ?? instruments.length
+  // The API never returns pagination metadata for this endpoint (see
+  // `InstrumentsResponse` above) — the count is always the fetched page.
+  const total = instruments.length
 
-  // Format currency using company settings
-  const formatAmount = (amount: number) => {
+  // Format currency using company settings. `amount` is a `numeric-string`
+  // (decimal:3 cast) — never coerce it to a float before formatting.
+  const formatAmount = (amount: string) => {
     return formatCurrency(amount, {
       currency: companyCurrency,
       locale: companyLocale,
@@ -91,40 +120,44 @@ export function InstrumentListPage() {
 
   const columns: DataTableColumn<Instrument>[] = [
     {
-      key: 'number',
+      key: 'reference',
       header: t('treasury:instruments.number'),
       render: (instrument) => (
         <Link
           to={`/treasury/instruments/${instrument.id}`}
           className={cn('font-medium', textColors.primary, 'hover:underline')}
         >
-          {instrument.instrument_number}
+          {instrument.reference}
         </Link>
-      ),
-    },
-    {
-      key: 'type',
-      header: t('treasury:instruments.type'),
-      render: (instrument) => (
-        <span className={textColors.tertiary}>{getTypeLabel(instrument.type)}</span>
       ),
     },
     {
       key: 'partner',
       header: t('treasury:instruments.partner'),
+      // `partner` is a nullable relation (no drawer partner, or a walk-in
+      // drawer). Fall back to `drawer_name` (the human who handed over the
+      // instrument), then a dash — never the phantom `partner_name`.
       render: (instrument) =>
-        instrument.partner_id ? (
+        instrument.partner ? (
           <Link
-            to={`/sales/customers/${instrument.partner_id}`}
+            to={`/sales/customers/${instrument.partner.id}`}
             className={cn(textColors.brand, 'hover:underline')}
           >
-            {instrument.partner_name}
+            {instrument.partner.name}
           </Link>
         ) : (
-          <span className={textColors.tertiary}>
-            {instrument.partner_name ?? t('status.unknown')}
-          </span>
+          <span className={textColors.tertiary}>{instrument.drawer_name ?? '-'}</span>
         ),
+    },
+    {
+      key: 'received',
+      header: t('treasury:instruments.receivedDate'),
+      render: (instrument) => (
+        <div className={cn('flex items-center gap-1', textColors.tertiary)}>
+          <Calendar className="h-3.5 w-3.5" />
+          {new Date(instrument.received_date).toLocaleDateString()}
+        </div>
+      ),
     },
     {
       key: 'maturity',
@@ -142,18 +175,18 @@ export function InstrumentListPage() {
     {
       key: 'location',
       header: t('treasury:instruments.location'),
+      // `repository` is nullable (the instrument may not be assigned to a
+      // repository yet) — never the phantom `repository_name`.
       render: (instrument) =>
-        instrument.repository_id ? (
+        instrument.repository ? (
           <Link
-            to={`/treasury/repositories/${instrument.repository_id}`}
+            to={`/treasury/repositories/${instrument.repository.id}`}
             className={cn(textColors.brand, 'hover:underline')}
           >
-            {instrument.repository_name}
+            {instrument.repository.name}
           </Link>
         ) : (
-          <span className={textColors.tertiary}>
-            {instrument.repository_name ?? t('status.unknown')}
-          </span>
+          <span className={textColors.tertiary}>-</span>
         ),
     },
     {
