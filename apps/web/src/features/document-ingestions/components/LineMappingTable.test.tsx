@@ -86,7 +86,8 @@ function Harness({
   onChangeSpy,
   kind = 'supplier_delivery_note',
 }: HarnessProps) {
-  const [values, setValues] = useState<ReviewedLineState[]>(initialValues ?? [defaultValue()])
+  const pristine = initialValues ?? [defaultValue()]
+  const [values, setValues] = useState<ReviewedLineState[]>(pristine)
   return (
     <LineMappingTable
       kind={kind}
@@ -95,6 +96,7 @@ function Harness({
       productCandidates={productCandidates}
       receiptLineCandidates={[]}
       values={values}
+      initialValues={pristine}
       onChange={(index, value) => {
         onChangeSpy?.(index, value)
         setValues((prev) => prev.map((existing, i) => (i === index ? value : existing)))
@@ -219,5 +221,47 @@ describe('LineMappingTable product mapping', () => {
       expect(onChangeSpy).toHaveBeenCalledWith(0, expect.objectContaining({ productId: 'p-9' }))
     })
     expect(await screen.findByText('Doliprane')).toBeInTheDocument()
+  })
+})
+
+describe('LineMappingTable validation cues', () => {
+  beforeEach(() => {
+    mockApiClientGet.mockReset()
+    mockApiGet.mockReset()
+    mockApiPost.mockReset()
+    mockApiClientGet.mockResolvedValue(productListResponse([]))
+    mockApiGet.mockResolvedValue([])
+    window.localStorage.setItem('autoerp-language', 'en')
+    setTenant()
+  })
+
+  afterEach(() => {
+    resetTenant()
+  })
+
+  it('shows the machine cue on every editable field of a pristine line', () => {
+    renderWithProviders(<Harness initialValues={[defaultValue()]} />)
+
+    const line = screen.getByTestId('review-line-0')
+    const machineCues = within(line).getAllByLabelText('Read from document')
+    // quantity + unitPrice (vatRate is not rendered for a delivery note)
+    expect(machineCues).toHaveLength(2)
+    expect(within(line).queryByLabelText('Edited by you')).not.toBeInTheDocument()
+  })
+
+  it('flips only the edited field to the human cue after a userEvent edit', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<Harness initialValues={[defaultValue()]} />)
+
+    const line = screen.getByTestId('review-line-0')
+    const quantityInput = within(line).getByRole('spinbutton', { name: 'Quantity' })
+    await user.clear(quantityInput)
+    await user.type(quantityInput, '9')
+
+    await waitFor(() => {
+      expect(within(line).getByLabelText('Edited by you')).toBeInTheDocument()
+    })
+    // unitPrice was never touched — it keeps the machine cue.
+    expect(within(line).getByLabelText('Read from document')).toBeInTheDocument()
   })
 })

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Check, CheckCheck } from 'lucide-react'
 import { MoneyInput, QuantityInput } from '@/components/atoms'
 import { cn } from '@/lib/utils'
 import { textColors, tokens, typography } from '@/lib/designTokens'
@@ -27,7 +28,26 @@ interface LineMappingTableProps {
   productCandidates: readonly ProductCandidate[][]
   receiptLineCandidates: readonly ReceiptLineCandidate[]
   values: readonly ReviewedLineState[]
+  initialValues: readonly ReviewedLineState[]
   onChange: (index: number, value: ReviewedLineState) => void
+}
+
+/**
+ * Per-field validation cue: grey machine tick while the value still matches
+ * what extraction produced, green human check once the reviewer has edited
+ * it. Pure render-time comparison — the caller owns no extra state for this.
+ */
+function FieldCue({ edited }: { edited: boolean }) {
+  const { t } = useTranslation(['documentIngestions'])
+  const Icon = edited ? CheckCheck : Check
+  const label = edited ? t('review.editedValue') : t('review.machineValue')
+  return (
+    <Icon
+      role="img"
+      aria-label={label}
+      className={cn('h-4 w-4 shrink-0', edited ? textColors.success : textColors.tertiary)}
+    />
+  )
 }
 
 function requiresBatch(candidate: ProductCandidate | undefined, known: ProductPickerValue | undefined): boolean {
@@ -55,6 +75,7 @@ export function LineMappingTable({
   productCandidates,
   receiptLineCandidates,
   values,
+  initialValues,
   onChange,
 }: LineMappingTableProps) {
   const { t } = useTranslation(['documentIngestions'])
@@ -72,6 +93,7 @@ export function LineMappingTable({
       <div className="space-y-4">
         {lines.map((line, index) => {
           const value = values[index]
+          const initial = initialValues[index]
           const candidates = productCandidates[index] ?? []
           const selectedProduct = candidates.find((candidate) => candidate.id === value?.productId)
           const known = value?.productId ? knownProducts[value.productId] : undefined
@@ -140,7 +162,10 @@ export function LineMappingTable({
                 </button>
               </div>
               <div>
-                <label className={tokens.label.base} htmlFor={`quantity-${index}`}>{t('review.quantity')}</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className={tokens.label.base} htmlFor={`quantity-${index}`}>{t('review.quantity')}</label>
+                  <FieldCue edited={initial !== undefined && value.quantity !== initial.quantity} />
+                </div>
                 <QuantityInput
                   id={`quantity-${index}`}
                   aria-label={t('review.quantity')}
@@ -150,7 +175,10 @@ export function LineMappingTable({
                 />
               </div>
               <div>
-                <label className={tokens.label.base} htmlFor={`unit-price-${index}`}>{t('review.unitPrice')}</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className={tokens.label.base} htmlFor={`unit-price-${index}`}>{t('review.unitPrice')}</label>
+                  <FieldCue edited={initial !== undefined && value.unitPrice !== initial.unitPrice} />
+                </div>
                 <MoneyInput
                   id={`unit-price-${index}`}
                   aria-label={t('review.unitPrice')}
@@ -161,7 +189,10 @@ export function LineMappingTable({
               </div>
               {isInvoice && (
                 <div>
-                  <label className={tokens.label.base} htmlFor={`vat-rate-${index}`}>{t('review.vatRate')}</label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className={tokens.label.base} htmlFor={`vat-rate-${index}`}>{t('review.vatRate')}</label>
+                    <FieldCue edited={initial !== undefined && value.vatRate !== initial.vatRate} />
+                  </div>
                   <QuantityInput
                     id={`vat-rate-${index}`}
                     aria-label={t('review.vatRate')}

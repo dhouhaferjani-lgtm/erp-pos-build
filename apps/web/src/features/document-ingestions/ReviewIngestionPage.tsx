@@ -90,7 +90,7 @@ function commitBlockedReason(detail: DocumentIngestionDetail, t: (key: string) =
   return null
 }
 
-function initialLines(detail: DocumentIngestionDetail): ReviewedLineState[] {
+export function initialLines(detail: DocumentIngestionDetail): ReviewedLineState[] {
   const extractionLines = detail.extraction?.lines ?? []
   return extractionLines.map((line, index) => {
     const product = detail.suggestions?.productCandidates[index]?.[0]
@@ -178,6 +178,7 @@ export function ReviewIngestionPage() {
   }, [detail?.status, t])
 
   const flaggedPaths = useMemo(() => detail ? buildFlaggedPaths(detail) : new Set<string>(), [detail])
+  const initialLineValues = useMemo(() => detail ? initialLines(detail) : [], [detail])
   const flags = detail ? confidenceSummary(detail)?.reconciliation.flags ?? [] : []
   const currency = detail?.extraction?.header['currency']?.value ?? 'TND'
   const blockReason = detail ? commitBlockedReason(detail, t) : null
@@ -367,6 +368,7 @@ export function ReviewIngestionPage() {
             productCandidates={detail.suggestions?.productCandidates ?? []}
             receiptLineCandidates={detail.suggestions?.receiptLineCandidates ?? []}
             values={lineStates}
+            initialValues={initialLineValues}
             onChange={updateLine}
           />
 
