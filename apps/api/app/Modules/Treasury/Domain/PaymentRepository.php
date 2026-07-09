@@ -30,7 +30,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $account_number
  * @property string|null $iban
  * @property string|null $bic
- * @property numeric-string $balance
+ * @property numeric-string $balance Cached repository balance; port-managed (Task 22), NOT fillable — only TreasuryMovementService may write it (a pgsql trigger forbids direct writes).
  * @property Carbon|null $last_reconciled_at
  * @property numeric-string|null $last_reconciled_balance
  * @property string|null $location_id
@@ -57,6 +57,19 @@ class PaymentRepository extends Model
     use HasUuids;
 
     protected $table = 'payment_repositories';
+
+    /**
+     * A new repository always opens at a zero balance — money enters ONLY via
+     * the movement port thereafter. `balance` is port-managed and NOT fillable
+     * (Task 22), so a plain create() cannot set it; this model-level default
+     * gives every fresh instance an in-memory '0' (and persists 0 on the INSERT,
+     * which the direct-balance-write trigger permits — it guards UPDATEs only).
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'balance' => 0,
+    ];
 
     protected static function newFactory(): PaymentRepositoryFactory
     {
@@ -95,7 +108,6 @@ class PaymentRepository extends Model
         'account_number',
         'iban',
         'bic',
-        'balance',
         'last_reconciled_at',
         'last_reconciled_balance',
         'location_id',

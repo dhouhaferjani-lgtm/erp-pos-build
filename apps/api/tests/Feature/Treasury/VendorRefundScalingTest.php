@@ -103,8 +103,9 @@ final class VendorRefundScalingTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Repository with an initial balance of 200.000 TND (no account_id → no GL reversal)
-        $this->repository = PaymentRepository::create([
+        // Repository with an initial balance of 200.000 TND (no account_id → no GL reversal).
+        // factory() is unguarded, so it seeds the port-managed (non-fillable) `balance` (Task 22).
+        $this->repository = PaymentRepository::factory()->create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,

@@ -41,7 +41,10 @@ class PaymentRepositoryEntityTest extends TestCase
         $this->assertContains('code', $fillable);
         $this->assertContains('name', $fillable);
         $this->assertContains('type', $fillable);
-        $this->assertContains('balance', $fillable);
+        // Task 22 cutover: `balance` is port-managed (TreasuryMovementService
+        // only) and deliberately NOT fillable — a pgsql trigger forbids direct
+        // writes.
+        $this->assertNotContains('balance', $fillable);
     }
 
     public function test_payment_repository_has_bank_properties(): void

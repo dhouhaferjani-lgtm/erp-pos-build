@@ -157,8 +157,9 @@ class RefundSpineTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Ledgered till, starting balance 5000.
-        $this->cashRegister = PaymentRepository::create([
+        // Ledgered till, starting balance 5000. factory() is unguarded, so it
+        // seeds the port-managed (non-fillable) `balance` on INSERT (Task 22).
+        $this->cashRegister = PaymentRepository::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'CASH-01',

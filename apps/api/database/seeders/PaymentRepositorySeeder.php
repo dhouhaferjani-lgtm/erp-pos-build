@@ -67,7 +67,11 @@ class PaymentRepositorySeeder extends Seeder
         foreach ($repositories as $repo) {
             $glAccountId = $this->resolveGlAccountId($repo['type'], $cashAccount, $bankAccount);
 
-            PaymentRepository::create([
+            // forceCreate: `balance` is port-managed and no longer fillable
+            // (Task 22), so a plain create() would silently drop these seeded
+            // opening balances. This is an INSERT, which the direct-balance-write
+            // trigger permits (it guards UPDATEs only).
+            PaymentRepository::forceCreate([
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,

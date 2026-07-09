@@ -350,8 +350,9 @@ class PaymentControllerSpineTest extends TestCase
     private function makeLedgeredRepository(string $openingBalance = '0.000'): PaymentRepository
     {
         // currency (port-managed, not fillable) is defaulted from the company by the
-        // PaymentRepository::creating hook — no need to set it here.
-        return PaymentRepository::create([
+        // PaymentRepository::creating hook — no need to set it here. factory() is
+        // unguarded, so it also seeds the port-managed (non-fillable) `balance` (Task 22).
+        return PaymentRepository::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'CASH-'.substr((string) Str::uuid(), 0, 8),
