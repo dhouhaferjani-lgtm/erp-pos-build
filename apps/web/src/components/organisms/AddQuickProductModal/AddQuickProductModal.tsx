@@ -10,6 +10,7 @@ import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { TaxConfigurationField } from '../../molecules/TaxConfigurationField'
+import type { ProductPrefill } from '../../../features/products/productPrefill'
 
 interface Product {
   id: string
@@ -46,6 +47,14 @@ export interface AddQuickProductModalProps {
    * Receives the newly created product
    */
   onSuccess?: (product: Product) => void
+
+  /**
+   * Optional seed values applied every time the modal opens (create-only,
+   * additive — absent prefill keeps the previous empty-form behavior).
+   * `cost` is accepted for contract parity but not used: the quick form has
+   * no cost field; costing comes from the purchase commit (WAC).
+   */
+  prefill?: ProductPrefill
 }
 
 /**
@@ -70,6 +79,7 @@ export function AddQuickProductModal({
   isOpen,
   onClose,
   onSuccess,
+  prefill,
 }: AddQuickProductModalProps) {
   const { t } = useTranslation(['inventory', 'common'])
   const queryClient = useQueryClient()
@@ -84,26 +94,26 @@ export function AddQuickProductModal({
     formState: { errors },
   } = useForm<QuickProductFormData>({
     defaultValues: {
-      name: '',
+      name: prefill?.name ?? '',
       sku: '',
-      sale_price: '',
-      tax_rate: '',
+      sale_price: prefill?.sale_price ?? '',
+      tax_rate: prefill?.tax_rate ?? '',
       tax_configuration_id: null,
     },
   })
 
-  // Reset form when modal opens
+  // Reset form when modal opens (also re-seeds from prefill on every open)
   useEffect(() => {
     if (isOpen) {
       reset({
-        name: '',
+        name: prefill?.name ?? '',
         sku: '',
-        sale_price: '',
-        tax_rate: '',
+        sale_price: prefill?.sale_price ?? '',
+        tax_rate: prefill?.tax_rate ?? '',
         tax_configuration_id: null,
       })
     }
-  }, [isOpen, reset])
+  }, [isOpen, prefill, reset])
 
   // React Query mutation
   const mutation = useMutation({
