@@ -192,6 +192,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'payments.create',
             'payments.allocate',
             'payments.void',
+            'payments.refund',
+            'payments.reverse',
 
             'instruments.view',
             'instruments.create',
