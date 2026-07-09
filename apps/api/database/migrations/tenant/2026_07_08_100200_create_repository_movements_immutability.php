@@ -17,6 +17,12 @@ use Illuminate\Support\Facades\DB;
  * Modelled on `2026_05_14_100002_create_fiscal_events_immutability.php`
  * (pgsql-guarded trigger function + REVOKE TRUNCATE pattern), but pure-reject:
  * no allowed-column whitelist, no named state transitions.
+ *
+ * Re-runnable (audit fix N6, mirrors `2026_07_08_160000_forbid_direct_payment_repository_balance_writes.php`):
+ * `CREATE OR REPLACE FUNCTION` + `DROP TRIGGER IF EXISTS` before each
+ * `CREATE TRIGGER`, so a partial/re-run deploy (e.g. a brownfield tenant
+ * where these triggers already exist outside migration bookkeeping) does not
+ * fail with PG 42710 (duplicate object).
  */
 return new class extends Migration
 {
@@ -50,10 +56,13 @@ return new class extends Migration
         SQL);
 
         DB::unprepared(<<<'SQL'
+            DROP TRIGGER IF EXISTS repository_movements_immutability_update ON repository_movements;
             CREATE TRIGGER repository_movements_immutability_update BEFORE UPDATE ON repository_movements
                 FOR EACH ROW EXECUTE FUNCTION repository_movements_immutability_trigger();
+            DROP TRIGGER IF EXISTS repository_movements_immutability_delete ON repository_movements;
             CREATE TRIGGER repository_movements_immutability_delete BEFORE DELETE ON repository_movements
                 FOR EACH ROW EXECUTE FUNCTION repository_movements_immutability_trigger();
+            DROP TRIGGER IF EXISTS repository_movements_immutability_truncate ON repository_movements;
             CREATE TRIGGER repository_movements_immutability_truncate BEFORE TRUNCATE ON repository_movements
                 FOR EACH STATEMENT EXECUTE FUNCTION repository_movements_immutability_trigger();
         SQL);

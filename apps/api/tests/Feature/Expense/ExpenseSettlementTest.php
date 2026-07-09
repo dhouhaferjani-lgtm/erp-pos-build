@@ -121,6 +121,41 @@ final class ExpenseSettlementTest extends TestCase
     }
 
     /**
+     * Audit fix N5: a malformed (non-UUID) `{id}` path param on
+     * POST /expenses/{id}/pay must 404, not 500. On sqlite (the fast driver
+     * used by this suite) this assertion passes even WITHOUT the
+     * `Str::isUuid()` guard — sqlite is typeless, so `firstOrFail()`'s
+     * `WHERE id = 'not-a-uuid'` simply matches no row and throws
+     * `ModelNotFoundException` (404) regardless. The guard is only
+     * load-bearing on Postgres, where the same malformed literal in a uuid
+     * column comparison raises `22P02` (invalid input syntax) → HTTP 500
+     * without it. See `.superpowers/sdd/audit-fix-3-report.md` for the pgsql
+     * before/after evidence proving this test is genuinely red before the fix
+     * and green after, on that driver.
+     */
+    public function test_pay_with_malformed_expense_id_returns_404_not_500(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['expenses.post', 'expenses.pay', 'expenses.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/expenses/not-a-uuid/pay', [
+                'payment_repository_id' => $repo->id,
+                'payment_date' => now()->toDateString(),
+            ])
+            ->assertStatus(404);
+    }
+
+    /**
      * Settling an already-paid expense (paid at post time, no AP was ever
      * booked) returns 422 — there is nothing to settle.
      */

@@ -230,6 +230,33 @@ final class RepositoryAdjustmentTest extends TestCase
         $this->assertSame('500.000', $freshRepo->balance);
     }
 
+    /**
+     * Audit fix N5: a malformed (non-UUID) `{repository}` path param must 404,
+     * not 500. On sqlite (the fast driver used by this suite) this assertion
+     * passes even WITHOUT the `Str::isUuid()` guard — sqlite is typeless, so
+     * `findOrFail()`'s `WHERE id = 'not-a-uuid'` simply matches no row and
+     * throws `ModelNotFoundException` (404) regardless. The guard is only
+     * load-bearing on Postgres, where the same malformed literal in a uuid
+     * column comparison raises `22P02` (invalid input syntax) → HTTP 500
+     * without it. See `.superpowers/sdd/audit-fix-3-report.md` for the pgsql
+     * before/after evidence proving this test is genuinely red before the fix
+     * and green after, on that driver.
+     */
+    public function test_malformed_repository_id_returns_404_not_500(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/payment-repositories/not-a-uuid/adjustments', [
+                'direction' => 'out',
+                'amount' => '25.000',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ])
+            ->assertStatus(404);
+    }
+
     public function test_adjustment_movement_writes_an_audit_event(): void
     {
         [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);

@@ -21,6 +21,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 
 /**
  * Controller for expense management endpoints.
@@ -252,6 +253,10 @@ class ExpenseController extends Controller
     public function pay(PayExpenseRequest $request, string $id): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
+
+        if (! Str::isUuid($id)) {
+            abort(404);
+        }
 
         $expense = Document::where('type', DocumentType::Expense)
             ->where('id', $id)

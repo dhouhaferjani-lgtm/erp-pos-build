@@ -12,6 +12,7 @@ use App\Modules\Treasury\Domain\RepositoryMovement;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -33,6 +34,10 @@ final class RepositoryMovementController extends Controller
     {
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
+
+        if (! Str::isUuid($id)) {
+            abort(404);
+        }
 
         // Tenant+company scope — Treasury is company-scoped, mirroring
         // PaymentRepositoryController::show/balance/transactions. A repository

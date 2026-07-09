@@ -51,6 +51,10 @@ final class RepositoryAdjustmentController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        if (! Str::isUuid($id)) {
+            abort(404);
+        }
+
         // Tenant+company scope — Treasury is company-scoped.
         $repository = PaymentRepository::query()
             ->where('tenant_id', $tenantId)
