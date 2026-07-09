@@ -175,13 +175,14 @@
     },
     "statuses": {
       "received": "Reçu",
-      "inHand": "En portefeuille",
+      "in_transit": "En transit",
       "deposited": "Déposé",
+      "clearing": "En compensation",
       "cleared": "Encaissé",
       "bounced": "Rejeté",
-      "returned": "Retourné",
-      "endorsed": "Endossé",
-      "cancelled": "Annulé"
+      "expired": "Expiré",
+      "cancelled": "Annulé",
+      "collected": "Encaissé"
     },
     "empty": {
       "title": "Aucun effet",

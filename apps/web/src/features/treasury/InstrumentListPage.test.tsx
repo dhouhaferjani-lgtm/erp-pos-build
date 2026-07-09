@@ -61,7 +61,7 @@ interface Instrument {
   received_date: string
   maturity_date: string | null
   expiry_date: string | null
-  status: 'received' | 'deposited' | 'cleared' | 'bounced' | 'cancelled'
+  status: 'received' | 'in_transit' | 'deposited' | 'clearing' | 'cleared' | 'bounced' | 'expired' | 'cancelled' | 'collected'
   repository_id: string | null
   repository: RepositoryRelation | null
   bank_name: string | null

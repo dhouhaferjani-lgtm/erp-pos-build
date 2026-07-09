@@ -175,13 +175,14 @@
     },
     "statuses": {
       "received": "Received",
-      "inHand": "In Hand",
+      "in_transit": "In Transit",
       "deposited": "Deposited",
+      "clearing": "Clearing",
       "cleared": "Cleared",
       "bounced": "Bounced",
-      "returned": "Returned",
-      "endorsed": "Endorsed",
-      "cancelled": "Cancelled"
+      "expired": "Expired",
+      "cancelled": "Cancelled",
+      "collected": "Collected"
     },
     "empty": {
       "title": "No instruments yet",
