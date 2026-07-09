@@ -34,7 +34,7 @@ enum JournalCode: string
             'invoice', 'credit_note' => self::Sales,
             'supplier_invoice' => self::Purchase,
             'payment', 'customer_payment', 'supplier_payment', 'customer_payment_refund' => self::Bank,
-            'pos_payment', 'pos_receipt' => self::Cash,
+            'pos_payment', 'pos_receipt', 'pos_receipt_refund' => self::Cash,
             default => self::Misc,
         };
     }

@@ -309,10 +309,23 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             // default-repository lookup (see resolveDefaultRepository).
             $view = $this->canonicalReader->forSaleReceipt($event);
 
+            // Task 21 — a refund/void rides the SALE_RECEIPT event carrying
+            // `invoice_type_code='REFUND'` (or 'VOID') + a non-null
+            // `original_receipt_reference` (there is NO separate REFUND event
+            // type — REFUND_RECEIPT/SALE_VOID are RESERVED_UNREACHABLE). Every
+            // money field in the payload is NON-NEGATIVE (§6), so the refund
+            // signal is the invoice_type_code, NOT a negative amount. For a
+            // refund each tender leg pays cash OUT of the drawer and posts a GL
+            // reversal of the sale entry; a plain SALE keeps the Task-20 IN +
+            // sale-GL behavior. Decided ONCE from the immutable payload so the
+            // whole receipt's legs are consistent.
+            $invoiceTypeCode = $view->payload->invoiceTypeCode;
+            $isRefund = $invoiceTypeCode === 'REFUND' || $invoiceTypeCode === 'VOID';
+
             $totalLines = count($view->payments);
             $index = 0;
             foreach ($view->payments as $payment) {
-                $this->projectPaymentLineFromCanonical($event, $receipt, $payment, $index, $totalLines);
+                $this->projectPaymentLineFromCanonical($event, $receipt, $payment, $index, $totalLines, $isRefund);
                 $index++;
             }
         });
@@ -354,6 +367,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         PaymentDTO $line,
         int $index,
         int $totalLines,
+        bool $isRefund,
     ): void {
         $amount = $line->amount;
         $methodCode = $line->methodCode;
@@ -487,11 +501,21 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             // one unit (spine BLOCKER-1: postEntryNow takes the company
             // advisory lock BEFORE the movement port takes the repo row lock).
             // POS payments are direct to revenue (no draft / no AR account).
-            $journalEntry = $this->generalLedgerService->createPOSPaymentEntry(
-                payment: $payment,
-                receipt: $receipt,
-                repository: $repository,
-            );
+            //
+            // Task 21 — for a refund/void the sale entry is REVERSED (Dr Revenue
+            // / Cr Cash) instead of posted (Dr Cash / Cr Revenue). Both helpers
+            // return a Draft entry that postEntryNow commits below.
+            $journalEntry = $isRefund
+                ? $this->generalLedgerService->createPOSRefundReversalEntry(
+                    payment: $payment,
+                    receipt: $receipt,
+                    repository: $repository,
+                )
+                : $this->generalLedgerService->createPOSPaymentEntry(
+                    payment: $payment,
+                    receipt: $receipt,
+                    repository: $repository,
+                );
 
             // Pass the receipt currency explicitly: this projector runs on a
             // Horizon worker where no CompanyContext is bound, and the GL
@@ -512,11 +536,20 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         // after the device authored the sale. This is decided from the EVENT
         // TYPE (device vs server-only), never inferred from the movement
         // sourceType. record() is idempotent on the leg key.
+        //
+        // Task 21 — a refund/void tender leg pays cash OUT of the drawer, so
+        // the movement direction is Out (the GL reversal above already credited
+        // cash). A plain SALE keeps direction In. sourceType stays FiscalEvent +
+        // sourceId=event->id + idempotencyLeg=payment:{index} so the movement
+        // idempotency key is the SAME canonical per-leg key a sale leg for this
+        // event would use (stable across replays; the invoice_type_code is
+        // immutable on the sealed payload). The direction Out + GL reversal is
+        // the ONLY difference from the normal-sale path.
         $this->movementService->record(new MovementIntent(
             repositoryId: $repository->id,
             tenantId: $event->tenant_id,
             companyId: $event->company_id,
-            direction: MovementDirection::In,
+            direction: $isRefund ? MovementDirection::Out : MovementDirection::In,
             amount: $amount,
             // Task 20 review Fix 2 (MINOR) — pass the TENDER/RECEIPT currency
             // (the currency `$amount` is denominated in), NOT the repository

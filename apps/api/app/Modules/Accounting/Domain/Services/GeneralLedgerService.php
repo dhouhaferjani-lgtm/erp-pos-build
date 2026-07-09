@@ -2470,6 +2470,89 @@ final class GeneralLedgerService
     }
 
     /**
+     * Create the GL REVERSAL for a POS refund/void receipt (Treasury spine,
+     * Task 21). A refund rides a SALE_RECEIPT fiscal event carrying
+     * `invoice_type_code='REFUND'` (or 'VOID') — there is NO separate refund
+     * event type. It pays cash OUT of the drawer, so the sale entry a normal
+     * receipt of the same tender would post ({@see createPOSPaymentEntry},
+     * Dr Cash / Cr Revenue) is REVERSED here — legs flipped:
+     *   Debit:  Revenue (ProductRevenue) — revenue is reversed
+     *   Credit: Cash/Bank (from payment repository's GL account) — money out
+     *
+     * This is the pure inverse of the sale entry, so it reuses the EXACT same
+     * accounts (guaranteed to exist wherever the sale entry can post) and
+     * always balances. A dedicated contra-revenue Sales-Return (709) account
+     * exists as a SystemAccountPurpose but has no posting helper yet; routing
+     * the debit through it is a Phase-1.5 accounting refinement — until then
+     * the symmetric reversal is the correct, unambiguous treatment.
+     *
+     * `source_type='pos_receipt_refund'` (distinct from the sale entry's
+     * `pos_receipt`) so refund reversals are filterable in FEC/reporting;
+     * `source_id=$receipt->id` (the refund/Return receipt row). Returned in
+     * Draft — the caller posts it via `postEntryNow` inside its transaction,
+     * exactly as with the sale entry.
+     */
+    public function createPOSRefundReversalEntry(
+        Payment $payment,
+        Receipt $receipt,
+        PaymentRepository $repository
+    ): JournalEntry {
+        if ($repository->gl_account_id === null) {
+            throw new \InvalidArgumentException(
+                "Cannot create GL entry: payment repository '{$repository->name}' ({$repository->code}) "
+                .'is not linked to a General Ledger account. '
+                .'Go to Settings → Treasury → Payment Repositories and assign a GL account to this repository.'
+            );
+        }
+
+        $entry = DB::transaction(function () use ($payment, $receipt, $repository): JournalEntry {
+            $companyId = $payment->company_id;
+
+            $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $payment->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $receipt->posted_at,
+                'description' => "POS Refund Receipt {$receipt->receipt_number}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'pos_receipt_refund',
+                'journal_code' => JournalCode::fromSourceType('pos_receipt_refund')->value,
+                'source_id' => $receipt->id,
+            ]);
+
+            // Debit: Revenue Account — the sale revenue is reversed.
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $revenueAccount->id,
+                'partner_id' => null,
+                'debit' => $payment->amount,
+                'credit' => '0',
+                'description' => 'POS sales revenue reversed (refund)',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Cash/Bank Account (from payment repository) — money out.
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $repository->gl_account_id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $payment->amount,
+                'description' => "POS refund via {$repository->name}",
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        return $entry;
+    }
+
+    /**
      * Create journal entry for a POS account charge.
      *
      * ACCOUNT_CHARGE is customer credit: it increases AR and recognizes sale
