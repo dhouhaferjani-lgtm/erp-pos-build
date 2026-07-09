@@ -334,7 +334,7 @@ final class GeneralLedgerService
         string $amount,
         string $paymentMethodAccountId,
         \DateTimeInterface $date,
-        User $user,
+        ?User $user,
         ?string $description = null,
         ?string $currencyCode = null,
         PostingMode $mode = PostingMode::AfterCommit,
@@ -352,12 +352,18 @@ final class GeneralLedgerService
 
         $entry = DB::transaction(function () use (
             $companyId, $partnerId, $advanceId, $amount, $paymentMethodAccountId,
-            $date, $description, $advanceAccount, $user
+            $date, $description, $advanceAccount
         ): JournalEntry {
             $entryNumber = $this->generateEntryNumber($companyId);
 
+            // Derive tenant_id from the company (not the actor): the actor is
+            // nullable now — an offline-authored ACCOUNT_PAYMENT whose cashier is
+            // not a resolvable company member still moves cash and must post its
+            // customer-advance GL consequence (Task 24 Fix A).
+            $company = Company::findOrFail($companyId);
+
             $entry = JournalEntry::create([
-                'tenant_id' => $user->tenant_id,
+                'tenant_id' => $company->tenant_id,
                 'company_id' => $companyId,
                 'entry_number' => $entryNumber,
                 'entry_date' => $date,
@@ -393,10 +399,28 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        if ($mode === PostingMode::SynchronousInTransaction) {
-            $this->postEntryNow($entry, $user, $currencyCode);
+        // Synchronous in-transaction posting is only used by atomic money-movement
+        // flows that always carry a resolved actor — refuse a null actor there
+        // (mirrors createPaymentReceivedJournalEntry).
+        if ($mode === PostingMode::SynchronousInTransaction && $user === null) {
+            throw new \LogicException('createCustomerAdvanceJournalEntry: synchronous in-transaction GL posting requires an actor ($user); refusing to return an unposted Draft into an atomic money-movement flow.');
+        }
+
+        if ($user !== null) {
+            if ($mode === PostingMode::SynchronousInTransaction) {
+                $this->postEntryNow($entry, $user, $currencyCode);
+            } else {
+                $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+            }
         } else {
-            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+            // Actor could not be resolved (e.g. an offline-authored ACCOUNT_PAYMENT
+            // whose cashier is not a resolvable company member). The GL consequence
+            // (Dr Bank / Cr Customer-Advance) is deterministic and independent of who
+            // posted it, so seal it as a SYSTEM-generated POSTED entry rather than
+            // leaving an unposted Draft that the treasury reconcile would freeze on
+            // (Task 24 Fix A). AfterCommit only (the Synchronous + null-actor
+            // combination is refused above).
+            $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $companyId, $currencyCode);
         }
 
         return $entry;
@@ -1028,6 +1052,16 @@ final class GeneralLedgerService
             } else {
                 $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
             }
+        } else {
+            // Actor could not be resolved (e.g. an offline-authored ACCOUNT_PAYMENT
+            // whose cashier is not a resolvable company member). The GL consequence
+            // (Dr Bank / Cr Accounts-Receivable) is deterministic and independent of
+            // who posted it, so seal it as a SYSTEM-generated POSTED entry rather
+            // than leaving an unposted Draft that the caller would then link to a
+            // cash movement — which the treasury reconcile freezes on (Task 24 Fix
+            // A). AfterCommit only (the Synchronous + null-actor combination is
+            // refused above).
+            $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $companyId, $currencyCode);
         }
 
         return $entry;

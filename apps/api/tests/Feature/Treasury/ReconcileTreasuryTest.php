@@ -4,19 +4,37 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Treasury;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
+use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
+use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Modules\Fiscal\Domain\Models\FiscalEvent;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
+use App\Modules\POS\Application\Services\VirtualAdminFiscalEventService;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\TransferIntent;
+use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
+use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
+use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Carbon\CarbonImmutable;
@@ -410,5 +428,270 @@ final class ReconcileTreasuryTest extends TestCase
         self::assertNotNull($repoA->frozen_at, 'A repo in an imbalanced transfer group must freeze.');
         self::assertStringContainsStringIgnoringCase('transfer', (string) $repoA->frozen_reason);
         self::assertSame(1, $this->driftEventCount($repoA->id));
+    }
+
+    // ── (f) REAL-BRIDGE green reconcile — the dominant FiscalEvent source type ──
+    //
+    // MAJOR 3: the clean cases above build movements from a hand-made Payment +
+    // explicit JE. They never drive a real bridge, so the dominant real
+    // `FiscalEvent` source type — and the null-JE deposit/account paths the
+    // reconcile freezes on — were unproven. These two tests drive the ACTUAL
+    // bridges end-to-end (Payment + allocation + GL + movement) and THEN reconcile.
+
+    public function test_real_deposit_bridge_pure_advance_reconciles_green(): void
+    {
+        // The Task-24 BLOCKER scenario: a plain customer deposit with NO open
+        // invoices (pure advance). Cash moves; the only GL consequence is the
+        // 419 customer-advance entry. The bridge must record a movement carrying
+        // that JE, and the repository must reconcile GREEN — never freeze.
+        [$tenant, $repository, $event] = $this->realDepositScenario('50.00');
+
+        app(CompanyContext::class)->clear();
+        $this->app->make(TreasuryDepositBridge::class)->apply($event);
+
+        // The recorded movement carries a (posted) journal entry — not null.
+        $movement = DB::table('repository_movements')->where('source_id', $event->id)->first();
+        self::assertNotNull($movement);
+        self::assertNotNull($movement->journal_entry_id, 'A pure-advance deposit movement must carry the customer-advance JE.');
+
+        $exit = Artisan::call('treasury:reconcile', ['--tenant' => $tenant->id]);
+
+        self::assertSame(0, $exit, 'A real pure-advance deposit must reconcile GREEN.');
+        $repository->refresh();
+        self::assertNull($repository->frozen_at, 'A pure-advance deposit must NOT freeze the drawer.');
+        self::assertSame(0, $this->driftEventCount($repository->id));
+    }
+
+    public function test_real_account_payment_bridge_null_actor_pure_advance_reconciles_green(): void
+    {
+        // The deeper leak the excess>0 recon fix missed: a device-authored
+        // ACCOUNT_PAYMENT whose cashier is NOT a resolvable company member
+        // (offline-degraded — the bridge tolerates it, created_by=null). Cash
+        // moves; before Fix A the advance/AR GL was skipped (actor-gated), so the
+        // movement carried a null journal_entry_id and reconcile FROZE the drawer.
+        // Fix A posts the GL consequence as a SYSTEM-generated entry, so it must
+        // now reconcile GREEN.
+        [$tenant, $repository, $event] = $this->realAccountPaymentScenario('100.000', resolvableCashier: false);
+
+        app(CompanyContext::class)->clear();
+        $this->app->make(TreasuryAccountPaymentBridge::class)->apply($event);
+
+        $payment = Payment::query()->where('fiscal_event_id', $event->id)->sole();
+        self::assertNull($payment->created_by, 'This scenario exercises the null-actor (unresolved cashier) path.');
+        self::assertNotNull($payment->journal_entry_id, 'A null-actor account payment must still link a system-posted JE.');
+
+        $movement = DB::table('repository_movements')->where('source_id', $event->id)->first();
+        self::assertNotNull($movement);
+        self::assertNotNull($movement->journal_entry_id, 'The cash movement must carry the (system-posted) JE.');
+
+        $exit = Artisan::call('treasury:reconcile', ['--tenant' => $tenant->id]);
+
+        self::assertSame(0, $exit, 'A null-actor pure-advance account payment must reconcile GREEN.');
+        $repository->refresh();
+        self::assertNull($repository->frozen_at, 'A null-actor account payment must NOT freeze the drawer.');
+        self::assertSame(0, $this->driftEventCount($repository->id));
+    }
+
+    public function test_deposit_bridge_guard_refuses_null_je_movement_when_repository_has_no_gl_account(): void
+    {
+        // Fix 2 (belt-and-suspenders): if — despite Fix 1 — the allocation cannot
+        // link a JE (a repository with no gl_account_id has no GL to post to), the
+        // bridge must FAIL LOUD rather than record a null-JE movement the reconcile
+        // would later freeze on. No movement (and no Payment) survives the throw.
+        [$tenant, $repository, $event] = $this->realDepositScenario('40.00', glLinked: false);
+
+        app(CompanyContext::class)->clear();
+
+        $this->expectException(\DomainException::class);
+        try {
+            $this->app->make(TreasuryDepositBridge::class)->apply($event);
+        } finally {
+            self::assertSame(
+                0,
+                DB::table('repository_movements')->where('source_id', $event->id)->count(),
+                'The guard must refuse BEFORE recording a null-JE movement.',
+            );
+            self::assertSame(0, Payment::query()->where('fiscal_event_id', $event->id)->count());
+            $repository->refresh();
+            self::assertNull($repository->frozen_at);
+        }
+    }
+
+    // ── real-bridge scenario builders ──────────────────────────────────────────
+
+    /**
+     * A GL-linked company (chart of accounts + explicit CustomerAdvance/419) with
+     * one cash-register repository, on a FRESH tenant so treasury:reconcile can be
+     * targeted at it in isolation.
+     *
+     * @return array{Tenant, Company, User, Location, PaymentRepository}
+     */
+    private function seedGlCompany(): array
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        $location = Location::factory()->create(['company_id' => $company->id]);
+
+        $cashier = User::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Cashier']);
+
+        PaymentMethod::factory()->create([
+            'tenant_id' => $tenant->id, 'company_id' => $company->id, 'code' => 'CASH', 'name' => 'Cash',
+        ]);
+
+        $this->app->make(ChartOfAccountsService::class)->seedForCompany($company->refresh());
+        if (Account::findByPurpose($company->id, SystemAccountPurpose::CustomerAdvance) === null) {
+            Account::factory()->liability()->create([
+                'tenant_id' => $tenant->id, 'company_id' => $company->id, 'code' => 'ADV-419',
+                'name' => 'Customer Advances', 'system_purpose' => SystemAccountPurpose::CustomerAdvance, 'is_active' => true,
+            ]);
+        }
+
+        $cashAccount = Account::findByPurposeOrFail($company->id, SystemAccountPurpose::Cash);
+        $repository = PaymentRepository::factory()->for($company)->create([
+            'tenant_id' => $tenant->id,
+            'gl_account_id' => $cashAccount->id,
+            'currency' => 'TND',
+            'next_movement_ordinal' => 0,
+            'frozen_at' => null,
+            'frozen_reason' => null,
+            'balance' => '0.000',
+        ]);
+
+        return [$tenant, $company, $cashier, $location, $repository];
+    }
+
+    /**
+     * Author a REAL pure-advance DEPOSIT_RECEIPT through the server-side service
+     * (canonical payload shape) and return [tenant, repository, event].
+     *
+     * @param  numeric-string  $amount
+     * @return array{Tenant, PaymentRepository, FiscalEvent}
+     */
+    private function realDepositScenario(string $amount, bool $glLinked = true): array
+    {
+        [$tenant, $company, $cashier, , $repository] = $this->seedGlCompany();
+
+        if (! $glLinked) {
+            // A mis-configured legacy repository: it resolves (carries the cash GL
+            // account via the legacy account_id) but has NO gl_account_id, so the
+            // allocation service cannot post GL — the guard must refuse the movement.
+            $repository->update(['account_id' => $repository->gl_account_id, 'gl_account_id' => null]);
+            $repository->refresh();
+        }
+
+        // A resolved, active company member — a back-office deposit is recorded by
+        // an authenticated actor (the deposit bridge rejects a null actor).
+        $this->grantMembership($cashier->id, $company->id);
+
+        $partner = Partner::factory()->customer()->create([
+            'tenant_id' => $tenant->id, 'company_id' => $company->id, 'name' => 'Deposit Customer',
+        ]);
+
+        $event = $this->app->make(VirtualAdminFiscalEventService::class)->appendDepositReceipt(
+            partner: $partner,
+            actorUserId: $cashier->id,
+            actorName: (string) $cashier->name,
+            currencyCode: 'TND',
+            amount: $amount,
+            methodCode: 'CASH',
+            repositoryId: $repository->id,
+            notes: null,
+        );
+
+        return [$tenant, $repository, $event];
+    }
+
+    /**
+     * Author a REAL device ACCOUNT_PAYMENT for a customer with NO open invoices
+     * (pure advance). When $resolvableCashier is false the cashier is deliberately
+     * NOT a company member, so the bridge resolves a null actor (the offline-
+     * degraded path). Returns [tenant, repository, event].
+     *
+     * @param  numeric-string  $amount
+     * @return array{Tenant, PaymentRepository, FiscalEvent}
+     */
+    private function realAccountPaymentScenario(string $amount, bool $resolvableCashier): array
+    {
+        [$tenant, $company, $cashier, , $repository] = $this->seedGlCompany();
+
+        if ($resolvableCashier) {
+            $this->grantMembership($cashier->id, $company->id);
+        }
+
+        $customer = Partner::factory()->customer()->create([
+            'tenant_id' => $tenant->id, 'company_id' => $company->id, 'name' => 'Account Customer',
+        ]);
+
+        $businessDate = now()->toDateString();
+        $payload = [
+            'account_payment_uuid' => (string) Str::uuid(),
+            'business_date' => $businessDate,
+            'cashier_id' => $cashier->id,
+            'cashier_name' => (string) $cashier->name,
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'customer' => [
+                'address' => null, 'customer_category' => 'retail', 'customer_id' => $customer->id,
+                'customer_sync_status' => 'synced', 'email' => null, 'name' => 'Account Customer',
+                'phone' => null, 'tax_number' => null,
+            ],
+            'event_time_device' => now()->format('Y-m-d\TH:i:s.v\Z'),
+            'local_balance_snapshot' => [
+                'balance_updated_at' => now()->format('Y-m-d\TH:i:s.v\Z'), 'credit_balance_before' => '0.000',
+                'net_balance_before' => '0.000', 'payment_amount' => $amount, 'projected_credit_balance_after' => $amount,
+                'projected_net_balance_after' => '0.000', 'projected_receivable_balance_after' => '0.000',
+                'receivable_balance_before' => '0.000',
+            ],
+            'notes' => null,
+            'payment' => [
+                'amount' => $amount, 'foreign_currency_amount' => null, 'foreign_currency_code' => null,
+                'instrument_serial' => null, 'instrument_type' => null, 'method_code' => 'CASH',
+                'repository_id' => $repository->id,
+            ],
+            'receipt_type_code' => 'ACCOUNT_PAYMENT', 'references' => null, 'regime_extensions' => null,
+            'seller' => [
+                'address' => ['city' => 'Tunis', 'country_code' => 'TN', 'postal_code' => '1000', 'street' => '1 rue Test'],
+                'name' => 'Default Seller', 'tax_jurisdiction_country_code' => 'TN', 'tax_number' => '1234567AM000',
+            ],
+            'shift_id' => (string) Str::uuid(),
+            'staleness' => [
+                'balance_snapshot_stale' => false, 'customer_snapshot_stale' => false,
+                'mirror_last_synced_at' => now()->format('Y-m-d\TH:i:s.v\Z'), 'staleness_reason' => null,
+            ],
+            'terminal_id' => '33333333-3333-4333-8333-333333333333',
+            'training_flag' => false, 'treasury_allocation_policy' => 'FIFO',
+        ];
+
+        $event = FiscalEvent::query()->create([
+            'id' => Str::uuid()->toString(), 'tenant_id' => $tenant->id, 'company_id' => $company->id,
+            'terminal_id' => '33333333-3333-4333-8333-333333333333', 'operator_id' => $cashier->id,
+            'event_type' => FiscalEventType::ACCOUNT_PAYMENT, 'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1', 'sequence_number' => 7,
+            'event_time_device' => now(), 'business_date' => $businessDate,
+            'last_server_time_seen' => null, 'server_received_at' => now(),
+            'reference_event_id' => null, 'reference_document_id' => null,
+            'source_event_class' => 'account_payments', 'source_event_id' => $payload['account_payment_uuid'],
+            'partner_id' => null, 'partner_identity_snapshot' => null,
+            'canonical_bytes' => (string) json_encode($payload), 'previous_hash' => str_repeat('a', 64),
+            'current_hash' => str_repeat('b', 64),
+            'signature_status' => SignatureStatus::NotRequired, 'integrity_status' => IntegrityStatus::Verified,
+            'integrity_exception_class' => null, 'integrity_exception_reason' => null,
+            'payload' => $payload, 'payload_parse_status' => PayloadParseStatus::Parsed,
+        ])->refresh();
+
+        return [$tenant, $repository, $event];
+    }
+
+    private function grantMembership(string $userId, string $companyId): void
+    {
+        UserCompanyMembership::query()->create([
+            'user_id' => $userId,
+            'company_id' => $companyId,
+            'role' => MembershipRole::Cashier,
+            'is_primary' => true,
+            'status' => MembershipStatus::Active,
+        ]);
     }
 }

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Fiscal;
 
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
@@ -32,6 +34,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -338,15 +341,41 @@ final class RecordingDepositAllocationService extends PaymentAllocationService
             throw $this->exception;
         }
 
+        // Task 24 Fix A contract: a cash-moving allocation ALWAYS links a Posted
+        // journal entry to the payment. The bridge records the cash movement with
+        // `payment->journal_entry_id` (FK-referenced by repository_movements) and
+        // guards against a null JE, so this double must stamp one just like the
+        // real service does.
+        $journalEntryId = $this->stampPaymentJournalEntry($command);
+
         return [
             'success' => true,
             'allocations' => [],
-            'journal_entry_id' => null,
-            'advance_journal_entry_id' => null,
+            'journal_entry_id' => $journalEntryId,
+            'advance_journal_entry_id' => $journalEntryId,
             'excess_amount' => '0.0000',
             'total_allocated' => '0.0000',
             'fully_paid_documents' => [],
         ];
+    }
+
+    private function stampPaymentJournalEntry(ApplyPaymentAllocationCommand $command): string
+    {
+        $entry = JournalEntry::query()->create([
+            'tenant_id' => $command->tenantId,
+            'company_id' => $command->companyId,
+            'entry_number' => 'JE-FAKE-'.substr((string) Str::uuid(), 0, 8),
+            'entry_date' => now(),
+            'description' => 'Fake allocation entry',
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => 'fake_allocation',
+            'source_id' => $command->paymentId,
+            'posted_at' => now(),
+        ]);
+
+        Payment::query()->whereKey($command->paymentId)->update(['journal_entry_id' => $entry->id]);
+
+        return $entry->id;
     }
 
     public function singleCommand(): ApplyPaymentAllocationCommand

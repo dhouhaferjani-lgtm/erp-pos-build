@@ -136,6 +136,25 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
             // idempotent-existing path (complete-set replay). record() is
             // idempotent on the leg key.
             //
+            // Task 24 Fix A guard (belt-and-suspenders, mirrors
+            // PaymentRefundService): a FiscalEvent cash movement must carry a
+            // journal_entry_id or the daily treasury:reconcile freezes the drawer.
+            // The allocation service now posts + links a JE for every cash-moving
+            // account payment — including the null-actor (unresolved cashier) path,
+            // where it seals the advance/AR consequence as a SYSTEM-generated entry —
+            // so this is UNREACHABLE for a GL-linked repository. It fails LOUD only
+            // for a mis-configured repository (no gl_account_id → no GL to post),
+            // refusing to record a null-JE movement rather than silently poisoning
+            // the reconcile.
+            $linkedJournalEntryId = $payment->fresh()?->journal_entry_id;
+            if ($linkedJournalEntryId === null) {
+                throw new \DomainException(
+                    'ACCOUNT_PAYMENT cash movement requires a linked journal entry; payment '.
+                        $payment->id.' for fiscal event '.$event->id.' resolved a null journal_entry_id '.
+                        '(repository '.$repository->id.'). Refusing to record a null-JE movement the reconcile would freeze on.',
+                );
+            }
+
             // allowWhileFrozen is TRUE: ACCOUNT_PAYMENT is a DEVICE-authored
             // event (NOT `isServerOnly()`), so a leg replayed after a
             // server-side freeze must still record (offline device replay must
@@ -158,7 +177,7 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
                 sourceType: MovementSourceType::FiscalEvent,
                 sourceId: $event->id,
                 idempotencyLeg: 'payment:0',
-                journalEntryId: $payment->fresh()?->journal_entry_id,
+                journalEntryId: $linkedJournalEntryId,
                 occurredAt: null,
                 reasonCode: null,
                 reversesMovementId: null,

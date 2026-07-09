@@ -152,6 +152,23 @@ final class TreasuryDepositBridge implements FiscalEventProjector
             // write (Payment + allocation landed, movement did not) is COMPLETED
             // on replay — record() is idempotent on the leg key.
             //
+            // Task 24 Fix A guard (belt-and-suspenders, mirrors
+            // PaymentRefundService): a FiscalEvent cash movement must carry a
+            // journal_entry_id or the daily treasury:reconcile freezes the drawer.
+            // After the allocation service posts + links a JE for every cash-moving
+            // deposit (advance/419 or AR-clearing), this is UNREACHABLE for a
+            // GL-linked repository — it fails LOUD only for a mis-configured
+            // repository (no gl_account_id → no GL to post), refusing to record a
+            // null-JE movement rather than silently poisoning the reconcile.
+            $linkedJournalEntryId = $payment->fresh()?->journal_entry_id;
+            if ($linkedJournalEntryId === null) {
+                throw new \DomainException(
+                    'DEPOSIT_RECEIPT cash movement requires a linked journal entry; payment '.
+                        $payment->id.' for fiscal event '.$event->id.' resolved a null journal_entry_id '.
+                        '(repository '.$repository->id.'). Refusing to record a null-JE movement the reconcile would freeze on.',
+                );
+            }
+
             // allowWhileFrozen is FALSE: DEPOSIT_RECEIPT `isServerOnly()`, so it
             // is a SERVER-authored back-office deposit, NOT offline device
             // replay. A frozen repo must reject it (HIGH-5). Decided from the
@@ -173,7 +190,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                 sourceType: MovementSourceType::FiscalEvent,
                 sourceId: $event->id,
                 idempotencyLeg: 'payment:0',
-                journalEntryId: $payment->fresh()?->journal_entry_id,
+                journalEntryId: $linkedJournalEntryId,
                 occurredAt: null,
                 reasonCode: null,
                 reversesMovementId: null,
