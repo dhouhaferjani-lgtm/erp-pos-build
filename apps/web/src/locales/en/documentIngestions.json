@@ -6,7 +6,6 @@
     "reExtract": "Re-run extraction",
     "reject": "Reject",
     "review": "Review",
-    "startExtraction": "Start extraction",
     "startScan": "Start scan",
     "upload": "Upload scan"
   },
@@ -58,7 +57,6 @@
     "blockedStatus": "Only scans needing review can be committed.",
     "blockedUnparseable": "Unparseable fields must be corrected before commit.",
     "chooseLocation": "Choose a location",
-    "chooseProduct": "Choose a product",
     "chooseSupplier": "Choose a supplier",
     "committed": "Scan already committed",
     "committedNoTarget": "The committed target is not available yet.",
@@ -114,7 +112,6 @@
     "errors": {
       "duplicate": "This source file is already in the scan queue.",
       "fileRequired": "Choose a source file.",
-      "fileTooLarge": "The file is larger than the upload limit.",
       "fileTooLargeDetailed": "PDF or image up to {{max}} MB — this file is {{actual}} MB.",
       "invalidType": "Choose a PDF or image file.",
       "kindRequired": "Choose a document type."

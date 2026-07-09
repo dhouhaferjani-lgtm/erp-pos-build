@@ -6,7 +6,6 @@
     "reExtract": "إعادة الاستخراج",
     "reject": "رفض",
     "review": "مراجعة",
-    "startExtraction": "بدء الاستخراج",
     "startScan": "بدء المسح",
     "upload": "رفع مسح"
   },
@@ -58,7 +57,6 @@
     "blockedStatus": "لا يمكن اعتماد إلا المسوحات التي تحتاج مراجعة.",
     "blockedUnparseable": "يجب تصحيح الحقول غير المقروءة قبل الاعتماد.",
     "chooseLocation": "اختر موقعا",
-    "chooseProduct": "اختر منتجا",
     "chooseSupplier": "اختر موردا",
     "committed": "تم اعتماد المسح مسبقا",
     "committedNoTarget": "هدف الاعتماد غير متاح بعد.",
@@ -113,7 +111,6 @@
     "errors": {
       "duplicate": "هذا الملف المصدر موجود بالفعل في قائمة المسوحات.",
       "fileRequired": "اختر ملفا مصدرا.",
-      "fileTooLarge": "الملف أكبر من حد الرفع.",
       "fileTooLargeDetailed": "PDF أو صورة حتى {{max}} ميغابايت — حجم هذا الملف {{actual}} ميغابايت.",
       "invalidType": "اختر ملف PDF أو صورة.",
       "kindRequired": "اختر نوع المستند."

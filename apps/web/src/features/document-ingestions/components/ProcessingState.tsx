@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
+import { FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { borderColors, colors, textColors, tokens, typography } from '@/lib/designTokens'
 import type { IngestionStatus } from '../types'
@@ -44,6 +45,9 @@ function stepDotClass(state: StepState): string {
 export function ProcessingState({ status, thumbnailUrl, startedAt }: ProcessingStateProps) {
   const { t } = useTranslation(['documentIngestions'])
   const [seconds, setSeconds] = useState(() => elapsedSecondsSince(startedAt))
+  // Stores the URL that failed (not a boolean) so a fresher thumbnailUrl
+  // resets the fallback naturally — no explicit reset effect needed.
+  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null)
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -56,6 +60,7 @@ export function ProcessingState({ status, thumbnailUrl, startedAt }: ProcessingS
   // ReviewIngestionPage branching), so the extracting step is either the
   // active step or still queued behind the upload step.
   const extractingState: StepState = status === 'extracting' ? 'active' : 'pending'
+  const thumbnailFailed = thumbnailUrl !== null && failedThumbnailUrl === thumbnailUrl
 
   return (
     <div className={cn(tokens.card.base, 'space-y-5')}>
@@ -68,7 +73,21 @@ export function ProcessingState({ status, thumbnailUrl, startedAt }: ProcessingS
 
       {thumbnailUrl && (
         <div className={cn('relative h-48 w-full overflow-hidden rounded-[var(--radius-card)] border', borderColors.light, colors.neutral[50])}>
-          <img src={thumbnailUrl} alt={t('processing.title')} className="h-full w-full object-contain" />
+          {thumbnailFailed ? (
+            <div
+              data-testid="processing-thumb-fallback"
+              className="flex h-full w-full items-center justify-center"
+            >
+              <FileText className={cn('h-10 w-10', textColors.tertiary)} aria-hidden="true" />
+            </div>
+          ) : (
+            <img
+              src={thumbnailUrl}
+              alt={t('processing.title')}
+              className="h-full w-full object-contain"
+              onError={() => { setFailedThumbnailUrl(thumbnailUrl) }}
+            />
+          )}
           <div
             aria-hidden="true"
             className={cn(

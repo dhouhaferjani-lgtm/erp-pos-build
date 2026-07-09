@@ -6,7 +6,6 @@
     "reExtract": "Relancer l'extraction",
     "reject": "Rejeter",
     "review": "Revoir",
-    "startExtraction": "Démarrer l'extraction",
     "startScan": "Démarrer le scan",
     "upload": "Téléverser un scan"
   },
@@ -58,7 +57,6 @@
     "blockedStatus": "Seuls les scans à revoir peuvent être validés.",
     "blockedUnparseable": "Les champs illisibles doivent être corrigés avant validation.",
     "chooseLocation": "Choisir un emplacement",
-    "chooseProduct": "Choisir un produit",
     "chooseSupplier": "Choisir un fournisseur",
     "committed": "Scan déjà validé",
     "committedNoTarget": "La cible validée n'est pas encore disponible.",
@@ -114,7 +112,6 @@
     "errors": {
       "duplicate": "Ce fichier source est déjà dans la file des scans.",
       "fileRequired": "Choisissez un fichier source.",
-      "fileTooLarge": "Le fichier dépasse la limite d'envoi.",
       "fileTooLargeDetailed": "PDF ou image jusqu'à {{max}} Mo — ce fichier fait {{actual}} Mo.",
       "invalidType": "Choisissez un fichier PDF ou image.",
       "kindRequired": "Choisissez un type de document."

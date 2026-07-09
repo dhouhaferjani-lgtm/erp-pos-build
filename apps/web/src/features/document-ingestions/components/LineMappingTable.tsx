@@ -82,6 +82,9 @@ export function LineMappingTable({
   const isInvoice = kind === 'supplier_invoice'
   const [knownProducts, setKnownProducts] = useState<Record<string, ProductPickerValue>>({})
   const [createForIndex, setCreateForIndex] = useState<number | null>(null)
+  // `lines` can shrink while the create-modal is open (e.g. a cross-session
+  // re-extract) — resolve defensively so a stale index never crashes the page.
+  const createForLine = createForIndex !== null ? lines[createForIndex] : undefined
 
   function registerProduct(product: ProductPickerValue): void {
     setKnownProducts((prev) => ({ ...prev, [product.id]: product }))
@@ -251,7 +254,8 @@ export function LineMappingTable({
       </div>
       <AddQuickProductModal
         isOpen={createForIndex !== null}
-        {...(createForIndex !== null && { prefill: buildProductPrefill(lines[createForIndex]) })}
+        {...(createForIndex !== null && createForLine !== undefined
+          && { prefill: buildProductPrefill(createForLine) })}
         onClose={() => { setCreateForIndex(null) }}
         onSuccess={(product) => {
           if (createForIndex === null) { return }

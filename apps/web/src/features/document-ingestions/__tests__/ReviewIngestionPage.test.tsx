@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, render, renderHook, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -458,6 +458,26 @@ describe('ReviewIngestionPage', () => {
     expect(await screen.findByText('Extracting')).toBeInTheDocument()
     expect(screen.getByText(/keep working/iu)).toBeInTheDocument()
     expect(screen.queryByText('Extraction is not available for this scan.')).not.toBeInTheDocument()
+  })
+
+  it('falls back to a document glyph when the processing thumbnail fails to render (e.g. a PDF scan)', async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/locations') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve(detailResponse({ status: 'extracting', extraction: null, source_url: '/signed/source.pdf' }))
+    })
+
+    renderReview()
+
+    expect(await screen.findByText('Extracting')).toBeInTheDocument()
+    const thumbnail = screen.getByRole('img', { name: 'Processing scan' })
+    expect(screen.queryByTestId('processing-thumb-fallback')).not.toBeInTheDocument()
+
+    fireEvent.error(thumbnail)
+
+    expect(screen.queryByRole('img', { name: 'Processing scan' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('processing-thumb-fallback')).toBeInTheDocument()
   })
 
   it('shows the queued hint (not "Extracting") while a scan is only uploaded', async () => {
