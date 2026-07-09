@@ -30,6 +30,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { getDatabase } from '@/lib/db';
 import { getSyncMetadata } from '@/lib/db/repositories/syncLogRepository';
 import { formatRelativeTime, isOlderThan } from '@/lib/relativeTime';
+import { tokens } from '@/lib/designTokens';
+import { cn } from '@/lib/utils';
 
 const STOCK_LAST_SYNC_KEY = 'stock_last_sync';
 
@@ -77,11 +79,15 @@ export function StockFreshness() {
   // keep the impure call out of the render body.
   const isStale = isOlderThan(stockSyncAt, STALE_THRESHOLD_MS);
 
+  // Task 4: this atom is only ever rendered inside Header, which is the fixed
+  // navy chrome (tokens.section.header) — so its bare text needs the
+  // inverse-on-navy tokens (AAA 7:1 verified against #14283f), not a plain
+  // gray/amber pairing tuned for a light/dark app surface.
   return (
     <span
       data-testid="stock-freshness"
       title={isStale ? t('stock.staleTitle') : undefined}
-      className={`hidden text-xs sm:inline ${isStale ? 'text-amber-600' : 'text-gray-500'}`}
+      className={cn('hidden text-xs sm:inline', isStale ? tokens.inverseOnNavy.warning : tokens.inverseOnNavy.muted)}
     >
       {t('stock.asOf', { time })}
     </span>

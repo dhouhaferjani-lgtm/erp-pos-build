@@ -33,6 +33,18 @@ The fix for "weak separation": elevation comes from the surface scale, not from 
 - `surface-overlay` — modals (white + `shadow-2xl` + `bg-black/50` scrim).
 - `surface-sunken` — inset boxes, disabled controls, neutral keypad keys.
 
+### Section-surface helpers
+
+`tokens.section` in `designTokens.ts` packages the recurring chrome/canvas/panel combos so restyle tasks don't hand-roll them: `header`/`footer` = navy chrome anchor (`bg-pay-navy text-pay-navy-fg`); `rail`/`cartPanel` = raised + bordered (`bg-surface-raised border-* border-border-strong`, `cartPanel` adds `shadow-sm`); `canvas` = the recessed page background (`bg-surface-canvas`).
+
+### Navy — the chrome anchor
+
+`--pay-navy` / `--pay-navy-fg` are theme-constant (not `[data-theme]`- or `[data-accent]`-dependent — same navy in light and dark, same navy across every accent swap). Header and footer bars are the one fixed structural color in the app: they anchor the chrome regardless of tenant accent or theme, and never carry interaction or status meaning (that's `action`/`success`/`warning`/`danger`, per §1).
+
+### Spacing scale
+
+4px base scale: **4 · 8 · 12 · 16 · 20 · 24**. Rule: tighten intra-group spacing (icon-to-label, badge-to-price, stacked form fields — 4-8px) and keep inter-section spacing generous (panel-to-panel, cart-to-canvas, header-to-content — 16-24px), so the eye reads groups first and the overall section structure second.
+
 ## 3. Components — atomic layer (`src/components/ui/`)
 
 **This is the rule the whole system hinges on: every element of a given type is the same atom.** Never hand-roll a button/badge/pill/segmented control with raw classes — import the atom from `@/components/ui`. A change to an atom or a token then propagates to every instance automatically. Atoms are ESLint-guarded (no raw palette classes).

@@ -9,8 +9,62 @@ import {
   type ThemeMode,
 } from '@/lib/theme';
 
+/**
+ * Product-grid VIEW mode — the tri-density switch (Task 14).
+ *
+ * NOT to be confused with `ProductCard`'s own `displayMode` prop
+ * (`'grid'|'visual'`, the card *layout*): a `'tableau'` card is nonsensical.
+ * `ProductGrid` maps this view-mode → a card-layout for the vitrine path.
+ *   - `vitrine` → image cards (`ProductCard` layout `'visual'`)
+ *   - `liste`   → touch rows (`ProductListRow`)
+ *   - `tableau` → desktop-dense grid (`ProductTable`)
+ */
+export type DisplayMode = 'vitrine' | 'liste' | 'tableau';
+
+const DISPLAY_MODES: readonly DisplayMode[] = ['vitrine', 'liste', 'tableau'];
+
+/**
+ * Touchscreen-first default. The primary target is a 15" coarse-pointer POS,
+ * so `liste` is the safe fallback everywhere `resolveDefaultMode` can't prove
+ * a fine pointer.
+ */
+const DEFAULT_DISPLAY_MODE: DisplayMode = 'liste';
+
+/**
+ * Pure forward-migration for the persisted `displayMode`. Exported so the
+ * zustand-persist `migrate` fn AND the unit test share ONE mapping.
+ *   legacy 'grid'   → 'liste'
+ *   legacy 'visual' → 'vitrine'
+ *   new triplet     → itself
+ *   anything else   → the default
+ */
+export function migrateDisplayMode(old: string): DisplayMode {
+  if (old === 'grid') return 'liste';
+  if (old === 'visual') return 'vitrine';
+  if ((DISPLAY_MODES as readonly string[]).includes(old)) return old as DisplayMode;
+  return DEFAULT_DISPLAY_MODE;
+}
+
+/**
+ * Initial view-mode for a fresh install (no persisted state). Picks `tableau`
+ * for a fine pointer (mouse desktop) and `liste` for coarse/touch. Guards
+ * `window`/`matchMedia` so it never throws under SSR or jsdom tests.
+ */
+export function resolveDefaultMode(): DisplayMode {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return DEFAULT_DISPLAY_MODE;
+  }
+  try {
+    if (window.matchMedia('(pointer: fine)').matches) return 'tableau';
+    if (window.matchMedia('(pointer: coarse)').matches) return 'liste';
+  } catch {
+    return DEFAULT_DISPLAY_MODE;
+  }
+  return DEFAULT_DISPLAY_MODE;
+}
+
 interface SettingsState {
-  displayMode: 'grid' | 'visual';
+  displayMode: DisplayMode;
   language: string;
   /** Enables on-screen numpad/keyboard for touchscreen use. */
   touchMode: boolean;
@@ -34,7 +88,18 @@ interface SettingsState {
   corner: CornerStyle;
   /** Appearance — product-grid density (column step). */
   density: Density;
-  setDisplayMode: (mode: 'grid' | 'visual') => void;
+  /**
+   * Task 16 — optional-field toggle. Default-off. When true, `ProductListRow`
+   * shows the product `sku` as a small muted second line under the name.
+   */
+  showSkuOnRows: boolean;
+  /**
+   * Task 16 — optional-field toggle. Default-off. When true, `ProductCard`
+   * (vitrine tile) shows small skin-type indicator dots sourced from
+   * `product.parapharmacy_metadata?.suitable_skin_types`.
+   */
+  showSkinTypeOnTiles: boolean;
+  setDisplayMode: (mode: DisplayMode) => void;
   setLanguage: (lang: string) => void;
   setTouchMode: (enabled: boolean) => void;
   setFullscreen: (enabled: boolean) => void;
@@ -47,6 +112,8 @@ interface SettingsState {
   setAccent: (accent: AccentName) => void;
   setCorner: (corner: CornerStyle) => void;
   setDensity: (density: Density) => void;
+  setShowSkuOnRows: (enabled: boolean) => void;
+  setShowSkinTypeOnTiles: (enabled: boolean) => void;
 }
 
 export const SUPPORTED_LANGUAGES = [
@@ -57,7 +124,7 @@ export const SUPPORTED_LANGUAGES = [
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      displayMode: 'grid',
+      displayMode: resolveDefaultMode(),
       language: 'en',
       touchMode: false,
       fullscreen: false,
@@ -70,8 +137,10 @@ export const useSettingsStore = create<SettingsState>()(
       accent: DEFAULT_THEME_SETTINGS.accent,
       corner: DEFAULT_THEME_SETTINGS.corner,
       density: DEFAULT_THEME_SETTINGS.density,
+      showSkuOnRows: false,
+      showSkinTypeOnTiles: false,
 
-      setDisplayMode: (mode: 'grid' | 'visual') => {
+      setDisplayMode: (mode: DisplayMode) => {
         set({ displayMode: mode });
       },
 
@@ -123,9 +192,28 @@ export const useSettingsStore = create<SettingsState>()(
       setDensity: (density: Density) => {
         set({ density });
       },
+
+      setShowSkuOnRows: (enabled: boolean) => {
+        set({ showSkuOnRows: enabled });
+      },
+
+      setShowSkinTypeOnTiles: (enabled: boolean) => {
+        set({ showSkinTypeOnTiles: enabled });
+      },
     }),
     {
       name: 'izipos-settings',
+      // v1 — widened `displayMode` from 'grid'|'visual' to the tri-mode triplet.
+      version: 1,
+      migrate: (persisted, _version) => {
+        const state = (persisted ?? {}) as Partial<SettingsState> & {
+          displayMode?: string;
+        };
+        if (typeof state.displayMode === 'string') {
+          state.displayMode = migrateDisplayMode(state.displayMode);
+        }
+        return state as SettingsState;
+      },
       onRehydrateStorage: () => (state) => {
         if (state?.language) {
           void i18n.changeLanguage(state.language);

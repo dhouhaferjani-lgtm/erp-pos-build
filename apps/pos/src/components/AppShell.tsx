@@ -97,6 +97,9 @@ export function AppShell() {
       ariaLabel={t('nav.ariaLabel')}
       themeToggleLabel={t('nav.themeToggle')}
       brand={<span className="font-display text-xl font-extrabold text-accent">i</span>}
+      // Seam border always faces the canvas: rail-on-left ⇒ border-right,
+      // rail-on-right ⇒ border-left.
+      seamSide={railOnLeft ? 'right' : 'left'}
     />
   );
 

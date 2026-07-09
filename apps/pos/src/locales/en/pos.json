@@ -33,7 +33,7 @@
     "customize": "Customize",
     "outOfStock": "Out of Stock",
     "inCart": "In Cart",
-    "stock": "Stock: {{count}}",
+    "stock": "Stock {{count}}",
     "lowStock": "Low Stock",
     "fullName": "Full product name",
     "sortByMostSold": "Sort by most sold",
@@ -523,7 +523,11 @@
     "tabs": {
       "details": "Details",
       "equivalentsIntro": "Equivalent products for substitution or preference.",
-      "complementsIntro": "Complementary products to complete the sale."
+      "complementsIntro": "Complementary products to complete the sale.",
+      "stockLots": "Stock & Batches",
+      "otherBranches": "Other Branches",
+      "stockLotsComingSoon": "Batch tracking by lot number and expiry date — coming soon.",
+      "otherBranchesComingSoon": "Stock at other branches — coming soon."
     },
     "stock": "Stock",
     "stockAtLocation": "Stock at this location",
@@ -548,6 +552,14 @@
     "displayMode": "Display Mode",
     "gridMode": "Grid",
     "visualMode": "Visual",
+    "vitrineMode": "Showcase",
+    "listeMode": "List",
+    "tableauMode": "Table",
+    "displayFields": "Displayed fields",
+    "showSkuOnRows": "Show SKU on rows",
+    "showSkuOnRowsDesc": "Shows the SKU code under the product name in List mode",
+    "showSkinTypeOnTiles": "Show skin type on tiles",
+    "showSkinTypeOnTilesDesc": "Shows skin-type indicators on product tiles in Showcase mode",
     "peripherals": "Peripherals",
     "printer": "Receipt Printer",
     "scanner": "Barcode Scanner",
@@ -709,7 +721,19 @@
     "mode": "Display mode",
     "inStockOnly": "In Stock",
     "gridMode": "Grid view",
-    "visualMode": "Image view"
+    "visualMode": "Image view",
+    "vitrine": "Showcase",
+    "liste": "List",
+    "tableau": "Table"
+  },
+  "table": {
+    "ariaLabel": "Product table",
+    "colCode": "Code",
+    "colProduct": "Product",
+    "colCategory": "Category",
+    "colStock": "Stock",
+    "colPrice": "Price",
+    "colAction": "Add"
   },
   "advancedPayments": {
     "back": "Back",

@@ -8,6 +8,9 @@ import { useProductImage } from '@/lib/images/useProductImage';
 import { bccomp, bcsum } from '@/lib/decimal';
 import { formatAvailableQty } from '@/lib/stock/stockGate';
 import { ProductThumb, StockBadge } from '@/components/ui';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { useStockDisplay } from '@/components/organisms/ProductGrid/useStockDisplay';
+import { NearExpirySlot } from '@/components/organisms/ProductGrid/NearExpirySlot';
 import {
   CARD_NAME_MIN_H_CLASS_GRID,
   CARD_NAME_MIN_H_CLASS_VISUAL,
@@ -17,6 +20,32 @@ import type { LocationStockDisplay } from '@/lib/stock/gridStock';
 
 /** Quantity scale — ALWAYS pass explicitly (decimal.ts defaults to 3). */
 const QTY_SCALE = 4;
+
+/**
+ * Task 16 skin-type dot palette (whole-branch review fix B). Strategy A
+ * reserves `accent` for brand chrome, `success` for stock/money, and
+ * `action` for interaction/selection — none apply to a purely decorative
+ * per-product tag, so this indicator must not use any of them. There is no
+ * dedicated skin-type palette in the design system, so this reuses five of
+ * the seven `--cat-*` category-tint CSS vars (`src/index.css`) purely for
+ * VISUAL distinction between dots — the colors carry no category meaning
+ * here, only "five values that read as different from each other".
+ * `--cat-corps-fg` is excluded (it is byte-identical to `--success`) and
+ * `--cat-hygiene-fg` is excluded (byte-identical to the 'blue' `--accent`
+ * preset) — using either would reintroduce the exact collision this fix
+ * removes for those themes. The remaining five map 1:1 to the five
+ * `SkinType` values (see `smart-prompts:skin_type.*`); the mapping itself is
+ * arbitrary, not semantic.
+ */
+const SKIN_TYPE_DOT_CLASS: Record<string, string> = {
+  normal: 'bg-[var(--cat-cheveux-fg)]',
+  oily: 'bg-[var(--cat-solaire-fg)]',
+  dry: 'bg-[var(--cat-visage-fg)]',
+  combination: 'bg-[var(--cat-bebe-fg)]',
+  sensitive: 'bg-[var(--cat-complements-fg)]',
+};
+/** Any skin-type value outside the known five falls back to one neutral dot. */
+const SKIN_TYPE_DOT_FALLBACK_CLASS = 'bg-ink-faint';
 
 /**
  * i18next reserves `count` for pluralisation and types it as `number`, but
@@ -111,31 +140,22 @@ function ProductCardInner({
   const imageSrc = localImage ?? product.image_url;
   const hasModifiers = (product.modifier_groups?.length ?? 0) > 0;
 
-  // Stock chrome — three rendering paths (see `locationStock` prop docs).
-  let isOutOfStock = false;
-  let isLowStock = false;
-  let stockLabel: string | null = null;
-  if (locationStock === undefined) {
-    // Legacy path — unchanged for Menu tenants (999) and browser dev.
-    isOutOfStock = product.stock_quantity <= 0;
-    isLowStock = product.stock_quantity > 0 && product.stock_quantity <= 10;
-    stockLabel = isOutOfStock
-      ? t('products.outOfStock')
-      : isLowStock
-        ? t('products.lowStock')
-        : t('products.stock', { count: product.stock_quantity });
-  } else if (locationStock !== null) {
-    isOutOfStock = bccomp(locationStock.available, '0') <= 0;
-    isLowStock = !isOutOfStock && bccomp(locationStock.available, '10') <= 0;
-    stockLabel = isOutOfStock
-      ? t('products.outOfStock')
-      : isLowStock
-        ? t('products.lowStock')
-        : (t as unknown as TranslateWithStringCount)('products.stock', {
-            count: formatAvailableQty(locationStock.available),
-          });
-  }
-  // locationStock === null → exempt: stockLabel stays null, no gating.
+  // Stock chrome — three rendering paths, extracted to `useStockDisplay`
+  // (see `locationStock` prop docs) so `ProductListRow` shares the exact
+  // same derivation.
+  const { isOutOfStock, stockLabel, status, isActivationBlocked } = useStockDisplay(
+    product,
+    locationStock,
+    hardBlockOutOfStock,
+  );
+
+  // Task 16 — optional-field toggle (default off): small skin-type indicator
+  // dots on the visual (vitrine) tile, sourced from parapharmacy metadata.
+  // Renders nothing when the flag is off or when the product has no
+  // (non-empty) suitable_skin_types.
+  const showSkinTypeOnTiles = useSettingsStore((s) => s.showSkinTypeOnTiles);
+  const skinTypes = product.parapharmacy_metadata?.suitable_skin_types ?? [];
+  const showSkinTypeDots = showSkinTypeOnTiles && displayMode === 'visual' && skinTypes.length > 0;
 
   // Arriving badge — only on the location-aware path, when anything is
   // incoming (branch transfer and/or purchase order).
@@ -165,11 +185,6 @@ function ProductCardInner({
 
   const nameMinHClass =
     displayMode === 'grid' ? CARD_NAME_MIN_H_CLASS_GRID : CARD_NAME_MIN_H_CLASS_VISUAL;
-
-  // Activation refuses only under 'block' policy (Codex final-review P1):
-  // under 'warn'/'off' the tap must reach the stock gate, which allows the
-  // add and surfaces the warning toast.
-  const isActivationBlocked = isOutOfStock && hardBlockOutOfStock;
 
   // Tap-confirm ring pulse — applied via direct DOM manipulation to avoid a
   // React state update inside event handlers (which triggers act() warnings in
@@ -204,15 +219,17 @@ function ProductCardInner({
 
   // Card surface — three visual states:
   // 1. Out-of-stock (any policy): desaturated/dimmed. Cursor differs by policy.
-  // 2. In-cart: full accent border + accent-tint background.
-  // 3. Default: raised surface, accent border on hover.
+  // 2. In-cart: full action (blue) border + action-subtle background. Selection
+  //    is ALWAYS blue (Strategy A) — accent/green are reserved for the brand
+  //    wordmark and stock/money, never for the selected state.
+  // 3. Default: raised surface, action border on hover.
   const cardSurface = isOutOfStock
     ? cn(
         'border-subtle bg-surface-sunken text-ink-faint opacity-70',
         isActivationBlocked ? 'cursor-not-allowed' : 'cursor-pointer',
       )
     : isInCart
-      ? 'cursor-pointer border-accent bg-accent-tint shadow-sm'
+      ? 'cursor-pointer border-action bg-action-subtle shadow-sm'
       : 'cursor-pointer border-subtle bg-surface-raised hover:border-action hover:shadow-md';
 
   const viewDetailsLabel = t('products.viewDetails');
@@ -237,11 +254,11 @@ function ProductCardInner({
         cardSurface,
       )}
     >
-      {/* 3px top accent bar — visible in the in-cart/selected state */}
+      {/* 3px top action (blue) bar — visible in the in-cart/selected state */}
       {isInCart && (
         <span
           aria-hidden
-          className="absolute top-0 right-3.5 left-3.5 h-[3px] rounded-b-pill bg-accent"
+          className="absolute top-0 right-3.5 left-3.5 h-[3px] rounded-b-pill bg-action"
         />
       )}
 
@@ -250,7 +267,7 @@ function ProductCardInner({
           data-testid="in-cart-badge"
           className={cn(
             tokens.badge.neutral,
-            'absolute top-1.5 left-1.5 border-accent/40 bg-accent-tint text-accent-strong',
+            'absolute top-1.5 left-1.5 border-action/40 bg-action-subtle text-action',
           )}
           title={t('products.inCart')}
         >
@@ -311,7 +328,8 @@ function ProductCardInner({
             {product.brand_name && (
               <p
                 className={cn(
-                  'w-full truncate text-[10px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
+                  // Task 11 — 10px read as washed-out; bumped to 11px for legibility.
+                  'w-full truncate text-[11px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
                   isOutOfStock ? 'text-ink-faint' : 'text-ink-muted',
                 )}
               >
@@ -343,7 +361,7 @@ function ProductCardInner({
                 data-testid="in-cart-badge"
                 className={cn(
                   tokens.badge.neutral,
-                  'border-accent/40 bg-accent-tint text-accent-strong',
+                  'border-action/40 bg-action-subtle text-action',
                 )}
                 title={t('products.inCart')}
               >
@@ -367,7 +385,8 @@ function ProductCardInner({
           {product.brand_name && (
             <p
               className={cn(
-                'w-full text-[10px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
+                // Task 11 — 10px read as washed-out; bumped to 11px for legibility.
+                'w-full text-[11px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
                 isOutOfStock ? 'text-ink-faint' : 'text-ink-muted',
               )}
             >
@@ -388,6 +407,26 @@ function ProductCardInner({
           >
             {product.name}
           </h3>
+
+          {showSkinTypeDots && (
+            <div
+              data-testid="skin-type-dots"
+              aria-label={skinTypes.join(', ')}
+              className="mt-0.5 flex items-center gap-1"
+            >
+              {skinTypes.map((skinType) => (
+                <span
+                  key={skinType}
+                  data-testid="skin-type-dot"
+                  title={skinType}
+                  className={cn(
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    SKIN_TYPE_DOT_CLASS[skinType] ?? SKIN_TYPE_DOT_FALLBACK_CLASS,
+                  )}
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
 
@@ -405,8 +444,10 @@ function ProductCardInner({
         <p
           data-testid="price-row"
           className={cn(
+            // Prices are data, not action — always ink, never accent/action
+            // (designTokens.ts §1: "prices always use text-ink").
             'shrink-0 font-mono text-[15px] font-semibold tabular-nums',
-            isOutOfStock ? 'text-ink-faint' : 'text-accent-strong',
+            isOutOfStock ? 'text-ink-faint' : 'text-ink',
           )}
         >
           {format(product.sale_price ?? '0')}
@@ -420,10 +461,10 @@ function ProductCardInner({
             displayMode === 'visual' ? 'max-w-full' : 'shrink-0',
           )}
         >
-          {stockLabel !== null && (
+          {stockLabel !== null && status !== null && (
             <StockBadge
               data-testid="stock-row"
-              status={isOutOfStock ? 'out' : isLowStock ? 'low' : 'ok'}
+              status={status}
               className="max-w-full shrink-0 px-[7px] py-[3px] text-[10.5px] font-semibold"
             >
               {stockLabel}
@@ -431,6 +472,9 @@ function ProductCardInner({
           )}
         </div>
       </div>
+
+      {/* Spec 2 reserved slot — renders nothing today, see NearExpirySlot doc. */}
+      <NearExpirySlot product={product} />
 
       {incomingTotal !== null && (
         <p

@@ -112,10 +112,13 @@ vi.mock('@/stores/operatorStore', () => ({
 vi.mock('@/stores/settingsStore', () => ({
   useSettingsStore: <T,>(selector: (s: unknown) => T): T => {
     return selector({
-      displayMode: 'grid', language: 'en', touchMode: false, fullscreen: false,
+      displayMode: 'liste', language: 'en', touchMode: false, fullscreen: false,
       setDisplayMode: vi.fn(), setLanguage: vi.fn(), setTouchMode: vi.fn(), setFullscreen: vi.fn(),
       inactivityTimeout: 300, lockAfterSale: false,
       setInactivityTimeout: vi.fn(), setLockAfterSale: vi.fn(),
+      // Task 16 — optional-field toggles (default off).
+      showSkuOnRows: false, showSkinTypeOnTiles: false,
+      setShowSkuOnRows: vi.fn(), setShowSkinTypeOnTiles: vi.fn(),
     });
   },
   SUPPORTED_LANGUAGES: [{ code: 'en', label: 'English' }, { code: 'fr', label: 'Français' }],

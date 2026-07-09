@@ -25,7 +25,11 @@ export function CustomerLoyaltyBadge({ customer }: Props): ReactElement | null {
   if (!balance.enrolled && estimate === null) return null
 
   return (
-    <div data-testid="loyalty-chrome" className="flex flex-wrap items-center gap-1">
+    // min-w-0: lets this cluster shrink below its own content width inside
+    // the customer chip's flex row (see CartCustomerControl) instead of
+    // forcing the chip to overflow; flex-wrap then drops badges to a second
+    // line rather than pushing width further.
+    <div data-testid="loyalty-chrome" className="flex min-w-0 flex-wrap items-center gap-1">
       {balance.enrolled && (
         <>
           {balance.tier !== null && <Badge tone="action">{balance.tier}</Badge>}
@@ -35,7 +39,10 @@ export function CustomerLoyaltyBadge({ customer }: Props): ReactElement | null {
         </>
       )}
       {estimate !== null && (
-        <Badge tone="success" data-testid="loyalty-estimate">
+        // Strategy A: success (green) is reserved for confirmed money/sync/
+        // stock — this is a projected POINTS count (not money, not
+        // confirmed), so it stays neutral like the points balance above.
+        <Badge tone="neutral" data-testid="loyalty-estimate">
           {t('loyalty.earnEstimate', { points: estimate })}
         </Badge>
       )}

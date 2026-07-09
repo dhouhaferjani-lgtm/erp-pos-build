@@ -44,11 +44,12 @@ describe('ProductThumb', () => {
     expect(img.getAttribute('src')).toContain('p.png');
   });
 
-  it('uses a darker neutral full-width tile for POS visual cards', () => {
-    const { getByText } = render(<ProductThumb name="Anti-Aging Serum" fullWidth />);
-    const tile = getByText('AS').parentElement;
-    expect(tile?.className).toContain('bg-[#eef3f8]');
-    expect(tile?.className).toContain('text-[#5e6670]');
-    expect(tile?.getAttribute('style')).toContain('width: 100%');
+  it('renders the full-width neutral placeholder with tokens, not hardcoded hex', () => {
+    const { getByTestId } = render(<ProductThumb name="AS Test" fullWidth />);
+    const tile = getByTestId('product-thumb-placeholder');
+    expect(tile.className).not.toContain('#eef3f8');
+    expect(tile.className).not.toContain('#5e6670');
+    expect(tile.className).toContain('bg-surface-sunken');
+    expect(tile.getAttribute('style')).toContain('width: 100%');
   });
 });

@@ -5,9 +5,18 @@ import { cn } from '@/lib/utils';
 /**
  * NavRail — the 88px vertical destination rail (Caisse / Clients / Rapports /
  * Caisse-Shift). Sits on the side OPPOSITE the cart (cart left ⇒ rail right).
- * Active item uses the accent tint + accent fg (accent = "selected/highlight").
+ * Active item uses the action tint + action fg (Strategy A: action/blue =
+ * "selected/highlight"; accent/green is reserved for brand, not selection).
  * Theme sun/moon toggle pinned at the bottom. Presentational — AppShell wires
  * routing + theme.
+ *
+ * Seam: uses `tokens.section.rail`'s surface (bg-surface-raised) + border
+ * color (border-border-strong), but NOT its fixed `border-r` — the rail can
+ * sit on either side of the canvas depending on `cartPosition` (see
+ * AppShell's `railOnLeft`), and the seam border must always face the canvas.
+ * Callers pass `seamSide` for the edge that borders the canvas; defaults to
+ * 'right' (rail-on-left, the common case) so existing callers/tests that omit
+ * it keep the prior visual.
  */
 export interface NavRailItem<T extends string> {
   id: T;
@@ -26,6 +35,13 @@ export interface NavRailProps<T extends string> {
   themeToggleLabel?: string;
   /** Accessible name for the nav landmark (pass a translated string). */
   ariaLabel?: string;
+  /**
+   * Edge that carries the seam border — the edge facing the canvas.
+   * Pass 'right' when the rail sits on the left of the canvas, 'left' when
+   * the rail sits on the right (cart on the left, rail flipped to the
+   * opposite side). Defaults to 'right'.
+   */
+  seamSide?: 'left' | 'right';
   className?: string;
 }
 
@@ -38,13 +54,15 @@ export function NavRail<T extends string>({
   onToggleTheme,
   themeToggleLabel = 'Thème',
   ariaLabel,
+  seamSide = 'right',
   className,
 }: NavRailProps<T>) {
   return (
     <nav
       aria-label={ariaLabel}
       className={cn(
-        'flex h-full w-[88px] shrink-0 flex-col items-center gap-1 border-r border-border-subtle bg-surface-raised py-3',
+        'flex h-full w-[88px] shrink-0 flex-col items-center gap-1 bg-surface-raised py-3',
+        seamSide === 'left' ? 'border-l border-border-strong' : 'border-r border-border-strong',
         className,
       )}
     >
@@ -63,7 +81,7 @@ export function NavRail<T extends string>({
                 // 72px tall touch target, icon over label
                 'flex h-[72px] w-[72px] flex-col items-center justify-center gap-1 rounded-ctl text-center transition-colors',
                 isActive
-                  ? 'bg-accent-tint text-accent-strong'
+                  ? 'bg-action-subtle text-action'
                   : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
               )}
             >

@@ -6,12 +6,27 @@
  * for the POS design language — use them instead of hand-assembling Tailwind
  * color classes.
  *
- * Color grammar (enforced):
- *  - action  (ocean blue) → interactive / primary actions / selected state
- *  - success (green)      → confirmed money & sync events ONLY
- *  - warning (amber)      → warnings, low stock
- *  - danger  (red)        → errors & destructive actions ONLY
- *  - ink / surface        → text & elevation; prices use `text-ink`, never accent
+ * Color grammar (Strategy A, enforced — see also docs/design-language.md §1):
+ *  - action  (blue, `--action` / `--color-action*`) → ALL interaction and
+ *    selection: focus ring, primary CTAs, selected/in-cart state, active nav.
+ *    `--accent` is a SEPARATE swappable brand-highlight dimension (wordmark,
+ *    Settings/Reports/ShiftClosure) — never repoint it to chase this rule.
+ *  - success (green, `--success` / `--stock-ok`) → confirmed money & sync
+ *    events, and product stock state ONLY. Never decoration or "generic good".
+ *  - ink / surface  → text & elevation; prices always use `text-ink`
+ *    (`tokens.money`), never `accent` or `action`.
+ *  - warning (amber) → warnings, low stock.
+ *  - danger  (red)   → errors & destructive/irreversible actions ONLY.
+ *
+ * Spacing scale (4px base: 4·8·12·16·20·24) — tighten intra-group spacing
+ * (e.g. icon-to-label, badge-to-price: 4-8px), keep inter-section spacing
+ * generous (e.g. panel-to-panel, cart-to-canvas: 16-24px) so the eye reads
+ * groups before it reads the whole screen. See docs/design-language.md §2.
+ *
+ * Chrome anchor: navy (`--pay-navy` / `tokens.section.header|footer`) is the
+ * one fixed structural color — header and footer bars — independent of both
+ * the `--accent` swap and the `--action` grammar above. It never carries
+ * interaction or status meaning; it just anchors the chrome.
  *
  * Usage:
  * ```tsx
@@ -20,34 +35,41 @@
  * ```
  */
 
+// Task 3 (label non-clip): every recipe below carries `whitespace-nowrap` so
+// a raw <button> built from these tokens never silently wraps its label, the
+// same guarantee the `Button` atom's base class gives. These recipes are
+// plain strings (no size prop), so — unlike Button.tsx's SIZE map — the
+// `px-*` here stays: several call sites (e.g. CashPaymentScreen's confirm
+// button) rely on it as their only horizontal padding.
+
 /** Primary interactive button (the one strong action per view). */
 const buttonPrimary =
-  'inline-flex items-center justify-center gap-2 rounded-xl bg-action px-4 font-semibold text-ink-inverse transition-colors ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-action px-4 font-semibold text-ink-inverse transition-colors ' +
   'hover:bg-action-hover active:bg-action-strong ' +
   'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-faint';
 
 /** Confirm-money button (complete sale, take payment). */
 const buttonConfirm =
-  'inline-flex items-center justify-center gap-2 rounded-xl bg-success px-4 font-semibold text-ink-inverse transition-colors ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-success px-4 font-semibold text-ink-inverse transition-colors ' +
   'hover:bg-success-hover ' +
   'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-faint';
 
 /** Secondary / neutral action. */
 const buttonSecondary =
-  'inline-flex items-center justify-center gap-2 rounded-xl border border-border-subtle bg-surface-raised px-4 font-medium text-ink transition-colors ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-border-subtle bg-surface-raised px-4 font-medium text-ink transition-colors ' +
   'hover:bg-surface-sunken active:bg-surface-sunken ' +
   'disabled:cursor-not-allowed disabled:text-ink-faint';
 
 /** Low-emphasis button — still carries a PERSISTENT filled surface so it reads
  * as tappable at rest on a touchscreen (no hover state). */
 const buttonGhost =
-  'inline-flex items-center justify-center gap-2 rounded-lg px-3 font-medium text-ink transition-colors ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 font-medium text-ink transition-colors ' +
   'bg-surface-sunken hover:bg-border-subtle active:bg-border-subtle ' +
   'disabled:cursor-not-allowed disabled:bg-transparent disabled:text-ink-faint';
 
 /** Destructive action (irreversible). */
 const buttonDestructive =
-  'inline-flex items-center justify-center gap-2 rounded-xl bg-danger px-4 font-semibold text-ink-inverse transition-colors ' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-danger px-4 font-semibold text-ink-inverse transition-colors ' +
   'hover:opacity-90 ' +
   'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-faint';
 
@@ -107,6 +129,44 @@ export const tokens = {
 
   /** Monetary display — always tabular figures, ink color (data, not action). */
   money: 'tabular-nums text-ink',
+
+  /**
+   * Section-surface helpers — the chrome anchors consumed by Header/Footer/
+   * NavRail/TransactionCart/ProductGrid restyles. Header/footer are the fixed
+   * navy chrome anchor (independent of --accent/--action); rail/cartPanel are
+   * raised+bordered against the recessed canvas.
+   */
+  section: {
+    header: 'bg-pay-navy text-pay-navy-fg',
+    rail: 'bg-surface-raised border-r border-border-strong',
+    canvas: 'bg-surface-canvas',
+    cartPanel: 'bg-surface-raised border-l border-border-strong shadow-sm',
+    footer: 'bg-pay-navy text-pay-navy-fg',
+  },
+
+  /**
+   * Inverse-on-navy treatments — for Header/Footer children that render
+   * text/icons/dividers DIRECTLY on the navy chrome bg (`tokens.section.
+   * header|footer`), as opposed to a child that already owns its own
+   * colored surface (StatusPill, Badge, Avatar tone="accent" — those pairs
+   * are internally contrasted and stay as-is regardless of the parent bg).
+   * Every semantic ink/border/accent token is theme-tuned for a light or
+   * dark app surface, NOT for the theme-constant navy — e.g. `text-ink-
+   * muted` measures 2.3:1–5.1:1 against `#14283f` depending on theme, and
+   * `border-border-subtle` drops to ~1:1 in dark mode. These use
+   * `--pay-navy-fg`/`--pay-navy-warning-fg` (also theme-constant) so
+   * contrast against the navy chrome never drifts with the app theme.
+   * Verified ≥7:1 (text) / ≥3:1 (non-text) against `#14283f` — see
+   * task-4-report.md.
+   */
+  inverseOnNavy: {
+    /** Secondary/muted text on navy (e.g. operator name, "no shift" hint). */
+    muted: 'text-pay-navy-fg/70',
+    /** Warning-toned text on navy (e.g. stale-stock hint). */
+    warning: 'text-pay-navy-warning-fg',
+    /** Vertical/horizontal group divider on navy. */
+    divider: 'bg-pay-navy-fg/40',
+  },
 } as const;
 
 export type DesignTokens = typeof tokens;

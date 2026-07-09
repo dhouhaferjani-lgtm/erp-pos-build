@@ -17,7 +17,7 @@ import i18n from '@/lib/i18n';
 describe('settingsStore', () => {
   beforeEach(() => {
     useSettingsStore.setState({
-      displayMode: 'grid',
+      displayMode: 'liste',
       language: 'en',
       cartPosition: 'start',
     });
@@ -26,19 +26,19 @@ describe('settingsStore', () => {
 
   it('has correct initial defaults', () => {
     const state = useSettingsStore.getState();
-    expect(state.displayMode).toBe('grid');
+    expect(state.displayMode).toBe('liste');
     expect(state.language).toBe('en');
   });
 
-  it('sets display mode to visual', () => {
-    useSettingsStore.getState().setDisplayMode('visual');
-    expect(useSettingsStore.getState().displayMode).toBe('visual');
+  it('sets display mode to vitrine', () => {
+    useSettingsStore.getState().setDisplayMode('vitrine');
+    expect(useSettingsStore.getState().displayMode).toBe('vitrine');
   });
 
-  it('sets display mode to grid', () => {
-    useSettingsStore.setState({ displayMode: 'visual' });
-    useSettingsStore.getState().setDisplayMode('grid');
-    expect(useSettingsStore.getState().displayMode).toBe('grid');
+  it('sets display mode to tableau', () => {
+    useSettingsStore.setState({ displayMode: 'vitrine' });
+    useSettingsStore.getState().setDisplayMode('tableau');
+    expect(useSettingsStore.getState().displayMode).toBe('tableau');
   });
 
   it('sets language and calls i18n.changeLanguage', () => {
@@ -71,6 +71,24 @@ describe('settingsStore', () => {
     it('allows turning the confirmation off', () => {
       useSettingsStore.getState().setConfirmLineDelete(false);
       expect(useSettingsStore.getState().confirmLineDelete).toBe(false);
+    });
+  });
+
+  describe('optional display fields (Task 16 — default-off field toggles)', () => {
+    it('defaults showSkuOnRows and showSkinTypeOnTiles to false', () => {
+      const s = useSettingsStore.getState();
+      expect(s.showSkuOnRows).toBe(false);
+      expect(s.showSkinTypeOnTiles).toBe(false);
+    });
+
+    it('setShowSkuOnRows flips the flag', () => {
+      useSettingsStore.getState().setShowSkuOnRows(true);
+      expect(useSettingsStore.getState().showSkuOnRows).toBe(true);
+    });
+
+    it('setShowSkinTypeOnTiles flips the flag', () => {
+      useSettingsStore.getState().setShowSkinTypeOnTiles(true);
+      expect(useSettingsStore.getState().showSkinTypeOnTiles).toBe(true);
     });
   });
 

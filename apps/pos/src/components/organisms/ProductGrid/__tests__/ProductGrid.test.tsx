@@ -14,7 +14,7 @@ import type { FiltresFilters } from '@/components/organisms/FiltresDrawer';
 // ---------------------------------------------------------------------------
 const settingsStoreMock = vi.hoisted(() => ({
   state: {
-    displayMode: 'grid' as 'grid' | 'visual',
+    displayMode: 'vitrine' as 'vitrine' | 'liste' | 'tableau',
     density: 'comfortable' as 'comfortable' | 'dense',
     parapharmacySkinFiltersEnabled: true,
     setDisplayMode: vi.fn(),
@@ -92,13 +92,20 @@ Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, wri
 
 const mockT = vi.fn((key: string) => key);
 
-vi.mock('react-i18next', () => ({
-  useTranslation: vi.fn(() => ({
-    t: mockT,
-    i18n: {} as ReturnType<typeof useTranslation>['i18n'],
-    ready: true,
-  })),
-}));
+// Spread the real module so `initReactI18next` stays available — the REAL
+// ProductListRow / ProductTable (Task 15) pull in an import chain that loads
+// `@/lib/i18n`, which calls `i18n.use(initReactI18next)` at module init.
+vi.mock('react-i18next', async (importActual) => {
+  const actual = await importActual<typeof import('react-i18next')>();
+  return {
+    ...actual,
+    useTranslation: vi.fn(() => ({
+      t: mockT,
+      i18n: {} as ReturnType<typeof useTranslation>['i18n'],
+      ready: true,
+    })),
+  };
+});
 
 vi.mock('@/lib/currency', () => ({
   useCurrency: () => ({
@@ -109,6 +116,12 @@ vi.mock('@/lib/currency', () => ({
       return `${num.toFixed(2)} EUR`;
     },
   }),
+}));
+
+// Sever the imageCache → api → i18n import chain pulled in by the REAL
+// ProductListRow / ProductTable (Task 15 routing renders them unmocked).
+vi.mock('@/lib/images/useProductImage', () => ({
+  useProductImage: () => null,
 }));
 
 vi.mock('@/components/molecules/ProductCard', () => ({
@@ -172,8 +185,9 @@ describe('ProductGrid', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
-    // Reset store mock to safe defaults.
-    settingsStoreMock.state.displayMode = 'grid';
+    // Reset store mock to safe defaults. 'vitrine' renders ProductCard (mocked),
+    // matching the card-based assertions across this suite.
+    settingsStoreMock.state.displayMode = 'vitrine';
     settingsStoreMock.state.density = 'comfortable';
     settingsStoreMock.state.parapharmacySkinFiltersEnabled = true;
     settingsStoreMock.state.setDisplayMode = vi.fn();
@@ -237,7 +251,7 @@ describe('ProductGrid', () => {
       left: 0,
       toJSON: () => ({}),
     } as DOMRect);
-    settingsStoreMock.state.displayMode = 'visual';
+    settingsStoreMock.state.displayMode = 'vitrine';
     settingsStoreMock.state.density = 'dense';
 
     const products = Array.from({ length: 12 }, (_, index) =>
@@ -319,6 +333,9 @@ describe('ProductGrid most-sold sort + popular-row removal', () => {
   ];
 
   beforeEach(() => {
+    // 'vitrine' → ProductCard (mocked) so the name-based button assertions hold.
+    settingsStoreMock.state.displayMode = 'vitrine';
+    settingsStoreMock.state.density = 'comfortable';
     // Override t() to return English strings for sort-toggle keys so the
     // getByRole name assertions match.
     mockT.mockImplementation((key: string) => {
@@ -329,8 +346,9 @@ describe('ProductGrid most-sold sort + popular-row removal', () => {
         'products.searchPlaceholder': 'Search',
         'products.clearSearch': 'Clear search',
         'display.inStockOnly': 'In stock only',
-        'display.gridMode': 'Grid',
-        'display.visualMode': 'Visual',
+        'display.vitrine': 'Showcase',
+        'display.liste': 'List',
+        'display.tableau': 'Table',
       };
       return map[key] ?? key;
     });
@@ -644,7 +662,7 @@ describe('ProductGrid — Task 25 settingsStore dual-source reconcile', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
-    settingsStoreMock.state.displayMode = 'grid';
+    settingsStoreMock.state.displayMode = 'vitrine';
     settingsStoreMock.state.density = 'comfortable';
     settingsStoreMock.state.setDisplayMode = vi.fn();
     mockT.mockImplementation((key: string) => {
@@ -652,8 +670,9 @@ describe('ProductGrid — Task 25 settingsStore dual-source reconcile', () => {
         'products.allCategories': 'All',
         'products.searchPlaceholder': 'Search',
         'products.clearSearch': 'Clear search',
-        'display.gridMode': 'Grid',
-        'display.visualMode': 'Visual',
+        'display.vitrine': 'Showcase',
+        'display.liste': 'List',
+        'display.tableau': 'Table',
         'display.mode': 'Display mode',
         'products.sortByMostSold': 'Sort by most sold',
         'display.inStockOnly': 'In stock only',
@@ -676,31 +695,114 @@ describe('ProductGrid — Task 25 settingsStore dual-source reconcile', () => {
     return render(<ProductGrid {...defaults} {...extra} />);
   }
 
-  it('reads displayMode from settingsStore — visual mode is reflected in the view toggle even when localStorage says grid', () => {
-    // localStorage would have driven 'grid' in the old dual-source
-    localStorageMock.setItem('pos-display-mode', 'grid');
-    // Store says 'visual'
-    settingsStoreMock.state.displayMode = 'visual';
+  it('reads displayMode from settingsStore — the store value drives the view toggle', () => {
+    // Store says 'vitrine' → the vitrine radio is the checked one.
+    settingsStoreMock.state.displayMode = 'vitrine';
 
     renderGrid();
 
     // SegmentedControl renders role="radio" buttons with aria-checked
-    const visualRadio = screen.getByRole('radio', { name: 'Visual' });
-    expect(visualRadio).toHaveAttribute('aria-checked', 'true');
+    const vitrineRadio = screen.getByRole('radio', { name: 'Showcase' });
+    expect(vitrineRadio).toHaveAttribute('aria-checked', 'true');
 
-    const gridRadio = screen.getByRole('radio', { name: 'Grid' });
-    expect(gridRadio).toHaveAttribute('aria-checked', 'false');
+    const listeRadio = screen.getByRole('radio', { name: 'List' });
+    expect(listeRadio).toHaveAttribute('aria-checked', 'false');
   });
 
-  it('clicking the view toggle calls settingsStore.setDisplayMode, not localStorage', () => {
-    settingsStoreMock.state.displayMode = 'grid';
+  it('clicking the view toggle calls settingsStore.setDisplayMode', () => {
+    settingsStoreMock.state.displayMode = 'vitrine';
     renderGrid();
 
-    const visualRadio = screen.getByRole('radio', { name: 'Visual' });
-    fireEvent.click(visualRadio);
+    const listeRadio = screen.getByRole('radio', { name: 'List' });
+    fireEvent.click(listeRadio);
 
-    // The store setter must have been called
-    expect(settingsStoreMock.state.setDisplayMode).toHaveBeenCalledWith('visual');
+    // The store setter must have been called with the new view-mode value
+    expect(settingsStoreMock.state.setDisplayMode).toHaveBeenCalledWith('liste');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 15 — tri-density mode routing. displayMode selects the rendered view:
+//   vitrine → ProductCard(s)   liste → ProductListRow(s)   tableau → ProductTable
+// The switcher writes the new value back to the store.
+// ---------------------------------------------------------------------------
+
+describe('ProductGrid — Task 15 tri-density mode routing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    settingsStoreMock.state.displayMode = 'vitrine';
+    settingsStoreMock.state.density = 'comfortable';
+    settingsStoreMock.state.parapharmacySkinFiltersEnabled = true;
+    settingsStoreMock.state.setDisplayMode = vi.fn();
+    mockT.mockImplementation((key: string) => {
+      const map: Record<string, string> = {
+        'display.vitrine': 'Showcase',
+        'display.liste': 'List',
+        'display.tableau': 'Table',
+        'display.mode': 'Display mode',
+      };
+      return map[key] ?? key;
+    });
+  });
+
+  function renderGrid(extra?: Partial<ProductGridProps>) {
+    const defaults: ProductGridProps = {
+      products: [
+        makeProduct({ id: 'p1', name: 'Alpha', sku: 'A1', sale_price: '10.000', stock_quantity: 5 }),
+        makeProduct({ id: 'p2', name: 'Beta', sku: 'B1', sale_price: '20.000', stock_quantity: 5 }),
+      ],
+      categories: [],
+      onAddToCart: vi.fn(),
+      cartProductIds: [],
+    };
+    return render(<ProductGrid {...defaults} {...extra} />);
+  }
+
+  it('vitrine → renders ProductCard(s), not list rows or the table', () => {
+    settingsStoreMock.state.displayMode = 'vitrine';
+    renderGrid();
+    expect(screen.getByTestId('product-p1')).toBeInTheDocument();
+    expect(screen.getByTestId('product-p2')).toBeInTheDocument();
+    expect(screen.queryByTestId('product-list-row')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('product-table')).not.toBeInTheDocument();
+  });
+
+  it('liste → renders ProductListRow(s), not cards or the table', () => {
+    settingsStoreMock.state.displayMode = 'liste';
+    renderGrid();
+    expect(screen.getAllByTestId('product-list-row')).toHaveLength(2);
+    expect(screen.queryByTestId('product-p1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('product-table')).not.toBeInTheDocument();
+  });
+
+  it('tableau → renders ProductTable, not cards or list rows', () => {
+    settingsStoreMock.state.displayMode = 'tableau';
+    renderGrid();
+    expect(screen.getByTestId('product-table')).toBeInTheDocument();
+    expect(screen.getAllByTestId('product-table-row')).toHaveLength(2);
+    expect(screen.queryByTestId('product-p1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('product-list-row')).not.toBeInTheDocument();
+  });
+
+  it('clicking a segmented option writes the new view-mode to the store', () => {
+    settingsStoreMock.state.displayMode = 'vitrine';
+    renderGrid();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Table' }));
+    expect(settingsStoreMock.state.setDisplayMode).toHaveBeenCalledWith('tableau');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'List' }));
+    expect(settingsStoreMock.state.setDisplayMode).toHaveBeenCalledWith('liste');
+  });
+
+  it('keeps the shared search filter across modes (liste)', () => {
+    settingsStoreMock.state.displayMode = 'liste';
+    renderGrid();
+    const searchInput = screen.getByRole('textbox');
+    fireEvent.change(searchInput, { target: { value: 'Alpha' } });
+    // Only the matching product survives the shared filter.
+    expect(screen.getAllByTestId('product-list-row')).toHaveLength(1);
   });
 });
 
@@ -714,7 +816,7 @@ describe('ProductGrid — Task 26 Filtres drawer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     productStoreMock.state.companyConfig = null;
-    settingsStoreMock.state.displayMode = 'grid';
+    settingsStoreMock.state.displayMode = 'vitrine';
     settingsStoreMock.state.density = 'comfortable';
     settingsStoreMock.state.setDisplayMode = vi.fn();
     mockT.mockImplementation((key: string, opts?: { defaultValue?: string; ns?: string }) =>
@@ -936,7 +1038,7 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    settingsStoreMock.state.displayMode = 'grid';
+    settingsStoreMock.state.displayMode = 'vitrine';
     settingsStoreMock.state.density = 'comfortable';
     settingsStoreMock.state.setDisplayMode = vi.fn();
     // Enable Merchandising module

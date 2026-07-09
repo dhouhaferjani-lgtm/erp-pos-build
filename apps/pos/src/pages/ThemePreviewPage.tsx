@@ -23,11 +23,14 @@ import {
 import { NavRail } from '@/components/NavRail';
 import { CartLineItem } from '@/components/molecules/CartLineItem';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
+import { ProductCard } from '@/components/molecules/ProductCard';
+import { ProductListRow } from '@/components/organisms/ProductGrid/ProductListRow';
+import { ProductTable } from '@/components/organisms/ProductGrid/ProductTable';
 import { ProductDetailDrawer } from '@/components/organisms/ProductDetailDrawer';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { ShiftClosurePage } from '@/pages/ShiftClosurePage';
 import { ACCENTS, type AccentName, type Density } from '@/lib/theme';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, type DisplayMode } from '@/stores/settingsStore';
 import { useProductStore } from '@/stores/productStore';
 import { formatCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
@@ -53,6 +56,7 @@ function seedProduct(
   price: string,
   stock: number,
   skin?: string,
+  imageUrl?: string,
 ): POSProduct {
   return {
     id: `seed-${i}`,
@@ -62,6 +66,7 @@ function seedProduct(
     stock_quantity: stock,
     category,
     brand_name: brand,
+    ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(skin
       ? {
           parapharmacy_metadata: {
@@ -105,6 +110,149 @@ const SELL_PRODUCTS: POSProduct[] = [
   seedProduct(27, 'Capital Soleil Brume Invisible SPF50', 'Vichy', 'Solaire', '43.500', 17),
   seedProduct(28, 'Cold Cream Corps', 'Avène', 'Corps', '24.900', 30, 'dry'),
 ];
+
+// ---------------------------------------------------------------------------
+// Task 19 — tri-density fixtures (Vitrine / Liste / Tableau) for the
+// auth-free Task 20 Playwright visual pass. `ProductGrid.displayMode` reads
+// from a single global `settingsStore` slice, so three `<ProductGrid>`
+// instances mounted at once cannot show three different modes — instead we
+// render the real per-density leaf components (`ProductCard` / `ProductListRow`
+// / `ProductTable`) directly with seeded data, which is what Task 20 actually
+// needs to screenshot.
+// ---------------------------------------------------------------------------
+
+/**
+ * Real parapharmacy products + real product photography, baked in from
+ * `DemoImageProductsSeeder` (DigitalOcean CDN, hotlinked — SSRF-guarded on
+ * the backend, plain `<img>` here). Used for the Vitrine and Liste fixtures
+ * so both densities show genuine imagery, not just the ProductThumb
+ * placeholder.
+ */
+const REAL_IMAGE_PRODUCTS: POSProduct[] = [
+  seedProduct(100, 'A-Derma Cytelium Spray 100ml', 'A-Derma', 'Visage', '32.500', 24, 'sensitive', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/46/034ad053-bf70-4e31-afbd-7515eaadd9a1_0.webp'),
+  seedProduct(101, 'Apivita Soin des Lèvres au Cassis', 'Apivita', 'Visage', '14.900', 40, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/5012/d930a71a-45c0-43fc-9a91-8af904a10526_0.webp'),
+  seedProduct(102, 'Avène 50+ Émulsion 50ml', 'Avène', 'Solaire', '45.000', 18, 'sensitive', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/13564/2cffb696-0204-4819-bb11-10c7c6c91b40_0.webp'),
+  seedProduct(103, 'Beurer Vessie à Glace 28cm', 'Beurer', 'Hygiene', '22.000', 9, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/14750/38e10b48-3d01-4aa4-ae62-afd78aeaf480_0.webp'),
+  seedProduct(104, 'Bioderma Cicabio Lotion', 'Bioderma', 'Visage', '38.500', 3, 'sensitive', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/13715/6fa37344-229a-4144-a4db-2a30d4eb313e_0.webp'),
+  seedProduct(105, 'Byphasse Crème Hydratante', 'Byphasse', 'Corps', '12.500', 55, 'dry', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/3529/bd54c4ac-2c51-415e-acb4-a46f48053ab0_0.webp'),
+  seedProduct(106, 'Canpol Babies Peluche Musicale', 'Canpol Babies', 'Bebe', '28.000', 12, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/3226/f6b94f98-ffba-4276-9ac9-764aad7b5f0e_0.webp'),
+  seedProduct(107, 'Caudalie Eau de Beauté 100ml', 'Caudalie', 'Visage', '55.000', 0, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/12186/3af1ade7-34bc-450c-b523-30a0a846d2c4_0.webp'),
+  seedProduct(108, 'Cetaphil Crème Hydratante 50g', 'Cetaphil', 'Visage', '18.000', 30, 'dry', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/409/b355050d-3fc2-4c18-b188-20161e96e7ec_0.webp'),
+  seedProduct(109, 'Chicco Ciseaux Rose', 'Chicco', 'Bebe', '15.500', 2, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/760/58e99305-bd24-4f97-98d5-15c1fa0a7fd1_0.webp'),
+  seedProduct(110, 'Dermedic Lotion Après-Soleil', 'Dermedic', 'Solaire', '26.000', 17, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/13753/1b3a7306-3057-4c8b-828f-fe2a1883efd0_0.webp'),
+  seedProduct(111, 'Ducray Keracnyl Sérum 30ml', 'Ducray', 'Visage', '42.000', 8, 'oily', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/10830/e04f5301-26e7-4d5c-bf4f-ffd4a9ce31f7_0.webp'),
+  seedProduct(112, 'Elgydium Clinic Flex 123', 'Elgydium', 'Hygiene', '9.500', 0, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/6313/a822d697-a05e-402b-9d66-ca9e3d3112e0_0.webp'),
+  seedProduct(113, 'Eucerin Hyaluron Spray 150ml', 'Eucerin', 'Visage', '48.000', 21, 'dry', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/2679/712fe655-98af-4ce1-bb3f-374327bd07a4_0.webp'),
+  seedProduct(114, 'Filorga Scrub & Peel', 'Filorga', 'Visage', '65.000', 4, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/13848/23191fcb-6943-407b-8a8f-b1eeed83c462_0.webp'),
+  seedProduct(115, 'Gum Dentifrice Kids 3+', 'Gum', 'Hygiene', '8.900', 60, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/140/8d6aff74-5f4a-48b9-a5d4-899ac458ba52_0.webp'),
+  seedProduct(116, 'Herbeos Crème de Jouvence 30ml', 'Herbeos', 'Visage', '19.500', 14, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/6854/d4d375b3-ca0d-46ab-99dc-9aa21b274b2d_0.webp'),
+  seedProduct(117, 'Isdin Flavo-C Sérum 30ml', 'Isdin', 'Visage', '72.000', 1, 'normal', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/1618/82b7f6e4-8d09-4513-869d-ac4f371e000f_0.webp'),
+  seedProduct(118, 'K-Reine Coffret Clouds', 'K-Reine', 'Corps', '34.000', 6, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/13962/d947bd04-b614-42ab-8129-821c7bc038b6_0.webp'),
+  seedProduct(119, 'La Roche-Posay Sérozinc 150ml', 'La Roche-Posay', 'Visage', '24.500', 35, 'oily', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/6774/45c2686b-27d9-4353-af37-609d6546a2d5_0.webp'),
+  seedProduct(120, 'Laino Eau de Rose 250ml', 'Laino', 'Visage', '11.000', 0, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/1451/70d506d6-0e25-414a-993d-6a617face8e8_0.webp'),
+  seedProduct(121, 'Lierac Trousse Phyto', 'Lierac', 'Corps', '58.000', 10, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/6814/ce32a5eb-6008-47be-b6b8-a2b64e3320e5_0.webp'),
+  seedProduct(122, 'Mustela Shampooing 500ml', 'Mustela', 'Bebe', '27.500', 27, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/1479/25ac77af-e45c-413a-bbea-171ecca532c5_0.webp'),
+  seedProduct(123, 'Naturtint Masque Éco Force 150ml', 'Naturtint', 'Cheveux', '21.000', 5, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/7825/c0b7f94d-daba-4622-b4ed-cf5245f3e209_0.webp'),
+  seedProduct(124, 'Noreva Exfoliac Global X Pro', 'Noreva', 'Visage', '36.000', 16, 'oily', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/7415/0f4464b6-4ac3-408a-bf41-6c1e8d2cc120_0.webp'),
+  seedProduct(125, 'Nuk Ciseaux Bébé', 'Nuk', 'Bebe', '13.000', 22, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/10817/c433d14a-084e-4a51-bd3e-3dea2b46f0e7_0.webp'),
+  seedProduct(126, 'Nuxe Super Sérum [10] 30ml', 'Nuxe', 'Visage', '89.000', 0, 'normal', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/4591/a1bbf247-a767-416f-b8af-cdec27a93694_0.webp'),
+  seedProduct(127, 'Oral-B Brosse Enfant 8 Ans', 'Oral-B', 'Hygiene', '7.500', 45, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/14612/edc5154f-770c-40d2-9b20-d499ab068ba0_0.webp'),
+  seedProduct(128, 'Pampers S6 Boîte de 24', 'Pampers', 'Bebe', '33.000', 19, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/10049/0dbff992-d058-4914-aca3-fa0e3b27d094_0.webp'),
+  seedProduct(129, 'Pharmaceris Viti Melo Nuit 40ml', 'Pharmaceris', 'Visage', '47.000', 3, 'dry', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/13453/09c0a726-00e3-425f-813f-709610c4ad64_0.webp'),
+  seedProduct(130, 'Phyto Vasculux', 'Phyto', 'Complements', '39.000', 11, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/14122/28f7d29c-1445-45c4-8abe-6e96e755d5a1_0.webp'),
+  seedProduct(131, 'Roge Cavaillès Antador Gel-Crème 50ml', 'Roge Cavaillès', 'Corps', '22.500', 26, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/14546/072e804e-90f5-4db3-805b-9a9ad12d41f9_0.webp'),
+  seedProduct(132, 'Sensodyne Fil Dentaire', 'Sensodyne', 'Hygiene', '6.900', 0, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/14175/6f5b7582-3523-431a-bb91-7b66fac0f434_0.webp'),
+  seedProduct(133, 'SVR Pepti Biotic 50ml', 'SVR', 'Visage', '44.000', 13, 'normal', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/14214/2c90caae-f11e-4477-ad0e-f697a32d35c1_0.webp'),
+  seedProduct(134, 'Titania Éponge de Bain', 'Titania', 'Hygiene', '4.500', 70, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/4145/9d2a4ee7-7f7b-433b-a21e-0957c6f6d3a1_0.webp'),
+  seedProduct(135, 'Tynor Canne en T L07', 'Tynor', 'Hygiene', '38.000', 4, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/14352/20871ff9-973b-403d-874b-6224a37a1e93_0.webp'),
+  seedProduct(136, 'Uriage Hyséac Mat 40ml', 'Uriage', 'Visage', '29.000', 20, 'oily', 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/333/43386c17-054c-4d46-9794-afc26e2e19d6_0.webp'),
+  seedProduct(137, 'Vichy Pastille Cassis & Menthe', 'Vichy', 'Complements', '5.500', 0, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/14106/691671a3-74cd-4be0-b680-0dec97f20a89_0.webp'),
+  seedProduct(138, 'Wee Baby Fork-Spoon Travel Case', 'Wee Baby', 'Bebe', '16.500', 9, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/11305/2cdf760a-837e-4ed7-aa44-9059c756f48d_0.webp'),
+  seedProduct(139, 'Tommee Tippee Tasse Sport 12M+ 300ml', 'Tommee Tippee', 'Bebe', '19.900', 31, undefined, 'https://iziposapp.fra1.cdn.digitaloceanspaces.com/central/products/3196/fbf826c9-ab24-4aca-b3e1-2ee7149c5f4b_0.webp'),
+];
+
+/** Safe indexed read into a non-empty readonly array (`noUncheckedIndexedAccess`). */
+function pick<T>(arr: readonly T[], index: number): T {
+  const value = arr[((index % arr.length) + arr.length) % arr.length];
+  if (value === undefined) {
+    throw new Error('pick: index out of bounds on an empty array');
+  }
+  return value;
+}
+
+interface LargeCatalogTemplate {
+  name: string;
+  brand: string;
+  category: string;
+  skin?: string;
+}
+
+const LARGE_CATALOG_BASE: LargeCatalogTemplate[] = [
+  { name: 'Gel Moussant Purifiant', brand: 'La Roche-Posay', category: 'Visage', skin: 'oily' },
+  { name: 'Baume Réparateur B5', brand: 'La Roche-Posay', category: 'Visage' },
+  { name: 'Eau Thermale Apaisante', brand: 'Avène', category: 'Visage', skin: 'sensitive' },
+  { name: 'Crème Hydratante Quotidienne', brand: 'CeraVe', category: 'Visage', skin: 'dry' },
+  { name: 'Sérum Vitamine C Éclat', brand: 'Vichy', category: 'Visage', skin: 'normal' },
+  { name: 'Fluide Solaire SPF50+', brand: 'La Roche-Posay', category: 'Solaire', skin: 'oily' },
+  { name: 'Crème Solaire Minérale', brand: 'Bioderma', category: 'Solaire' },
+  { name: 'Lait Après-Soleil', brand: 'Nuxe', category: 'Solaire' },
+  { name: 'Lait Corporel Nourrissant', brand: 'Mixa', category: 'Corps', skin: 'dry' },
+  { name: 'Huile Sèche Multi-Fonctions', brand: 'Nuxe', category: 'Corps' },
+  { name: 'Baume Intensif Corps', brand: 'Bioderma', category: 'Corps', skin: 'sensitive' },
+  { name: 'Shampooing Doux', brand: 'Klorane', category: 'Cheveux' },
+  { name: 'Shampooing Anti-Pelliculaire', brand: 'Vichy', category: 'Cheveux' },
+  { name: 'Shampooing Rééquilibrant', brand: 'Ducray', category: 'Cheveux' },
+  { name: 'Liniment Oléo-Calcaire', brand: 'Gilbert', category: 'Bebe' },
+  { name: 'Crème Change', brand: 'Mustela', category: 'Bebe' },
+  { name: 'Magnésium Marin Fatigue', brand: 'Nutergia', category: 'Complements' },
+  { name: 'Vitamine D3 Gouttes', brand: 'ZymaD', category: 'Complements' },
+  { name: 'Oméga 3 EPA DHA', brand: 'Arkopharma', category: 'Complements' },
+  { name: 'Gel Hydroalcoolique', brand: 'Aniosgel', category: 'Hygiene' },
+  { name: 'Bain de Bouche', brand: 'Elmex', category: 'Hygiene' },
+  { name: 'Dentifrice Protection', brand: 'Sensodyne', category: 'Hygiene' },
+  { name: 'Fluide Sensitive', brand: 'La Roche-Posay', category: 'Visage', skin: 'sensitive' },
+  { name: 'Aqua-Gel Hydratant', brand: 'Avène', category: 'Visage', skin: 'combination' },
+  { name: 'Crème Compensatrice', brand: 'Bioderma', category: 'Visage', skin: 'oily' },
+  { name: 'Crème Riche Nutritive', brand: 'La Roche-Posay', category: 'Visage', skin: 'dry' },
+  { name: 'Brume Solaire Invisible', brand: 'Vichy', category: 'Solaire' },
+  { name: 'Cold Cream Corps', brand: 'Avène', category: 'Corps', skin: 'dry' },
+  { name: 'Sérum Anti-Âge', brand: 'Filorga', category: 'Visage', skin: 'normal' },
+  { name: 'Baume à Lèvres Nourrissant', brand: 'Nuxe', category: 'Visage' },
+];
+
+const CONTENANCE_LABELS = ['50ml', '100ml', '200ml', 'Format familial'] as const;
+
+const PRICE_POOL = [
+  '9.500', '11.000', '13.500', '14.900', '16.900', '18.000', '19.900', '21.000',
+  '24.500', '26.000', '28.500', '31.000', '33.000', '36.000', '38.500', '42.000',
+  '45.500', '48.900', '52.000', '58.000', '65.000', '72.000', '89.000',
+] as const;
+
+/**
+ * Synthetic 120-row parapharmacy catalog for the Tableau fixture.
+ * `ProductTable` self-virtualizes, so a large row count here actually
+ * exercises windowed rendering + scroll for Task 20 — the Vitrine/Liste
+ * fixtures above render their leaf components directly (non-virtualized),
+ * so they stay at a moderate, real-image-backed size instead. Prices are
+ * literal decimal STRINGS drawn from a fixed pool by index — never computed
+ * via float/parseFloat arithmetic (precision contract).
+ */
+function buildLargeCatalog(targetCount: number): POSProduct[] {
+  const out: POSProduct[] = [];
+  for (let i = 0; i < targetCount; i++) {
+    const base = pick(LARGE_CATALOG_BASE, i);
+    const variantIdx = Math.floor(i / LARGE_CATALOG_BASE.length) % CONTENANCE_LABELS.length;
+    const contenance = pick(CONTENANCE_LABELS, variantIdx);
+    const price = pick(PRICE_POOL, i * 3 + variantIdx);
+    // Deterministic stock spread: some out-of-stock, some low, rest healthy.
+    const stockRoll = (i * 7 + 5) % 20;
+    const stock = stockRoll === 0 ? 0 : stockRoll <= 4 ? stockRoll : 8 + stockRoll;
+    out.push(seedProduct(1000 + i, `${base.name} ${contenance}`, base.brand, base.category, price, stock, base.skin));
+  }
+  return out;
+}
+
+const LARGE_CATALOG: POSProduct[] = buildLargeCatalog(120);
 
 /**
  * DEV-ONLY visual gallery for the Caisse redesign token system + atoms.
@@ -160,6 +308,12 @@ export function ThemePreviewPage() {
   const setDensity = useSettingsStore((s) => s.setDensity);
   const [gridFilters, setGridFilters] = useState<FiltresFilters>({ brands: [], categories: [], skinTypes: [], routines: [] });
   const [gridCart, setGridCart] = useState<string[]>(['seed-3']);
+  // Task 19 — tri-density fixtures (Vitrine/Liste/Tableau) share one cart-toggle
+  // state; the three fixtures render disjoint id ranges (seed-100.. / seed-1000..)
+  // so there's no cross-fixture collision.
+  const [densityCartIds, setDensityCartIds] = useState<string[]>([]);
+  const toggleDensityCart = (p: POSProduct) =>
+    setDensityCartIds((prev) => (prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id]));
   // Enable the Merchandising surface (Filtres + product detail merchandising) in the harness.
   useEffect(() => {
     useProductStore.setState({
@@ -210,8 +364,12 @@ export function ThemePreviewPage() {
         <SegmentedControl
           ariaLabel="displayMode"
           value={displayMode}
-          onChange={(m) => setDisplayMode(m as 'grid' | 'visual')}
-          options={[{ value: 'visual', label: 'Vignettes' }, { value: 'grid', label: 'Liste' }]}
+          onChange={(m) => setDisplayMode(m as DisplayMode)}
+          options={[
+            { value: 'vitrine', label: 'Vitrine' },
+            { value: 'liste', label: 'Liste' },
+            { value: 'tableau', label: 'Tableau' },
+          ]}
         />
       </div>
 
@@ -438,6 +596,67 @@ export function ThemePreviewPage() {
               >
                 Ouvrir fiche produit
               </Button>
+            </div>
+          </Section>
+        </div>
+
+        <div className="lg:col-span-2">
+          <Section title="Densités d'affichage — Vitrine / Liste / Tableau (Task 19 — composants réels, données figées)">
+            <p className="mb-3 text-sm text-ink-muted">
+              Trois composants réels rendus directement (pas via ProductGrid, dont le mode
+              d&apos;affichage est un état global partagé) : Vitrine et Liste avec 40 vraies photos
+              produit (CDN), Tableau avec un catalogue synthétique de 120 lignes pour vérifier la
+              virtualisation / le défilement.
+            </p>
+
+            <h3 className="mb-2 font-display text-sm font-bold text-ink-strong">
+              Vitrine — ProductCard ({REAL_IMAGE_PRODUCTS.length} produits, images réelles)
+            </h3>
+            <div
+              data-testid="sell-preview-vitrine"
+              className="mb-6 grid h-[520px] grid-cols-2 gap-2.5 overflow-y-auto rounded-panel border border-border-subtle bg-surface-canvas p-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+            >
+              {REAL_IMAGE_PRODUCTS.map((p) => (
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  displayMode="visual"
+                  isInCart={densityCartIds.includes(p.id)}
+                  onAddToCart={toggleDensityCart}
+                  onViewDetails={setDetailProduct}
+                />
+              ))}
+            </div>
+
+            <h3 className="mb-2 font-display text-sm font-bold text-ink-strong">
+              Liste — ProductListRow ({REAL_IMAGE_PRODUCTS.length} produits, images réelles)
+            </h3>
+            <div
+              data-testid="sell-preview-liste"
+              className="mb-6 flex h-[520px] flex-col overflow-y-auto rounded-panel border border-border-subtle bg-surface-canvas"
+            >
+              {REAL_IMAGE_PRODUCTS.map((p) => (
+                <ProductListRow
+                  key={p.id}
+                  product={p}
+                  onAddToCart={toggleDensityCart}
+                  onViewDetails={setDetailProduct}
+                />
+              ))}
+            </div>
+
+            <h3 className="mb-2 font-display text-sm font-bold text-ink-strong">
+              Tableau — ProductTable ({LARGE_CATALOG.length} produits, virtualisation)
+            </h3>
+            <div
+              data-testid="sell-preview-tableau"
+              className="h-[520px] overflow-hidden rounded-panel border border-border-subtle"
+            >
+              <ProductTable
+                products={LARGE_CATALOG}
+                onAddToCart={toggleDensityCart}
+                onViewDetails={setDetailProduct}
+              />
             </div>
           </Section>
         </div>

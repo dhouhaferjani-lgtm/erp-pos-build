@@ -18,7 +18,13 @@ import { cn } from '@/lib/utils';
  *  - destructive → irreversible (red)
  *
  * Sizes encode TOUCH targets (this is a counter touchscreen):
- *  - sm = 36px (dense desktop only)   md = 44px (default touch)   lg = 56px (primary CTA)
+ *  - sm = 40px (dense desktop only)   md = 48px (default touch)   lg = 64px (primary CTA)
+ *
+ * Labels never clip: the base class carries `whitespace-nowrap` so a button
+ * never silently wraps/clips its own text (e.g. "Rappeler" -> "Rapp"). Sizing
+ * is padding-driven, not a fixed width, so `min-w-0` on a flex/grid parent
+ * still works. Opt into ellipsis truncation (rather than nowrap overflow)
+ * with the `truncate` prop when the parent needs to clip long labels.
  *
  * All 8 states are covered: default · hover · focus-visible (global ring) ·
  * active · disabled · loading · plus error/success are expressed via variant.
@@ -43,11 +49,12 @@ const VARIANT: Record<ButtonVariant, string> = {
   destructive: 'bg-danger text-ink-inverse hover:opacity-90 active:opacity-80',
 };
 
+// Ergonomic touch scale 40/48/64 — padding (not a fixed width) governs
+// horizontal room so a `min-w-0` flex parent can still shrink the button.
 const SIZE: Record<ButtonSize, string> = {
-  sm: 'min-h-9 gap-1.5 px-3 text-sm',
-  // md = 48px, the §6 touch floor (was 44px) — the touchscreen default.
-  md: 'min-h-12 gap-2 px-4 text-sm',
-  lg: 'min-h-14 gap-2 px-5 text-base',
+  sm: 'min-h-[40px] gap-1.5 px-3 text-sm',
+  md: 'min-h-[48px] gap-2 px-4 text-sm',
+  lg: 'min-h-[64px] gap-2 px-6 text-lg',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -61,6 +68,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   rightIcon?: ReactNode;
   /** Stretch to the full width of the parent. */
   fullWidth?: boolean;
+  /** Ellipsis-truncate the label instead of letting it overflow (still never wraps). */
+  truncate?: boolean;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -71,6 +80,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     leftIcon,
     rightIcon,
     fullWidth = false,
+    truncate = false,
     disabled,
     className,
     children,
@@ -87,13 +97,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={isDisabled}
       aria-busy={loading || undefined}
       className={cn(
-        'inline-flex select-none items-center justify-center rounded-xl font-semibold transition-colors',
+        'inline-flex select-none items-center justify-center whitespace-nowrap rounded-xl font-semibold transition-colors',
         // Disabled look is communicated by surface + ink + cursor — never
         // opacity alone (a faded primary reads as "is this on?").
         'disabled:cursor-not-allowed disabled:border-transparent disabled:bg-surface-sunken disabled:text-ink-faint disabled:hover:bg-surface-sunken',
         VARIANT[variant],
         SIZE[size],
         fullWidth && 'w-full',
+        truncate && 'truncate',
         className,
       )}
       {...rest}

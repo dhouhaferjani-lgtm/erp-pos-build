@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon, Trash2, SlidersHorizontal } from 'lucide-react';
+import { List, Table, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon, Trash2, SlidersHorizontal, Tag, Droplet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tokens } from '@/lib/designTokens';
 import { SegmentedControl } from '@/components/ui';
@@ -81,6 +81,11 @@ export function SettingsPage() {
   const setAccent = useSettingsStore((s) => s.setAccent);
   const setCorner = useSettingsStore((s) => s.setCorner);
   const setDensity = useSettingsStore((s) => s.setDensity);
+  // Task 16 — caisse display optional-field toggles (default off).
+  const showSkuOnRows = useSettingsStore((s) => s.showSkuOnRows);
+  const showSkinTypeOnTiles = useSettingsStore((s) => s.showSkinTypeOnTiles);
+  const setShowSkuOnRows = useSettingsStore((s) => s.setShowSkuOnRows);
+  const setShowSkinTypeOnTiles = useSettingsStore((s) => s.setShowSkinTypeOnTiles);
 
   const terminal = useTerminalStore((s) => s.terminal);
   const shift = useTerminalStore((s) => s.shift);
@@ -242,30 +247,43 @@ export function SettingsPage() {
               </label>
               <div className={cn(tokens.segmented.root, 'flex')}>
                 <button
-                  onClick={() => setDisplayMode('grid')}
+                  onClick={() => setDisplayMode('vitrine')}
                   className={cn(
                     tokens.segmented.item,
                     'flex flex-1 items-center justify-center gap-2',
-                    displayMode === 'grid'
-                      ? tokens.segmented.itemActive
-                      : tokens.segmented.itemInactive,
-                  )}
-                >
-                  <Monitor className="h-4 w-4" />
-                  {t('settings.gridMode')}
-                </button>
-                <button
-                  onClick={() => setDisplayMode('visual')}
-                  className={cn(
-                    tokens.segmented.item,
-                    'flex flex-1 items-center justify-center gap-2',
-                    displayMode === 'visual'
+                    displayMode === 'vitrine'
                       ? tokens.segmented.itemActive
                       : tokens.segmented.itemInactive,
                   )}
                 >
                   <Image className="h-4 w-4" />
-                  {t('settings.visualMode')}
+                  {t('settings.vitrineMode')}
+                </button>
+                <button
+                  onClick={() => setDisplayMode('liste')}
+                  className={cn(
+                    tokens.segmented.item,
+                    'flex flex-1 items-center justify-center gap-2',
+                    displayMode === 'liste'
+                      ? tokens.segmented.itemActive
+                      : tokens.segmented.itemInactive,
+                  )}
+                >
+                  <List className="h-4 w-4" />
+                  {t('settings.listeMode')}
+                </button>
+                <button
+                  onClick={() => setDisplayMode('tableau')}
+                  className={cn(
+                    tokens.segmented.item,
+                    'flex flex-1 items-center justify-center gap-2',
+                    displayMode === 'tableau'
+                      ? tokens.segmented.itemActive
+                      : tokens.segmented.itemInactive,
+                  )}
+                >
+                  <Table className="h-4 w-4" />
+                  {t('settings.tableauMode')}
                 </button>
               </div>
             </div>
@@ -289,6 +307,50 @@ export function SettingsPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* Optional-field toggles — Task 16, default off */}
+            <div className="mt-4">
+              <label className="mb-2 block text-sm font-medium text-ink-muted">
+                {t('settings.displayFields')}
+              </label>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Tag className="h-4 w-4 shrink-0 text-ink-muted" />
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium text-ink">
+                        {t('settings.showSkuOnRows')}
+                      </span>
+                      <p className="text-xs text-ink-faint">
+                        {t('settings.showSkuOnRowsDesc')}
+                      </p>
+                    </div>
+                  </div>
+                  <ToggleSwitch
+                    checked={showSkuOnRows}
+                    onChange={() => setShowSkuOnRows(!showSkuOnRows)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Droplet className="h-4 w-4 shrink-0 text-ink-muted" />
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium text-ink">
+                        {t('settings.showSkinTypeOnTiles')}
+                      </span>
+                      <p className="text-xs text-ink-faint">
+                        {t('settings.showSkinTypeOnTilesDesc')}
+                      </p>
+                    </div>
+                  </div>
+                  <ToggleSwitch
+                    checked={showSkinTypeOnTiles}
+                    onChange={() => setShowSkinTypeOnTiles(!showSkinTypeOnTiles)}
+                  />
+                </div>
               </div>
             </div>
           </section>

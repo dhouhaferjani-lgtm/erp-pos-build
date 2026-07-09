@@ -31,9 +31,9 @@
     "allCategories": "Tous",
     "clearSearch": "Effacer la recherche",
     "customize": "Personnaliser",
-    "outOfStock": "Rupture de stock",
+    "outOfStock": "Rupture",
     "inCart": "Dans le panier",
-    "stock": "Stock : {{count}}",
+    "stock": "Stock {{count}}",
     "lowStock": "Stock faible",
     "fullName": "Nom complet du produit",
     "sortByMostSold": "Trier par plus vendus",
@@ -523,7 +523,11 @@
     "tabs": {
       "details": "Détails",
       "equivalentsIntro": "Produits équivalents pour substitution ou préférence.",
-      "complementsIntro": "Produits complémentaires pour compléter la vente."
+      "complementsIntro": "Produits complémentaires pour compléter la vente.",
+      "stockLots": "Stock & lots",
+      "otherBranches": "Autres officines",
+      "stockLotsComingSoon": "Suivi des lots par numéro et date de péremption — bientôt disponible.",
+      "otherBranchesComingSoon": "Stock des autres officines — bientôt disponible."
     },
     "stock": "Stock",
     "stockAtLocation": "Stock à cet emplacement",
@@ -548,6 +552,14 @@
     "displayMode": "Mode d'affichage",
     "gridMode": "Grille",
     "visualMode": "Visuel",
+    "vitrineMode": "Vitrine",
+    "listeMode": "Liste",
+    "tableauMode": "Tableau",
+    "displayFields": "Champs affichés",
+    "showSkuOnRows": "Afficher le SKU sur les lignes",
+    "showSkuOnRowsDesc": "Affiche le code SKU sous le nom du produit en mode Liste",
+    "showSkinTypeOnTiles": "Afficher le type de peau sur les tuiles",
+    "showSkinTypeOnTilesDesc": "Affiche des indicateurs de type de peau sur les tuiles produit en mode Vitrine",
     "peripherals": "Périphériques",
     "printer": "Imprimante de tickets",
     "scanner": "Lecteur de code-barres",
@@ -709,7 +721,19 @@
     "mode": "Mode d'affichage",
     "inStockOnly": "En stock",
     "gridMode": "Vue grille",
-    "visualMode": "Vue images"
+    "visualMode": "Vue images",
+    "vitrine": "Vitrine",
+    "liste": "Liste",
+    "tableau": "Tableau"
+  },
+  "table": {
+    "ariaLabel": "Tableau des produits",
+    "colCode": "Code",
+    "colProduct": "Produit",
+    "colCategory": "Catégorie",
+    "colStock": "Stock",
+    "colPrice": "Prix",
+    "colAction": "Ajouter"
   },
   "advancedPayments": {
     "back": "Retour",
@@ -1036,7 +1060,7 @@
     "caisse": "Caisse",
     "clients": "Clients",
     "rapports": "Rapports",
-    "shift": "Caisse",
+    "shift": "Session",
     "ariaLabel": "Navigation principale",
     "themeToggle": "Changer de thème"
   },

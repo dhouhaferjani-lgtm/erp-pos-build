@@ -59,7 +59,7 @@ export function QuickActions({
   ];
 
   return (
-    <div className="flex items-stretch gap-1.5 overflow-x-auto py-1">
+    <div className="flex items-stretch gap-1.5 py-1">
       {actions.map((action, i) => {
         const Icon = action.icon;
         const groupBreak = i > 0 && action.group !== actions[i - 1]?.group;
@@ -76,12 +76,23 @@ export function QuickActions({
               size="md"
               onClick={action.onClick}
               disabled={action.disabled}
-              leftIcon={<Icon className="h-4 w-4" />}
-              className="relative flex-1"
+              leftIcon={<Icon className="h-4 w-4 shrink-0" />}
+              className="relative min-w-0 flex-1"
             >
-              {action.label}
+              {/*
+               * The ellipsis must target ONLY the label text box, not the
+               * whole flex row (icon + label + badge siblings) — text-overflow:
+               * ellipsis on a flex container with element children is
+               * unreliable (can hard-clip with no ellipsis, or shrink the
+               * icon/badge instead of the label). min-w-0 lets this span
+               * shrink below its content size inside the flex-1 button.
+               */}
+              <span className="min-w-0 truncate">{action.label}</span>
               {action.count > 0 && (
-                <span className="ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-pill bg-accent-tint px-1.5 text-xs font-semibold tabular-nums text-accent-strong">
+                // A count is neither selection, stock, nor money — off accent
+                // (Strategy A whole-branch review fix A): a neutral surface
+                // pill, same shape/size as before.
+                <span className="ml-1.5 inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-pill bg-surface-sunken px-1.5 text-xs font-semibold tabular-nums text-ink">
                   {action.count}
                 </span>
               )}

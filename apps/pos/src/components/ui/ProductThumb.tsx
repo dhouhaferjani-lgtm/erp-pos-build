@@ -57,8 +57,6 @@ const TINT_CLASS: Record<CategoryTint, string> = {
   neutral: 'bg-surface-sunken text-ink-muted',
 };
 
-const FULL_WIDTH_NEUTRAL_TINT_CLASS = 'bg-[#eef3f8] text-[#5e6670]';
-
 export interface ProductThumbProps {
   name: string;
   category?: string | null;
@@ -90,12 +88,13 @@ export function ProductThumb({
     );
   }
   const tint = tintForCategory(category);
-  const tintClass = fullWidth && tint === 'neutral' ? FULL_WIDTH_NEUTRAL_TINT_CLASS : TINT_CLASS[tint];
+  const tintClass = TINT_CLASS[tint];
   // Square thumbs use large initials; full-width POS tiles match the mock's
   // compact 20px initials centered in an 88px-high image area.
   const fontSize = fullWidth ? 20 : Math.round(size * 0.34);
   return (
     <div
+      data-testid="product-thumb-placeholder"
       style={dim}
       aria-hidden
       className={cn(
@@ -104,7 +103,14 @@ export function ProductThumb({
         className,
       )}
     >
-      <span style={{ fontSize }}>{initialsFromName(name)}</span>
+      {/* Category tints already carry a curated `--cat-*-fg` foreground (via
+          `tintClass` on the parent) tuned to pair with their own background —
+          leave those alone. Only the neutral tint's `text-ink-muted` reads
+          washed-out for initials, so bump that one case to the stronger
+          `text-ink` token; everything else inherits the parent's tint color. */}
+      <span className={tint === 'neutral' ? 'text-ink' : undefined} style={{ fontSize }}>
+        {initialsFromName(name)}
+      </span>
     </div>
   );
 }

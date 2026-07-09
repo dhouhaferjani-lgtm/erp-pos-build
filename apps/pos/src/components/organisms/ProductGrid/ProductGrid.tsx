@@ -3,14 +3,16 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { cn } from '@/lib/utils';
-import { Search, X, Package, LayoutGrid, Image, TrendingUp, SlidersHorizontal } from 'lucide-react';
+import { Search, X, Package, Image, List, Table, TrendingUp, SlidersHorizontal } from 'lucide-react';
 import { Button, Pill, SegmentedControl } from '@/components/ui';
 import type { SegmentedOption } from '@/components/ui';
 import { ProductCard } from '@/components/molecules/ProductCard';
+import { ProductListRow } from './ProductListRow';
+import { ProductTable } from './ProductTable';
 import type { POSProduct } from '@/types/product';
 import type { GridLocationStockMap } from '@/lib/stock/gridStock';
 import { useAuthStore } from '@/stores/authStore';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, type DisplayMode } from '@/stores/settingsStore';
 import { useProductStore, hasModule } from '@/stores/productStore';
 import { useMostSoldCounts } from '@/hooks/useMostSoldCounts';
 import { bccomp } from '@/lib/decimal';
@@ -22,8 +24,32 @@ import {
 import { FiltresDrawer, EMPTY_FILTRES_FILTERS } from '@/components/organisms/FiltresDrawer';
 import type { FiltresFilters } from '@/components/organisms/FiltresDrawer';
 
-type DisplayMode = 'grid' | 'visual';
 type SortMode = 'default' | 'mostSold';
+
+/**
+ * View-mode → ProductCard *card-layout* map. Only the `vitrine` path renders
+ * `ProductCard`; `liste` uses `ProductListRow` and `tableau` uses
+ * `ProductTable`, so the card-layout is only ever `'visual'` (vitrine) — the
+ * `'grid'` fallback is never actually reached by a rendered card, but keeps
+ * `getColumns` / `getCardMinH` (which speak the `'grid'|'visual'` card-layout
+ * vocabulary) well-typed.
+ */
+const cardLayoutFor = (mode: DisplayMode): 'grid' | 'visual' =>
+  mode === 'vitrine' ? 'visual' : 'grid';
+
+/**
+ * Column count per view-mode. `vitrine` is the only multi-column card grid;
+ * `liste` is a single measured column; `tableau` bypasses this virtualizer
+ * entirely (ProductTable self-virtualizes) so its column count is inert.
+ */
+const columnsFor = (
+  mode: DisplayMode,
+  density: 'comfortable' | 'dense',
+  width: number,
+): number => (mode === 'vitrine' ? getColumns('visual', density, width) : 1);
+
+/** Initial virtual-row height estimate for the touch `liste` row. */
+const LIST_ROW_ESTIMATE = 52;
 
 /**
  * Stable default for the `locationStock` prop — an inline `{}` default would
@@ -143,7 +169,7 @@ export function ProductGrid({
   // on window resize so the virtualizer row math stays correct.
   // ---------------------------------------------------------------------------
   const [columns, setColumns] = useState<number>(() =>
-    getColumns(displayMode, density, typeof window !== 'undefined' ? window.innerWidth : 1280),
+    columnsFor(displayMode, density, typeof window !== 'undefined' ? window.innerWidth : 1280),
   );
 
   useEffect(() => {
@@ -151,7 +177,7 @@ export function ProductGrid({
       const measuredWidth = gridRootRef.current?.getBoundingClientRect().width ?? 0;
       const fallbackWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
       const width = measuredWidth > 0 ? measuredWidth : fallbackWidth;
-      setColumns(getColumns(displayMode, density, width));
+      setColumns(columnsFor(displayMode, density, width));
     };
     update();
     window.addEventListener('resize', update, { passive: true });
@@ -174,14 +200,19 @@ export function ProductGrid({
   const displayModeOptions = useMemo<SegmentedOption<DisplayMode>[]>(
     () => [
       {
-        value: 'grid',
-        icon: <LayoutGrid className="h-5 w-5" />,
-        ariaLabel: t('display.gridMode'),
+        value: 'vitrine',
+        icon: <Image className="h-5 w-5" />,
+        ariaLabel: t('display.vitrine'),
       },
       {
-        value: 'visual',
-        icon: <Image className="h-5 w-5" />,
-        ariaLabel: t('display.visualMode'),
+        value: 'liste',
+        icon: <List className="h-5 w-5" />,
+        ariaLabel: t('display.liste'),
+      },
+      {
+        value: 'tableau',
+        icon: <Table className="h-5 w-5" />,
+        ariaLabel: t('display.tableau'),
       },
     ],
     [t],
@@ -322,7 +353,8 @@ export function ProductGrid({
     (filters?.categories.length ?? 0) +
     (showParapharmacyFilters ? (filters?.skinTypes.length ?? 0) + (filters?.routines.length ?? 0) : 0);
 
-  const rowHeight = getCardMinH(displayMode, density);
+  const rowHeight =
+    displayMode === 'liste' ? LIST_ROW_ESTIMATE : getCardMinH(cardLayoutFor(displayMode), density);
   const rowCount = Math.ceil(filteredProducts.length / columns);
 
   const virtualizer = useVirtualizer({
@@ -642,6 +674,20 @@ export function ProductGrid({
             </p>
           </div>
         </div>
+      ) : displayMode === 'tableau' ? (
+        // Tableau — desktop-dense ARIA grid. ProductTable OWNS its own
+        // virtualizer + scroll container, so it bypasses the card virtualizer
+        // above entirely (the shared search/facet filters still apply via
+        // `filteredProducts`).
+        <div className="min-h-0 flex-1">
+          <ProductTable
+            products={filteredProducts}
+            onAddToCart={onAddToCart}
+            onViewDetails={onViewDetails}
+            locationStock={locationStock}
+            hardBlockOutOfStock={hardBlockOutOfStock}
+          />
+        </div>
       ) : (
         <div
           ref={scrollContainerRef}
@@ -653,6 +699,32 @@ export function ProductGrid({
             style={{ height: `${virtualizer.getTotalSize()}px` }}
           >
             {virtualizer.getVirtualItems().map((virtualRow) => {
+              // Liste — one measured ProductListRow per virtual row (columns=1).
+              // Rows are flush (each row's own border-b is the separator), so no
+              // paddingBottom gutter; height is still DYNAMICALLY MEASURED.
+              if (displayMode === 'liste') {
+                const product = filteredProducts[virtualRow.index];
+                if (!product) return null;
+                return (
+                  <div
+                    key={virtualRow.key}
+                    ref={virtualizer.measureElement}
+                    data-index={virtualRow.index}
+                    className="absolute left-0 top-0 w-full"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  >
+                    <ProductListRow
+                      product={product}
+                      onAddToCart={onAddToCart}
+                      onViewDetails={onViewDetails}
+                      locationStock={locationStock[product.id]}
+                      hardBlockOutOfStock={hardBlockOutOfStock}
+                    />
+                  </div>
+                );
+              }
+
+              // Vitrine — density-aware N-column image-card grid.
               const startIdx = virtualRow.index * columns;
               const rowProducts = filteredProducts.slice(startIdx, startIdx + columns);
 
@@ -683,7 +755,7 @@ export function ProductGrid({
                       onCustomize={onCustomize}
                       onViewDetails={onViewDetails}
                       isInCart={cartProductIds.includes(product.id)}
-                      displayMode={displayMode}
+                      displayMode={cardLayoutFor(displayMode)}
                       locationStock={locationStock[product.id]}
                       hardBlockOutOfStock={hardBlockOutOfStock}
                     />

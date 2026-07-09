@@ -20,6 +20,7 @@ import type { GenerateXReportOpts, GenerateZReportOpts, XReportResponse } from '
 import { getErrorMessage } from '@/lib/api';
 import { Avatar, Badge, Divider, IconButton, StatusPill } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { tokens } from '@/lib/designTokens';
 import { CashDrawerModal } from '@/components/organisms/CashDrawerModal';
 import type { EndOfDayConfirmResult, CompanyFraudSettings, AuthorizedManager } from '@/components/pos/EndOfDayPreviewModal';
 import type { CashCountCommitPayload } from '@/components/pos/EndOfDayPreviewModal';
@@ -540,12 +541,20 @@ export function Header() {
 
   return (
     <>
-      <header className="flex h-[62px] items-center justify-between gap-3 border-b border-subtle bg-surface-raised px-4">
+      <header
+        className={cn(
+          'flex h-[62px] items-center justify-between gap-3 border-b border-subtle px-4',
+          tokens.section.header,
+        )}
+      >
         {/* LEFT zone — identity (largest). Wordmark (display face) + terminal
          * badge + at-a-glance online dot. The dot is decorative (aria-hidden);
-         * the accessible connectivity/sync state lives in the B3 StatusPill. */}
+         * the accessible connectivity/sync state lives in the B3 StatusPill.
+         * Wordmark uses the inverse fg, not `text-brand` (accent): every
+         * accent swatch measures well under the 7:1 AAA target against the
+         * fixed navy chrome (max ~4.6:1 for orange) — see task-4-report.md. */}
         <div className="flex min-w-0 items-center gap-2.5">
-          <h1 className="truncate font-display text-xl font-extrabold tracking-tight text-brand">
+          <h1 className="truncate font-display text-xl font-extrabold tracking-tight text-pay-navy-fg">
             {t('auth.title')}
           </h1>
           {terminal && <Badge tone="neutral">{terminal.name}</Badge>}
@@ -591,17 +600,24 @@ export function Header() {
               <Badge tone="success">{t('shift.number', { number: shift.shift_number })}</Badge>
             </button>
           ) : (
-            <span className="text-sm text-ink-faint">{t('header.noShift')}</span>
+            <span className={cn('text-sm', tokens.inverseOnNavy.muted)}>{t('header.noShift')}</span>
           )}
 
           {/* Operator cluster — divider + avatar + name + switch. The leading
            * divider is part of this cluster so it never orphans when there is
-           * no operator. */}
+           * no operator. Avatar (tone="accent") owns its own tinted-disc
+           * surface, so it's left as-is; the divider and name are bare
+           * on navy and need the inverse treatment. */}
           {operator && (
             <>
-              <Divider orientation="vertical" />
+              <Divider orientation="vertical" className={tokens.inverseOnNavy.divider} />
               <Avatar name={operator.name} size={36} tone="accent" />
-              <span className="mx-1 hidden max-w-[10rem] truncate text-sm font-medium text-ink-muted sm:inline">
+              <span
+                className={cn(
+                  'mx-1 hidden max-w-[10rem] truncate text-sm font-medium sm:inline',
+                  tokens.inverseOnNavy.muted,
+                )}
+              >
                 {operator.name}
               </span>
             </>
@@ -617,7 +633,7 @@ export function Header() {
             icon={<ArrowLeftRight className="h-4 w-4" />}
           />
 
-          <Divider orientation="vertical" />
+          <Divider orientation="vertical" className={tokens.inverseOnNavy.divider} />
 
           {/* Lock — icon-only */}
           <IconButton

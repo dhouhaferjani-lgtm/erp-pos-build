@@ -54,4 +54,49 @@ describe('QuickActions', () => {
     fireEvent.click(screen.getByText('quickActions.recall'));
     expect(onRecall).toHaveBeenCalledOnce();
   });
+
+  it('lets each action button shrink, and ellipsizes only the label span, instead of clipping (Task 8 review fix: truncate must target the label, not the flex row)', () => {
+    renderQA();
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(3);
+    buttons.forEach((button) => {
+      // min-w-0 on the flex-1 button lets it shrink below its content size
+      // within the row.
+      expect(button.className).toContain('min-w-0');
+
+      // The ellipsis must live on a dedicated label span, NOT on the button
+      // itself: text-overflow:ellipsis on a flex container with element
+      // children (icon, label, count badge) is unreliable — it can hard-clip
+      // with no ellipsis, or shrink the icon/badge instead of the label.
+      const label = button.querySelector('span.truncate');
+      expect(label).not.toBeNull();
+      expect(label).toHaveClass('min-w-0');
+      expect(label).toHaveClass('truncate');
+
+      // The icon must never compete for space with the label — it must be
+      // shrink-0 so only the label gives up room.
+      const icon = button.querySelector('svg');
+      expect(icon).not.toBeNull();
+      expect(icon).toHaveClass('shrink-0');
+    });
+
+    // The count badge (Recall, when recallCount > 0) must also be shrink-0.
+    const recallBtn = screen.getByText('quickActions.recall').closest('button');
+    const recallLabel = recallBtn?.querySelector('span.truncate');
+    expect(recallLabel?.textContent).toBe('quickActions.recall');
+  });
+
+  it('makes the count badge shrink-0 so it never competes with the label for space', () => {
+    renderQA({ recallCount: 3 });
+    const recallBtn = screen.getByText('quickActions.recall').closest('button') as HTMLElement;
+    const badge = recallBtn.querySelector('span.tabular-nums');
+    expect(badge).not.toBeNull();
+    expect(badge).toHaveClass('shrink-0');
+  });
+
+  it('does not rely on the row hard-clipping labels via overflow-x-auto', () => {
+    const { container } = renderQA();
+    const row = container.firstChild as HTMLElement;
+    expect(row.className).not.toContain('overflow-x-auto');
+  });
 });
