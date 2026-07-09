@@ -224,11 +224,11 @@ class WithholdingCertificate extends Model
     }
 
     /**
-     * Get the withholding rate as a percentage (e.g., 0.05 becomes 5).
+     * Get the withholding rate as a percentage (e.g., 0.05 becomes 5.00).
      */
-    public function getRateAsPercentage(): float
+    public function getRateAsPercentage(): string
     {
-        return (float) bcmul($this->withholding_rate, '100', 2);
+        return bcmul($this->withholding_rate, '100', 2);
     }
 
     /**

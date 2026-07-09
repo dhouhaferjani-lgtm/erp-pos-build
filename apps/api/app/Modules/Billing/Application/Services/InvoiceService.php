@@ -11,6 +11,7 @@ use App\Modules\Billing\Domain\InvoiceItem;
 use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -43,11 +44,23 @@ final class InvoiceService
             // Generate invoice number
             $number = $this->generateInvoiceNumber();
 
-            // Calculate amounts
-            $price = (float) ($subscription->price ?? $plan->price_monthly);
+            // Calculate amounts with bcmath; billing invoices use the
+            // subscription currency, defaulting to EUR.
+            $currency = $subscription->currency ?? 'EUR';
+            $scale = $this->scaleResolver->getScale($currency);
+            $interScale = $scale + 1;
+            /** @var numeric-string $price */
+            $price = (string) ($subscription->price ?? $plan->price_monthly);
+            /** @var numeric-string $taxRate */
             $taxRate = $this->getTaxRate($tenant);
-            $taxAmount = $price * ($taxRate / 100);
-            $total = $price + $taxAmount;
+            /** @var numeric-string $taxRateFraction */
+            $taxRateFraction = bcdiv($taxRate, '100', $interScale + 2);
+            /** @var numeric-string $subtotal */
+            $subtotal = CurrencyScale::bcformat($price, $scale);
+            /** @var numeric-string $taxAmount */
+            $taxAmount = CurrencyScale::bcformat(bcmul($subtotal, $taxRateFraction, $interScale), $scale);
+            /** @var numeric-string $total */
+            $total = CurrencyScale::bcformat(bcadd($subtotal, $taxAmount, $scale), $scale);
 
             // Create invoice
             $invoice = Invoice::create([
@@ -55,13 +68,13 @@ final class InvoiceService
                 'subscription_id' => $subscription->id,
                 'number' => $number,
                 'status' => InvoiceStatus::Pending,
-                'subtotal' => $price,
+                'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
-                'discount_amount' => 0,
+                'discount_amount' => '0',
                 'total' => $total,
-                'amount_paid' => 0,
+                'amount_paid' => '0',
                 'amount_due' => $total,
-                'currency' => $subscription->currency ?? 'EUR',
+                'currency' => $currency,
                 'tax_rate' => $taxRate,
                 'billing_address' => $this->getBillingAddress($tenant),
                 'billing_email' => $tenant->email ?? '',
@@ -78,13 +91,13 @@ final class InvoiceService
                 'invoice_id' => $invoice->id,
                 'description' => "{$plan->name} - {$subscription->billing_cycle}",
                 'long_description' => $plan->description,
-                'quantity' => 1,
-                'unit_price' => $price,
-                'amount' => $price,
+                'quantity' => '1',
+                'unit_price' => $subtotal,
+                'amount' => $subtotal,
                 'tax_rate' => $taxRate,
                 'tax_amount' => $taxAmount,
-                'discount_percent' => 0,
-                'discount_amount' => 0,
+                'discount_percent' => '0',
+                'discount_amount' => '0',
                 'period_start' => $subscription->current_period_start,
                 'period_end' => $subscription->current_period_end,
                 'reference_type' => 'plan',
@@ -354,7 +367,7 @@ final class InvoiceService
      * $tenant->run(). An unreachable tenant DB degrades to the config
      * default rather than blocking platform invoicing.
      */
-    private function getTaxRate(Tenant $tenant): float
+    private function getTaxRate(Tenant $tenant): string
     {
         $countryCode = $tenant->country_code ?? config('billing.default_country', 'FR');
 
@@ -375,10 +388,10 @@ final class InvoiceService
         }
 
         if ($defaultRate !== null) {
-            return (float) $defaultRate;
+            return CurrencyScale::bcformat((string) $defaultRate, 2);
         }
 
-        return (float) config('billing.default_tax_rate', 20.0);
+        return CurrencyScale::bcformat((string) config('billing.default_tax_rate', 20.0), 2);
     }
 
     /**

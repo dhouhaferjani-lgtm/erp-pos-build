@@ -105,7 +105,9 @@ final class DiscountAdminBypassParityTest extends TestCase
         $response->assertOk();
         $this->assertTrue($response->json('data.canDiscount'));
         $this->assertTrue($response->json('data.userCanDiscount'));
-        $this->assertEquals(100.0, $response->json('data.userMaxDiscountPercent'));
+        $this->assertSame('100.00', $response->json('data.userMaxDiscountPercent'));
+        $this->assertSame('30.00', $response->json('data.maxDiscountPercent'));
+        $this->assertSame('30.00', $response->json('data.effectiveLimit'));
     }
 
     public function test_validator_grants_admin_bypass_matching_read_endpoint(): void
@@ -154,6 +156,9 @@ final class DiscountAdminBypassParityTest extends TestCase
         ])->getJson('/api/v1/pos/discount-permissions');
         $response->assertOk();
         $this->assertFalse($response->json('data.userCanDiscount'));
+        $this->assertSame('10.00', $response->json('data.userMaxDiscountPercent'));
+        $this->assertSame('10.00', $response->json('data.maxDiscountPercent'));
+        $this->assertSame('10.00', $response->json('data.effectiveLimit'));
 
         // Write path: enforced with the same answer.
         $service = app(DiscountCalculationService::class);

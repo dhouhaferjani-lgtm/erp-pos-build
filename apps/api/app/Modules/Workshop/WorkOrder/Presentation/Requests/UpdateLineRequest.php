@@ -23,7 +23,7 @@ final class UpdateLineRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'quantity' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,4})?$/'],
             'unit_price' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'labor_hours_actual' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,2})?$/'],
             'assigned_technician_profile_id' => ['nullable', 'uuid'],
@@ -39,7 +39,7 @@ final class UpdateLineRequest extends FormRequest
         return [
             'quantity.regex' => 'Quantity must have at most 4 decimal places.',
             'unit_price.regex' => 'Unit price must have at most 3 decimal places.',
-            'tax_rate.regex' => 'Tax rate must have at most 3 decimal places.',
+            'tax_rate.regex' => 'Tax rate must have at most 2 decimal places.',
             'discount_percent.regex' => 'Discount percent must have at most 2 decimal places.',
             'labor_hours_actual.regex' => 'Labor hours must have at most 2 decimal places.',
         ];

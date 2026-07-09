@@ -108,7 +108,7 @@ final class DiscountController extends Controller
         // never disagree with the DiscountCalculationService write path.
         $canUserDiscount = $this->permissionResolver->canDiscount($discountUser);
         $effectiveMaxPercent = $this->permissionResolver->effectiveMaxPercent($discountUser);
-        $userMaxDiscountPercent = $effectiveMaxPercent !== null ? (float) $effectiveMaxPercent : null;
+        $userMaxDiscountPercent = $effectiveMaxPercent;
 
         // Calculate effective limit (most restrictive)
         $effectiveLimit = $this->calculateEffectiveLimit($terminal, $effectiveMaxPercent);
@@ -129,7 +129,7 @@ final class DiscountController extends Controller
                 'canApplyLineDiscounts' => $canUserDiscount && $terminal->allow_line_discounts,
                 'canApplyTransactionDiscounts' => $canUserDiscount && $terminal->allow_transaction_discounts,
                 'maxDiscountPercent' => $effectiveLimit,
-                'requiresReason' => $effectiveLimit > 10.00,
+                'requiresReason' => bccomp($effectiveLimit, '10.00', 2) === 1,
                 'effectiveLimit' => $effectiveLimit,
             ],
         ]);
@@ -217,16 +217,29 @@ final class DiscountController extends Controller
      * @param  numeric-string|null  $userMaxPercent  The user's resolved personal
      *                                               max (null = no individual
      *                                               limit → terminal limit applies)
+     * @return numeric-string
      */
-    private function calculateEffectiveLimit(Terminal $terminal, ?string $userMaxPercent): float
+    private function calculateEffectiveLimit(Terminal $terminal, ?string $userMaxPercent): string
     {
-        // Terminal limit — decimal:2 cast returns string; convert for numeric comparison
-        $terminalLimit = (float) $terminal->max_discount_percent;
+        // Terminal limit — decimal:2 cast returns a string. Keep it string-safe.
+        $terminalLimit = $this->numericPercentOrZero((string) $terminal->max_discount_percent);
 
         // User limit (null means no individual limit, use terminal limit)
-        $userLimit = $userMaxPercent !== null ? (float) $userMaxPercent : $terminalLimit;
+        $userLimit = $userMaxPercent === null
+            ? $terminalLimit
+            : $this->numericPercentOrZero($userMaxPercent);
 
         // Return the most restrictive (minimum of the two)
-        return min($terminalLimit, $userLimit);
+        return bccomp($terminalLimit, $userLimit, 2) <= 0
+            ? $terminalLimit
+            : $userLimit;
+    }
+
+    /**
+     * @return numeric-string
+     */
+    private function numericPercentOrZero(string $value): string
+    {
+        return is_numeric($value) ? $value : '0.00';
     }
 }

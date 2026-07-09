@@ -66,7 +66,7 @@ final class ServiceBundleData extends Data
                 : null,
             currency: $bundle->currency,
             tax_rate: $bundle->tax_rate !== null
-                ? CurrencyScale::bcformat($bundle->tax_rate, 3)
+                ? CurrencyScale::bcformat($bundle->tax_rate, 2)
                 : null,
             estimated_labor_hours: $bundle->estimated_labor_hours !== null
                 ? CurrencyScale::bcformat($bundle->estimated_labor_hours, 2)

@@ -45,7 +45,7 @@ class ServiceFactory extends Factory
             'currency' => 'TND',
             'default_duration_minutes' => $this->faker->optional()->numberBetween(15, 480),
             'hourly_rate' => null,
-            'tax_rate' => CurrencyScale::bcformat('19.00', $scale),
+            'tax_rate' => CurrencyScale::bcformat('19.00', 2),
             'is_active' => true,
         ];
     }
@@ -71,7 +71,7 @@ class ServiceFactory extends Factory
                 'hourly_rate' => $hourlyRate === null
                     ? null
                     : CurrencyScale::bcformat($hourlyRate, $scale),
-                'tax_rate' => CurrencyScale::bcformat($taxRate, $scale),
+                'tax_rate' => CurrencyScale::bcformat($taxRate, 2),
             ];
         });
     }

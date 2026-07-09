@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Pricing;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Product\Application\Services\MarginResolver;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Product;
 use Tests\TestCase;
@@ -64,7 +65,7 @@ final class MarginCheckPrecisionTest extends TestCase
      */
     public function test_exact_minimum_margin_threshold_does_not_flip_to_orange(): void
     {
-        $service = new MarginService($this->mockCurrencyScale(3));
+        $service = new MarginService($this->mockCurrencyScale(3), new MarginResolver);
         $product = $this->makeProduct(costPrice: '100.000', minimumMargin: '15.00', targetMargin: '30.00');
 
         $level = $service->getMarginLevel($product, '115.000');
@@ -83,11 +84,11 @@ final class MarginCheckPrecisionTest extends TestCase
      */
     public function test_calculate_margin_is_exact_at_threshold(): void
     {
-        $service = new MarginService($this->mockCurrencyScale(3));
+        $service = new MarginService($this->mockCurrencyScale(3), new MarginResolver);
 
         $margin = $service->calculateMargin(cost: '100.000', sellPrice: '115.000');
 
-        $this->assertSame(15.0, $margin);
+        $this->assertSame('15.00', $margin);
     }
 
     /**
@@ -96,7 +97,7 @@ final class MarginCheckPrecisionTest extends TestCase
      */
     public function test_just_below_minimum_margin_is_orange(): void
     {
-        $service = new MarginService($this->mockCurrencyScale(3));
+        $service = new MarginService($this->mockCurrencyScale(3), new MarginResolver);
         $product = $this->makeProduct(costPrice: '100.000', minimumMargin: '15.00', targetMargin: '30.00');
 
         $level = $service->getMarginLevel($product, '114.000'); // 14.00% margin
@@ -110,12 +111,12 @@ final class MarginCheckPrecisionTest extends TestCase
      */
     public function test_suggested_price_is_exact(): void
     {
-        $service = new MarginService($this->mockCurrencyScale(3));
+        $service = new MarginService($this->mockCurrencyScale(3), new MarginResolver);
         $product = $this->makeProduct(costPrice: '100.000', targetMargin: '30.00');
 
         $suggested = $service->getSuggestedPrice($product);
 
-        $this->assertSame('130.000', number_format($suggested, 3, '.', ''));
+        $this->assertSame('130.000', $suggested);
     }
 
     /**
@@ -125,12 +126,12 @@ final class MarginCheckPrecisionTest extends TestCase
      */
     public function test_repeating_decimal_cost_rounds_once_at_boundary(): void
     {
-        $service = new MarginService($this->mockCurrencyScale(3));
+        $service = new MarginService($this->mockCurrencyScale(3), new MarginResolver);
         $product = $this->makeProduct(costPrice: '33.333', targetMargin: '30.00');
 
         $suggested = $service->getSuggestedPrice($product);
 
         // 33.333 * 1.30 = 43.3329 → round to scale 3 = 43.333
-        $this->assertSame('43.333', number_format($suggested, 3, '.', ''));
+        $this->assertSame('43.333', $suggested);
     }
 }

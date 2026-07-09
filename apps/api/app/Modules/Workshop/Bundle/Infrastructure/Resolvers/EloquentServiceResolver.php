@@ -36,7 +36,7 @@ final class EloquentServiceResolver implements ServiceResolverInterface
                 : null,
             currency: $service->currency,
             tax_rate: $service->tax_rate !== null
-                ? CurrencyScale::bcformat($service->tax_rate, 3)
+                ? CurrencyScale::bcformat($service->tax_rate, 2)
                 : null,
             default_duration_minutes: $service->default_duration_minutes,
         );

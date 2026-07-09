@@ -23,14 +23,14 @@ use Tests\TestCase;
  * VAT bundle and incorrectly throw MixedVatInFixedBundleException even
  * when the component rate matched the bundle rate exactly.
  *
- * Fix: both resolvers now emit tax_rate at scale 3 to match the bundle
- * column (see ServiceBundle::casts 'tax_rate' => 'decimal:3').
+ * Current contract: all VAT percent-value rates are fixed 2dp; resolvers and
+ * bundle casts must emit `19.00`, not `19.000`.
  */
 final class TaxRateScaleConsistencyTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_product_resolver_emits_tax_rate_at_scale_3(): void
+    public function test_product_resolver_emits_tax_rate_at_scale_2(): void
     {
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create(['currency' => 'TND']);
@@ -39,17 +39,17 @@ final class TaxRateScaleConsistencyTest extends TestCase
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'sale_price' => '10.000',
-            'tax_rate' => '19.000',
+            'tax_rate' => '19.00',
         ]);
 
         $resolver = $this->app->make(EloquentProductResolver::class);
         $ref = $resolver->findForBundleComponent($product->id);
 
         $this->assertNotNull($ref);
-        $this->assertSame('19.000', $ref->tax_rate);
+        $this->assertSame('19.00', $ref->tax_rate);
     }
 
-    public function test_service_resolver_emits_tax_rate_at_scale_3(): void
+    public function test_service_resolver_emits_tax_rate_at_scale_2(): void
     {
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create(['currency' => 'TND']);
@@ -59,13 +59,13 @@ final class TaxRateScaleConsistencyTest extends TestCase
             'company_id' => $company->id,
             'currency' => 'TND',
             'base_price' => '25.000',
-            'tax_rate' => '7.000',
+            'tax_rate' => '7.00',
         ]);
 
         $resolver = $this->app->make(EloquentServiceResolver::class);
         $ref = $resolver->findForBundleComponent($service->id);
 
         $this->assertNotNull($ref);
-        $this->assertSame('7.000', $ref->tax_rate);
+        $this->assertSame('7.00', $ref->tax_rate);
     }
 }

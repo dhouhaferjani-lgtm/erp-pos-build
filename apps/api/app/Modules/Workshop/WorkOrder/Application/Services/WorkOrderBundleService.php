@@ -91,7 +91,7 @@ final readonly class WorkOrderBundleService
                     'quantity' => CurrencyScale::bcformat($expansionLine->quantity, 4),
                     'unit' => $expansionLine->unit,
                     'unit_price' => CurrencyScale::bcformat($expansionLine->unit_price, $scale),
-                    'tax_rate' => '0.000',
+                    'tax_rate' => '0.00',
                     'discount_percent' => '0.00',
                     'line_total_excl_tax' => CurrencyScale::bcformat($expansionLine->line_total, $scale),
                     'line_total_tax' => CurrencyScale::bcformat('0', $scale),

@@ -18,7 +18,7 @@ class MarginServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new MarginService($this->mockCurrencyScale(2), new MarginResolver());
+        $this->service = new MarginService($this->mockCurrencyScale(2), new MarginResolver);
     }
 
     public function test_calculate_margin_with_valid_inputs(): void
@@ -26,7 +26,7 @@ class MarginServiceTest extends TestCase
         $result = $this->service->calculateMargin(cost: 100.00, sellPrice: 130.00);
 
         // (130-100)/100 * 100 = 30%
-        $this->assertEquals(30.00, $result);
+        $this->assertSame('30.00', $result);
     }
 
     public function test_calculate_margin_with_50_percent_margin(): void
@@ -34,7 +34,7 @@ class MarginServiceTest extends TestCase
         $result = $this->service->calculateMargin(cost: 50.00, sellPrice: 75.00);
 
         // (75-50)/50 * 100 = 50%
-        $this->assertEquals(50.00, $result);
+        $this->assertSame('50.00', $result);
     }
 
     public function test_calculate_margin_with_negative_margin(): void
@@ -42,7 +42,7 @@ class MarginServiceTest extends TestCase
         $result = $this->service->calculateMargin(cost: 100.00, sellPrice: 90.00);
 
         // (90-100)/100 * 100 = -10%
-        $this->assertEquals(-10.00, $result);
+        $this->assertSame('-10.00', $result);
     }
 
     public function test_calculate_margin_with_zero_cost(): void

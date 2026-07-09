@@ -88,7 +88,7 @@ class ServiceBundle extends Model
         return [
             'pricing_mode' => BundlePricingMode::class,
             'base_price' => 'decimal:3',
-            'tax_rate' => 'decimal:3',
+            'tax_rate' => 'decimal:2',
             'estimated_labor_hours' => 'decimal:2',
             'service_interval_km' => 'integer',
             'service_interval_months' => 'integer',

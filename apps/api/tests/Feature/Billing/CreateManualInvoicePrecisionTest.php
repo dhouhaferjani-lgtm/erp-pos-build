@@ -132,6 +132,42 @@ final class CreateManualInvoicePrecisionTest extends TestCase
         }
     }
 
+    public function test_subscription_invoice_formats_amounts_to_currency_scale_before_persisting(): void
+    {
+        $service = app(InvoiceService::class);
+
+        $plan = Plan::create([
+            'code' => 'SUB-PRECISION-'.strtoupper(substr(Str::uuid()->toString(), 0, 8)),
+            'name' => 'Subscription Precision Plan',
+            'limits' => [],
+            'price_monthly' => '10.999',
+            'currency' => 'EUR',
+            'trial_days' => 0,
+            'is_active' => true,
+            'is_public' => false,
+            'display_order' => 100,
+        ]);
+        $subscription = TenantSubscription::create([
+            'tenant_id' => $this->tenant->id,
+            'plan_id' => $plan->id,
+            'status' => SubscriptionStatus::Active,
+            'billing_cycle' => 'monthly',
+            'price' => '10.999',
+            'currency' => 'EUR',
+            'metadata' => [],
+        ]);
+
+        $invoice = $service->createSubscriptionInvoice($subscription);
+        $invoice->refresh();
+
+        // Invoice columns are decimal:3, so the DB exposes the service's EUR
+        // scale-2 write as 10.990. The old raw-price write would be 10.999.
+        $this->assertSame('10.990', $invoice->subtotal);
+        $this->assertSame('10.990', $invoice->total);
+        $this->assertSame('10.990', $invoice->amount_due);
+        $this->assertSame('10.990', $invoice->items()->sole()->amount);
+    }
+
     /**
      * Invoice::recordPayment must accept a string amount (P0-3).
      *

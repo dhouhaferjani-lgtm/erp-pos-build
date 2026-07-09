@@ -38,7 +38,7 @@ class ServiceBundleFactory extends Factory
             'pricing_mode' => BundlePricingMode::Standard,
             'base_price' => null,
             'currency' => 'TND',
-            'tax_rate' => '19.000',
+            'tax_rate' => '19.00',
             'estimated_labor_hours' => null,
             'service_interval_km' => null,
             'service_interval_months' => null,

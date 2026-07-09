@@ -67,7 +67,7 @@ final readonly class WorkOrderLineService
                 'quantity' => CurrencyScale::bcformat($command->quantity, 4),
                 'unit' => $command->unit,
                 'unit_price' => CurrencyScale::bcformat($command->unit_price, $scale),
-                'tax_rate' => CurrencyScale::bcformat($command->tax_rate, 3),
+                'tax_rate' => CurrencyScale::bcformat($command->tax_rate, 2),
                 'discount_percent' => CurrencyScale::bcformat($command->discount_percent, 2),
                 'labor_hours_estimated' => $command->labor_hours_estimated !== null
                     ? CurrencyScale::bcformat($command->labor_hours_estimated, 2)
@@ -124,7 +124,7 @@ final readonly class WorkOrderLineService
                 $line->unit_price = CurrencyScale::bcformat($command->unit_price, $scale);
             }
             if ($command->tax_rate !== null) {
-                $line->tax_rate = CurrencyScale::bcformat($command->tax_rate, 3);
+                $line->tax_rate = CurrencyScale::bcformat($command->tax_rate, 2);
             }
             if ($command->discount_percent !== null) {
                 $line->discount_percent = CurrencyScale::bcformat($command->discount_percent, 2);
@@ -257,7 +257,7 @@ final readonly class WorkOrderLineService
         /** @var numeric-string $discount */
         $discount = CurrencyScale::bcformat($line->discount_percent, 2);
         /** @var numeric-string $taxRate */
-        $taxRate = CurrencyScale::bcformat($line->tax_rate, 3);
+        $taxRate = CurrencyScale::bcformat($line->tax_rate, 2);
 
         $gross = CurrencyScale::bcformat(bcmul($qty, $unit, $scale + 3), $scale);
         /** @var numeric-string $grossNum */

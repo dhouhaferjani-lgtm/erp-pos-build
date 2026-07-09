@@ -66,24 +66,24 @@ final class IngressPrecisionTest extends TestCase
         $this->assertEmpty($errors, 'Expected 3-decimal unit_price to pass');
     }
 
-    public function test_add_line_rejects_4_decimal_tax_rate(): void
+    public function test_add_line_rejects_3_decimal_tax_rate(): void
     {
         $rules = (new AddLineRequest)->rules();
-        $data = $this->validAddLineData(['tax_rate' => '19.1234']);
+        $data = $this->validAddLineData(['tax_rate' => '19.125']);
         $v = Validator::make($data, $rules);
 
         $this->assertTrue($v->fails());
         $this->assertArrayHasKey('tax_rate', $v->errors()->toArray());
     }
 
-    public function test_add_line_accepts_3_decimal_tax_rate(): void
+    public function test_add_line_accepts_2_decimal_tax_rate(): void
     {
         $rules = (new AddLineRequest)->rules();
-        $data = $this->validAddLineData(['tax_rate' => '19.125']);
+        $data = $this->validAddLineData(['tax_rate' => '19.12']);
         $v = Validator::make($data, $rules);
 
         $errors = $v->errors()->get('tax_rate');
-        $this->assertEmpty($errors, 'Expected 3-decimal tax_rate to pass');
+        $this->assertEmpty($errors, 'Expected 2-decimal tax_rate to pass');
     }
 
     public function test_add_line_rejects_3_decimal_discount_percent(): void
@@ -164,6 +164,24 @@ final class IngressPrecisionTest extends TestCase
         $this->assertArrayHasKey('discount_percent', $v->errors()->toArray());
     }
 
+    public function test_update_line_rejects_3_decimal_tax_rate(): void
+    {
+        $rules = (new UpdateLineRequest)->rules();
+        $v = Validator::make(['tax_rate' => '19.125'], $rules);
+
+        $this->assertTrue($v->fails());
+        $this->assertArrayHasKey('tax_rate', $v->errors()->toArray());
+    }
+
+    public function test_update_line_accepts_2_decimal_tax_rate(): void
+    {
+        $rules = (new UpdateLineRequest)->rules();
+        $v = Validator::make(['tax_rate' => '19.12'], $rules);
+
+        $errors = $v->errors()->get('tax_rate');
+        $this->assertEmpty($errors, 'Expected 2-decimal tax_rate to pass');
+    }
+
     public function test_update_line_rejects_3_decimal_labor_hours_actual(): void
     {
         $rules = (new UpdateLineRequest)->rules();
@@ -230,14 +248,24 @@ final class IngressPrecisionTest extends TestCase
         $this->assertEmpty($errors, 'Expected 3-decimal base_price to pass');
     }
 
-    public function test_store_bundle_rejects_4_decimal_tax_rate(): void
+    public function test_store_bundle_rejects_3_decimal_tax_rate(): void
     {
         $rules = (new StoreBundleRequest)->rules();
-        $data = $this->validStoreBundleData(['tax_rate' => '19.1234']);
+        $data = $this->validStoreBundleData(['tax_rate' => '19.125']);
         $v = Validator::make($data, $rules);
 
         $this->assertTrue($v->fails());
         $this->assertArrayHasKey('tax_rate', $v->errors()->toArray());
+    }
+
+    public function test_store_bundle_accepts_2_decimal_tax_rate(): void
+    {
+        $rules = (new StoreBundleRequest)->rules();
+        $data = $this->validStoreBundleData(['tax_rate' => '19.12']);
+        $v = Validator::make($data, $rules);
+
+        $errors = $v->errors()->get('tax_rate');
+        $this->assertEmpty($errors, 'Expected 2-decimal tax_rate to pass');
     }
 
     public function test_store_bundle_rejects_3_decimal_labor_hours(): void
@@ -278,6 +306,24 @@ final class IngressPrecisionTest extends TestCase
 
         $errors = $v->errors()->get('base_price');
         $this->assertEmpty($errors);
+    }
+
+    public function test_update_bundle_rejects_3_decimal_tax_rate(): void
+    {
+        $rules = (new UpdateBundleRequest)->rules();
+        $v = Validator::make(['tax_rate' => '19.125'], $rules);
+
+        $this->assertTrue($v->fails());
+        $this->assertArrayHasKey('tax_rate', $v->errors()->toArray());
+    }
+
+    public function test_update_bundle_accepts_2_decimal_tax_rate(): void
+    {
+        $rules = (new UpdateBundleRequest)->rules();
+        $v = Validator::make(['tax_rate' => '19.12'], $rules);
+
+        $errors = $v->errors()->get('tax_rate');
+        $this->assertEmpty($errors, 'Expected 2-decimal tax_rate to pass');
     }
 
     // ── AddComponentRequest ───────────────────────────────────────────────────

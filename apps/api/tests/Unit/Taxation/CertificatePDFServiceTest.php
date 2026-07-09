@@ -86,9 +86,8 @@ class CertificatePDFServiceTest extends TestCase
         $this->assertStringContainsString('Test Partner', $html);
         $this->assertStringContainsString('1,000.000', $html); // gross amount
 
-        // Check the rate - getRateAsPercentage() returns 10.00, template appends %
-        $expectedRate = $certificate->getRateAsPercentage().'%';
-        $this->assertStringContainsString($expectedRate, $html); // rate
+        // Check the rate: legal artifact must keep fixed two-decimal percent.
+        $this->assertStringContainsString('10.00%', $html);
 
         $this->assertStringContainsString($certificate->hash, $html);
 
