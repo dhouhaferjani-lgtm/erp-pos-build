@@ -1,8 +1,8 @@
 # Treasury Money-Movement Spine — Review Prep & Handoff (2026-07-09)
 
 **Branch:** `feat/treasury-spine` (worktree `apps/erp.treasury-spine`). **NOT pushed — owner promotes.**
-**Commit range:** `6a3292b42..9287e40c0` — 41 commits (base = the plan/spec doc commits on local `dev`).
-**Status:** Backend spine **Waves A–F COMPLETE + gated**; Wave G in progress (25 done, 26 landing, 27/28 FE + 29 E2E remain).
+**Commit range:** `6a3292b42..bc0f30585` — 57 commits (base = the plan/spec doc commits on local `dev`).
+**Status: ✅ ALL 29 TASKS COMPLETE. Final whole-branch review (Fable 5) verdict: READY FOR OWNER PROMOTION.** See §8 for the Wave G/H completion + final-review record; §5 + §8.3 for the deploy checklist (one item is TIME-CRITICAL).
 
 ---
 
@@ -50,5 +50,38 @@ Every task: fresh implementer (TDD) → per-task spec+quality review → fix loo
 - **Task 28** — FE: align `InstrumentListPage.tsx` fields to the actual `PaymentInstrumentController::formatInstrument` shape (G3).
 - **Task 29** — **Live E2E (Playwright)** on the db-per-tenant stack (recipe: `.claude/.../reference_local_db_per_tenant_demo_launch.md` — central=iziposcentral, API:8010, token auth, multi-queue worker, DemoPharmacySeeder). Exercise: create sale → refund → adjustment → run `treasury:reconcile` (must NOT freeze the demo tenant) → view cash position + movements drill-down.
 
-## 7. Recommendation
-The backend spine (A–F) is the high-risk, done part — **Fable 5 review can run on the current branch now** (§3 diff range, §4 focus areas). The FE + E2E tail (26–29) is lower-risk and should continue in a **fresh session** (this one is context-bound). Nothing is pushed; the ledger + per-task reports + this doc are the full audit trail.
+## 7. Recommendation (superseded by §8)
+~~The backend spine (A–F) is the high-risk, done part — Fable 5 review can run on the current branch now.~~ Done — see §8. Nothing is pushed; the ledger + per-task reports + this doc are the full audit trail.
+
+---
+
+## 8. Wave G/H completion + final whole-branch review (2026-07-09, fresh session)
+
+### 8.1 What landed (commits `9287e40c0..bc0f30585`)
+- **Task 26** — movements drill-down endpoint (was landing at original handoff; verified + gated).
+- **Task 27** (`e4ea860ee..498798def`) — `RepositoryMovementsTab` + `useRepositoryMovements`/`useCashPosition`; `TreasuryOverviewPage` now consumes `GET /treasury/cash-position` (client-side summing deleted); treasury i18n (en+fr); review clean (rule-14 pagination, tenantScopedKey, tokens, enums verbatim vs backend).
+- **Task 28** (`5e6fe21ef` + `c02fcf0ac`) — `InstrumentListPage` aligned to the real `formatInstrument` shape (phantom `instrument_number`/`type`/`partner_name` and nonexistent `meta` reads eliminated); full 9-status i18n.
+- **Task 29** (`215bf21db` + `72650ec66`/`52b079b87`/`0db5d270d`) — **live E2E on the db-per-tenant stack, 8/8 green twice consecutively**: login → payment +50.000 → full refund −50.000 (`refund_request_id`) → +10.000 count-variance adjustment → `treasury:reconcile` **checked 7 / froze 0 (before AND after)** → UI Total Cash + Movements tab + API grand_total all agree. Screenshots: `docs/sessions/treasury-spine-e2e/`. Spec lives at `apps/web/e2e/smoke/treasury-spine.smoke.ts` (smoke convention, CI skip guard, baseline-relative BigInt-millimes assertions, pagination-proof).
+- **Final-review fixes** (`567e8db04`, `bc0f30585`) — see 8.2.
+
+### 8.2 Final whole-branch review (Fable 5, full 6a3292b42..HEAD range) — **READY FOR OWNER PROMOTION**
+All §4 high-risk surfaces re-verified in the final state (port idempotency; advisory→repo lock order at all 14 MovementIntent sites; GUC lifecycle incl. INSERT+UPDATE trigger; hash-chain sealing **byte-identical by source diff**; POS canonical-index idempotency; Wave-G authz/scoping). Three blockers found and FIXED in-branch:
+1. **`VendorRefundService` null-JE cash movement** on unledgered repos (would GUARANTEE a reconcile freeze via `POST /documents/{document}/refund-prepayment`) → guard mirroring `PaymentRefundService`, red→green test, both drivers (`567e8db04`).
+2. useCashPosition stale contract comment (`567e8db04`).
+3. **8 tests red since Wave D** in `tests/Feature/Fiscal/PaymentOriginWriterInventoryTest.php` — unledgered fixtures tripping the (correct) Wave-D guards; invisible because milestone gates ran by-path on Treasury/Expense/Income/Accounting. Fixture-only repair, 15/15 both drivers (`bc0f30585`). *Process lesson: by-path gating leaves sibling-suite blind spots.*
+
+**Follow-up tickets (Important, non-blocking):** (a) receipt-bridge partial-replay lock-order inversion (ABBA deadlock risk; transient, port-idempotent recovery) — take company advisory at top of bridge txn; (b) `treasury:reconcile` TOCTOU can false-freeze a healthy repo if run mid-trading (02:15 schedule is safe; manual midday runs aren't) — snapshot-read or double-confirm before freeze; (c) pure-advance JE seals in afterCommit (crash window → Draft-linked movement → freeze; fails safe) = known Task-16(a). Minor M1–M9 + triage table: see the SDD ledger (`.superpowers/sdd/progress.md`, gitignored).
+
+### 8.3 DEPLOY — new items beyond §5 (first one is TIME-CRITICAL)
+1. **🔴 Brownfield opening-balance backfill BEFORE the first scheduled reconcile.** `treasury:reconcile` runs daily at 02:15. Any pre-spine tenant (repos with balances, zero movements) gets **every repository frozen the first night**. Sequence per tenant: `tenants:migrate` → backfill → only then let 02:15 arrive. Demo remediation script (per repo, one txn: GUC-guarded balance→0 + port-recorded `opening_balance` movement): productize as an artisan command before prod. Owner also decides whether legacy cached balances are even trustworthy enough to convert (the treasury audit found POS bridges never moved them).
+2. **`payments.refund` + `payments.reverse` never existed in the permission catalog** — both endpoints were 403 for every non-admin role in every tenant ever provisioned. Seeder fixed (`215bf21db`); existing tenants need reseed + `permission:cache-reset`. **Owner decision:** which roles get refund/reverse (currently admin-only via `Permission::all()`; manager has `treasury.adjust` but cannot refund).
+3. **`smoke-test.yml` re-armed:** `playwright.smoke.config.ts` was discovering **0 tests** (missing `testMatch`) — fixed; 3 dormant staging smoke tests are now live again, 2 of which **create data on staging**. Dispatch the workflow once deliberately before relying on it. The treasury spec skips in CI unless `TREASURY_SPINE_API_BASE` is set.
+4. §5's chain-sequence dedupe note, amplified: the `(company_id, chain_sequence)` unique-index migration is **not re-runnable** — a failed CREATE INDEX must be resolved by dedupe, never re-run-and-hope.
+5. Also applied to the local demo tenant during E2E (repeat on prod TN/FR tenants): 658/758 payment-tolerance accounts seeded (adjustment endpoint 500s without them — §5 item confirmed real).
+
+### 8.4 Local stack state (for the next session on this machine)
+- The **scan-to-doc** dev servers were stopped to free :8010/:5173 (restart: `cd apps/erp.scan-to-doc/apps/api && php artisan serve --port=8010`, `cd ../web && pnpm dev`, plus its multi-queue worker incl. `ingestion`).
+- The **treasury-spine** stack is running in their place (same ports, worktree `.env` already db-per-tenant). Demo tenant was mutated: spine migrations applied, perms reseeded, opening-balance backfill done, 658/758 seeded, and the append-only ledger grows +10.000 TND net per E2E run on Main Cash Register (by design; assertions are baseline-relative).
+
+### 8.5 Reviewer confidence notes (probe here in the owner pass)
+pgsql-only runtime guards (balance-write trigger, advisory serialization, immutability) were verified statically + via the ledger's earlier controller-run pgsql passes, not re-executed in the final cycle; fix-wave-2's pgsql 15/15 claim was not independently re-run (sqlite was); hash-chain byte-identity proven by source diff, not runtime hash comparison — re-verify one tenant's chain after the staging deploy as belt-and-braces.
