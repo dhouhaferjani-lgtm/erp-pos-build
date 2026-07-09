@@ -417,3 +417,18 @@ body {
   .x-report-print-area, .x-report-print-area * { visibility: visible; }
   .x-report-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; }
 }
+
+/* ============================================================
+   Scan-to-document processing animation
+   ------------------------------------------------------------
+   Subtle "scan line" sweep over the ingestion detail page's
+   thumbnail while a scan is uploaded/extracting (ProcessingState).
+   Animates `top` (not `transform: translateY`) so the sweep
+   distance is relative to the absolutely-positioned parent, not
+   the bar's own box. Applied via the Tailwind `motion-safe:`
+   variant, so it never plays under prefers-reduced-motion.
+   ============================================================ */
+@keyframes scan-sweep {
+  0%, 100% { top: 0%; }
+  50% { top: 85%; }
+}

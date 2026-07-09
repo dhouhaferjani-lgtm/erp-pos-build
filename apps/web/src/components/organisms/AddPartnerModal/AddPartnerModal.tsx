@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -12,6 +12,7 @@ import { Textarea } from '../../atoms/Textarea'
 import { Button } from '../../atoms/Button'
 import { apiPost } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
+import type { PartnerPrefill } from '../../../features/partners/partnerPrefill'
 
 type PartnerType = 'customer' | 'supplier' | 'both'
 
@@ -64,6 +65,13 @@ export interface AddPartnerModalProps {
    * Receives the newly created partner
    */
   onSuccess?: (partner: Partner) => void
+
+  /**
+   * Optional seed values applied on open. Keys use the shared PartnerPrefill
+   * contract; this modal maps street_address→address, vat_number→tax_id,
+   * country_code→country and ignores `state` (no such field here).
+   */
+  prefill?: PartnerPrefill
 }
 
 /**
@@ -97,6 +105,7 @@ export function AddPartnerModal({
   onClose,
   partnerType,
   onSuccess,
+  prefill,
 }: AddPartnerModalProps) {
   const { t } = useTranslation(['sales', 'common'])
   const location = useLocation()
@@ -132,36 +141,42 @@ export function AddPartnerModal({
     formState: { errors },
   } = useForm<PartnerFormData>({
     defaultValues: {
-      name: '',
+      name: prefill?.name ?? '',
       type: defaultType,
-      email: '',
-      phone: '',
-      address: '',
-      city: '',
-      postal_code: '',
-      country: '',
-      tax_id: '',
+      email: prefill?.email ?? '',
+      phone: prefill?.phone ?? '',
+      address: prefill?.street_address ?? '',
+      city: prefill?.city ?? '',
+      postal_code: prefill?.postal_code ?? '',
+      country: prefill?.country_code ?? '',
+      tax_id: prefill?.vat_number ?? '',
       notes: '',
     },
   })
 
-  // Reset form when modal opens
+  // Reset form only on the closed→open transition (also re-seeds from
+  // prefill on every open). `prefill` is intentionally NOT a trigger here:
+  // callers may pass a referentially-new but value-identical prefill object
+  // on unrelated parent re-renders, and re-running reset() while the modal
+  // is open would silently wipe whatever the user has typed so far.
+  const wasOpenRef = useRef(false)
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       reset({
-        name: '',
+        name: prefill?.name ?? '',
         type: defaultType,
-        email: '',
-        phone: '',
-        address: '',
-        city: '',
-        postal_code: '',
-        country: '',
-        tax_id: '',
+        email: prefill?.email ?? '',
+        phone: prefill?.phone ?? '',
+        address: prefill?.street_address ?? '',
+        city: prefill?.city ?? '',
+        postal_code: prefill?.postal_code ?? '',
+        country: prefill?.country_code ?? '',
+        tax_id: prefill?.vat_number ?? '',
         notes: '',
       })
     }
-  }, [isOpen, defaultType, reset])
+    wasOpenRef.current = isOpen
+  }, [isOpen, prefill, defaultType, reset])
 
   // React Query mutation
   const mutation = useMutation({

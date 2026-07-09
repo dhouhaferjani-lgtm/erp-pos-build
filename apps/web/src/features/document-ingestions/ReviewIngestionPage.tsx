@@ -1,18 +1,31 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { Modal } from '@/components/organisms/Modal'
+import { AddPartnerModal } from '@/components/organisms'
 import { getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { textColors, tokens, typography } from '@/lib/designTokens'
 import { useCommitDocumentIngestion, useDocumentIngestion, useLocationsForIngestion, useRejectDocumentIngestion, useReExtractDocumentIngestion } from './queries'
 import { buildSupplierPrefill } from './buildSupplierPrefill'
+import { initialLines } from './initialLines'
 import { CommitBar } from './components/CommitBar'
 import { ExtractedFieldsPanel } from './components/ExtractedFieldsPanel'
 import { LineMappingTable, type ReviewedLineState } from './components/LineMappingTable'
+import { ProcessingState } from './components/ProcessingState'
 import { SourceViewer } from './components/SourceViewer'
 import { SupplierPicker } from './components/SupplierPicker'
-import type { DocumentIngestionDetail, ProductCandidate, ReceiptLineCandidate, ReviewedLinePayload, ReviewedPayload } from './types'
+import type { DocumentIngestionDetail, IngestionStatus, ReviewedLinePayload, ReviewedPayload, SupplierCandidate } from './types'
+
+interface CreatedPartner {
+  id: string
+  name: string
+}
+
+function toSupplierCandidate(partner: CreatedPartner): SupplierCandidate {
+  return { id: partner.id, name: partner.name }
+}
 
 function confidenceSummary(detail: DocumentIngestionDetail) {
   return detail.confidenceSummary ?? detail.confidence_summary ?? null
@@ -20,6 +33,10 @@ function confidenceSummary(detail: DocumentIngestionDetail) {
 
 function sourceUrl(detail: DocumentIngestionDetail): string | null {
   return detail.sourceUrl ?? detail.source_url ?? null
+}
+
+function startedAt(detail: DocumentIngestionDetail): string | undefined {
+  return detail.createdAt ?? detail.created_at ?? undefined
 }
 
 function committedType(detail: DocumentIngestionDetail): string | null {
@@ -32,14 +49,6 @@ function committedId(detail: DocumentIngestionDetail): string | null {
 
 function providerModel(detail: DocumentIngestionDetail): string | null {
   return detail.providerModel ?? detail.provider_model ?? null
-}
-
-function lineSourceId(candidate: ReceiptLineCandidate | undefined): string {
-  return candidate?.poLineId ?? candidate?.po_line_id ?? ''
-}
-
-function productTaxRate(candidate: ProductCandidate | undefined): string {
-  return candidate?.taxRate ?? candidate?.tax_rate ?? ''
 }
 
 function buildFlaggedPaths(detail: DocumentIngestionDetail): Set<string> {
@@ -72,24 +81,6 @@ function commitBlockedReason(detail: DocumentIngestionDetail, t: (key: string) =
     return t('review.blockedStatus')
   }
   return null
-}
-
-function initialLines(detail: DocumentIngestionDetail): ReviewedLineState[] {
-  const extractionLines = detail.extraction?.lines ?? []
-  return extractionLines.map((line, index) => {
-    const product = detail.suggestions?.productCandidates[index]?.[0]
-    const receipt = detail.suggestions?.receiptLineCandidates[index]
-    return {
-      productId: product?.id ?? '',
-      quantity: line.quantity.value,
-      unitPrice: line.unitPrice?.value ?? '',
-      vatRate: line.taxRate?.value ?? productTaxRate(product),
-      freeQuantity: '0',
-      batchNumber: line.batchNumber?.value ?? '',
-      expiryDate: line.expiryDate?.value ?? '',
-      sourceLineId: lineSourceId(receipt),
-    }
-  })
 }
 
 function linePayload(line: ReviewedLineState, includeVatRate: boolean): ReviewedLinePayload {
@@ -132,10 +123,16 @@ export function ReviewIngestionPage() {
   const rejectMutation = useRejectDocumentIngestion(id)
   const reExtractMutation = useReExtractDocumentIngestion(id)
   const [supplierId, setSupplierId] = useState('')
+  const [addSupplierOpen, setAddSupplierOpen] = useState(false)
+  const [createdSuppliers, setCreatedSuppliers] = useState<SupplierCandidate[]>([])
   const [locationId, setLocationId] = useState('')
   const [pendingReceipt, setPendingReceipt] = useState(false)
   const [lineStates, setLineStates] = useState<ReviewedLineState[]>([])
   const [serverError, setServerError] = useState<string | null>(null)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  // The Modal primitive has no focus management of its own — remember which
+  // element opened the lightbox so closing it can hand focus back.
+  const lightboxReturnFocusRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!detail) return
@@ -143,7 +140,20 @@ export function ReviewIngestionPage() {
     setLineStates(initialLines(detail))
   }, [detail])
 
+  // Polling (useDocumentIngestion) makes the render flip automatically as the
+  // scan progresses server-side; surface that transition to the user instead
+  // of relying on them to notice the page changed underneath them.
+  const prevStatusRef = useRef<IngestionStatus | null>(null)
+  useEffect(() => {
+    const prev = prevStatusRef.current
+    if ((prev === 'uploaded' || prev === 'extracting') && detail?.status === 'needs_review') {
+      toast.success(t('messages.readyForReview'))
+    }
+    prevStatusRef.current = detail?.status ?? null
+  }, [detail?.status, t])
+
   const flaggedPaths = useMemo(() => detail ? buildFlaggedPaths(detail) : new Set<string>(), [detail])
+  const initialLineValues = useMemo(() => detail ? initialLines(detail) : [], [detail])
   const flags = detail ? confidenceSummary(detail)?.reconciliation.flags ?? [] : []
   const currency = detail?.extraction?.header['currency']?.value ?? 'TND'
   const blockReason = detail ? commitBlockedReason(detail, t) : null
@@ -164,20 +174,35 @@ export function ReviewIngestionPage() {
     )
   }
 
+  // In-flight scans have no extraction payload yet — that is expected, not an
+  // error. Show the staged processing state regardless of `detail.extraction`
+  // so this can never fall through to the "not available" card below (the
+  // owner-reported bug).
+  if (detail.status === 'uploaded' || detail.status === 'extracting') {
+    return <ProcessingState status={detail.status} thumbnailUrl={sourceUrl(detail)} startedAt={startedAt(detail)} />
+  }
+
+  if (detail.status === 'failed') {
+    return (
+      <div className={cn(tokens.card.base, 'space-y-4')}>
+        <h1 className={tokens.heading.section}>{t('review.title')}</h1>
+        <p>{detail.error?.message ?? t('review.extractionFailed')}</p>
+        <button
+          type="button"
+          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+          onClick={() => { void reExtractMutation.mutateAsync().then(() => refetch()) }}
+        >
+          {t('actions.reExtract')}
+        </button>
+      </div>
+    )
+  }
+
   if (!detail.extraction) {
     return (
       <div className={cn(tokens.card.base, 'space-y-4')}>
         <h1 className={tokens.heading.section}>{t('review.title')}</h1>
-        <p>{detail.error?.message ?? t('review.noExtraction')}</p>
-        {detail.status === 'failed' && (
-          <button
-            type="button"
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
-            onClick={() => { void reExtractMutation.mutateAsync().then(() => refetch()) }}
-          >
-            {t('actions.reExtract')}
-          </button>
-        )}
+        <p>{t('review.noExtraction')}</p>
       </div>
     )
   }
@@ -235,6 +260,17 @@ export function ReviewIngestionPage() {
     await refetch()
   }
 
+  function openLightbox(): void {
+    lightboxReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setLightboxOpen(true)
+  }
+
+  function closeLightbox(): void {
+    setLightboxOpen(false)
+    lightboxReturnFocusRef.current?.focus()
+    lightboxReturnFocusRef.current = null
+  }
+
   const model = providerModel(detail)
   const locationOptions = Array.isArray(locations.data) ? locations.data : []
 
@@ -252,20 +288,23 @@ export function ReviewIngestionPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]">
-        <SourceViewer sourceUrl={sourceUrl(detail)} />
+      <div data-testid="review-grid" className="grid gap-6 xl:grid-cols-[minmax(300px,0.7fr)_minmax(0,1.4fr)]">
+        <div data-testid="preview-pane" className="space-y-2 xl:sticky xl:top-4 xl:self-start">
+          <SourceViewer sourceUrl={sourceUrl(detail)} onActivate={openLightbox} />
+          {sourceUrl(detail) && (
+            <p className={cn(typography.fontSize.xs, textColors.tertiary)}>{t('review.zoomHint')}</p>
+          )}
+        </div>
 
         <div className="space-y-4">
           <ExtractedFieldsPanel extraction={detail.extraction} flaggedPaths={flaggedPaths} flags={flags} />
 
           <section className={cn(tokens.card.base, 'space-y-4')}>
             <SupplierPicker
-              candidates={detail.suggestions?.supplierCandidates ?? []}
+              candidates={[...(detail.suggestions?.supplierCandidates ?? []), ...createdSuppliers]}
               value={supplierId}
               onChange={setSupplierId}
-              onCreateSupplier={() => {
-                void navigate('/purchases/suppliers/new', { state: { partnerPrefill: buildSupplierPrefill(detail.extraction?.supplier) } })
-              }}
+              onCreateSupplier={() => { setAddSupplierOpen(true) }}
             />
 
             {isDeliveryNote ? (
@@ -304,6 +343,7 @@ export function ReviewIngestionPage() {
             productCandidates={detail.suggestions?.productCandidates ?? []}
             receiptLineCandidates={detail.suggestions?.receiptLineCandidates ?? []}
             values={lineStates}
+            initialValues={initialLineValues}
             onChange={updateLine}
           />
 
@@ -315,13 +355,33 @@ export function ReviewIngestionPage() {
             isRejecting={rejectMutation.isPending}
             isReExtracting={reExtractMutation.isPending}
             refusalReason={blockReason}
-            canReExtract={detail.status === 'failed' || detail.status === 'needs_review'}
+            canReExtract={detail.status === 'needs_review'}
             onCommit={() => { void handleCommit() }}
             onReject={() => { void handleReject() }}
             onReExtract={() => { void handleReExtract() }}
           />
         </div>
       </div>
+
+      <Modal isOpen={lightboxOpen} onClose={closeLightbox} size="xl" title={t('review.source')}>
+        <Modal.Content>
+          {/* A second render of the same source — pdf.js/img re-render at
+              modal width provides the zoom. No onActivate: not interactive. */}
+          <SourceViewer sourceUrl={sourceUrl(detail)} />
+        </Modal.Content>
+      </Modal>
+
+      <AddPartnerModal
+        isOpen={addSupplierOpen}
+        onClose={() => { setAddSupplierOpen(false) }}
+        partnerType="supplier"
+        prefill={buildSupplierPrefill(detail.extraction?.supplier)}
+        onSuccess={(partner) => {
+          setCreatedSuppliers((current) => [...current, toSupplierCandidate(partner)])
+          setSupplierId(partner.id)
+          setAddSupplierOpen(false)
+        }}
+      />
     </div>
   )
 }

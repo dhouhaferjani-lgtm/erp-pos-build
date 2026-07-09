@@ -39,11 +39,19 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *   - The mediaAsset relation is constrained to the same tenant_id in the
  *     eager load (defense-in-depth IDOR: a mismatched asset foreign key → 404).
  *   - Only READY assets are served (matches catalog/public policy).
+ *   - Only Image and Document asset types are served; any other type
+ *     (Video, ExternalVideo, Spin360) → 404.
  *   - Only recognised variant keys ('sm', 'md') are accepted; any other
- *     non-null variant → 404 (no silent downgrade).
- *   - Upload-disk assets are gated against an image MIME allow-list
- *     (image/jpeg, image/png, image/webp, image/gif); ExternalUrl assets
- *     are redirected and bypass the allow-list (no stored bytes).
+ *     non-null variant → 404 (no silent downgrade). Document assets have no
+ *     renditions at all, so ANY non-null variant on a Document asset → 404
+ *     (no silent fallback to the original — same no-silent-downgrade
+ *     philosophy as the unknown-variant guard).
+ *   - Upload-disk assets are gated against a type-aware MIME allow-list:
+ *     Image assets allow image/jpeg, image/png, image/webp, image/gif;
+ *     Document assets allow ONLY application/pdf. The lists are disjoint —
+ *     a Document asset with an image MIME (or vice versa) is rejected.
+ *     ExternalUrl assets are redirected and bypass the allow-list (no
+ *     stored bytes).
  *   - The route is throttled (120 req/min per IP) to deter enumeration loops.
  *
  * Cross-tenant by design: the URL is tenant-qualified; the HMAC signature
@@ -52,16 +60,26 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 final class SignedMediaController extends Controller
 {
     /**
-     * Allowed MIME types for Upload-disk assets.
+     * Allowed MIME types for Upload-disk Image assets.
      * ExternalUrl assets (redirect path) bypass this list.
      *
      * @var list<string>
      */
-    private const ALLOWED_MIME_TYPES = [
+    private const ALLOWED_IMAGE_MIME_TYPES = [
         'image/jpeg',
         'image/png',
         'image/webp',
         'image/gif',
+    ];
+
+    /**
+     * Allowed MIME types for Upload-disk Document assets (scan previews).
+     * Deliberately narrow — only PDF is a supported preview format today.
+     *
+     * @var list<string>
+     */
+    private const ALLOWED_DOCUMENT_MIME_TYPES = [
+        'application/pdf',
     ];
 
     /**
@@ -146,10 +164,11 @@ final class SignedMediaController extends Controller
             abort(404);
         }
 
-        // Only image-type assets are served via this route.
+        // Only Image and Document type assets are served via this route
+        // (scan-to-document PDF previews added 2026-07-10).
         $asset = $mediaAttachment->mediaAsset;
 
-        if ($asset === null || $asset->type !== MediaAssetType::Image) {
+        if ($asset === null || ($asset->type !== MediaAssetType::Image && $asset->type !== MediaAssetType::Document)) {
             abort(404);
         }
 
@@ -159,12 +178,26 @@ final class SignedMediaController extends Controller
             abort(404);
         }
 
+        // Document assets have no renditions — a non-null variant must 404
+        // rather than silently falling back to the original (matches Fix 4's
+        // no-silent-downgrade philosophy). A recognised variant key ('sm',
+        // 'md') is still meaningless for a Document, so reject it here.
+        if ($asset->type === MediaAssetType::Document && $resolvedVariant !== null) {
+            abort(404);
+        }
+
         // Fix 5: MIME allow-list for Upload-disk assets (defense-in-depth).
         // ExternalUrl assets have no stored bytes and are served via a 302
-        // redirect; skip the allow-list for that path.
+        // redirect; skip the allow-list for that path. The allow-list is
+        // type-aware: Image assets check against the image list, Document
+        // assets check against the (disjoint) PDF-only list — a Document
+        // asset can never slip through with an image MIME type or vice versa.
         if ($asset->source === MediaSource::Upload) {
             $mime = (string) ($asset->mime_type ?? '');
-            if (! in_array($mime, self::ALLOWED_MIME_TYPES, true)) {
+            $allowedMimeTypes = $asset->type === MediaAssetType::Document
+                ? self::ALLOWED_DOCUMENT_MIME_TYPES
+                : self::ALLOWED_IMAGE_MIME_TYPES;
+            if (! in_array($mime, $allowedMimeTypes, true)) {
                 abort(404);
             }
         }

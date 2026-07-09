@@ -6,7 +6,7 @@
     "reExtract": "إعادة الاستخراج",
     "reject": "رفض",
     "review": "مراجعة",
-    "startExtraction": "بدء الاستخراج",
+    "startScan": "بدء المسح",
     "upload": "رفع مسح"
   },
   "fields": {
@@ -35,8 +35,21 @@
   },
   "messages": {
     "committed": "تم اعتماد المستند.",
+    "readyForReview": "المسح جاهز للمراجعة.",
     "rejected": "تم رفض المسح.",
     "uploaded": "تم رفع المسح."
+  },
+  "processing": {
+    "backToList": "العودة إلى المسوحات",
+    "elapsed": "الوقت المنقضي: {{time}}",
+    "keepWorking": "يمكنك متابعة العمل — سنُعلمك عندما يصبح جاهزا.",
+    "steps": {
+      "extracting": "جارٍ الاستخراج",
+      "queued": "قيد الانتظار — سيبدأ الاستخراج قريبا",
+      "ready": "جاهز للمراجعة",
+      "uploaded": "مرفوع"
+    },
+    "title": "جارٍ معالجة المسح"
   },
   "review": {
     "batchNumber": "رقم الدفعة",
@@ -44,18 +57,21 @@
     "blockedStatus": "لا يمكن اعتماد إلا المسوحات التي تحتاج مراجعة.",
     "blockedUnparseable": "يجب تصحيح الحقول غير المقروءة قبل الاعتماد.",
     "chooseLocation": "اختر موقعا",
-    "chooseProduct": "اختر منتجا",
     "chooseSupplier": "اختر موردا",
     "committed": "تم اعتماد المسح مسبقا",
     "committedNoTarget": "هدف الاعتماد غير متاح بعد.",
     "committedTarget": "{{type}} {{id}}",
     "createSupplier": "إنشاء مورد",
+    "editedValue": "تم تعديله من طرفك",
     "expiryDate": "تاريخ الانتهاء",
     "extractedFields": "الحقول المستخرجة",
+    "extractionFailed": "فشل استخراج بيانات هذا المسح.",
     "lines": "السطور",
     "loading": "جاري تحميل المسح…",
     "location": "الموقع",
+    "machineValue": "مقروء من المستند",
     "meta": "{{provider}} / {{model}}",
+    "newProduct": "＋ منتج جديد",
     "newSupplierHint": "لا توجد مطابقة — يبدو أن هذا مورّد جديد. استخدم + لإنشائه.",
     "noExtraction": "الاستخراج غير متاح لهذا المسح.",
     "noSupplierRef": "لا توجد مرجعية مورد",
@@ -66,14 +82,19 @@
     "quantity": "الكمية",
     "reconciliationFlags": "تنبيهات المطابقة",
     "rejectConfirm": "رفض هذا المسح؟",
+    "selectedProduct": "المنتج المحدد",
     "source": "المستند المصدر",
     "openSource": "فتح المستند في علامة تبويب جديدة",
+    "pageOf": "الصفحة {{page}} من {{total}}",
+    "previewFailed": "تعذّر عرض المعاينة.",
     "sourceLine": "سطر الاستلام",
     "sourceMissing": "معاينة المصدر غير متاحة.",
+    "suggested": "مقترحات",
     "supplier": "المورد",
     "title": "مراجعة المسح",
     "unitPrice": "سعر الوحدة",
-    "vatRate": "نسبة الضريبة"
+    "vatRate": "نسبة الضريبة",
+    "zoomHint": "انقر على المعاينة للتكبير"
   },
   "statuses": {
     "committed": "معتمد",
@@ -85,16 +106,26 @@
     "uploaded": "مرفوع"
   },
   "upload": {
+    "browse": "تصفح الملفات",
+    "dropHint": "اسحب وأفلت ملفا هنا، أو",
     "errors": {
       "duplicate": "هذا الملف المصدر موجود بالفعل في قائمة المسوحات.",
       "fileRequired": "اختر ملفا مصدرا.",
-      "fileTooLarge": "الملف أكبر من حد الرفع.",
+      "fileTooLargeDetailed": "PDF أو صورة حتى {{max}} ميغابايت — حجم هذا الملف {{actual}} ميغابايت.",
+      "invalidType": "اختر ملف PDF أو صورة.",
       "kindRequired": "اختر نوع المستند."
     },
     "fileHint": "PDF أو صورة حتى 20 ميغابايت.",
     "placeholders": {
       "kind": "اختر نوع المستند"
     },
-    "title": "رفع مسح"
+    "remove": "إزالة الملف",
+    "selectedFile": "{{name}} ({{size}})",
+    "title": "رفع مسح",
+    "units": {
+      "b": "بايت",
+      "kb": "كيلوبايت",
+      "mb": "ميغابايت"
+    }
   }
 }

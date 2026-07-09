@@ -5,7 +5,6 @@ import { Eye, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { textColors, tokens, typography } from '@/lib/designTokens'
 import { documentIngestionStatuses, useDocumentIngestions } from './queries'
-import { UploadIngestionDialog } from './UploadIngestionDialog'
 import type { DocumentKind, DocumentIngestionSummary, IngestionStatus } from './types'
 
 function statusTone(status: IngestionStatus): string {
@@ -36,7 +35,6 @@ export function DocumentIngestionListPage() {
   const { t } = useTranslation(['documentIngestions', 'common'])
   const [status, setStatus] = useState<IngestionStatus | ''>('')
   const [kind, setKind] = useState<DocumentKind | ''>('')
-  const [uploadOpen, setUploadOpen] = useState(false)
   const { data, isLoading } = useDocumentIngestions({ status, kind })
 
   return (
@@ -48,14 +46,13 @@ export function DocumentIngestionListPage() {
           </h1>
           <p className={cn(typography.fontSize.sm, textColors.tertiary)}>{t('list.subtitle')}</p>
         </div>
-        <button
-          type="button"
+        <Link
+          to="/purchases/scans/new"
           className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
-          onClick={() => { setUploadOpen(true) }}
         >
           <Upload className="me-2 h-4 w-4" aria-hidden="true" />
           {t('actions.upload')}
-        </button>
+        </Link>
       </div>
 
       <section className={cn(tokens.card.base, 'space-y-4')} aria-label={t('list.filters')}>
@@ -140,8 +137,6 @@ export function DocumentIngestionListPage() {
           </div>
         )}
       </section>
-
-      <UploadIngestionDialog open={uploadOpen} onClose={() => { setUploadOpen(false) }} />
     </div>
   )
 }

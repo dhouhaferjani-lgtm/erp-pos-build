@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
@@ -11,6 +12,16 @@ const mockApiPost = vi.hoisted(() => vi.fn())
 const mockNavigate = vi.hoisted(() => vi.fn())
 const toastSuccess = vi.hoisted(() => vi.fn())
 const toastError = vi.hoisted(() => vi.fn())
+
+// This page renders SourceViewer, which imports pdfjs-dist (for in-app PDF
+// rendering) and its worker asset. jsdom has no DOMMatrix/canvas support, so
+// the real module fails to load; mock both — SourceViewer itself is unit
+// tested (SourceViewer.test.tsx), these tests don't assert on its internals.
+vi.mock('pdfjs-dist', () => ({
+  getDocument: vi.fn(),
+  GlobalWorkerOptions: { workerSrc: '' },
+}))
+vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: 'worker.js' }))
 
 vi.mock('@/lib/api', () => ({
   api: {
@@ -56,6 +67,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 import { ReviewIngestionPage } from '../ReviewIngestionPage'
+import { useDocumentIngestion } from '../queries'
 
 function renderReview(): QueryClient {
   const queryClient = new QueryClient({
@@ -219,7 +231,7 @@ describe('ReviewIngestionPage', () => {
     await user.selectOptions(screen.getByLabelText('Location'), 'loc-1')
 
     const line = screen.getByTestId('review-line-0')
-    await user.selectOptions(within(line).getByLabelText('Product'), 'product-1')
+    await user.click(within(line).getByRole('button', { name: 'Serum C 30ml' }))
     await user.type(within(line).getByLabelText('Batch number'), 'LOT-7')
     await user.type(within(line).getByLabelText('Expiry date'), '2027-12-31')
     await user.click(screen.getByRole('button', { name: 'Commit document' }))
@@ -290,7 +302,7 @@ describe('ReviewIngestionPage', () => {
     await user.selectOptions(await screen.findByLabelText('Supplier'), 'supplier-1')
     await user.selectOptions(screen.getByLabelText('Location'), 'loc-1')
     const line = screen.getByTestId('review-line-0')
-    await user.selectOptions(within(line).getByLabelText('Product'), 'product-1')
+    await user.click(within(line).getByRole('button', { name: 'Serum C 30ml' }))
     await user.type(within(line).getByLabelText('Batch number'), 'LOT-7')
     await user.type(within(line).getByLabelText('Expiry date'), '2027-12-31')
     mockApiPost.mockRejectedValueOnce({
@@ -309,7 +321,7 @@ describe('ReviewIngestionPage', () => {
     expect(await screen.findByText('Line 1 price is required.')).toBeInTheDocument()
   })
 
-  it('navigates to create-supplier with the extracted supplier as prefill state', async () => {
+  it('opens an in-page create-supplier dialog seeded from the extraction, without navigating away', async () => {
     const user = userEvent.setup()
     mockApiGet.mockResolvedValue(detailResponse())
 
@@ -317,8 +329,276 @@ describe('ReviewIngestionPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Create supplier' }))
 
-    expect(mockNavigate).toHaveBeenCalledWith('/purchases/suppliers/new', {
-      state: { partnerPrefill: { name: 'Pharma Distribution' } },
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText(/^name/i)).toHaveValue('Pharma Distribution')
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('selects the newly created supplier once AddPartnerModal succeeds', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(detailResponse())
+    mockApiPost.mockResolvedValueOnce({
+      id: 'sup-9',
+      name: 'PharmaDistrib',
+      type: 'supplier',
+      email: null,
+      phone: null,
+      address: null,
+      city: null,
+      postal_code: null,
+      country: null,
+      tax_id: null,
+      notes: null,
     })
+
+    renderReview()
+
+    await user.click(await screen.findByRole('button', { name: 'Create supplier' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.clear(within(dialog).getByLabelText(/^name/i))
+    await user.type(within(dialog).getByLabelText(/^name/i), 'PharmaDistrib')
+    await user.click(within(dialog).getByRole('button', { name: /create/i }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText('Supplier')).toHaveValue('sup-9')
+    expect(screen.getByRole('option', { name: 'PharmaDistrib' })).toBeInTheDocument()
+  })
+
+  it('posts only PartnerFormData keys when creating a supplier from the review page (no extraction-field leakage)', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(detailResponse())
+    mockApiPost.mockResolvedValueOnce({
+      id: 'sup-9',
+      name: 'Pharma Distribution',
+      type: 'supplier',
+      email: null,
+      phone: null,
+      address: null,
+      city: null,
+      postal_code: null,
+      country: null,
+      tax_id: null,
+      notes: null,
+    })
+
+    renderReview()
+
+    await user.click(await screen.findByRole('button', { name: 'Create supplier' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /create/i }))
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalledWith('/partners', expect.any(Object)))
+    const payload = mockApiPost.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(Object.keys(payload).sort()).toEqual(
+      ['address', 'city', 'country', 'email', 'name', 'notes', 'phone', 'postal_code', 'tax_id', 'type'].sort(),
+    )
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('lays out review-primary: wider review track and a sticky preview pane', async () => {
+    mockApiGet.mockResolvedValue(detailResponse())
+
+    renderReview()
+
+    const grid = await screen.findByTestId('review-grid')
+    expect(grid.className).toContain('xl:grid-cols-[minmax(300px,0.7fr)_minmax(0,1.4fr)]')
+    const previewPane = screen.getByTestId('preview-pane')
+    expect(previewPane.className).toContain('xl:sticky')
+    // DOM order keeps the preview first (left in LTR).
+    expect(grid.firstElementChild).toBe(previewPane)
+  })
+
+  it('opens a lightbox with a second source render when the preview is activated, and returns focus on close', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(detailResponse())
+    // SourceViewer fetches the signed URL and sniffs the bytes; serve PNG
+    // magic bytes so it reaches the interactive image state.
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(pngBytes.buffer),
+    }))
+    vi.stubGlobal('URL', Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:mock-url'),
+      revokeObjectURL: vi.fn(),
+    }))
+
+    renderReview()
+
+    // The in-page preview is interactive (role button via onActivate).
+    const preview = await screen.findByRole('button', { name: 'Source document' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await user.click(preview)
+
+    const dialog = await screen.findByRole('dialog')
+    // The lightbox renders a SECOND, non-interactive source render (plain img).
+    expect(await within(dialog).findByRole('img', { name: 'Source document' })).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(preview).toHaveFocus()
+  })
+
+  it('shows the staged processing state (not the missing-extraction card) while a scan is extracting', async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/locations') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve(detailResponse({ status: 'extracting', extraction: null }))
+    })
+
+    renderReview()
+
+    expect(await screen.findByText('Extracting')).toBeInTheDocument()
+    expect(screen.getByText(/keep working/iu)).toBeInTheDocument()
+    expect(screen.queryByText('Extraction is not available for this scan.')).not.toBeInTheDocument()
+  })
+
+  it('falls back to a document glyph when the processing thumbnail fails to render (e.g. a PDF scan)', async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/locations') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve(detailResponse({ status: 'extracting', extraction: null, source_url: '/signed/source.pdf' }))
+    })
+
+    renderReview()
+
+    expect(await screen.findByText('Extracting')).toBeInTheDocument()
+    const thumbnail = screen.getByRole('img', { name: 'Processing scan' })
+    expect(screen.queryByTestId('processing-thumb-fallback')).not.toBeInTheDocument()
+
+    fireEvent.error(thumbnail)
+
+    expect(screen.queryByRole('img', { name: 'Processing scan' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('processing-thumb-fallback')).toBeInTheDocument()
+  })
+
+  it('shows the queued hint (not "Extracting") while a scan is only uploaded', async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/locations') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve(detailResponse({ status: 'uploaded', extraction: null }))
+    })
+
+    renderReview()
+
+    expect(await screen.findByText('Queued — extraction starts shortly')).toBeInTheDocument()
+    expect(screen.queryByText('Extraction is not available for this scan.')).not.toBeInTheDocument()
+  })
+
+  it('shows the failure message and lets the user retry a failed scan', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/locations') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve(detailResponse({
+        status: 'failed',
+        extraction: null,
+        error: { code: 'PROVIDER_TIMEOUT', message: 'Provider timeout' },
+      }))
+    })
+    mockApiPost.mockResolvedValueOnce({
+      data: { data: detailResponse({ status: 'extracting', extraction: null }).data.data },
+    })
+
+    renderReview()
+
+    expect(await screen.findByText('Provider timeout')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Re-run extraction' }))
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalledWith('/document-ingestions/ing-1/extract', {}))
+  })
+
+  it('polls while extracting and flips to the review layout with a ready toast once needs_review data arrives', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let detailCallCount = 0
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/locations') {
+        return Promise.resolve({ data: { data: [{ id: 'loc-1', name: 'Main Warehouse' }] } })
+      }
+      detailCallCount += 1
+      if (detailCallCount === 1) {
+        return Promise.resolve(detailResponse({ status: 'extracting', extraction: null }))
+      }
+      return Promise.resolve(detailResponse({ status: 'needs_review' }))
+    })
+
+    renderReview()
+
+    expect(await screen.findByText('Extracting')).toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000)
+    })
+
+    expect(await screen.findByText('Extracted fields')).toBeInTheDocument()
+    expect(toastSuccess).toHaveBeenCalledTimes(1)
+    expect(toastSuccess).toHaveBeenCalledWith('Scan ready for review.')
+  })
+})
+
+describe('useDocumentIngestion polling', () => {
+  function wrapper({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+
+  beforeEach(() => {
+    mockApiGet.mockReset()
+    useAuthStore.setState({
+      user: {
+        id: 'user-1',
+        name: 'Admin User',
+        email: 'admin@example.test',
+        tenant_id: 'tenant-1',
+        roles: ['admin'],
+        email_verified_at: '2026-01-01T00:00:00.000Z',
+      },
+      token: 'token',
+      isAuthenticated: true,
+      isLoading: false,
+    })
+    useCompanyStore.setState({ currentCompanyId: 'company-1', companies: [], isLoading: false })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('refetches every 4000ms while status is extracting, and stops once status is needs_review', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let callCount = 0
+    mockApiGet.mockImplementation(() => {
+      callCount += 1
+      const status = callCount < 3 ? 'extracting' : 'needs_review'
+      return Promise.resolve(detailResponse({ status, extraction: null }))
+    })
+
+    renderHook(() => useDocumentIngestion('ing-1'), { wrapper })
+
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(1))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000)
+    })
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000)
+    })
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(3))
+
+    const stableCount = callCount
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000)
+    })
+    expect(callCount).toBe(stableCount)
   })
 })

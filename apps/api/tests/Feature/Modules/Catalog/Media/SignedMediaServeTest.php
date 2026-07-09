@@ -455,6 +455,135 @@ final class SignedMediaServeTest extends TestCase
     }
 
     // -----------------------------------------------------------------------
+    // Document/PDF assets — scan previews (2026-07-10 fix)
+    // -----------------------------------------------------------------------
+
+    public function test_document_pdf_asset_returns_200_with_pdf_content_type(): void
+    {
+        $storagePath = 'ingestions/'.$this->tenant->id.'/'.Str::uuid().'/original.pdf';
+        Storage::disk('s3')->put($storagePath, 'FAKE_PDF_BYTES');
+
+        $asset = MediaAsset::create([
+            'tenant_id' => $this->tenant->id,
+            'type' => MediaAssetType::Document,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
+            'storage_disk' => 's3',
+            'storage_path' => $storagePath,
+            'mime_type' => 'application/pdf',
+        ]);
+
+        $attachment = $this->makeAttachment($asset->id);
+
+        $signedUrl = URL::temporarySignedRoute(
+            'media.serve',
+            now()->addMinutes(60),
+            ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
+        );
+
+        $response = $this->get($signedUrl);
+
+        $response->assertStatus(200);
+        $response->assertHeader('Content-Type', 'application/pdf');
+    }
+
+    public function test_document_pdf_asset_with_variant_returns_404(): void
+    {
+        $storagePath = 'ingestions/'.$this->tenant->id.'/'.Str::uuid().'/original.pdf';
+        Storage::disk('s3')->put($storagePath, 'FAKE_PDF_BYTES');
+
+        $asset = MediaAsset::create([
+            'tenant_id' => $this->tenant->id,
+            'type' => MediaAssetType::Document,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
+            'storage_disk' => 's3',
+            'storage_path' => $storagePath,
+            'mime_type' => 'application/pdf',
+        ]);
+
+        $attachment = $this->makeAttachment($asset->id);
+
+        // 'sm' is a recognised variant key in general, but Document assets
+        // have no renditions — a non-null variant must 404, never silently
+        // fall back to the original (matches Fix 4's no-silent-downgrade
+        // philosophy).
+        $signedUrl = URL::temporarySignedRoute(
+            'media.serve',
+            now()->addMinutes(60),
+            ['tenant' => $this->tenant->id, 'attachment' => $attachment->id, 'variant' => 'sm'],
+            absolute: false,
+        );
+
+        $response = $this->get($signedUrl);
+
+        $response->assertStatus(404);
+    }
+
+    public function test_document_asset_with_non_pdf_mime_returns_404(): void
+    {
+        $storagePath = 'ingestions/'.$this->tenant->id.'/'.Str::uuid().'/original.txt';
+        Storage::disk('s3')->put($storagePath, 'plain text');
+
+        $asset = MediaAsset::create([
+            'tenant_id' => $this->tenant->id,
+            'type' => MediaAssetType::Document,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
+            'storage_disk' => 's3',
+            'storage_path' => $storagePath,
+            'mime_type' => 'text/plain',
+        ]);
+
+        $attachment = $this->makeAttachment($asset->id);
+
+        $signedUrl = URL::temporarySignedRoute(
+            'media.serve',
+            now()->addMinutes(60),
+            ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
+        );
+
+        $response = $this->get($signedUrl);
+
+        $response->assertStatus(404);
+    }
+
+    /**
+     * A Document asset must never be let through with an image MIME type —
+     * the allow-list is type-aware, not a union of both lists.
+     */
+    public function test_document_asset_with_image_mime_returns_404(): void
+    {
+        $storagePath = 'ingestions/'.$this->tenant->id.'/'.Str::uuid().'/original.jpg';
+        Storage::disk('s3')->put($storagePath, 'FAKE_IMAGE_BYTES');
+
+        $asset = MediaAsset::create([
+            'tenant_id' => $this->tenant->id,
+            'type' => MediaAssetType::Document,
+            'source' => MediaSource::Upload,
+            'status' => MediaStatus::Ready,
+            'storage_disk' => 's3',
+            'storage_path' => $storagePath,
+            'mime_type' => 'image/jpeg',
+        ]);
+
+        $attachment = $this->makeAttachment($asset->id);
+
+        $signedUrl = URL::temporarySignedRoute(
+            'media.serve',
+            now()->addMinutes(60),
+            ['tenant' => $this->tenant->id, 'attachment' => $attachment->id],
+            absolute: false,
+        );
+
+        $response = $this->get($signedUrl);
+
+        $response->assertStatus(404);
+    }
+
+    // -----------------------------------------------------------------------
     // MediaUrlResolver — ExternalUrl returns raw URL
     // -----------------------------------------------------------------------
 

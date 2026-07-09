@@ -6,7 +6,7 @@
     "reExtract": "Re-run extraction",
     "reject": "Reject",
     "review": "Review",
-    "startExtraction": "Start extraction",
+    "startScan": "Start scan",
     "upload": "Upload scan"
   },
   "fields": {
@@ -35,8 +35,21 @@
   },
   "messages": {
     "committed": "Document committed.",
+    "readyForReview": "Scan ready for review.",
     "rejected": "Scan rejected.",
     "uploaded": "Scan uploaded."
+  },
+  "processing": {
+    "backToList": "Back to scans",
+    "elapsed": "{{time}} elapsed",
+    "keepWorking": "You can keep working — we'll notify you when it's ready.",
+    "steps": {
+      "extracting": "Extracting",
+      "queued": "Queued — extraction starts shortly",
+      "ready": "Ready for review",
+      "uploaded": "Uploaded"
+    },
+    "title": "Processing scan"
   },
   "review": {
     "batchNumber": "Batch number",
@@ -44,18 +57,21 @@
     "blockedStatus": "Only scans needing review can be committed.",
     "blockedUnparseable": "Unparseable fields must be corrected before commit.",
     "chooseLocation": "Choose a location",
-    "chooseProduct": "Choose a product",
     "chooseSupplier": "Choose a supplier",
     "committed": "Scan already committed",
     "committedNoTarget": "The committed target is not available yet.",
     "committedTarget": "{{type}} {{id}}",
     "createSupplier": "Create supplier",
+    "editedValue": "Edited by you",
     "expiryDate": "Expiry date",
     "extractedFields": "Extracted fields",
+    "extractionFailed": "Extraction failed for this scan.",
     "lines": "Lines",
     "loading": "Loading scan…",
     "location": "Location",
+    "machineValue": "Read from document",
     "meta": "{{provider}} / {{model}}",
+    "newProduct": "＋ New product",
     "newSupplierHint": "No match found — this looks like a new supplier. Use + to create it.",
     "noExtraction": "Extraction is not available for this scan.",
     "noSupplierRef": "No supplier reference",
@@ -67,14 +83,19 @@
     "quantity": "Quantity",
     "reconciliationFlags": "Reconciliation flags",
     "rejectConfirm": "Reject this scan?",
+    "selectedProduct": "Selected product",
     "source": "Source document",
     "openSource": "Open document in new tab",
+    "pageOf": "Page {{page}} of {{total}}",
+    "previewFailed": "The preview could not be rendered.",
     "sourceLine": "Receipt line",
     "sourceMissing": "Source preview is unavailable.",
+    "suggested": "Suggested",
     "supplier": "Supplier",
     "title": "Review scan",
     "unitPrice": "Unit price",
-    "vatRate": "VAT rate"
+    "vatRate": "VAT rate",
+    "zoomHint": "Click the preview to zoom"
   },
   "statuses": {
     "committed": "Committed",
@@ -86,16 +107,26 @@
     "uploaded": "Uploaded"
   },
   "upload": {
+    "browse": "Browse files",
+    "dropHint": "Drag and drop a file here, or",
     "errors": {
       "duplicate": "This source file is already in the scan queue.",
       "fileRequired": "Choose a source file.",
-      "fileTooLarge": "The file is larger than the upload limit.",
+      "fileTooLargeDetailed": "PDF or image up to {{max}} MB — this file is {{actual}} MB.",
+      "invalidType": "Choose a PDF or image file.",
       "kindRequired": "Choose a document type."
     },
     "fileHint": "PDF or image up to 20 MB.",
     "placeholders": {
       "kind": "Choose a document type"
     },
-    "title": "Upload scan"
+    "remove": "Remove file",
+    "selectedFile": "{{name}} ({{size}})",
+    "title": "Upload scan",
+    "units": {
+      "b": "B",
+      "kb": "KB",
+      "mb": "MB"
+    }
   }
 }

@@ -6,7 +6,7 @@
     "reExtract": "Relancer l'extraction",
     "reject": "Rejeter",
     "review": "Revoir",
-    "startExtraction": "Démarrer l'extraction",
+    "startScan": "Démarrer le scan",
     "upload": "Téléverser un scan"
   },
   "fields": {
@@ -35,8 +35,21 @@
   },
   "messages": {
     "committed": "Document validé.",
+    "readyForReview": "Scan prêt pour la revue.",
     "rejected": "Scan rejeté.",
     "uploaded": "Scan téléversé."
+  },
+  "processing": {
+    "backToList": "Retour aux scans",
+    "elapsed": "Temps écoulé : {{time}}",
+    "keepWorking": "Vous pouvez continuer à travailler — nous vous préviendrons dès que ce sera prêt.",
+    "steps": {
+      "extracting": "Extraction en cours",
+      "queued": "En file d'attente — l'extraction démarre bientôt",
+      "ready": "Prêt pour la revue",
+      "uploaded": "Téléversé"
+    },
+    "title": "Traitement du scan"
   },
   "review": {
     "batchNumber": "Numéro de lot",
@@ -44,18 +57,21 @@
     "blockedStatus": "Seuls les scans à revoir peuvent être validés.",
     "blockedUnparseable": "Les champs illisibles doivent être corrigés avant validation.",
     "chooseLocation": "Choisir un emplacement",
-    "chooseProduct": "Choisir un produit",
     "chooseSupplier": "Choisir un fournisseur",
     "committed": "Scan déjà validé",
     "committedNoTarget": "La cible validée n'est pas encore disponible.",
     "committedTarget": "{{type}} {{id}}",
     "createSupplier": "Créer un fournisseur",
+    "editedValue": "Modifié par vous",
     "expiryDate": "Date d'expiration",
     "extractedFields": "Champs extraits",
+    "extractionFailed": "L'extraction de ce scan a échoué.",
     "lines": "Lignes",
     "loading": "Chargement du scan…",
     "location": "Emplacement",
+    "machineValue": "Lu depuis le document",
     "meta": "{{provider}} / {{model}}",
+    "newProduct": "＋ Nouveau produit",
     "newSupplierHint": "Aucune correspondance — ce fournisseur semble nouveau. Utilisez + pour le créer.",
     "noExtraction": "L'extraction n'est pas disponible pour ce scan.",
     "noSupplierRef": "Aucune référence fournisseur",
@@ -67,14 +83,19 @@
     "quantity": "Quantité",
     "reconciliationFlags": "Alertes de réconciliation",
     "rejectConfirm": "Rejeter ce scan ?",
+    "selectedProduct": "Produit sélectionné",
     "source": "Document source",
     "openSource": "Ouvrir le document dans un nouvel onglet",
+    "pageOf": "Page {{page}} sur {{total}}",
+    "previewFailed": "L'aperçu n'a pas pu être généré.",
     "sourceLine": "Ligne de réception",
     "sourceMissing": "L'aperçu source est indisponible.",
+    "suggested": "Suggestions",
     "supplier": "Fournisseur",
     "title": "Revue du scan",
     "unitPrice": "Prix unitaire",
-    "vatRate": "Taux TVA"
+    "vatRate": "Taux TVA",
+    "zoomHint": "Cliquez sur l'aperçu pour zoomer"
   },
   "statuses": {
     "committed": "Validé",
@@ -86,16 +107,26 @@
     "uploaded": "Téléversé"
   },
   "upload": {
+    "browse": "Parcourir les fichiers",
+    "dropHint": "Glissez-déposez un fichier ici, ou",
     "errors": {
       "duplicate": "Ce fichier source est déjà dans la file des scans.",
       "fileRequired": "Choisissez un fichier source.",
-      "fileTooLarge": "Le fichier dépasse la limite d'envoi.",
+      "fileTooLargeDetailed": "PDF ou image jusqu'à {{max}} Mo — ce fichier fait {{actual}} Mo.",
+      "invalidType": "Choisissez un fichier PDF ou image.",
       "kindRequired": "Choisissez un type de document."
     },
     "fileHint": "PDF ou image jusqu'à 20 Mo.",
     "placeholders": {
       "kind": "Choisir un type de document"
     },
-    "title": "Téléverser un scan"
+    "remove": "Supprimer le fichier",
+    "selectedFile": "{{name}} ({{size}})",
+    "title": "Téléverser un scan",
+    "units": {
+      "b": "o",
+      "kb": "Ko",
+      "mb": "Mo"
+    }
   }
 }
