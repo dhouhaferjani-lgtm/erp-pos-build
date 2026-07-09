@@ -42,6 +42,14 @@ use Throwable;
  * the operator investigates, then clears the freeze. A clean repository is
  * left untouched and reported OK.
  *
+ * **Freeze outcome survives alerting failure** (2026-07-09 audit-fix-1 Rev-2,
+ * Critical): the freeze write always happens BEFORE the alert is raised. If
+ * the alert itself then fails (the log line or the audit_events write
+ * throws), the repository stays frozen and IS counted as frozen — it is
+ * never misreported as a per-repository check error, which would both
+ * undercount the freeze and duplicate the incident under a second,
+ * contradictory log shape. See {@see self::freezeAndAlert()}.
+ *
  * Rule 20 / master plan §14: runs in console context with NO CompanyContext.
  * It iterates tenants explicitly ({@see TenantScopedCommand::forEachTenant()})
  * and resolves scale from each repository's own currency — never the no-arg
@@ -67,8 +75,25 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
      * (advisory/row-lock timeout, audit-write failure, corrupt row) is left
      * as-is (never frozen on the basis of an error alone) and the run moves
      * on to the next repository; the operator must re-run reconcile for it.
+     *
+     * This is emitted ONLY for failures that happen BEFORE a repository is
+     * frozen (i.e. from {@see self::detectDrift()} or the freeze write
+     * itself in {@see self::freezeAndAlert()}). A failure AFTER the freeze
+     * write is a {@see self::ALERT_FAILURE_EVENT_TYPE}, never this — the
+     * repository IS frozen in that case, so it must not be double-reported
+     * under this contradictory "nothing happened" event type.
      */
     private const ERROR_EVENT_TYPE = 'treasury.reconcile.error';
+
+    /**
+     * A repository was frozen successfully, but raising the operator alert
+     * for it (the drift log line or the audit_events write) THEN threw
+     * (2026-07-09 audit-fix-1 Rev-2, Critical). The freeze is real and
+     * counted — this event exists so the alerting-channel failure itself is
+     * still visible to operators, without ever re-classifying the outcome
+     * as a mere per-repository ERROR.
+     */
+    private const ALERT_FAILURE_EVENT_TYPE = 'treasury.reconcile.alert_failed';
 
     /** @var string */
     protected $signature = 'treasury:reconcile
@@ -477,37 +502,70 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
 
     /**
      * Freeze the repository (never repair) and raise the operator alert:
-     * error-level log line + an audit_events row. Order: freeze FIRST, so the
-     * repository is locked down even if the alert path throws.
+     * error-level log line + an audit_events row.
+     *
+     * Order: the freeze UPDATE runs FIRST and is NOT wrapped by the inner
+     * try/catch below — a failure there is a genuine pre-freeze check
+     * failure and is left to the caller's outer catch (counted as
+     * `$errored`, {@see self::ERROR_EVENT_TYPE}).
+     *
+     * The alerting steps (drift log line + audit_events write) run AFTER the
+     * freeze write has already succeeded, so a `\Throwable` here must NEVER
+     * propagate (2026-07-09 audit-fix-1 Rev-2, Critical): the repository is
+     * already frozen in the DB at that point, and re-classifying it as a
+     * mere check ERROR would (a) undercount `$frozen`, (b) leave the
+     * frozen repository with no drift alert while the "check the audit
+     * trail" alert text lies, and (c) duplicate the incident under a second,
+     * contradictory log shape (`treasury.reconcile.error` for a repository
+     * that IS frozen). The inner catch logs the alerting failure loudly
+     * under its own event type instead, and this method returns normally so
+     * the caller's `$frozen++` always runs for every successful freeze.
      */
     private function freezeAndAlert(PaymentRepository $repository, string $reason): void
     {
         $this->movementService->freeze($repository->id, $reason);
 
-        Log::error(self::DRIFT_EVENT_TYPE, [
-            'tenant_id' => $repository->tenant_id,
-            'company_id' => $repository->company_id,
-            'repository_id' => $repository->id,
-            'currency' => $repository->currency,
-            'balance' => $repository->balance,
-            'reason' => $reason,
-        ]);
-
-        $this->auditService->record(
-            companyId: $repository->company_id,
-            userId: null,
-            eventType: self::DRIFT_EVENT_TYPE,
-            aggregateType: 'PaymentRepository',
-            aggregateId: $repository->id,
-            payload: [
-                'reason' => $reason,
+        try {
+            Log::error(self::DRIFT_EVENT_TYPE, [
+                'tenant_id' => $repository->tenant_id,
+                'company_id' => $repository->company_id,
+                'repository_id' => $repository->id,
                 'currency' => $repository->currency,
-                'cached_balance' => $repository->balance,
-            ],
-            metadata: [
-                'source' => 'treasury:reconcile',
-            ],
-        );
+                'balance' => $repository->balance,
+                'reason' => $reason,
+            ]);
+
+            $this->auditService->record(
+                companyId: $repository->company_id,
+                userId: null,
+                eventType: self::DRIFT_EVENT_TYPE,
+                aggregateType: 'PaymentRepository',
+                aggregateId: $repository->id,
+                payload: [
+                    'reason' => $reason,
+                    'currency' => $repository->currency,
+                    'cached_balance' => $repository->balance,
+                ],
+                metadata: [
+                    'source' => 'treasury:reconcile',
+                ],
+            );
+        } catch (Throwable $e) {
+            Log::error(self::ALERT_FAILURE_EVENT_TYPE, [
+                'tenant_id' => $repository->tenant_id,
+                'company_id' => $repository->company_id,
+                'repository_id' => $repository->id,
+                'currency' => $repository->currency,
+                'reason' => $reason,
+                'exception_class' => $e::class,
+                'exception_message' => $e->getMessage(),
+            ]);
+            $this->error(sprintf(
+                'Alert delivery FAILED for frozen repository %s: %s',
+                $repository->id,
+                $e->getMessage(),
+            ));
+        }
 
         $this->error(sprintf('FROZEN repository %s — %s', $repository->id, $reason));
     }

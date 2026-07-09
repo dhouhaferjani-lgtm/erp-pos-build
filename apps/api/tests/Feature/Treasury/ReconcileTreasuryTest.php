@@ -295,6 +295,79 @@ final class ReconcileTreasuryTest extends TestCase
         $logSpy->shouldHaveReceived('error', ['treasury.reconcile.drift', Mockery::type('array')]);
     }
 
+    // ── (b2) post-freeze alerting failure must still count as a freeze ─────────
+    //
+    // 2026-07-09 audit-fix-1 Rev-2 CRITICAL: freezeAndAlert() writes the durable
+    // freeze UPDATE FIRST, then logs the drift line and writes the audit_events
+    // row. If either of THOSE post-freeze steps throws, the repository is
+    // already frozen in the DB — that must NEVER be misreported as a mere
+    // per-repository ERROR (undercounting $frozen, losing the exit-code
+    // truthfulness, and — because the outer catch's `treasury.reconcile.error`
+    // log line would ALSO fire for an already-frozen repo — duplicating the
+    // alert under a second, contradictory log shape for the same incident).
+
+    public function test_post_freeze_alerting_failure_still_counts_as_frozen_not_errored(): void
+    {
+        $repo = $this->seedRepository();
+        $je = $this->postedCashEntry($this->cashAccount->id, '10.000');
+        $this->recordIn($repo, '10.000', journalEntryId: $je->id);
+
+        // Same balance-continuity drift fixture as
+        // test_balance_continuity_drift_freezes_and_alerts() — a genuine drift
+        // finding that reaches freezeAndAlert().
+        $this->rawMovement(
+            repo: $repo,
+            direction: MovementDirection::In,
+            amount: '5.000',
+            balanceAfter: '10.000',
+            ordinal: 2,
+            sourceType: MovementSourceType::OpeningBalance,
+            journalEntryId: null,
+        );
+
+        // Force the post-freeze DRIFT alert log line to throw — simulating a
+        // failure that happens strictly AFTER movementService->freeze() (the
+        // freeze write precedes this log call in freezeAndAlert() and is not
+        // wrapped by this mock). The alerting-failure fallback must then log
+        // its own event, and NOT let the throw escape to the outer per-
+        // repository catch (which would misclassify this as `$errored`).
+        Log::shouldReceive('error')
+            ->once()
+            ->with('treasury.reconcile.drift', Mockery::type('array'))
+            ->andThrow(new \RuntimeException('simulated audit/log failure'));
+
+        Log::shouldReceive('error')
+            ->once()
+            ->with('treasury.reconcile.alert_failed', Mockery::on(
+                static fn (array $context): bool => ($context['repository_id'] ?? null) !== null
+                    && ($context['tenant_id'] ?? null) !== null
+                    && array_key_exists('exception_message', $context),
+            ))
+            ->andReturnNull();
+
+        $exit = $this->reconcile();
+
+        self::assertSame(1, $exit, 'A genuine drift finding must still exit FAILURE even when post-freeze alerting fails.');
+
+        $repo->refresh();
+        self::assertNotNull($repo->frozen_at, 'The repository must end up frozen — the freeze UPDATE precedes the failing alert step.');
+        self::assertNotNull($repo->frozen_reason);
+
+        // The audit_events row never gets written (the drift log line threw
+        // BEFORE auditService->record() ran) — this repository's freeze is
+        // proven via `frozen_at`/`frozen_reason` and the command's own
+        // counters/output instead, per requirement (b).
+        self::assertSame(0, $this->driftEventCount($repo->id));
+
+        $output = Artisan::output();
+        self::assertStringContainsString(
+            'froze 1',
+            $output,
+            'The command output must count this repository in the frozen total, not the error total.',
+        );
+        self::assertStringContainsString('0 error', $output);
+    }
+
     // ── (c) null journal_entry_id on a non-exempt movement → freeze ────────────
 
     public function test_missing_journal_entry_on_non_exempt_movement_freezes(): void
