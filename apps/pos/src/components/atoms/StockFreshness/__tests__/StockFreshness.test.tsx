@@ -51,25 +51,28 @@ describe('StockFreshness', () => {
     expect(getSyncMetadataMock).toHaveBeenCalledWith(expect.anything(), 'stock_last_sync');
   });
 
-  it('uses the normal gray tint (no stale title) within the 15-minute window (FU-10)', async () => {
+  it('uses the muted inverse-on-navy tint (no stale title) within the 15-minute window (FU-10)', async () => {
     getSyncMetadataMock.mockResolvedValue(new Date(Date.now() - 5 * 60_000).toISOString());
 
     render(<StockFreshness />);
 
     const el = await screen.findByTestId('stock-freshness');
-    expect(el.className).toContain('text-gray-500');
-    expect(el.className).not.toContain('text-amber-600');
+    // Task 4: rendered exclusively inside the navy Header now, so the tint
+    // comes from tokens.inverseOnNavy (muted/warning), not a bare gray/amber
+    // palette class tuned for a light/dark app surface.
+    expect(el.className).toContain('text-pay-navy-fg/70');
+    expect(el.className).not.toContain('text-pay-navy-warning-fg');
     expect(el).not.toHaveAttribute('title');
   });
 
-  it('switches to an amber tint with a stale title beyond 15 minutes (FU-10)', async () => {
+  it('switches to the warning inverse-on-navy tint with a stale title beyond 15 minutes (FU-10)', async () => {
     getSyncMetadataMock.mockResolvedValue(new Date(Date.now() - 20 * 60_000).toISOString());
 
     render(<StockFreshness />);
 
     const el = await screen.findByTestId('stock-freshness');
-    expect(el.className).toContain('text-amber-600');
-    expect(el.className).not.toContain('text-gray-500');
+    expect(el.className).toContain('text-pay-navy-warning-fg');
+    expect(el.className).not.toContain('text-pay-navy-fg/70');
     expect(el).toHaveAttribute('title', 'stock.staleTitle');
   });
 

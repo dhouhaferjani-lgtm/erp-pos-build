@@ -143,6 +143,30 @@ export const tokens = {
     cartPanel: 'bg-surface-raised border-l border-border-strong shadow-sm',
     footer: 'bg-pay-navy text-pay-navy-fg',
   },
+
+  /**
+   * Inverse-on-navy treatments — for Header/Footer children that render
+   * text/icons/dividers DIRECTLY on the navy chrome bg (`tokens.section.
+   * header|footer`), as opposed to a child that already owns its own
+   * colored surface (StatusPill, Badge, Avatar tone="accent" — those pairs
+   * are internally contrasted and stay as-is regardless of the parent bg).
+   * Every semantic ink/border/accent token is theme-tuned for a light or
+   * dark app surface, NOT for the theme-constant navy — e.g. `text-ink-
+   * muted` measures 2.3:1–5.1:1 against `#14283f` depending on theme, and
+   * `border-border-subtle` drops to ~1:1 in dark mode. These use
+   * `--pay-navy-fg`/`--pay-navy-warning-fg` (also theme-constant) so
+   * contrast against the navy chrome never drifts with the app theme.
+   * Verified ≥7:1 (text) / ≥3:1 (non-text) against `#14283f` — see
+   * task-4-report.md.
+   */
+  inverseOnNavy: {
+    /** Secondary/muted text on navy (e.g. operator name, "no shift" hint). */
+    muted: 'text-pay-navy-fg/70',
+    /** Warning-toned text on navy (e.g. stale-stock hint). */
+    warning: 'text-pay-navy-warning-fg',
+    /** Vertical/horizontal group divider on navy. */
+    divider: 'bg-pay-navy-fg/40',
+  },
 } as const;
 
 export type DesignTokens = typeof tokens;

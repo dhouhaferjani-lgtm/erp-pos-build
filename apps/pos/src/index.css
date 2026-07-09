@@ -72,6 +72,12 @@
   /* Navy payment panels (constant across themes) */
   --pay-navy: #14283f;
   --pay-navy-fg: #f6f8fb;
+  /* Warning-toned foreground for on-navy chrome (Header/Footer children that
+   * signal a warning state — e.g. stale-stock hint — while rendering directly
+   * on the fixed navy bg). Theme-constant like pay-navy/pay-navy-fg, since the
+   * chrome color itself never switches with light/dark: --warning-strong is
+   * theme-tuned for surface-2 chips, not for 7:1 AAA directly on #14283f. */
+  --pay-navy-warning-fg: #e8c27a;
 
   /* ---- Semantic status (money/sync/errors) — light ------------------------ */
   --success: #1f8a5b;
@@ -303,6 +309,7 @@
   /* Payment navy panels */
   --color-pay-navy: var(--pay-navy);
   --color-pay-navy-fg: var(--pay-navy-fg);
+  --color-pay-navy-warning-fg: var(--pay-navy-warning-fg);
 
   /* Status — confirmed money/sync; warning; danger */
   --color-success: var(--success);
