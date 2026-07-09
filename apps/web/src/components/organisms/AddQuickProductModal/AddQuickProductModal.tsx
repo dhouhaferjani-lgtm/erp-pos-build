@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -102,9 +102,15 @@ export function AddQuickProductModal({
     },
   })
 
-  // Reset form when modal opens (also re-seeds from prefill on every open)
+  // Reset form only on the closed→open transition (also re-seeds from
+  // prefill on every open). `prefill` is intentionally NOT a trigger here:
+  // callers may pass a referentially-new but value-identical prefill object
+  // on unrelated parent re-renders (e.g. inline buildProductPrefill(line)),
+  // and re-running reset() while the modal is open would silently wipe
+  // whatever the user has typed so far.
+  const wasOpenRef = useRef(false)
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       reset({
         name: prefill?.name ?? '',
         sku: '',
@@ -113,6 +119,7 @@ export function AddQuickProductModal({
         tax_configuration_id: null,
       })
     }
+    wasOpenRef.current = isOpen
   }, [isOpen, prefill, reset])
 
   // React Query mutation

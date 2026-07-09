@@ -93,4 +93,17 @@ describe('AddQuickProductModal prefill', () => {
     rerender(buildModal({ isOpen: true, prefill: { name: 'A' } }))
     expect(await screen.findByLabelText(/^name/i)).toHaveValue('A')
   })
+
+  it('does not wipe user edits when the modal stays open and a caller passes a referentially-new but value-identical prefill (e.g. inline buildProductPrefill(line) on parent re-render)', async () => {
+    const user = userEvent.setup()
+    const { rerender } = renderModal({ isOpen: true, prefill: { name: 'A' } })
+    const nameInput = await screen.findByLabelText(/^name/i)
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Edited')
+    // Same value, but a brand-new object reference — simulates an inline
+    // buildProductPrefill(line) call on an unrelated parent re-render while
+    // the modal remains open.
+    rerender(buildModal({ isOpen: true, prefill: { name: 'A' } }))
+    expect(screen.getByLabelText(/^name/i)).toHaveValue('Edited')
+  })
 })
