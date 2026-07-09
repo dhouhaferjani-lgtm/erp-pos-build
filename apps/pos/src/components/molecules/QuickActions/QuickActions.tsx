@@ -59,7 +59,7 @@ export function QuickActions({
   ];
 
   return (
-    <div className="flex items-stretch gap-1.5 overflow-x-auto py-1">
+    <div className="flex items-stretch gap-1.5 py-1">
       {actions.map((action, i) => {
         const Icon = action.icon;
         const groupBreak = i > 0 && action.group !== actions[i - 1]?.group;
@@ -77,7 +77,8 @@ export function QuickActions({
               onClick={action.onClick}
               disabled={action.disabled}
               leftIcon={<Icon className="h-4 w-4" />}
-              className="relative flex-1"
+              truncate
+              className="relative min-w-0 flex-1"
             >
               {action.label}
               {action.count > 0 && (

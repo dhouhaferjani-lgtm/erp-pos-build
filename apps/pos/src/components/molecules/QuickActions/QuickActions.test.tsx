@@ -54,4 +54,23 @@ describe('QuickActions', () => {
     fireEvent.click(screen.getByText('quickActions.recall'));
     expect(onRecall).toHaveBeenCalledOnce();
   });
+
+  it('lets each action button shrink and truncate instead of clipping (Task 8: "Rappeler" clip fix)', () => {
+    renderQA();
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(3);
+    buttons.forEach((button) => {
+      // min-w-0 on the flex-1 button lets it shrink below its content size
+      // within the row; truncate ellipsizes the label instead of the row
+      // hard-clipping it via overflow.
+      expect(button.className).toContain('min-w-0');
+      expect(button.className).toContain('truncate');
+    });
+  });
+
+  it('does not rely on the row hard-clipping labels via overflow-x-auto', () => {
+    const { container } = renderQA();
+    const row = container.firstChild as HTMLElement;
+    expect(row.className).not.toContain('overflow-x-auto');
+  });
 });
