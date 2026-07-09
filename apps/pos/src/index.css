@@ -383,10 +383,11 @@ body,
   color: var(--text);
 }
 
-/* Focus ring — accent/theme-aware (was hardcoded ocean-blue). Appears
- * instantly; never transitioned. ≥3:1 against surfaces. */
+/* Focus ring — always the interaction blue (--action), theme-aware but
+ * decoupled from the swappable --accent highlight (Strategy A: blue = all
+ * interaction). Appears instantly; never transitioned. ≥3:1 against surfaces. */
 *:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--action);
   outline-offset: 2px;
 }
 

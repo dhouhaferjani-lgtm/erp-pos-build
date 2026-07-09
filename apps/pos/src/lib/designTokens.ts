@@ -6,12 +6,27 @@
  * for the POS design language — use them instead of hand-assembling Tailwind
  * color classes.
  *
- * Color grammar (enforced):
- *  - action  (ocean blue) → interactive / primary actions / selected state
- *  - success (green)      → confirmed money & sync events ONLY
- *  - warning (amber)      → warnings, low stock
- *  - danger  (red)        → errors & destructive actions ONLY
- *  - ink / surface        → text & elevation; prices use `text-ink`, never accent
+ * Color grammar (Strategy A, enforced — see also docs/design-language.md §1):
+ *  - action  (blue, `--action` / `--color-action*`) → ALL interaction and
+ *    selection: focus ring, primary CTAs, selected/in-cart state, active nav.
+ *    `--accent` is a SEPARATE swappable brand-highlight dimension (wordmark,
+ *    Settings/Reports/ShiftClosure) — never repoint it to chase this rule.
+ *  - success (green, `--success` / `--stock-ok`) → confirmed money & sync
+ *    events, and product stock state ONLY. Never decoration or "generic good".
+ *  - ink / surface  → text & elevation; prices always use `text-ink`
+ *    (`tokens.money`), never `accent` or `action`.
+ *  - warning (amber) → warnings, low stock.
+ *  - danger  (red)   → errors & destructive/irreversible actions ONLY.
+ *
+ * Spacing scale (4px base: 4·8·12·16·20·24) — tighten intra-group spacing
+ * (e.g. icon-to-label, badge-to-price: 4-8px), keep inter-section spacing
+ * generous (e.g. panel-to-panel, cart-to-canvas: 16-24px) so the eye reads
+ * groups before it reads the whole screen. See docs/design-language.md §2.
+ *
+ * Chrome anchor: navy (`--pay-navy` / `tokens.section.header|footer`) is the
+ * one fixed structural color — header and footer bars — independent of both
+ * the `--accent` swap and the `--action` grammar above. It never carries
+ * interaction or status meaning; it just anchors the chrome.
  *
  * Usage:
  * ```tsx
@@ -107,6 +122,20 @@ export const tokens = {
 
   /** Monetary display — always tabular figures, ink color (data, not action). */
   money: 'tabular-nums text-ink',
+
+  /**
+   * Section-surface helpers — the chrome anchors consumed by Header/Footer/
+   * NavRail/TransactionCart/ProductGrid restyles. Header/footer are the fixed
+   * navy chrome anchor (independent of --accent/--action); rail/cartPanel are
+   * raised+bordered against the recessed canvas.
+   */
+  section: {
+    header: 'bg-pay-navy text-pay-navy-fg',
+    rail: 'bg-surface-raised border-r border-border-strong',
+    canvas: 'bg-surface-canvas',
+    cartPanel: 'bg-surface-raised border-l border-border-strong shadow-sm',
+    footer: 'bg-pay-navy text-pay-navy-fg',
+  },
 } as const;
 
 export type DesignTokens = typeof tokens;
