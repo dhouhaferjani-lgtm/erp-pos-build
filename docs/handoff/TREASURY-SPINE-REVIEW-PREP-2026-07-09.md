@@ -86,3 +86,20 @@ All §4 high-risk surfaces re-verified in the final state (port idempotency; adv
 
 ### 8.5 Reviewer confidence notes (probe here in the owner pass)
 pgsql-only runtime guards (balance-write trigger, advisory serialization, immutability) were verified statically + via the ledger's earlier controller-run pgsql passes, not re-executed in the final cycle; fix-wave-2's pgsql 15/15 claim was not independently re-run (sqlite was); hash-chain byte-identity proven by source diff, not runtime hash comparison — re-verify one tenant's chain after the staging deploy as belt-and-braces.
+
+---
+
+## 9. Post-promotion-readiness round (2026-07-09 evening): independent audit fixes + FE conventions pass
+
+Two parallel closing efforts landed after §8, both on this branch (final HEAD for this round: see git log through the commit carrying this doc):
+
+### 9.1 Independent adversarial audit → fix waves (other session; see `docs/superpowers/audits/2026-07-09-treasury-spine-independent-audit.md` + its remediation record)
+`a2090e5be` per-tenant/per-repo reconcile failure isolation + truthful failure alert (audit N1) · `f6cd0d15c` freeze outcome survives post-freeze alerting failures · `a45f9363a` open-period fixture for the tolerance test (audit N2 — §3 correction: it was branch-caused, not pre-existing) · `f4ec2aa16` UUID guards on adjustment/movements/pay endpoints + re-runnable immutability migration (closes final-review M9 + UUID-500s) · `2c238ce7f` **658/758 tolerance purposes seeded in TN/FR charts + 422 on missing purpose — closes §5's adjustment-endpoint deploy item IN CODE** (runbook step no longer required for new tenants).
+
+### 9.2 FE conventions / atomic-design review (owner-mandated) → CONVENTIONS-CLEAN
+Adversarial review of all branch FE against the repo's atomic-design system + docs/conventions. Verified clean from the start: design tokens (In/Out = success/error semantics, money never in accent), i18n en/fr parity, tenantScopedKey + rule-14 hooks, atomic placement, StatCard/Select/StatusBadge/EntityLink/DataTable reuse where they fit. Findings fixed in `d892f775c` + `594305d43`: the Movements tab now reuses **OffsetPagination** (new backward-compatible `hidePerPage` prop — 3 compat tests, 6 consumer suites green), **EmptyState**, **DateRangeFilter**, **QueryError** (with retry); hand-rolled `<table>` kept as a documented accepted deviation (shared DataTable has no pagination; genre peers hand-roll); orphan i18n keys dropped. Follow-up ticket outside this branch: `DateRangeFilter` itself has a hardcoded `text-gray-700` + placeholder-only inputs (pre-existing shared-component debt).
+
+### 9.3 Final sweep on the settled branch (this session, controller-run)
+- Live treasury smoke E2E: **8/8 green** on final HEAD (post-UUID-guards, post-conventions-refactor).
+- `treasury:reconcile` (the reworked, per-tenant-isolated command): **checked 7; froze 0; 0 error(s)** on the demo tenant.
+- Treasury FE vitest 27 files / 215 tests green; `pnpm typecheck` clean; lint 0 errors (at the conventions-fix commit; the two later commits are backend-only).
