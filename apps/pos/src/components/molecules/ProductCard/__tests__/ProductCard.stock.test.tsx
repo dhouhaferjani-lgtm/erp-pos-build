@@ -88,12 +88,15 @@ describe('ProductCard location stock display', () => {
     expect(onAddToCart).toHaveBeenCalledTimes(1);
   });
 
-  it('renders low-stock when available is 3.0000', () => {
+  it('renders low-stock with the NUMBER shown (Task 10 — unified badge format), not the wordless label', () => {
     renderCard({
       locationStock: { available: '3.0000', incoming_transfer: '0', incoming_po: '0' },
     });
 
-    expect(screen.getByText('products.lowStock')).toBeInTheDocument();
+    expect(screen.getByText('products.stock:3')).toBeInTheDocument();
+    expect(screen.queryByText('products.lowStock')).not.toBeInTheDocument();
+    const badge = screen.getByTestId('stock-row');
+    expect(badge).toHaveAttribute('data-status', 'low');
     expect(screen.getByRole('button')).toHaveAttribute('aria-disabled', 'false');
   });
 

@@ -33,7 +33,7 @@
     "customize": "Customize",
     "outOfStock": "Out of Stock",
     "inCart": "In Cart",
-    "stock": "Stock: {{count}}",
+    "stock": "Stock {{count}}",
     "lowStock": "Low Stock",
     "fullName": "Full product name",
     "sortByMostSold": "Sort by most sold",

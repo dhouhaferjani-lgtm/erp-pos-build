@@ -119,21 +119,19 @@ function ProductCardInner({
     // Legacy path — unchanged for Menu tenants (999) and browser dev.
     isOutOfStock = product.stock_quantity <= 0;
     isLowStock = product.stock_quantity > 0 && product.stock_quantity <= 10;
+    // Number ALWAYS shown for ok/low (Task 10 — unified badge format); only
+    // `out` renders a wordless label. Badge colour still keys off isLowStock.
     stockLabel = isOutOfStock
       ? t('products.outOfStock')
-      : isLowStock
-        ? t('products.lowStock')
-        : t('products.stock', { count: product.stock_quantity });
+      : t('products.stock', { count: product.stock_quantity });
   } else if (locationStock !== null) {
     isOutOfStock = bccomp(locationStock.available, '0') <= 0;
     isLowStock = !isOutOfStock && bccomp(locationStock.available, '10') <= 0;
     stockLabel = isOutOfStock
       ? t('products.outOfStock')
-      : isLowStock
-        ? t('products.lowStock')
-        : (t as unknown as TranslateWithStringCount)('products.stock', {
-            count: formatAvailableQty(locationStock.available),
-          });
+      : (t as unknown as TranslateWithStringCount)('products.stock', {
+          count: formatAvailableQty(locationStock.available),
+        });
   }
   // locationStock === null → exempt: stockLabel stays null, no gating.
 

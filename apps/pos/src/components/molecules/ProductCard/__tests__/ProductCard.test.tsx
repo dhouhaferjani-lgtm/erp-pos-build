@@ -109,6 +109,21 @@ const longNameProduct: POSProduct = {
   barcode: null,
 };
 
+describe('ProductCard — Task 10 unified stock badge', () => {
+  it('shows the NUMBER for low stock (legacy stock_quantity path), not the wordless label', () => {
+    renderCard({
+      product: makeProduct({ id: 'p-low', name: 'Low Item', sale_price: '4.00', stock_quantity: 3 }),
+    });
+
+    // Mocked t() appends `:count` when opts.count is passed — the low branch
+    // must now route through products.stock (numbered), not products.lowStock.
+    expect(screen.getByText('products.stock:3')).toBeInTheDocument();
+    expect(screen.queryByText('products.lowStock')).not.toBeInTheDocument();
+    const badge = screen.getByTestId('stock-row');
+    expect(badge).toHaveAttribute('data-status', 'low');
+  });
+});
+
 describe('ProductCard layout regressions', () => {
   it('renders the full product name in a `title` attribute for hover tooltip (grid mode)', () => {
     render(
