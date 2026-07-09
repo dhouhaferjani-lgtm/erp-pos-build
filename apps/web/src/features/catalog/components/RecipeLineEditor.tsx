@@ -2,37 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input, Button, Checkbox, FormField, Select, QuantityInput } from '@/components/atoms'
-
-/** Controlled QuantityInput that only fires onCommit on blur — prevents per-keystroke API calls in table rows. */
-function BlurQuantityInput({
-  initialValue,
-  decimalPlaces,
-  onCommit,
-  className,
-  min,
-  max,
-}: {
-  initialValue: string
-  decimalPlaces: number
-  onCommit: (value: string) => void
-  className?: string
-  min?: string
-  max?: string
-}) {
-  const [draft, setDraft] = useState(initialValue)
-  return (
-    <QuantityInput
-      decimalPlaces={decimalPlaces}
-      value={draft}
-      onChange={setDraft}
-      onBlur={() => { if (draft !== initialValue) onCommit(draft) }}
-      className={className}
-      {...(min !== undefined ? { min } : {})}
-      {...(max !== undefined ? { max } : {})}
-    />
-  )
-}
+import { Input, Button, Checkbox, FormField, Select, DraftQuantityInput } from '@/components/atoms'
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Badge } from '@/components/atoms/Badge/Badge'
 import { ProductLineSelect } from '@/components/molecules/line-items'
@@ -256,7 +226,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                   {line.component_sku && <span className={`${textColors.tertiary} ml-1 text-xs`}>({line.component_sku})</span>}
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm text-right tabular-nums">
-                  <BlurQuantityInput
+                  <DraftQuantityInput
                     initialValue={line.quantity}
                     decimalPlaces={4}
                     onCommit={(v) => { handleUpdateLine(line.id, 'quantity', v) }}
@@ -265,7 +235,7 @@ export function RecipeLineEditor({ recipe, compositeItemId: _compositeItemId, ve
                 </td>
                 <td className={`whitespace-nowrap px-3 py-4 text-sm ${textColors.tertiary}`}>{line.unit_name ?? '-'}</td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm text-right tabular-nums">
-                  <BlurQuantityInput
+                  <DraftQuantityInput
                     initialValue={line.wastage_percent}
                     decimalPlaces={1}
                     onCommit={(v) => { handleUpdateLine(line.id, 'wastage_percent', v) }}

@@ -42,6 +42,47 @@ interface ReservationSettingsResponse {
   data: ReservationSettings
 }
 
+interface DraftIntegerInputProps {
+  id: string
+  initialValue: number
+  fallbackValue: number
+  min: number
+  max: number
+  onCommit: (value: number) => void
+}
+
+function DraftIntegerInput({ id, initialValue, fallbackValue, min, max, onCommit }: DraftIntegerInputProps) {
+  const [draft, setDraft] = useState(String(initialValue))
+  const [isFocused, setIsFocused] = useState(false)
+
+  function commitDraft() {
+    const trimmed = draft.trim()
+    const parsed = trimmed === '' ? fallbackValue : Number.parseInt(trimmed, 10)
+    const nextValue = Number.isFinite(parsed) ? Math.min(Math.max(parsed, min), max) : fallbackValue
+    setIsFocused(false)
+    setDraft(String(nextValue))
+    if (nextValue !== initialValue) {
+      onCommit(nextValue)
+    }
+  }
+
+  return (
+    <Input
+      id={id}
+      type="number"
+      min={String(min)}
+      max={String(max)}
+      value={isFocused ? draft : String(initialValue)}
+      onBlur={commitDraft}
+      onChange={(e) => { setDraft(e.target.value) }}
+      onFocus={() => {
+        setDraft(String(initialValue))
+        setIsFocused(true)
+      }}
+    />
+  )
+}
+
 export function InventorySettings() {
   const { t } = useTranslation(['common', 'inventory'])
   const queryClient = useQueryClient()
@@ -283,13 +324,13 @@ export function InventorySettings() {
               htmlFor="sales_order_expiry_days"
               helperText={t('inventory:settings.reservations.expiry.salesOrder.hint')}
             >
-              <Input
+              <DraftIntegerInput
                 id="sales_order_expiry_days"
-                type="number"
-                min="1"
-                max="365"
-                value={reservationSettings.sales_order_expiry_days}
-                onChange={(e) => { setReservationSettings({ ...reservationSettings, sales_order_expiry_days: parseInt(e.target.value) || 30 }); }}
+                initialValue={reservationSettings.sales_order_expiry_days}
+                fallbackValue={30}
+                min={1}
+                max={365}
+                onCommit={(value) => { setReservationSettings({ ...reservationSettings, sales_order_expiry_days: value }); }}
               />
             </FormField>
 
@@ -298,13 +339,13 @@ export function InventorySettings() {
               htmlFor="ecommerce_cart_expiry_minutes"
               helperText={t('inventory:settings.reservations.expiry.cart.hint')}
             >
-              <Input
+              <DraftIntegerInput
                 id="ecommerce_cart_expiry_minutes"
-                type="number"
-                min="5"
-                max="1440"
-                value={reservationSettings.ecommerce_cart_expiry_minutes}
-                onChange={(e) => { setReservationSettings({ ...reservationSettings, ecommerce_cart_expiry_minutes: parseInt(e.target.value) || 30 }); }}
+                initialValue={reservationSettings.ecommerce_cart_expiry_minutes}
+                fallbackValue={30}
+                min={5}
+                max={1440}
+                onCommit={(value) => { setReservationSettings({ ...reservationSettings, ecommerce_cart_expiry_minutes: value }); }}
               />
             </FormField>
 
@@ -313,13 +354,13 @@ export function InventorySettings() {
               htmlFor="marketplace_order_expiry_hours"
               helperText={t('inventory:settings.reservations.expiry.marketplace.hint')}
             >
-              <Input
+              <DraftIntegerInput
                 id="marketplace_order_expiry_hours"
-                type="number"
-                min="1"
-                max="168"
-                value={reservationSettings.marketplace_order_expiry_hours}
-                onChange={(e) => { setReservationSettings({ ...reservationSettings, marketplace_order_expiry_hours: parseInt(e.target.value) || 24 }); }}
+                initialValue={reservationSettings.marketplace_order_expiry_hours}
+                fallbackValue={24}
+                min={1}
+                max={168}
+                onCommit={(value) => { setReservationSettings({ ...reservationSettings, marketplace_order_expiry_hours: value }); }}
               />
             </FormField>
 
@@ -328,13 +369,13 @@ export function InventorySettings() {
               htmlFor="customer_return_expiry_days"
               helperText={t('inventory:settings.reservations.expiry.returns.hint')}
             >
-              <Input
+              <DraftIntegerInput
                 id="customer_return_expiry_days"
-                type="number"
-                min="1"
-                max="90"
-                value={reservationSettings.customer_return_expiry_days}
-                onChange={(e) => { setReservationSettings({ ...reservationSettings, customer_return_expiry_days: parseInt(e.target.value) || 14 }); }}
+                initialValue={reservationSettings.customer_return_expiry_days}
+                fallbackValue={14}
+                min={1}
+                max={90}
+                onCommit={(value) => { setReservationSettings({ ...reservationSettings, customer_return_expiry_days: value }); }}
               />
             </FormField>
           </div>

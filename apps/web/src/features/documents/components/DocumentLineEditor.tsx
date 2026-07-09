@@ -11,6 +11,7 @@ import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms/AddQuickProductModal/AddQuickProductModal'
 import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSelect'
 import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
+import { DraftMoneyInput } from '../../../components/atoms/DraftMoneyInput'
 import { QuantityInput } from '../../../components/atoms/QuantityInput/QuantityInput'
 import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '../../../components/molecules/line-items/LineItemsTable'
 import { LineItemEntryBar, ProductCell, type LineItemEntryAddMeta, type ProductLineProduct } from '../../../components/molecules/line-items'
@@ -594,24 +595,37 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         return (
           <div className="relative flex min-w-40 flex-col items-end gap-1">
             <div className="flex items-center justify-end gap-2">
-              <MoneyInput
-                currency={companyCurrency}
-                min="0"
-                error={isBlocked}
-                value={(line.price_entry_mode ?? 'unit') === 'total' ? calculateNetExtendedAmount(line) : decimalValue(line.unit_price)}
-                onFocus={() => {
-                  setFocusedPriceLineId(line.id)
-                }}
-                onChange={(value) => {
-                  if ((line.price_entry_mode ?? 'unit') === 'total') {
+              {(line.price_entry_mode ?? 'unit') === 'total' ? (
+                <DraftMoneyInput
+                  currency={companyCurrency}
+                  min="0"
+                  error={isBlocked}
+                  initialValue={calculateNetExtendedAmount(line)}
+                  onFocus={() => {
+                    setFocusedPriceLineId(line.id)
+                  }}
+                  onCommit={(value) => {
                     handleUpdateLine(line.id, { line_total: value })
-                    return
-                  }
-                  handleUpdateLine(line.id, { unit_price: value })
-                }}
-                aria-label={t('sales:lineItems.unitPrice')}
-                className={`${tokens.input.base} w-28 text-end text-sm`}
-              />
+                  }}
+                  aria-label={t('sales:lineItems.unitPrice')}
+                  className={`${tokens.input.base} w-28 text-end text-sm`}
+                />
+              ) : (
+                <MoneyInput
+                  currency={companyCurrency}
+                  min="0"
+                  error={isBlocked}
+                  value={decimalValue(line.unit_price)}
+                  onFocus={() => {
+                    setFocusedPriceLineId(line.id)
+                  }}
+                  onChange={(value) => {
+                    handleUpdateLine(line.id, { unit_price: value })
+                  }}
+                  aria-label={t('sales:lineItems.unitPrice')}
+                  className={`${tokens.input.base} w-28 text-end text-sm`}
+                />
+              )}
               {purchaseBonusEnabled && (
                 <button
                   type="button"

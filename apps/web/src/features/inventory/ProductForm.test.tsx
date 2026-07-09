@@ -81,6 +81,12 @@ vi.mock('../../stores/companyStore', () => {
   return { useCompanyStore }
 })
 
+vi.mock('../../hooks/usePermissions', () => ({
+  usePermissions: () => ({
+    hasPermission: () => true,
+  }),
+}))
+
 vi.mock('../../contexts/CompanyConfigContext', () => ({
   useCompanyConfig: () => ({
     config: { vertical: 'generic' },
@@ -668,7 +674,7 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     // post-demo design: the ready-to-sell strip always renders the margin
     // input; an empty value (not absence) is the "no margin yet" state.
     render(<ProductForm />)
-    expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue('')
+    expect((screen.getByLabelText('inventory:products.marginPercent') as HTMLInputElement).value).toBe('')
   })
 
   it('shows Margin when both purchase_price and sale_price are entered', () => {
@@ -684,6 +690,20 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     expect(screen.getByLabelText(/inventory:products\.margin/i, { exact: false })).toBeInTheDocument()
   })
 
+  it('keeps typed ready-to-sell margin drafts without mid-edit reformatting', () => {
+    render(<ProductForm />)
+    const purchaseInput = screen.getByLabelText(/inventory:products\.purchasePrice/i, { exact: false })
+    const marginInput = screen.getByLabelText('inventory:products.marginPercent')
+
+    fireEvent.change(purchaseInput, { target: { value: '60' } })
+    fireEvent.focus(marginInput)
+    fireEvent.change(marginInput, { target: { value: '3' } })
+    expect(marginInput).toHaveValue(3)
+
+    fireEvent.change(marginInput, { target: { value: '35' } })
+    expect(marginInput).toHaveValue(35)
+  })
+
   it('empties the margin value when sale_price is cleared back to empty', () => {
     render(<ProductForm />)
     const purchaseInput = screen.getByLabelText(/inventory:products\.purchasePrice/i, { exact: false })
@@ -692,7 +712,7 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     fireEvent.change(purchaseInput, { target: { value: '60' } })
     fireEvent.change(saleInput, { target: { value: '100' } })
     fireEvent.change(saleInput, { target: { value: '' } })
-    expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue('')
+    expect((screen.getByLabelText('inventory:products.marginPercent') as HTMLInputElement).value).toBe('')
   })
 
   it('WAC display (edit mode) — uses formatCurrency (no raw parseFloat in rendered output)', () => {

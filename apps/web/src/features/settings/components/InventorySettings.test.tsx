@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { InventorySettings } from './InventorySettings'
 
 // ─── i18n mock ──────────────────────────────────────────────────────────────
@@ -96,6 +97,36 @@ describe('InventorySettings', () => {
     ) as HTMLInputElement
     expect(salesOrder.type).toBe('number')
     expect(salesOrder.value).toBe('30')
+  })
+
+  it('allows reservation expiry fields to be empty while typing and restores per-field minimums on blur', async () => {
+    const user = userEvent.setup()
+    render(<InventorySettings />)
+
+    const salesOrder = screen.getByLabelText(
+      'inventory:settings.reservations.expiry.salesOrder.label'
+    ) as HTMLInputElement
+    const cart = screen.getByLabelText(
+      'inventory:settings.reservations.expiry.cart.label'
+    ) as HTMLInputElement
+
+    await user.clear(salesOrder)
+    expect(salesOrder.value).toBe('')
+
+    await user.type(salesOrder, '0')
+    expect(salesOrder.value).toBe('0')
+
+    await user.tab()
+    expect(salesOrder.value).toBe('1')
+
+    await user.clear(cart)
+    expect(cart.value).toBe('')
+
+    await user.type(cart, '0')
+    expect(cart.value).toBe('0')
+
+    await user.tab()
+    expect(cart.value).toBe('5')
   })
 
   it('renders money threshold fields seeded from fixture', () => {

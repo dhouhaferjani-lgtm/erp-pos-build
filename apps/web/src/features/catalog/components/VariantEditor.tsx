@@ -2,63 +2,11 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input, Button, Checkbox, Select, MoneyInput, QuantityInput } from '@/components/atoms'
+import { Input, Button, Checkbox, Select, MoneyInput, QuantityInput, DraftMoneyInput, DraftQuantityInput } from '@/components/atoms'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { useCompanyConfig } from '@/contexts'
 import type { CompositeItemVariantData, PriceAdjustmentType } from '../types/compositeItem'
 import { useCreateVariant, useUpdateVariant, useDeleteVariant } from '../hooks/useRecipes'
-
-/** Controlled MoneyInput that only fires onCommit on blur — prevents per-keystroke API calls in table rows. */
-function BlurMoneyInput({
-  initialValue,
-  currency,
-  onCommit,
-  className,
-}: {
-  initialValue: string
-  currency: string
-  onCommit: (value: string) => void
-  className?: string
-}) {
-  const [draft, setDraft] = useState(initialValue)
-  return (
-    <MoneyInput
-      currency={currency}
-      min="-999999"
-      value={draft}
-      onChange={setDraft}
-      onBlur={() => { if (draft !== initialValue) onCommit(draft) }}
-      className={className}
-    />
-  )
-}
-
-/** Controlled QuantityInput that only fires onCommit on blur — prevents per-keystroke API calls in table rows. */
-function BlurQuantityInput({
-  initialValue,
-  decimalPlaces,
-  onCommit,
-  className,
-  min,
-}: {
-  initialValue: string
-  decimalPlaces: number
-  onCommit: (value: string) => void
-  className?: string
-  min?: string
-}) {
-  const [draft, setDraft] = useState(initialValue)
-  return (
-    <QuantityInput
-      decimalPlaces={decimalPlaces}
-      value={draft}
-      onChange={setDraft}
-      onBlur={() => { if (draft !== initialValue) onCommit(draft) }}
-      className={className}
-      {...(min !== undefined ? { min } : {})}
-    />
-  )
-}
 
 interface VariantEditorProps {
   compositeItemId: string
@@ -154,15 +102,16 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                   </Select>
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <BlurMoneyInput
+                  <DraftMoneyInput
                     initialValue={variant.price_adjustment}
                     currency={currency}
                     onCommit={(v) => { handleUpdate(variant.id, 'price_adjustment', v) }}
                     className="!mt-0 w-24"
+                    min="-999999"
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
-                  <BlurQuantityInput
+                  <DraftQuantityInput
                     initialValue={variant.recipe_multiplier}
                     decimalPlaces={2}
                     onCommit={(v) => { handleUpdate(variant.id, 'recipe_multiplier', v) }}
