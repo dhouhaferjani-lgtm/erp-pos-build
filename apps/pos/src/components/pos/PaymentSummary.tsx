@@ -124,7 +124,13 @@ export function PaymentSummary({
         <span className="font-mono text-2xl font-bold tabular-nums text-pay-navy-fg">{format(total)}</span>
       </div>
 
-      {/* Payment buttons */}
+      {/* Payment action row — cash is the dominant real-world action and
+       * visually OWNS the row (icon + full label, all remaining width).
+       * "Autres paiements" is demoted to a compact 64px icon-only control
+       * (matches the cash button's row height, ≥48px touch floor) so it can
+       * NEVER clip — its label lives on aria-label + title. The previous
+       * two-equal-width layout clipped "Autres paiements" → "Autres paieme…"
+       * at real cart width (~300-360px, owner-reported on Tauri). */}
       <div className="flex gap-2">
         <Button
           variant="confirm"
@@ -136,22 +142,22 @@ export function PaymentSummary({
             !paymentConfigReady ? t('pos:payment.configNotLoaded') : undefined
           }
           leftIcon={<Banknote className="h-5 w-5" />}
-          className="flex-[3]"
+          className="min-w-0 flex-1"
+          truncate
         >
           {t('pos:payment.cashPayment')}
         </Button>
 
         {showAdvancedPayments && (
-          <Button
+          <IconButton
             variant="secondary"
-            size="lg"
             onClick={onAdvancedPayments}
             disabled={disabled}
-            leftIcon={<Wallet className="h-5 w-5" />}
-            className="flex-1"
-          >
-            {t('pos:payment.advancedPayments')}
-          </Button>
+            aria-label={t('pos:payment.advancedPayments')}
+            title={t('pos:payment.advancedPayments')}
+            icon={<Wallet className="h-6 w-6" />}
+            className="h-16 w-16"
+          />
         )}
       </div>
     </div>

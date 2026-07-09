@@ -144,3 +144,102 @@ describe('PaymentSummary — T1.2 Step 2.3 paymentConfigReady gate', () => {
     ).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Caisse visual redesign — payment footer action row.
+ *
+ * Owner-reported on real Tauri: the two footer buttons rendered roughly
+ * equal-width, and "Autres paiements" CLIPPED to "Autres paieme…" at real
+ * cart width (~300-360px). New contract:
+ *  - Cash stays primary and LARGE (owns the row; full label + icon).
+ *  - "Autres paiements" becomes a compact icon-only control whose
+ *    accessible name comes from t() via aria-label + title — it has no
+ *    visible text label, so it can never clip.
+ *  - All behavior preserved: onClick handlers, disabled gating.
+ */
+describe('PaymentSummary — compact other-payments control (caisse redesign)', () => {
+  const readyProps = {
+    ...baseProps,
+    paymentMethods: [
+      makePaymentMethod({ id: 'pm-cash', is_active: true }),
+      makePaymentMethod({ id: 'pm-card', is_active: true }),
+    ],
+    paymentRepositories: [makePaymentRepository({ id: 'repo-cash' })],
+  };
+
+  it('other-payments control is icon-only with its accessible name via aria-label + title (never clips)', () => {
+    render(<PaymentSummary {...readyProps} />);
+
+    // Accessible name must be queryable by role — this is what a screen
+    // reader announces for the icon-only control.
+    const otherButton = screen.getByRole('button', {
+      name: 'pos:payment.advancedPayments',
+    });
+    expect(otherButton).toHaveAttribute(
+      'aria-label',
+      'pos:payment.advancedPayments',
+    );
+    // Sighted tooltip for mouse/long-press users.
+    expect(otherButton).toHaveAttribute(
+      'title',
+      'pos:payment.advancedPayments',
+    );
+    // Icon-only: the label must NOT be rendered as visible text — visible
+    // text is exactly what clipped to "Autres paieme…" at real cart width.
+    expect(otherButton).not.toHaveTextContent('pos:payment.advancedPayments');
+  });
+
+  it('cash button keeps its full visible label', () => {
+    render(<PaymentSummary {...readyProps} />);
+
+    const cashButton = screen.getByRole('button', { name: /cashPayment/i });
+    // The dominant cash action keeps its visible text label (not icon-only).
+    expect(cashButton).toHaveTextContent('pos:payment.cashPayment');
+    expect(cashButton).not.toBeDisabled();
+  });
+
+  it('other-payments control still invokes onAdvancedPayments on click', () => {
+    const onAdvancedPayments = vi.fn();
+    render(
+      <PaymentSummary {...readyProps} onAdvancedPayments={onAdvancedPayments} />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'pos:payment.advancedPayments' }),
+    );
+    expect(onAdvancedPayments).toHaveBeenCalledTimes(1);
+  });
+
+  it('other-payments control respects the disabled prop (empty cart)', () => {
+    const onAdvancedPayments = vi.fn();
+    render(
+      <PaymentSummary
+        {...readyProps}
+        onAdvancedPayments={onAdvancedPayments}
+        disabled
+      />,
+    );
+
+    const otherButton = screen.getByRole('button', {
+      name: 'pos:payment.advancedPayments',
+    });
+    expect(otherButton).toBeDisabled();
+
+    fireEvent.click(otherButton);
+    expect(onAdvancedPayments).not.toHaveBeenCalled();
+  });
+
+  it('other-payments control is still hidden with fewer than 2 active methods', () => {
+    render(
+      <PaymentSummary
+        {...baseProps}
+        paymentMethods={[makePaymentMethod({ id: 'pm-cash', is_active: true })]}
+        paymentRepositories={[makePaymentRepository({ id: 'repo-cash' })]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'pos:payment.advancedPayments' }),
+    ).not.toBeInTheDocument();
+  });
+});

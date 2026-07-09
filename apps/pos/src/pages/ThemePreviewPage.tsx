@@ -28,6 +28,7 @@ import { ProductCard } from '@/components/molecules/ProductCard';
 import { ProductListRow } from '@/components/organisms/ProductGrid/ProductListRow';
 import { ProductTable } from '@/components/organisms/ProductGrid/ProductTable';
 import { ProductDetailDrawer } from '@/components/organisms/ProductDetailDrawer';
+import { PaymentSummary } from '@/components/pos/PaymentSummary';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { ShiftClosurePage } from '@/pages/ShiftClosurePage';
 import { ACCENTS, type AccentName, type Density } from '@/lib/theme';
@@ -37,6 +38,7 @@ import { formatCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { Search, Printer, ShoppingCart, Users, BarChart3, Wallet } from 'lucide-react';
 import type { CartItem } from '@/types/cart';
+import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { POSProduct } from '@/types/product';
 import type { FiltresFilters } from '@/components/organisms/FiltresDrawer';
 
@@ -110,6 +112,65 @@ const SELL_PRODUCTS: POSProduct[] = [
   seedProduct(26, 'Nutritic Intense Riche', 'La Roche-Posay', 'Visage', '46.000', 22, 'dry'),
   seedProduct(27, 'Capital Soleil Brume Invisible SPF50', 'Vichy', 'Solaire', '43.500', 17),
   seedProduct(28, 'Cold Cream Corps', 'Avène', 'Corps', '24.900', 30, 'dry'),
+];
+
+// ---------------------------------------------------------------------------
+// Payment-footer fixtures — a ready payment config (2 active methods + a cash
+// repository) so PaymentSummary shows BOTH actions: the dominant cash button
+// and the compact icon-only "Autres paiements" control. Monetary string
+// fields on the config objects follow the precision contract (strings);
+// PaymentSummary's own amount props are numbers (its actual prop shape).
+// ---------------------------------------------------------------------------
+const PREVIEW_PAYMENT_METHODS: PaymentMethod[] = [
+  {
+    id: 'preview-pm-cash',
+    code: 'CASH',
+    name: 'Espèces',
+    is_physical: true,
+    has_maturity: false,
+    requires_third_party: false,
+    is_push: false,
+    has_deducted_fees: false,
+    is_restricted: false,
+    fee_type: null,
+    fee_fixed: '0.000',
+    fee_percent: '0.00',
+    restriction_type: null,
+    is_active: true,
+    position: 1,
+  },
+  {
+    id: 'preview-pm-card',
+    code: 'CARD',
+    name: 'Carte bancaire',
+    is_physical: false,
+    has_maturity: false,
+    requires_third_party: false,
+    is_push: false,
+    has_deducted_fees: false,
+    is_restricted: false,
+    fee_type: null,
+    fee_fixed: '0.000',
+    fee_percent: '0.00',
+    restriction_type: null,
+    is_active: true,
+    position: 2,
+  },
+];
+
+const PREVIEW_PAYMENT_REPOSITORIES: PaymentRepository[] = [
+  {
+    id: 'preview-repo-caisse',
+    code: 'CAISSE1',
+    name: 'Caisse 1',
+    type: 'cash_register',
+    bank_name: null,
+    account_number: null,
+    iban: null,
+    bic: null,
+    balance: '0.000',
+    is_active: true,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -453,6 +514,65 @@ export function ThemePreviewPage() {
                   onRecall={() => undefined}
                   hasItems
                   recallCount={3}
+                />
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Pied de paiement (cash dominant + « Autres paiements » compact)">
+          <p className="mb-3 text-sm text-ink-muted">
+            Owner feedback fix: à largeur réelle du panier (~300-360px), les
+            deux boutons quasi égaux tronquaient « Autres paiements » en
+            « Autres paieme… ». L'espèces (action dominante) garde icône +
+            libellé complet et possède la ligne; « Autres paiements » devient
+            un contrôle compact icône-seule 64×64 (nom accessible via
+            aria-label/title) qui ne peut jamais tronquer.
+          </p>
+          <div className="flex flex-wrap items-start gap-6">
+            <div>
+              <span className="mb-1 block text-xs text-ink-muted">
+                Étroit (~300px)
+              </span>
+              <div
+                data-testid="payment-footer-preview-narrow"
+                className="rounded-panel bg-surface-canvas p-2"
+                style={{ width: 300 }}
+              >
+                <PaymentSummary
+                  subtotal={57.844}
+                  grossSubtotal={57.844}
+                  taxAmount={9.235}
+                  discountAmount={0}
+                  total={57.844}
+                  hasDiscount={false}
+                  onPayCash={() => undefined}
+                  onAdvancedPayments={() => undefined}
+                  paymentMethods={PREVIEW_PAYMENT_METHODS}
+                  paymentRepositories={PREVIEW_PAYMENT_REPOSITORIES}
+                />
+              </div>
+            </div>
+            <div>
+              <span className="mb-1 block text-xs text-ink-muted">
+                Large (~400px)
+              </span>
+              <div
+                data-testid="payment-footer-preview-wide"
+                className="rounded-panel bg-surface-canvas p-2"
+                style={{ width: 400 }}
+              >
+                <PaymentSummary
+                  subtotal={57.844}
+                  grossSubtotal={57.844}
+                  taxAmount={9.235}
+                  discountAmount={0}
+                  total={57.844}
+                  hasDiscount={false}
+                  onPayCash={() => undefined}
+                  onAdvancedPayments={() => undefined}
+                  paymentMethods={PREVIEW_PAYMENT_METHODS}
+                  paymentRepositories={PREVIEW_PAYMENT_REPOSITORIES}
                 />
               </div>
             </div>
