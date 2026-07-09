@@ -315,11 +315,51 @@ test.describe.serial('Treasury spine — live E2E', () => {
     await expect(table).toBeVisible({ timeout: 20000 })
 
     // Stable anchor: the opening_balance row's running balance (374.750) never
-    // changes across runs, so it always identifies the opening movement.
+    // changes across runs. BUT the movements table is paginated 20/page
+    // newest-first and the append-only ledger grows +3 rows every run — the
+    // opening row (oldest, ordinal 1) eventually falls off page 1 as history
+    // accumulates. Isolate it via the Source filter: selecting
+    // source_type=opening_balance refetches server-side to exactly 1 row,
+    // so the assertion stays history-proof regardless of how many prior runs
+    // have piled up movements.
+    const [openingFiltered] = await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          /\/payment-repositories\/.+\/movements\?.*source_type=opening_balance/.test(r.url()) &&
+          r.ok(),
+        { timeout: 20000 },
+      ),
+      page.locator('#movements-filter-source-type').selectOption('opening_balance'),
+    ])
+    expect(openingFiltered.ok(), 'source_type=opening_balance query returned ok').toBeTruthy()
+
+    const openingRow = table
+      .locator('tr')
+      .filter({ has: page.getByText(tolerantMoneyRegExp('374.750')) })
     await expect(
-      table.getByText(tolerantMoneyRegExp('374.750')).first(),
-      'opening_balance row visible',
+      openingRow,
+      'source_type=opening_balance filter returns exactly one row, balance 374.750',
+    ).toHaveCount(1)
+    await expect(
+      openingRow.getByText('Opening Balance', { exact: true }),
+      'opening_balance row carries the Opening Balance source badge',
     ).toBeVisible()
+
+    // Reset the Source filter back to "All sources" before asserting this
+    // run's own rows below. Those rows are always the 3 newest movements
+    // (payment -> refund -> adjustment, in creation order) so they are safe
+    // to read unfiltered off page 1 regardless of history depth — and this
+    // reset is also what keeps the direction-filter sub-test further down
+    // starting from a clean (no source_type) filter state.
+    //
+    // No waitForResponse here: the app's QueryClient sets staleTime to 5
+    // minutes (src/lib/queryClient.ts), and the unfiltered/page-1 query key
+    // was already fetched once when the tab first mounted above — so
+    // TanStack Query serves it straight from cache with no network
+    // round-trip, and a waitForResponse listener would time out waiting for
+    // a request that (correctly) never happens.
+    await page.locator('#movements-filter-source-type').selectOption('')
+    await expect(page.locator('#movements-filter-source-type')).toHaveValue('')
 
     // This run's rows (relative to the captured baseline):
     const afterPayment = addDecimal(baselineMainBalance, PAYMENT_AMOUNT)
