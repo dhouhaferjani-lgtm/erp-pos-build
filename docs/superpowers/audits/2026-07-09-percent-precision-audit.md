@@ -6,6 +6,12 @@
 ## The contract (CLAUDE.md rule 19 / `docs/architecture/precision-contract.md`)
 Money = currency-scaled decimal (TND=3 / EUR=2), quantity = `decimal(N,4)`, **percents = fixed 2 decimal places** — percents are NOT currency/quantity-scaled. Everything is bcmath / `Big.js` **strings**; a float must never touch money, quantity, or a percent.
 
+## ⚠️ Rev 2 corrections (Codex pre-dispatch review — `2026-07-09-precision-plan-codex-review.md`)
+- **`eco_tax_rate` (DocumentLine + ReceiptLine) is a FRACTION, not a percent-value** — KEEP `decimal(N,4)`; do NOT narrow (rows below corrected).
+- **POS receipt/Z-report `tax_rate` feed the fiscal HASH** (`ReceiptHashService.php:117`, `V3ReceiptHashComputer.php:104`, `zReportHashService.ts:119`) — NOT presentation-only; changes require golden fixture parity, gated last.
+- **`services.base_price` is polymorphic (percent OR money)** — add to the Coupon/Promotion polymorphic set (was missed).
+- **Every percent-column narrowing needs a tenant preflight** (`rate != round(rate,2)`); validators/writers first. **`formatPercentage` (`format.ts:186`) is NOT a safe formatter** (parseFloat + fixed 2dp) — build a string-safe one.
+
 ## ⚠️ Classification rule (READ FIRST — do not blind-fix)
 A flagged column is one of three kinds; the fix differs:
 - **Percent-VALUE** (stores `19.00`, `30.00`) → must be `decimal(N,2)` + cast `decimal:2`. Most tax_rate / margin / percentage_rate columns.
@@ -25,8 +31,8 @@ Verify each column's semantic before changing its scale. **DB scale changes run 
 | `Workshop/Bundle/Domain/ServiceBundle.php:91` | `tax_rate` `decimal:3` | `decimal(6,3)` (`2026_04_19_110001…:27`) | percent-value | cast `decimal:2` + col `decimal(5,2)` |
 | `Workshop/WorkOrder/Domain/WorkOrderLine.php:129` | `tax_rate` `decimal:3` | `decimal(6,3)` (`2026_04_19_130002…:53`) | percent-value | cast `decimal:2` + col `decimal(5,2)` |
 | `Product/Domain/Product.php:166,167` | `target_margin_override`, `minimum_margin_override` `decimal:3` | `decimal(5,3)` (`2026_03_11_200000…:38-39`) | percent-value | cast `decimal:2` + col `decimal(5,2)` — inconsistent with the CORRECT twin `Category.php:94-95` (`decimal:2`) |
-| `Document/Domain/DocumentLine.php:164` | `eco_tax_rate` `decimal:4` | `decimal(8,4)` (`2026_05_01_000005…:28`) | **verify** percent-value vs amount | if percent → `decimal(5,2)`; if it's an amount, it's money (scale 3) |
-| `POS/Domain/ReceiptLine.php:125` | `eco_tax_rate` `decimal:4` | `decimal(8,4)` (`2026_05_01_000004…:28`) | **verify** (copy-paste twin) — **FISCAL (receipt line)** | same as above; fiscal-pos-reviewer gate |
+| `Document/Domain/DocumentLine.php:164` | `eco_tax_rate` `decimal:4` | `decimal(8,4)` (`2026_05_01_000005…:28`) | **FRACTION (Codex-confirmed, `DocumentLine.php:54`)** | **KEEP `decimal:4` — do NOT narrow** |
+| `POS/Domain/ReceiptLine.php:125` | `eco_tax_rate` `decimal:4` | `decimal(8,4)` (`2026_05_01_000004…:28`) | **FRACTION + FISCAL** (`ReceiptLine.php:48`) | KEEP scale; POS receipt tax feeds the hash → presentation only + fixture parity |
 | `Taxation/…/WithholdingCertificate.php:100` | `withholding_rate` `decimal:4` | `decimal(5,4)` (`2026_01_08_172147…:36`) | **FRACTION** | KEEP col scale; fix the float display (Root Fix 3) |
 | `Taxation/…/WithholdingTaxRule.php:66` | `rate` `decimal:4` | `decimal(5,4)` (`2026_01_08_172123…:32`) | **FRACTION** | KEEP scale; display fix only |
 | `Taxation/…/SalesWithholdingTracking` | `withholding_rate` (no cast) | `decimal(5,4)` (`2026_01_09_111456…:28`) | **FRACTION** | KEEP scale; format at display |
