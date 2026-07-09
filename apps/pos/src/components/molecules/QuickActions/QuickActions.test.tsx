@@ -86,6 +86,39 @@ describe('QuickActions', () => {
     expect(recallLabel?.textContent).toBe('quickActions.recall');
   });
 
+  it('is icon-forward and responsive: label collapses to icon-only at narrow widths, but stays fully discoverable via title + aria-label (owner feedback: "Rem…/Sus…/Rap…" hard-truncation at the narrow cart width)', () => {
+    renderQA();
+    const labels = ['quickActions.discount', 'quickActions.hold', 'quickActions.recall'];
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(3);
+
+    buttons.forEach((button, i) => {
+      const label = labels[i];
+
+      // The icon is ALWAYS rendered — icon-forward, never conditional on width.
+      const icon = button.querySelector('svg');
+      expect(icon).not.toBeNull();
+      expect(icon).toHaveClass('shrink-0');
+
+      // The full label is ALWAYS available as a tooltip (title) and for
+      // assistive tech (aria-label), so nothing is lost when the visible
+      // label text collapses at narrow container widths — jsdom can't
+      // evaluate the @container query itself, so this is what we assert
+      // instead of a pixel measurement.
+      expect(button).toHaveAttribute('title', label);
+      expect(button).toHaveAttribute('aria-label', label);
+
+      // The button is a container-query context for its own label: `hidden`
+      // by default (icon-only), `@[9rem]:inline` once the button itself has
+      // room — true "label when there's room, icon-only when narrow" with
+      // no JS width watching.
+      expect(button.className).toContain('@container');
+      const labelSpan = button.querySelector('span.truncate');
+      expect(labelSpan).toHaveClass('hidden');
+      expect(labelSpan).toHaveClass('@[9rem]:inline');
+    });
+  });
+
   it('makes the count badge shrink-0 so it never competes with the label for space', () => {
     renderQA({ recallCount: 3 });
     const recallBtn = screen.getByText('quickActions.recall').closest('button') as HTMLElement;
