@@ -303,8 +303,6 @@
         "directionAll": "Tous les sens",
         "sourceType": "Origine",
         "sourceTypeAll": "Toutes les origines",
-        "dateFrom": "Du",
-        "dateTo": "Au",
         "dateRange": "Plage de dates"
       },
       "directions": {

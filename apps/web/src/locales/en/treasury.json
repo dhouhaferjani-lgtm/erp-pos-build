@@ -303,8 +303,6 @@
         "directionAll": "All directions",
         "sourceType": "Source",
         "sourceTypeAll": "All sources",
-        "dateFrom": "From",
-        "dateTo": "To",
         "dateRange": "Date Range"
       },
       "directions": {
