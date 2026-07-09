@@ -338,11 +338,24 @@ class PaymentAllocationService
 
                     $advanceJournalEntryId = $advanceEntry->id;
 
+                    // Reconciliation-readiness (spec §9.2): when the advance/excess JE
+                    // is the payment's ONLY journal entry (a PURE advance — no invoice
+                    // or order allocation posted an entry above), link + persist it as
+                    // the payment's journal entry. The deposit/account bridges record
+                    // the cash movement with `payment->journal_entry_id`; without this
+                    // a plain customer deposit would record a null-JE cash movement even
+                    // though the 419 customer-advance JE exists — freezing the repo at
+                    // Wave-F reconcile.
+                    if ($journalEntryId === null && $payment->journal_entry_id === null) {
+                        $payment->journal_entry_id = $advanceJournalEntryId;
+                    }
+
                     // Update payment type if this is a pure advance (no allocations)
                     if (bccomp($totalAllocated, '0', 4) === 0) {
                         $payment->payment_type = PaymentType::Advance;
-                        $payment->save();
                     }
+
+                    $payment->save();
                 }
             }
 

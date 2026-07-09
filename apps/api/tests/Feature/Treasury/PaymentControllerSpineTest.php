@@ -26,7 +26,14 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
+use App\Modules\Treasury\Application\Services\PaymentAllocationService;
+use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
+use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -345,6 +352,206 @@ class PaymentControllerSpineTest extends TestCase
             DB::table('repository_movements')->where('payment_repository_id', $repository->id)->count(),
             'Exactly one movement row — no double write.',
         );
+    }
+
+    /**
+     * Reconciliation-readiness (Fix 2 / store): a PURE-ADVANCE customer payment (no
+     * open invoices → the whole amount is booked as a customer advance) must record
+     * a cash movement carrying the ADVANCE journal entry — never a null-JE movement.
+     *
+     * @test
+     */
+    public function pure_advance_customer_payment_records_movement_linked_to_the_advance_journal_entry(): void
+    {
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Advance Customer',
+            'type' => PartnerType::Customer,
+        ]);
+
+        $repository = $this->makeLedgeredRepository();
+
+        // No allocations → the entire amount is a pure advance.
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $partner->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'repository_id' => $repository->id,
+            'amount' => '90.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'reference' => 'PAY-SPINE-ADV-001',
+        ]);
+
+        $response->assertCreated();
+        $paymentId = $response->json('data.id');
+
+        // The customer-advance journal entry (source_type 'advance').
+        $advanceEntry = JournalEntry::query()
+            ->where('source_type', 'advance')
+            ->where('source_id', $paymentId)
+            ->first();
+        $this->assertNotNull($advanceEntry, 'Pure advance must post a customer-advance journal entry.');
+
+        // The payment links the advance JE and is typed Advance.
+        $this->assertDatabaseHas('payments', [
+            'id' => $paymentId,
+            'journal_entry_id' => $advanceEntry->id,
+            'payment_type' => PaymentType::Advance->value,
+        ]);
+
+        // EXACTLY ONE cash movement, carrying the advance JE (NOT null).
+        $movements = DB::table('repository_movements')
+            ->where('payment_repository_id', $repository->id)
+            ->where('source_type', 'payment')
+            ->where('source_id', $paymentId)
+            ->get();
+
+        $this->assertCount(1, $movements, 'Exactly one repository movement for the advance payment.');
+        $movement = $movements->first();
+        $this->assertSame('in', $movement->direction);
+        $this->assertNotNull($movement->journal_entry_id, 'Movement must NOT carry a null journal entry.');
+        $this->assertSame($advanceEntry->id, $movement->journal_entry_id, 'Movement must link to the advance JE.');
+        $this->assertSame(0, bccomp((string) $movement->amount, '90.000', 3));
+
+        // Balance moved UP once by the full amount.
+        $repository->refresh();
+        $this->assertSame(0, bccomp((string) $repository->balance, '90.000', 3), 'Balance must move once.');
+    }
+
+    /**
+     * Reconciliation-readiness (Fix 1 / PaymentAllocationService): when a pure advance
+     * is applied (no allocation JE), the advance JE must be linked+persisted onto
+     * `payment.journal_entry_id` so the deposit/account bridges record the cash
+     * movement with a non-null JE.
+     *
+     * @test
+     */
+    public function pure_advance_via_allocation_service_links_advance_journal_entry_to_payment(): void
+    {
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Bridge Advance Customer',
+            'type' => PartnerType::Customer,
+        ]);
+
+        $repository = $this->makeLedgeredRepository();
+
+        // A completed deposit Payment with NO open invoices for the partner.
+        $payment = Payment::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $partner->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'repository_id' => $repository->id,
+            'amount' => '150.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+            'origin' => PaymentOrigin::BackOffice,
+            'created_by' => $this->user->id,
+            'reference' => 'DEP-SPINE-ADV-001',
+        ]);
+
+        $result = app(PaymentAllocationService::class)->applyAllocationFromCommand(
+            new ApplyPaymentAllocationCommand(
+                tenantId: $this->tenant->id,
+                companyId: $this->company->id,
+                paymentId: $payment->id,
+                allocationMethod: AllocationMethod::FIFO,
+                actorUserId: $this->user->id,
+                source: 'test:deposit',
+                manualAllocations: null,
+            )
+        );
+
+        // No invoice allocation JE; the advance JE is the payment's only JE.
+        $this->assertNull($result['journal_entry_id']);
+        $this->assertNotNull($result['advance_journal_entry_id']);
+
+        $payment->refresh();
+        $this->assertSame(
+            $result['advance_journal_entry_id'],
+            $payment->journal_entry_id,
+            'Pure advance must persist the advance JE onto payment.journal_entry_id.',
+        );
+        $this->assertSame(PaymentType::Advance, $payment->payment_type);
+    }
+
+    /**
+     * Reconciliation-readiness (Fix 2 / storeMultiple): a multi-line OVERPAYMENT
+     * whose trailing line is PURE EXCESS (allocates nothing to the primary document)
+     * must still record that line's cash movement with a non-null JE — the excess
+     * advance JE — not a null-JE movement.
+     *
+     * @test
+     */
+    public function multi_line_overpayment_pure_excess_line_movement_carries_a_journal_entry(): void
+    {
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Multi Overpay Customer',
+            'type' => PartnerType::Customer,
+        ]);
+
+        $this->postOpeningReceivable($partner, '100.000');
+
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $partner->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-SPINE-MULTI-001',
+            'document_date' => now()->toDateString(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '100.000',
+            'tax_amount' => '0.000',
+            'total' => '100.000',
+            'balance_due' => '100.000',
+            'currency' => 'TND',
+        ]);
+
+        $repoA = $this->makeLedgeredRepository();
+        $repoB = $this->makeLedgeredRepository();
+
+        // Line A fully clears the invoice (100). Line B (50) is entirely excess.
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $partner->id,
+            'document_id' => $invoice->id,
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'payments' => [
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $repoA->id, 'amount' => '100.000'],
+                ['payment_method_id' => $this->paymentMethod->id, 'repository_id' => $repoB->id, 'amount' => '50.000'],
+            ],
+            'excess_allocation_method' => 'advance',
+        ]);
+
+        $response->assertCreated();
+        $excessPaymentId = $response->json('data.payments.1.id');
+        $this->assertIsString($excessPaymentId);
+
+        // The pure-excess line's advance JE.
+        $advanceEntry = JournalEntry::query()
+            ->where('source_type', 'advance')
+            ->where('source_id', $excessPaymentId)
+            ->first();
+        $this->assertNotNull($advanceEntry, 'The pure-excess line must post a customer-advance JE.');
+
+        // The pure-excess line's cash movement carries that JE (NOT null).
+        $movement = DB::table('repository_movements')
+            ->where('payment_repository_id', $repoB->id)
+            ->where('source_type', 'payment')
+            ->where('source_id', $excessPaymentId)
+            ->first();
+
+        $this->assertNotNull($movement, 'The pure-excess line must record a cash movement.');
+        $this->assertNotNull($movement->journal_entry_id, 'Pure-excess movement must NOT carry a null journal entry.');
+        $this->assertSame($advanceEntry->id, $movement->journal_entry_id);
+        $this->assertSame(0, bccomp((string) $movement->amount, '50.000', 3));
     }
 
     private function makeLedgeredRepository(string $openingBalance = '0.000'): PaymentRepository

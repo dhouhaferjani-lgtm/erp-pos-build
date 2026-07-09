@@ -812,42 +812,16 @@ class PaymentController extends Controller
                     $payment->save();
                 }
 
-                // Move the treasury cash through the write port — the SINGLE writer of the
-                // repository balance + movement row. Direction: customer payments come IN,
-                // supplier payments go OUT. The FULL payment amount moves (matching the old
-                // inline write); any excess-advance portion is booked separately in the GL
-                // below, but the physical cash-in/out is this one movement, keyed on the
-                // stable payment id. Amount/currency pass as strings so the port owns all
-                // bcmath/scale (Rule 19).
-                if ($repository instanceof PaymentRepository) {
-                    $this->movementService->record(new MovementIntent(
-                        repositoryId: $repository->id,
-                        tenantId: $tenantId,
-                        companyId: $companyId,
-                        direction: $isSupplierPayment ? MovementDirection::Out : MovementDirection::In,
-                        amount: $paymentAmount,
-                        // The movement is a fact about THIS repository — record it in the
-                        // repository's own currency (the port's currency invariant), not the
-                        // request currency. AutoERP is single-currency today, so these agree.
-                        currency: $repository->currency,
-                        sourceType: MovementSourceType::Payment,
-                        sourceId: $payment->id,
-                        idempotencyLeg: 'main',
-                        journalEntryId: $primaryJournalEntryId,
-                        occurredAt: null,
-                        reasonCode: null,
-                        reversesMovementId: null,
-                        createdBy: $user->id,
-                        notes: null,
-                        allowWhileFrozen: false,
-                    ));
-                }
-
-                // Handle excess amount as customer advance.
-                // Supplier payments are excluded — there is no supplier-advance path here
-                // and over-allocation was already rejected before the transaction.
+                // Handle excess amount as customer advance — posted BEFORE the cash
+                // movement so its JE can back the movement (reconciliation-readiness,
+                // spec §9.2). Supplier payments are excluded — there is no supplier-
+                // advance path here and over-allocation was already rejected before the
+                // transaction.
                 /** @var numeric-string $excessAmount */
                 $excessAmount = bcsub($paymentAmount, $totalAllocatedForGL, $this->scale());
+
+                /** @var string|null $advanceJournalEntryId */
+                $advanceJournalEntryId = null;
 
                 if (! $isSupplierPayment && bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId) {
                     if (! $repository instanceof PaymentRepository) {
@@ -861,7 +835,7 @@ class PaymentController extends Controller
 
                     if ($repository instanceof PaymentRepository && $repository->gl_account_id) {
                         // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer Advance)
-                        $this->glService->createCustomerAdvanceJournalEntry(
+                        $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
                             companyId: $companyId,
                             partnerId: $validated['partner_id'],
                             advanceId: $payment->id,
@@ -873,16 +847,69 @@ class PaymentController extends Controller
                             currencyCode: $payment->currency
                         );
 
+                        $advanceJournalEntryId = $advanceEntry->id;
+
                         // Update payment type to indicate partial advance
                         if (bccomp($totalAllocatedForGL, '0', $this->scale()) > 0) {
                             // Has both allocated and excess - keep as DocumentPayment
                             // The advance portion is tracked via GL
                         } else {
-                            // Pure advance payment (no allocations)
+                            // Pure advance payment (no allocations) — link the advance JE
+                            // so the cash movement below carries it (no allocation JE exists).
                             $payment->payment_type = PaymentType::Advance;
+                            if ($payment->journal_entry_id === null) {
+                                $payment->journal_entry_id = $advanceJournalEntryId;
+                            }
                             $payment->save();
                         }
                     }
+                }
+
+                // Move the treasury cash through the write port — the SINGLE writer of the
+                // repository balance + movement row. Direction: customer payments come IN,
+                // supplier payments go OUT. The FULL payment amount moves (matching the old
+                // inline write); any excess-advance portion was booked above, but the
+                // physical cash-in/out is this one movement, keyed on the stable payment id.
+                // Amount/currency pass as strings so the port owns all bcmath/scale (Rule 19).
+                //
+                // Reconciliation-readiness (spec §9.2): the movement MUST carry a JE — the
+                // invoice/order-allocation JE if any, else the advance/excess JE. A named
+                // repository is already guaranteed ledgered by the pre-transaction guard, so
+                // for any cash-moving payment one of these is non-null. If somehow neither
+                // posted (a misconfigured null-gl_account_id repository), fail loud with a
+                // 422 rather than record a null-JE cash movement that would freeze the repo
+                // at reconcile.
+                if ($repository instanceof PaymentRepository) {
+                    /** @var string|null $movementJournalEntryId */
+                    $movementJournalEntryId = $primaryJournalEntryId ?? $advanceJournalEntryId;
+
+                    if ($movementJournalEntryId === null) {
+                        throw new \DomainException(
+                            "a cash movement requires a GL-linked repository; repository {$repository->id} has no gl_account_id"
+                        );
+                    }
+
+                    $this->movementService->record(new MovementIntent(
+                        repositoryId: $repository->id,
+                        tenantId: $tenantId,
+                        companyId: $companyId,
+                        direction: $isSupplierPayment ? MovementDirection::Out : MovementDirection::In,
+                        amount: $paymentAmount,
+                        // The movement is a fact about THIS repository — record it in the
+                        // repository's own currency (the port's currency invariant), not the
+                        // request currency. AutoERP is single-currency today, so these agree.
+                        currency: $repository->currency,
+                        sourceType: MovementSourceType::Payment,
+                        sourceId: $payment->id,
+                        idempotencyLeg: 'main',
+                        journalEntryId: $movementJournalEntryId,
+                        occurredAt: null,
+                        reasonCode: null,
+                        reversesMovementId: null,
+                        createdBy: $user->id,
+                        notes: null,
+                        allowWhileFrozen: false,
+                    ));
                 }
 
                 return $payment;
@@ -1074,6 +1101,16 @@ class PaymentController extends Controller
             ) {
                 $createdPayments = [];
 
+                // Reconciliation-readiness (spec §9.2): per-line cash movements are
+                // DEFERRED into this list and recorded only AFTER excess handling, once
+                // every backing JE (each line's allocation JE and/or the excess/advance
+                // JE) is posted and linked on its payment. Recording in the loop (before
+                // the excess JE exists) would stamp a null journal_entry_id on a
+                // pure-excess line's movement and freeze the repo at Wave-F reconcile.
+                //
+                // @var array<int, array{payment: Payment, repository: PaymentRepository, amount: numeric-string}> $pendingMovements
+                $pendingMovements = [];
+
                 // Calculate amount to allocate to primary document
                 /** @var numeric-string $primaryAllocationAmount */
                 $primaryAllocationAmount = bccomp($totalPaymentAmount, $documentBalance, $this->scale()) >= 0
@@ -1153,15 +1190,16 @@ class PaymentController extends Controller
                         $remainingPrimaryAllocation = bcsub($remainingPrimaryAllocation, $allocationForThisPayment, $this->scale());
                     }
 
-                    // Post the GL entry SYNCHRONOUSLY, then record the treasury cash
-                    // movement for this payment line through the write port (Task 16). The
-                    // FULL line amount moves IN (multi-line is customer-only — supplier
-                    // invoices are rejected up front). The port is the single writer of the
-                    // repository balance + movement row, replacing the old inline
-                    // `$repository->balance = bcadd(...)`. Global lock order (BLOCKER-1): the
-                    // synchronous GL post takes the company advisory lock FIRST, then the
-                    // port takes the repository row lock in record() — so the repository is
-                    // NOT locked here.
+                    // Post the GL entry SYNCHRONOUSLY for the allocated portion, then QUEUE
+                    // the treasury cash movement for this payment line (Task 16). The FULL
+                    // line amount moves IN (multi-line is customer-only — supplier invoices
+                    // are rejected up front). The port is the single writer of the repository
+                    // balance + movement row. Global lock order (BLOCKER-1): the synchronous
+                    // GL post takes the company advisory lock FIRST, then the port takes the
+                    // repository row lock in record() — so the repository is NOT locked here.
+                    //
+                    // The movement itself is DEFERRED (see $pendingMovements) so the
+                    // excess/advance JE posted after this loop can back a pure-excess line.
                     $repositoryId = $paymentLine['repository_id'] ?? null;
                     if ($repositoryId) {
                         /** @var PaymentRepository|null $repository */
@@ -1170,9 +1208,6 @@ class PaymentController extends Controller
                             ->where('company_id', $companyId)
                             ->find($repositoryId);
                         if ($repository) {
-                            /** @var string|null $lineJournalEntryId */
-                            $lineJournalEntryId = null;
-
                             // Create GL entry for allocated portion
                             if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0 && $repository->gl_account_id) {
                                 $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
@@ -1187,34 +1222,16 @@ class PaymentController extends Controller
                                     currencyCode: $payment->currency,
                                     mode: PostingMode::SynchronousInTransaction,
                                 );
-                                $lineJournalEntryId = $journalEntry->id;
                                 $payment->journal_entry_id = $journalEntry->id;
                                 $payment->save();
                             }
 
-                            // Record the full line cash-in through the write port. sourceId is
-                            // this line's own payment id (each line is a distinct Payment), so
-                            // the idempotency key `payment:{id}:main` is unique per line.
-                            $this->movementService->record(new MovementIntent(
-                                repositoryId: $repository->id,
-                                tenantId: $tenantId,
-                                companyId: $companyId,
-                                direction: MovementDirection::In,
-                                amount: $lineAmount,
-                                // Record in the repository's own currency (port invariant),
-                                // not the request currency — single-currency, so they agree.
-                                currency: $repository->currency,
-                                sourceType: MovementSourceType::Payment,
-                                sourceId: $payment->id,
-                                idempotencyLeg: 'main',
-                                journalEntryId: $lineJournalEntryId,
-                                occurredAt: null,
-                                reasonCode: null,
-                                reversesMovementId: null,
-                                createdBy: $user->id,
-                                notes: null,
-                                allowWhileFrozen: false,
-                            ));
+                            // Defer the full line cash-in until after excess handling (below).
+                            $pendingMovements[] = [
+                                'payment' => $payment,
+                                'repository' => $repository,
+                                'amount' => $lineAmount,
+                            ];
                         }
                     }
 
@@ -1271,7 +1288,7 @@ class PaymentController extends Controller
                                 ->where('company_id', $companyId)
                                 ->find($repositoryId);
                             if ($repository && $repository->gl_account_id) {
-                                $this->glService->createCustomerAdvanceJournalEntry(
+                                $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
                                     companyId: $companyId,
                                     partnerId: $validated['partner_id'],
                                     advanceId: $lastPayment->id,
@@ -1282,6 +1299,13 @@ class PaymentController extends Controller
                                     description: "Customer advance from payment {$lastPayment->reference}",
                                     currencyCode: $lastPayment->currency
                                 );
+
+                                // Link the advance JE so a pure-excess last line carries a
+                                // JE on its deferred cash movement (reconciliation §9.2).
+                                if ($lastPayment->journal_entry_id === null) {
+                                    $lastPayment->journal_entry_id = $advanceEntry->id;
+                                    $lastPayment->save();
+                                }
                             }
                         }
                     } elseif ($excessAllocationMethod === 'manual' && ! empty($excessAllocations)) {
@@ -1422,7 +1446,7 @@ class PaymentController extends Controller
                                     ->where('company_id', $companyId)
                                     ->find($repositoryId);
                                 if ($repository && $repository->gl_account_id) {
-                                    $this->glService->createCustomerAdvanceJournalEntry(
+                                    $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
                                         companyId: $companyId,
                                         partnerId: $validated['partner_id'],
                                         advanceId: $lastPayment->id,
@@ -1433,11 +1457,68 @@ class PaymentController extends Controller
                                         description: "Customer advance from payment {$lastPayment->reference}",
                                         currencyCode: $lastPayment->currency
                                     );
+
+                                    // Link the advance JE so a pure-excess last line carries
+                                    // a JE on its deferred cash movement (reconciliation §9.2).
+                                    if ($lastPayment->journal_entry_id === null) {
+                                        $lastPayment->journal_entry_id = $advanceEntry->id;
+                                        $lastPayment->save();
+                                    }
                                 }
                             }
                             $excessHandlingResult['remaining_advance'] = $remainingExcess;
                         }
                     }
+                }
+
+                // Record the deferred per-line cash movements now that every backing JE
+                // (each line's allocation JE and/or the excess/advance JE posted above) is
+                // linked on its payment. Recorded in line order so per-repository
+                // balance_after stays identical to the in-loop ordering (excess handling
+                // never moves repository balances). sourceId is each line's own payment id,
+                // so the port idempotency key `payment:{id}:main` is unique per line.
+                //
+                // Reconciliation-readiness (spec §9.2): the movement MUST carry a JE. A
+                // cash-moving line whose repository has no gl_account_id posted NO JE —
+                // fail loud with a 422 rather than record a null-JE movement that would
+                // freeze the repo at reconcile.
+                foreach ($pendingMovements as $pending) {
+                    /** @var Payment $movementPayment */
+                    $movementPayment = $pending['payment'];
+                    /** @var PaymentRepository $movementRepository */
+                    $movementRepository = $pending['repository'];
+                    /** @var numeric-string $movementAmount */
+                    $movementAmount = $pending['amount'];
+
+                    /** @var string|null $movementJournalEntryId */
+                    $movementJournalEntryId = $movementPayment->fresh()?->journal_entry_id;
+
+                    if ($movementJournalEntryId === null) {
+                        throw new \DomainException(
+                            "a cash movement requires a GL-linked repository; repository {$movementRepository->id} has no gl_account_id"
+                        );
+                    }
+
+                    $this->movementService->record(new MovementIntent(
+                        repositoryId: $movementRepository->id,
+                        tenantId: $tenantId,
+                        companyId: $companyId,
+                        direction: MovementDirection::In,
+                        amount: $movementAmount,
+                        // Record in the repository's own currency (port invariant),
+                        // not the request currency — single-currency, so they agree.
+                        currency: $movementRepository->currency,
+                        sourceType: MovementSourceType::Payment,
+                        sourceId: $movementPayment->id,
+                        idempotencyLeg: 'main',
+                        journalEntryId: $movementJournalEntryId,
+                        occurredAt: null,
+                        reasonCode: null,
+                        reversesMovementId: null,
+                        createdBy: $user->id,
+                        notes: null,
+                        allowWhileFrozen: false,
+                    ));
                 }
 
                 return [
