@@ -14,6 +14,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ProductTable, type ProductTableProps } from '../ProductTable';
+import { tokens } from '@/lib/designTokens';
 import { makeProduct } from '@/test/helpers';
 
 vi.mock('react-i18next', async (importActual) => {
@@ -87,6 +88,13 @@ describe('ProductTable', () => {
     expect(screen.getByText('Catégorie')).toBeTruthy();
     expect(screen.getByText('Stock')).toBeTruthy();
     expect(screen.getByText('Prix')).toBeTruthy();
+  });
+
+  it('renders product names with the shared tokens.productName recipe (unified typography)', () => {
+    renderTable();
+    const name = screen.getByText('Alpha');
+    expect(name.className).toContain(tokens.productName.base);
+    expect(name.className).toContain('truncate');
   });
 
   it('renders price cells in ink (data, not accent), not faint for in-stock rows', () => {

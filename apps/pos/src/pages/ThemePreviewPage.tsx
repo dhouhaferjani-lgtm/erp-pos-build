@@ -374,12 +374,14 @@ export function ThemePreviewPage() {
   const setDensity = useSettingsStore((s) => s.setDensity);
   const [gridFilters, setGridFilters] = useState<FiltresFilters>({ brands: [], categories: [], skinTypes: [], routines: [] });
   const [gridCart, setGridCart] = useState<string[]>(['seed-3']);
-  // Task 19 — tri-density fixtures (Vitrine/Liste/Tableau) share one cart-toggle
+  // Task 19 — tri-density fixtures (Vitrine/Liste/Tableau) share one cart
   // state; the three fixtures render disjoint id ranges (seed-100.. / seed-1000..)
-  // so there's no cross-fixture collision.
-  const [densityCartIds, setDensityCartIds] = useState<string[]>([]);
-  const toggleDensityCart = (p: POSProduct) =>
-    setDensityCartIds((prev) => (prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id]));
+  // so there's no cross-fixture collision. Owner polish 2026-07-09 (sub-task
+  // a): now a per-product COUNT map (tap adds 1) so the in-cart count chip is
+  // exercised; seed-102 starts in-cart at qty 2 for screenshot verification.
+  const [densityCart, setDensityCart] = useState<Record<string, number>>({ 'seed-102': 2 });
+  const addDensityCart = (p: POSProduct) =>
+    setDensityCart((prev) => ({ ...prev, [p.id]: (prev[p.id] ?? 0) + 1 }));
   // Enable the Merchandising surface (Filtres + product detail merchandising) in the harness.
   useEffect(() => {
     useProductStore.setState({
@@ -756,6 +758,7 @@ export function ThemePreviewPage() {
                   )
                 }
                 cartProductIds={gridCart}
+                cartQuantities={Object.fromEntries(gridCart.map((id) => [id, 1]))}
                 filters={gridFilters}
                 onFiltersChange={setGridFilters}
                 onViewDetails={setDetailProduct}
@@ -795,8 +798,9 @@ export function ThemePreviewPage() {
                   key={p.id}
                   product={p}
                   displayMode="visual"
-                  isInCart={densityCartIds.includes(p.id)}
-                  onAddToCart={toggleDensityCart}
+                  isInCart={(densityCart[p.id] ?? 0) > 0}
+                  cartQuantity={densityCart[p.id]}
+                  onAddToCart={addDensityCart}
                   onViewDetails={setDetailProduct}
                 />
               ))}
@@ -813,7 +817,7 @@ export function ThemePreviewPage() {
                 <ProductListRow
                   key={p.id}
                   product={p}
-                  onAddToCart={toggleDensityCart}
+                  onAddToCart={addDensityCart}
                   onViewDetails={setDetailProduct}
                 />
               ))}
@@ -828,7 +832,7 @@ export function ThemePreviewPage() {
             >
               <ProductTable
                 products={LARGE_CATALOG}
-                onAddToCart={toggleDensityCart}
+                onAddToCart={addDensityCart}
                 onViewDetails={setDetailProduct}
               />
             </div>

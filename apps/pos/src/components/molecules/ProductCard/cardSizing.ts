@@ -13,16 +13,17 @@
 export const GAP = 12;
 
 /** Grid/compact card estimate: brand + 2-line name + price/stock row + padding. */
-export const CARD_MIN_H_GRID = 104;
+export const CARD_MIN_H_GRID = 92;
 
 /** Grid mode, dense — same content, narrower; estimate unchanged. */
-export const CARD_MIN_H_GRID_DENSE = 104;
+export const CARD_MIN_H_GRID_DENSE = 92;
 
-/** Visual card estimate: 88 thumb + gap + brand + 2-line name + stacked price/stock + padding. */
-export const CARD_MIN_H_VISUAL = 244;
+/** Visual card estimate: 72 thumb + gap + brand + 2-line name + stacked price/stock + padding.
+ * (Owner polish 2026-07-09: tile 88→72, name slot 2.5rem→2.25rem → 244→224.) */
+export const CARD_MIN_H_VISUAL = 224;
 
 /** Visual mode, dense — same content; narrow columns keep the stacked footer. */
-export const CARD_MIN_H_VISUAL_DENSE = 244;
+export const CARD_MIN_H_VISUAL_DENSE = 224;
 
 /**
  * Deterministic two-line slot for the product name.
@@ -34,11 +35,15 @@ export const CARD_MIN_H_VISUAL_DENSE = 244;
  * min-height equal to two text lines gives every card the SAME name region, so
  * price/stock are always anchored below it regardless of name length.
  *
- * Heights = 2 × line-height. Grid uses `text-base` (1rem / lh 1.5rem → 3rem),
- * visual uses `text-sm` (0.875rem / lh 1.25rem → 2.5rem). As JIT literals.
+ * Heights = 2 × line-height. Both modes render the name with the SHARED
+ * `tokens.productName.base` recipe (13.5px × lh 1.3 ≈ 17.55px/line → two
+ * lines ≈ 35.1px), so both slots pin the same 2.25rem (36px) — the old
+ * 3rem/2.5rem values were computed for type scales the card no longer uses
+ * and left dead vertical space between name and price (owner 2026-07-09).
+ * As JIT literals.
  */
-export const CARD_NAME_MIN_H_CLASS_GRID = 'min-h-[3rem]';
-export const CARD_NAME_MIN_H_CLASS_VISUAL = 'min-h-[2.5rem]';
+export const CARD_NAME_MIN_H_CLASS_GRID = 'min-h-[2.25rem]';
+export const CARD_NAME_MIN_H_CLASS_VISUAL = 'min-h-[2.25rem]';
 
 /**
  * Density-aware column count for the product grid.

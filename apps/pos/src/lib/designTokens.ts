@@ -131,6 +131,22 @@ export const tokens = {
   money: 'tabular-nums text-ink',
 
   /**
+   * Product NAME voice — unified across every surface that renders a product
+   * name (ProductCard vitrine/compact, ProductListRow, ProductTable,
+   * CartLineItem). Owner polish 2026-07-09: same weight/size/tone everywhere;
+   * only the truncation strategy varies by density (2-line clamp on cards,
+   * 1-line truncate in rows/table/cart). Color is split from `base` so
+   * out-of-stock surfaces can swap ink → ink-faint without a class conflict.
+   */
+  productName: {
+    base: 'text-[13.5px] font-semibold leading-[1.3]',
+    ink: 'text-ink',
+    inkDisabled: 'text-ink-faint',
+    clamp1: 'truncate',
+    clamp2: 'line-clamp-2 overflow-hidden',
+  },
+
+  /**
    * Section-surface helpers — the chrome anchors consumed by Header/Footer/
    * NavRail/TransactionCart/ProductGrid restyles. Header/footer are the fixed
    * navy chrome anchor (independent of --accent/--action); rail/cartPanel are

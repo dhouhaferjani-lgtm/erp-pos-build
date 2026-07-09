@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowUpRight, Eye, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { tokens } from '@/lib/designTokens';
 import { useCurrency } from '@/lib/currency';
 import { useProductImage } from '@/lib/images/useProductImage';
 import { ProductThumb, StockBadge } from '@/components/ui';
@@ -211,8 +212,12 @@ const ProductTableRow = memo(function ProductTableRow({
           <p
             title={product.name}
             className={cn(
-              'w-full truncate text-[13px] font-semibold leading-[1.3]',
-              isOut ? 'text-ink-faint' : 'text-ink',
+              // Shared productName recipe (owner polish 2026-07-09, sub-task
+              // d): 13→13.5px so the name reads the same in every density.
+              'w-full',
+              tokens.productName.base,
+              tokens.productName.clamp1,
+              isOut ? tokens.productName.inkDisabled : tokens.productName.ink,
             )}
           >
             {product.name}

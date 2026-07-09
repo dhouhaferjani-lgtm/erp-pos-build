@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { ProductThumb, initialsFromName, tintForCategory } from '../ProductThumb';
+import { ProductThumb, initialsFromName, tintForCategory, tintFromSeed } from '../ProductThumb';
 
 describe('initialsFromName', () => {
   it('takes the first letter of the first two words', () => {
@@ -44,12 +44,53 @@ describe('ProductThumb', () => {
     expect(img.getAttribute('src')).toContain('p.png');
   });
 
-  it('renders the full-width neutral placeholder with tokens, not hardcoded hex', () => {
+  it('renders the full-width placeholder with token-based tints, not hardcoded hex', () => {
     const { getByTestId } = render(<ProductThumb name="AS Test" fullWidth />);
     const tile = getByTestId('product-thumb-placeholder');
     expect(tile.className).not.toContain('#eef3f8');
     expect(tile.className).not.toContain('#5e6670');
-    expect(tile.className).toContain('bg-surface-sunken');
+    // No-category products now derive a deterministic tint from the existing
+    // --cat-* token set instead of uniform neutral gray.
+    expect(tile.className).toContain('var(--cat-');
     expect(tile.getAttribute('style')).toContain('width: 100%');
+  });
+
+  it('categorized placeholders use the category tint surface (fg-tinted, token-based)', () => {
+    const { getByTestId } = render(<ProductThumb name="Crème Hydratante" category="Visage" />);
+    const tile = getByTestId('product-thumb-placeholder');
+    expect(tile.className).toContain('var(--cat-visage-fg)');
+  });
+});
+
+describe('tintFromSeed — deterministic no-category tint (owner polish, sub-task b)', () => {
+  it('is deterministic: the same seed always yields the same tint', () => {
+    expect(tintFromSeed('Doliprane 1000mg')).toBe(tintFromSeed('Doliprane 1000mg'));
+  });
+
+  it('never returns neutral for a non-empty seed', () => {
+    expect(tintFromSeed('Doliprane 1000mg')).not.toBe('neutral');
+  });
+
+  it('spreads different names across the tint set (grid is not uniform gray)', () => {
+    const names = [
+      'Doliprane 1000mg',
+      'Avène Eau Thermale',
+      'CeraVe Crème',
+      'Elgydium Clinic',
+      'Beurer Vessie',
+      'Gum Dentifrice',
+      'Isdin Flavo-C',
+    ];
+    const tints = new Set(names.map(tintFromSeed));
+    expect(tints.size).toBeGreaterThan(1);
+  });
+
+  it('no-category thumbs apply the seed tint in the DOM', () => {
+    const first = render(<ProductThumb name="Doliprane 1000mg" />);
+    const second = render(<ProductThumb name="Doliprane 1000mg" />);
+    const a = first.container.querySelector('[data-testid="product-thumb-placeholder"]')!.className;
+    const b = second.container.querySelector('[data-testid="product-thumb-placeholder"]')!.className;
+    expect(a).toBe(b);
+    expect(a).toContain('var(--cat-');
   });
 });

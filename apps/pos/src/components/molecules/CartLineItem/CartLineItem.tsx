@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
+import { tokens } from '@/lib/designTokens';
 import { useCurrency } from '@/lib/currency';
 import { Tag, SlidersHorizontal, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { bcadd, bccomp } from '@/lib/decimal';
@@ -82,7 +84,18 @@ export function CartLineItem({
 
             <div className="min-w-0 flex-1 text-left">
               <div className="flex items-center gap-1.5">
-                <span className="truncate text-[15px] font-semibold text-ink">{name}</span>
+                {/* Shared productName recipe (owner polish 2026-07-09, sub-task
+                    d): 15→13.5px — the name reads the same everywhere; the
+                    line total stays the loudest element on the row. */}
+                <span
+                  className={cn(
+                    tokens.productName.base,
+                    tokens.productName.clamp1,
+                    tokens.productName.ink,
+                  )}
+                >
+                  {name}
+                </span>
                 <span className="shrink-0 rounded-pill bg-surface-sunken px-1.5 text-xs font-medium tabular-nums text-ink-muted">
                   ×{item.quantity}
                 </span>

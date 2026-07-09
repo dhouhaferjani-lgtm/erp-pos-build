@@ -80,6 +80,15 @@ export interface ProductCardProps {
    * Defaults to true (fail-safe for retail).
    */
   hardBlockOutOfStock?: boolean;
+  /**
+   * Owner polish 2026-07-09 (sub-task a): quantity of this product currently
+   * in the cart, shown in the in-cart count chip (the chip carries
+   * information, not decoration). Optional — when absent but `isInCart` is
+   * true, the chip falls back to a check glyph. Quantities in the cart are
+   * plain JS numbers (see `CartItem.quantity`); this prop only DISPLAYS the
+   * value — no arithmetic, no parseFloat/Number() parsing.
+   */
+  cartQuantity?: number;
 }
 
 interface ViewDetailsButtonProps {
@@ -87,6 +96,15 @@ interface ViewDetailsButtonProps {
   label: string;
   product: POSProduct;
   onViewDetails: (product: POSProduct) => void;
+  /**
+   * Owner polish 2026-07-09 (sub-task c) — vitrine tile overlay variant: the
+   * BUTTON is a ≥48px transparent hit target (touch-first, always visible)
+   * while the VISIBLE glyph is a small ghost chip anchored in its corner, so
+   * a wall of 16 cards doesn't read as 16 identical white squares. The
+   * default (non-overlay) rendering is unchanged — Liste/Tableau and the
+   * compact-card eye keep their owner-approved look.
+   */
+  overlay?: boolean;
 }
 
 function ViewDetailsButton({
@@ -94,6 +112,7 @@ function ViewDetailsButton({
   label,
   product,
   onViewDetails,
+  overlay = false,
 }: ViewDetailsButtonProps) {
   return (
     <button
@@ -114,13 +133,55 @@ function ViewDetailsButton({
         }
       }}
       className={cn(
-        'flex items-center justify-center rounded-sm bg-surface-raised/90 text-ink-muted shadow-sm backdrop-blur-sm transition-colors hover:text-ink active:bg-surface-sunken',
+        overlay
+          ? // Transparent 48px hit target; the ghost chip below is the visual.
+            'group flex items-start justify-start p-[5px]'
+          : 'flex items-center justify-center rounded-sm bg-surface-raised/90 text-ink-muted shadow-sm backdrop-blur-sm transition-colors hover:text-ink active:bg-surface-sunken',
         className,
       )}
       title={label}
     >
-      <Eye className="h-4 w-4" />
+      {overlay ? (
+        <span
+          data-testid="view-details-glyph"
+          className="flex h-6 w-6 items-center justify-center rounded-sm bg-surface-raised/60 text-ink-muted backdrop-blur-[2px] transition-colors group-hover:text-ink group-active:bg-surface-sunken/80"
+        >
+          <Eye className="h-3.5 w-3.5" />
+        </span>
+      ) : (
+        <Eye className="h-4 w-4" />
+      )}
     </button>
+  );
+}
+
+/**
+ * In-cart count chip (owner polish 2026-07-09, sub-task a). Selection-family
+ * (blue `--action`) because it marks the selected/in-cart state; shows the
+ * cart QUANTITY when known (information), a check glyph otherwise. Purely
+ * informational — not an interactive target, so no 48px constraint.
+ */
+function InCartChip({
+  quantity,
+  label,
+  className,
+}: {
+  quantity?: number;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <span
+      data-testid="in-cart-badge"
+      title={label}
+      aria-label={label}
+      className={cn(
+        'inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-action px-1.5 text-[11px] font-bold tabular-nums text-ink-inverse',
+        className,
+      )}
+    >
+      {quantity !== undefined ? String(quantity) : <Check className="h-3 w-3" aria-hidden="true" />}
+    </span>
   );
 }
 
@@ -133,6 +194,7 @@ function ProductCardInner({
   displayMode = 'grid',
   locationStock,
   hardBlockOutOfStock = true,
+  cartQuantity,
 }: ProductCardProps) {
   const { t } = useTranslation('pos');
   const { format } = useCurrency();
@@ -219,9 +281,10 @@ function ProductCardInner({
 
   // Card surface — three visual states:
   // 1. Out-of-stock (any policy): desaturated/dimmed. Cursor differs by policy.
-  // 2. In-cart: full action (blue) border + action-subtle background. Selection
-  //    is ALWAYS blue (Strategy A) — accent/green are reserved for the brand
-  //    wordmark and stock/money, never for the selected state.
+  // 2. In-cart: the blue action border is THE selection signal (Strategy A —
+  //    accent/green are reserved for the brand wordmark and stock/money).
+  //    Owner polish 2026-07-09 (sub-task a): the background tint and top
+  //    accent bar were REMOVED — one calm signal (border) + the count chip.
   // 3. Default: raised surface, action border on hover.
   const cardSurface = isOutOfStock
     ? cn(
@@ -229,7 +292,7 @@ function ProductCardInner({
         isActivationBlocked ? 'cursor-not-allowed' : 'cursor-pointer',
       )
     : isInCart
-      ? 'cursor-pointer border-action bg-action-subtle shadow-sm'
+      ? 'cursor-pointer border-action bg-surface-raised shadow-sm'
       : 'cursor-pointer border-subtle bg-surface-raised hover:border-action hover:shadow-md';
 
   const viewDetailsLabel = t('products.viewDetails');
@@ -250,32 +313,12 @@ function ProductCardInner({
         'relative flex h-full flex-col rounded-card border-[1.5px] text-left outline-none',
         displayMode === 'visual' ? 'p-2.5' : 'px-3 py-2.5',
         'transition-all duration-150 active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-action',
-        displayMode === 'visual' ? 'items-center text-center' : 'items-start',
+        // Owner polish 2026-07-09 (sub-task b): text block is LEFT-aligned in
+        // both modes — a centered visual card had no scanning axis.
+        'items-start',
         cardSurface,
       )}
     >
-      {/* 3px top action (blue) bar — visible in the in-cart/selected state */}
-      {isInCart && (
-        <span
-          aria-hidden
-          className="absolute top-0 right-3.5 left-3.5 h-[3px] rounded-b-pill bg-action"
-        />
-      )}
-
-      {isInCart && displayMode === 'visual' && (
-        <span
-          data-testid="in-cart-badge"
-          className={cn(
-            tokens.badge.neutral,
-            'absolute top-1.5 left-1.5 border-action/40 bg-action-subtle text-action',
-          )}
-          title={t('products.inCart')}
-        >
-          <Check className="h-3 w-3" aria-hidden="true" />
-          {t('products.inCart')}
-        </span>
-      )}
-
       {hasModifiers && onCustomize && (
         <button
           type="button"
@@ -296,26 +339,40 @@ function ProductCardInner({
         </div>
       )}
 
-      {/* Visual mode: ProductThumb on top. Compact (grid) mode: no thumb. */}
+      {/* Visual mode: ProductThumb on top. Compact (grid) mode: no thumb.
+          Owner polish 2026-07-09 (sub-task b): tile shortened 88→72px so the
+          placeholder stops dominating ~45% of the card height. */}
       {displayMode === 'visual' && (
         <div
           data-testid="product-visual-tile"
-          className="relative mb-2 h-[88px] w-full shrink-0 overflow-hidden rounded-tile"
+          className="relative mb-2 h-[72px] w-full shrink-0 overflow-hidden rounded-tile"
         >
           <ProductThumb
             name={product.name}
             category={product.category}
             imageUrl={imageSrc}
-            size={88}
+            size={72}
             fullWidth
           />
-          {/* Eye overlay on the full image tile (mock: top-left 7px inset). */}
+          {/* Eye overlay (sub-task c): 48px transparent hit target at the
+              tile's top-left, small ghost glyph — always visible, tertiary. */}
           {onViewDetails && (
             <ViewDetailsButton
-              className="absolute left-[7px] top-[7px] h-[29px] w-[29px] border border-subtle"
+              overlay
+              className="absolute left-0 top-0 z-[1] h-12 w-12"
               label={viewDetailsLabel}
               product={product}
               onViewDetails={onViewDetails}
+            />
+          )}
+          {/* In-cart count chip (sub-task a): anchored INSIDE the tile at the
+              top-right, z-raised above the image — it can never peek out from
+              behind the placeholder (the old top-bar/badge z-order glitch). */}
+          {isInCart && (
+            <InCartChip
+              quantity={cartQuantity}
+              label={t('products.inCart')}
+              className="absolute right-[7px] top-[7px] z-[1]"
             />
           )}
         </div>
@@ -343,9 +400,12 @@ function ProductCardInner({
                 // Fixed two-line slot: line-clamp-2 caps the visible text and the
                 // min-height pins the box to exactly two lines, so a long name can
                 // never leak a sliced third line nor push the price/stock rows up.
-                'w-full line-clamp-2 overflow-hidden text-[13.5px] leading-[1.3] font-semibold',
+                // Typography = shared productName recipe (sub-task d).
+                'w-full',
+                tokens.productName.base,
+                tokens.productName.clamp2,
                 nameMinHClass,
-                isOutOfStock ? 'text-ink-faint' : 'text-ink',
+                isOutOfStock ? tokens.productName.inkDisabled : tokens.productName.ink,
               )}
             >
               {product.name}
@@ -357,17 +417,7 @@ function ProductCardInner({
             className="flex shrink-0 items-center gap-1"
           >
             {isInCart && (
-              <span
-                data-testid="in-cart-badge"
-                className={cn(
-                  tokens.badge.neutral,
-                  'border-action/40 bg-action-subtle text-action',
-                )}
-                title={t('products.inCart')}
-              >
-                <Check className="h-3 w-3" aria-hidden="true" />
-                {t('products.inCart')}
-              </span>
+              <InCartChip quantity={cartQuantity} label={t('products.inCart')} />
             )}
             {onViewDetails && (
               <ViewDetailsButton
@@ -381,12 +431,13 @@ function ProductCardInner({
         </div>
       ) : (
         <>
-          {/* Brand name in caps — rendered only when present. */}
+          {/* Brand name in caps — rendered only when present. Truncates now
+              that the block is left-aligned (a long brand must not wrap). */}
           {product.brand_name && (
             <p
               className={cn(
                 // Task 11 — 10px read as washed-out; bumped to 11px for legibility.
-                'w-full text-[11px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
+                'w-full truncate text-[11px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
                 isOutOfStock ? 'text-ink-faint' : 'text-ink-muted',
               )}
             >
@@ -400,9 +451,12 @@ function ProductCardInner({
               // Fixed two-line slot: line-clamp-2 caps the visible text and the
               // min-height pins the box to exactly two lines, so a long name can
               // never leak a sliced third line nor push the price/stock rows up.
-              'w-full line-clamp-2 overflow-hidden text-[13.5px] leading-[1.3] font-semibold',
+              // Typography = shared productName recipe (sub-task d).
+              'w-full',
+              tokens.productName.base,
+              tokens.productName.clamp2,
               nameMinHClass,
-              isOutOfStock ? 'text-ink-faint' : 'text-ink',
+              isOutOfStock ? tokens.productName.inkDisabled : tokens.productName.ink,
             )}
           >
             {product.name}
@@ -436,8 +490,10 @@ function ProductCardInner({
         data-testid="price-stock-block"
         className={cn(
           'mt-auto flex w-full gap-2',
+          // pt-2 → pt-1.5 (sub-task b): tighter name→price rhythm; the row gap
+          // between cards stays generous so groups still read first.
           displayMode === 'visual'
-            ? 'flex-col items-start pt-2'
+            ? 'flex-col items-start pt-1.5'
             : 'items-center justify-between border-t border-border-subtle pt-[9px]',
         )}
       >

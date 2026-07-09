@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import i18n from '@/test/i18n';
 import { ProductCard, type ProductCardProps } from '../ProductCard';
+import { tokens } from '@/lib/designTokens';
 import { makeProduct } from '@/test/helpers';
 import type { POSProduct } from '@/types/product';
 
@@ -100,15 +101,34 @@ describe('ProductCard', () => {
     expect(screen.getByText('Stable Product')).toBeInTheDocument();
   });
 
-  it('shows in-cart visual state via a full action (blue) border + corner badge (no side-stripe)', () => {
+  it('shows in-cart state as border + count chip ONLY — no bg tint, no top accent bar (calm selection)', () => {
     renderCard({ isInCart: true });
     const btn = screen.getByRole('button');
-    // Full action border (Task 11 restyle — selection is blue, not accent/green),
-    // not an asymmetric thick side-stripe.
+    // The blue border is THE selection signal (Strategy A).
     expect(btn.className).toContain('border-action');
     expect(btn.className).not.toContain('border-l-4');
-    // Corner badge signals the selected state.
+    // The background tint and the 3px top accent bar are REMOVED — selection
+    // must not stack three signals.
+    expect(btn.className).not.toContain('bg-action-subtle');
+    const spans = Array.from(btn.querySelectorAll('span'));
+    expect(spans.some((el) => el.className.includes('h-[3px]'))).toBe(false);
+    // The count chip stays — it carries information, not decoration.
     expect(screen.getByTestId('in-cart-badge')).toBeInTheDocument();
+  });
+
+  it('in-cart chip shows the cart QUANTITY when provided', () => {
+    renderCard({ isInCart: true, cartQuantity: 3 });
+    expect(screen.getByTestId('in-cart-badge')).toHaveTextContent('3');
+  });
+
+  it('visual-mode in-cart chip is anchored inside the image tile, z-raised above the image', () => {
+    const { container } = renderCard({ isInCart: true, cartQuantity: 2, displayMode: 'visual' });
+    const tile = container.querySelector('[data-testid="product-visual-tile"]');
+    const badge = screen.getByTestId('in-cart-badge');
+    expect(tile).toContainElement(badge);
+    // Explicit stacking so the chip can never peek out from behind the image.
+    expect(badge.className).toContain('z-');
+    expect(badge).toHaveTextContent('2');
   });
 
   it('price is ink, never accent (Task 11)', () => {
@@ -258,7 +278,7 @@ describe('ProductCard layout regressions', () => {
     expect(priceStockBlock?.className).toMatch(/\bflex-col\b/);
   });
 
-  it('positions the visual-mode eye button inside the full-width mock image tile', () => {
+  it('vitrine eye: ≥48px hit target anchored inside a shorter (72px) image tile, with a smaller ghost glyph', () => {
     const { container } = render(
       <I18nextProvider i18n={i18n}>
         <ProductCard
@@ -274,14 +294,32 @@ describe('ProductCard layout regressions', () => {
     const tile = container.querySelector('[data-testid="product-visual-tile"]');
     expect(tile).not.toBeNull();
     expect(tile?.className).toContain('w-full');
-    expect(tile?.className).toContain('h-[88px]');
+    // (b) placeholder vertical dominance reduced: 88px → 72px.
+    expect(tile?.className).toContain('h-[72px]');
+    expect(tile?.className).not.toContain('h-[88px]');
     expect(tile).toContainElement(eye);
-    expect(eye.className).toContain('left-[7px]');
-    expect(eye.className).toContain('top-[7px]');
-    expect(eye.className).toContain('h-[29px]');
-    expect(eye.className).toContain('w-[29px]');
-    expect(eye.className).toContain('rounded-sm');
-    expect(eye.className).toContain('border');
+    // (c) touch-first: the HIT target stays ≥48px (h-12/w-12) and always
+    // visible; only the visible glyph chip inside it got quieter/smaller.
+    expect(eye.className).toContain('h-12');
+    expect(eye.className).toContain('w-12');
+    const glyph = eye.querySelector('[data-testid="view-details-glyph"]');
+    expect(glyph).not.toBeNull();
+    // Ghost surface: semi-transparent token surface, no border/shadow chrome.
+    expect(glyph?.className).toContain('bg-surface-raised/');
+    expect(glyph?.className).not.toContain('border');
+    expect(glyph?.className).not.toContain('shadow');
+  });
+
+  it('left-aligns the visual card text block (scanning axis) — no centered wall', () => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <ProductCard product={longNameProduct} onAddToCart={vi.fn()} displayMode="visual" />
+      </I18nextProvider>,
+    );
+    const card = screen.getByRole('button');
+    expect(card.className).not.toContain('text-center');
+    expect(card.className).not.toContain('items-center');
+    expect(card.className).toContain('items-start');
   });
 
   it('uses the mock visual-card typography scale', () => {
@@ -483,26 +521,42 @@ describe('ProductCard — Task 24 restyle', () => {
     expect(withoutBrandContainer.querySelector('.uppercase')).not.toBeInTheDocument();
   });
 
-  it('(c) in-cart action (blue) treatment: action border, action-subtle bg, action badge, 3px bar (Task 11 — selection is blue, not accent/green)', () => {
-    renderCard({ isInCart: true });
+  it('(c) in-cart treatment is calm: action border ONLY, action-family count chip, no bar/tint (selection is blue, never accent/green)', () => {
+    renderCard({ isInCart: true, cartQuantity: 2 });
     const btn = screen.getByRole('button');
 
-    // Action border and tinted background — no accent anywhere on the card.
+    // Action border — the single selection signal; no accent anywhere.
     expect(btn.className).toContain('border-action');
-    expect(btn.className).toContain('bg-action-subtle');
+    expect(btn.className).not.toContain('bg-action-subtle');
     expect(btn.className).not.toContain('accent');
 
-    // 3px top bar — an absolute <span> with bg-action
+    // No 3px top bar remains.
     const bars = Array.from(btn.querySelectorAll('span[aria-hidden]'));
-    const topBar = bars.find((el) => el.className.includes('h-[3px]'));
-    expect(topBar).toBeDefined();
-    expect(topBar?.className).toContain('bg-action');
-    expect(topBar?.className).not.toContain('accent');
+    expect(bars.find((el) => el.className.includes('h-[3px]'))).toBeUndefined();
 
-    // In-cart badge uses action text token, not accent
+    // Count chip: action (blue) family, carries the quantity, never accent.
     const badge = screen.getByTestId('in-cart-badge');
     expect(badge).toBeInTheDocument();
-    expect(badge.className).toContain('text-action');
+    expect(badge.className).toContain('bg-action');
     expect(badge.className).not.toContain('accent');
+    expect(badge).toHaveTextContent('2');
+  });
+});
+
+// ── Unified product-name typography (owner polish 2026-07-09, sub-task d) ────
+describe('ProductCard — unified product-name recipe', () => {
+  it('renders the name with the shared tokens.productName recipe (2-line clamp on cards)', () => {
+    renderCard({ displayMode: 'visual' });
+    const name = screen.getByRole('heading', { level: 3 });
+    expect(name.className).toContain(tokens.productName.base);
+    expect(name.className).toContain('line-clamp-2');
+    expect(name.className).toContain('text-ink');
+  });
+
+  it('compact (grid) card uses the same shared recipe', () => {
+    renderCard({ displayMode: 'grid' });
+    const name = screen.getByRole('heading', { level: 3 });
+    expect(name.className).toContain(tokens.productName.base);
+    expect(name.className).toContain('line-clamp-2');
   });
 });

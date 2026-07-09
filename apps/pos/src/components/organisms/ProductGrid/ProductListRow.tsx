@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { tokens } from '@/lib/designTokens';
 import { useCurrency } from '@/lib/currency';
 import { useProductImage } from '@/lib/images/useProductImage';
 import { ProductThumb, StockBadge } from '@/components/ui';
@@ -82,8 +83,12 @@ function ProductListRowInner({
         <p
           title={product.name}
           className={cn(
-            'w-full truncate text-[13.5px] font-semibold leading-[1.3]',
-            status === 'out' ? 'text-ink-faint' : 'text-ink',
+            // Shared productName recipe (owner polish 2026-07-09, sub-task d):
+            // the name reads the same in every density; rows truncate to 1 line.
+            'w-full',
+            tokens.productName.base,
+            tokens.productName.clamp1,
+            status === 'out' ? tokens.productName.inkDisabled : tokens.productName.ink,
           )}
         >
           {product.name}
