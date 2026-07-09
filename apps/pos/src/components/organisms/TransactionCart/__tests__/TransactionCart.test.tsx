@@ -86,6 +86,24 @@ describe('TransactionCart', () => {
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
 
+  // Task 7 regression: the wrapper around the customer control used to be
+  // `shrink-0`, which locked it to its intrinsic content width no matter how
+  // long the attached customer's name/loyalty/wallet chip grew — the header
+  // row (title + count on the left, this wrapper on the right) had nowhere
+  // to give, so a long chip forced horizontal overflow/collision. jsdom
+  // can't measure real overflow, so this asserts the fixed class directly:
+  // the wrapper must keep `min-w-0` (so it CAN shrink) and must NOT carry
+  // `shrink-0` (which forbade shrinking). Fails against the pre-fix markup
+  // (wrapper className was `flex min-w-0 shrink-0 justify-end`).
+  it('does not lock the customer-control wrapper to shrink-0 so a long chip can cede width', () => {
+    renderCart({ customerControl: <div data-testid="customer-control-stub">Chip</div> });
+    const stub = screen.getByTestId('customer-control-stub');
+    const wrapper = stub.parentElement;
+    expect(wrapper).not.toBeNull();
+    expect(wrapper?.className).toContain('min-w-0');
+    expect(wrapper?.className).not.toMatch(/\bshrink-0\b/);
+  });
+
   it('shows clear button only when items present', () => {
     const { rerender } = render(
       <TransactionCart

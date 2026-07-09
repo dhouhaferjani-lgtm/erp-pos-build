@@ -155,7 +155,11 @@ export function TransactionCart({
             )}
           </div>
           {customerControl != null && (
-            <div className="flex min-w-0 shrink-0 justify-end">{customerControl}</div>
+            // No shrink-0 here: a long name + loyalty points + wallet balance
+            // must be able to cede width back to this row rather than force
+            // the header to overflow. The chip itself (CartCustomerControl)
+            // carries min-w-0 + a truncating name so it degrades gracefully.
+            <div className="flex min-w-0 justify-end">{customerControl}</div>
           )}
         </div>
 

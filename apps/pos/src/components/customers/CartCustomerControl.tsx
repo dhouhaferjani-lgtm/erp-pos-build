@@ -29,12 +29,27 @@ export function CartCustomerControl({ onOpen }: CartCustomerControlProps) {
     // its own real <button> (no invalid button-in-button), while the
     // UNATTACHED trigger below is a plain secondary Button identical to the
     // toolbar actions.
+    // Overflow priority order when a long name + loyalty points + wallet
+    // balance are all present (name yields first, wallet/detach never
+    // collapse below a usable size):
+    //   1. name  — min-w-0 truncate, shrinks/truncates first.
+    //   2. loyalty cluster (CustomerLoyaltyBadge) — min-w-0 + flex-wrap,
+    //      wraps its badges to a second line rather than pushing width.
+    //   3. wallet affordance — shrink-0, keeps the money amount legible.
+    //   4. detach — shrink-0 (baked into IconButton), ≥40px hit area.
+    // The chip root itself carries min-w-0 (no shrink-0) so the *whole*
+    // control can cede width back to TransactionCart's header row instead
+    // of forcing that row to overflow (see TransactionCart.tsx).
     return (
-      <div className="flex min-h-11 min-w-0 items-center gap-1 rounded-xl border border-action bg-action-subtle pr-1 pl-3">
+      <div
+        data-testid="cart-customer-control"
+        className="flex min-h-11 min-w-0 items-center gap-1 rounded-xl border border-action bg-action-subtle pr-1 pl-3"
+      >
         <User className="h-4 w-4 shrink-0 text-action-strong" aria-hidden />
         <button
           type="button"
           onClick={onOpen}
+          data-testid="customer-name"
           className="min-w-0 truncate text-sm font-semibold text-action-strong hover:underline"
         >
           {selectedCustomer.name}
@@ -60,7 +75,9 @@ export function CartCustomerControl({ onOpen }: CartCustomerControlProps) {
           onClick={detachCustomer}
           aria-label={t('customer.detach')}
           icon={<X className="h-4 w-4" />}
-          className="text-action-strong hover:bg-action-subtle"
+          // sm is 36px (below the §6 40px touch floor); bump the hit area
+          // explicitly so detach stays reachable even as the chip compresses.
+          className="h-10 w-10 text-action-strong hover:bg-action-subtle"
         />
       </div>
     );
