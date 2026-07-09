@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useProductImage } from '@/lib/images/useProductImage';
 import { bccomp, bcsum } from '@/lib/decimal';
 import { formatAvailableQty } from '@/lib/stock/stockGate';
+import { formatChipQuantity } from '@/lib/cartChipQuantities';
 import { ProductThumb, StockBadge } from '@/components/ui';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useStockDisplay } from '@/components/organisms/ProductGrid/useStockDisplay';
@@ -144,7 +145,9 @@ function ViewDetailsButton({
       {overlay ? (
         <span
           data-testid="view-details-glyph"
-          className="flex h-6 w-6 items-center justify-center rounded-sm bg-surface-raised/60 text-ink-muted backdrop-blur-[2px] transition-colors group-hover:text-ink group-active:bg-surface-sunken/80"
+          // Subtle token border so the ghost chip still reads on white
+          // product photos (adversarial review Minor 7) — no shadow chrome.
+          className="flex h-6 w-6 items-center justify-center rounded-sm border border-border-subtle bg-surface-raised/60 text-ink-muted backdrop-blur-[2px] transition-colors group-hover:text-ink group-active:bg-surface-sunken/80"
         >
           <Eye className="h-3.5 w-3.5" />
         </span>
@@ -159,7 +162,10 @@ function ViewDetailsButton({
  * In-cart count chip (owner polish 2026-07-09, sub-task a). Selection-family
  * (blue `--action`) because it marks the selected/in-cart state; shows the
  * cart QUANTITY when known (information), a check glyph otherwise. Purely
- * informational — not an interactive target, so no 48px constraint.
+ * informational — not an interactive target, so no 48px constraint, and it
+ * is `pointer-events-none` (Major 1): whatever it visually overlaps, it can
+ * never hit-test above an interactive control — taps pass through to the
+ * element underneath (eye/customize where present, else the card root).
  */
 function InCartChip({
   quantity,
@@ -173,14 +179,17 @@ function InCartChip({
   return (
     <span
       data-testid="in-cart-badge"
-      title={label}
       aria-label={label}
       className={cn(
-        'inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-action px-1.5 text-[11px] font-bold tabular-nums text-ink-inverse',
+        'pointer-events-none inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-action px-1.5 text-[11px] font-bold tabular-nums text-ink-inverse',
         className,
       )}
     >
-      {quantity !== undefined ? String(quantity) : <Check className="h-3 w-3" aria-hidden="true" />}
+      {quantity !== undefined ? (
+        formatChipQuantity(quantity)
+      ) : (
+        <Check className="h-3 w-3" aria-hidden="true" />
+      )}
     </span>
   );
 }
@@ -366,13 +375,22 @@ function ProductCardInner({
             />
           )}
           {/* In-cart count chip (sub-task a): anchored INSIDE the tile at the
-              top-right, z-raised above the image — it can never peek out from
-              behind the placeholder (the old top-bar/badge z-order glitch). */}
+              BOTTOM-right, z-raised above the image — it can never peek out
+              from behind the placeholder (the old top-bar/badge z-order
+              glitch). BOTTOM, not top (adversarial review Major 1): the
+              tile's top-right corner sits fully inside the customize
+              button's 40px footprint (card `top-1.5 right-1.5`), so a
+              top-anchored chip painted above the button and swallowed its
+              taps into add-to-cart. The bottom-right corner clears both the
+              customize button (top-right of the CARD) and the 48px eye hit
+              target (top-LEFT of the tile); the chip is additionally
+              pointer-events-none, so even an extreme-narrow-column corner
+              graze cannot steal a tap. */}
           {isInCart && (
             <InCartChip
               quantity={cartQuantity}
               label={t('products.inCart')}
-              className="absolute right-[7px] top-[7px] z-[1]"
+              className="absolute bottom-[7px] right-[7px] z-[1]"
             />
           )}
         </div>

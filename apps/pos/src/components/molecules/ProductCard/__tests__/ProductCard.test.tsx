@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import i18n from '@/test/i18n';
 import { ProductCard, type ProductCardProps } from '../ProductCard';
+import { formatChipQuantity } from '@/lib/cartChipQuantities';
 import { tokens } from '@/lib/designTokens';
 import { makeProduct } from '@/test/helpers';
 import type { POSProduct } from '@/types/product';
@@ -121,14 +122,51 @@ describe('ProductCard', () => {
     expect(screen.getByTestId('in-cart-badge')).toHaveTextContent('3');
   });
 
-  it('visual-mode in-cart chip is anchored inside the image tile, z-raised above the image', () => {
+  it('visual-mode in-cart chip is anchored at the tile BOTTOM-right, z-raised, hit-transparent (Major 1)', () => {
     const { container } = renderCard({ isInCart: true, cartQuantity: 2, displayMode: 'visual' });
     const tile = container.querySelector('[data-testid="product-visual-tile"]');
     const badge = screen.getByTestId('in-cart-badge');
     expect(tile).toContainElement(badge);
     // Explicit stacking so the chip can never peek out from behind the image.
     expect(badge.className).toContain('z-');
+    // BOTTOM-right, never top-right: the tile's top-right sits fully inside
+    // the customize button's 40px footprint (card top-1.5 right-1.5) — a
+    // top-anchored chip painted above it and stole its taps.
+    expect(badge.className).toContain('bottom-');
+    expect(badge.className).not.toContain('top-');
+    // Belt-and-braces: the chip is informational — it must never hit-test
+    // above ANY interactive control in any variant.
+    expect(badge.className).toContain('pointer-events-none');
     expect(badge).toHaveTextContent('2');
+  });
+
+  it('visual-mode chip coexists with the customize button without stealing its activation', () => {
+    const onCustomize = vi.fn();
+    const onAddToCart = vi.fn();
+    const product = makeProduct({
+      id: 'p-mod',
+      name: 'Custom Widget',
+      sale_price: '7.00',
+      stock_quantity: 9,
+      modifier_groups: [
+        { id: 'g1', name: 'Size', is_required: true, modifiers: [] },
+      ] as never,
+    });
+    renderCard({
+      product,
+      onAddToCart,
+      onCustomize,
+      isInCart: true,
+      cartQuantity: 4,
+      displayMode: 'visual',
+    });
+
+    // Both render; the chip is pointer-transparent so the button keeps taps.
+    const customize = screen.getByTestId('customize-button');
+    expect(screen.getByTestId('in-cart-badge').className).toContain('pointer-events-none');
+    fireEvent.click(customize);
+    expect(onCustomize).toHaveBeenCalledWith(product);
+    expect(onAddToCart).not.toHaveBeenCalled();
   });
 
   it('price is ink, never accent (Task 11)', () => {
@@ -304,9 +342,10 @@ describe('ProductCard layout regressions', () => {
     expect(eye.className).toContain('w-12');
     const glyph = eye.querySelector('[data-testid="view-details-glyph"]');
     expect(glyph).not.toBeNull();
-    // Ghost surface: semi-transparent token surface, no border/shadow chrome.
+    // Ghost surface: semi-transparent token surface + a subtle token border so
+    // the chip still reads on white product photos (Minor 7) — no shadow chrome.
     expect(glyph?.className).toContain('bg-surface-raised/');
-    expect(glyph?.className).not.toContain('border');
+    expect(glyph?.className).toContain('border-border-subtle');
     expect(glyph?.className).not.toContain('shadow');
   });
 
@@ -558,5 +597,43 @@ describe('ProductCard — unified product-name recipe', () => {
     const name = screen.getByRole('heading', { level: 3 });
     expect(name.className).toContain(tokens.productName.base);
     expect(name.className).toContain('line-clamp-2');
+  });
+});
+
+// ── In-cart chip display robustness (adversarial review Minor 3) ─────────────
+describe('ProductCard — in-cart chip quantity display', () => {
+  it('trims float-artifact quantities (0.1 + 0.2 summing) instead of rendering "0.30000000000000004"', () => {
+    renderCard({ isInCart: true, cartQuantity: 0.30000000000000004 });
+    expect(screen.getByTestId('in-cart-badge')).toHaveTextContent(/^0\.3$/);
+  });
+
+  it('renders clean fractional quantities trimmed of trailing zeros', () => {
+    renderCard({ isInCart: true, cartQuantity: 2.5 });
+    expect(screen.getByTestId('in-cart-badge')).toHaveTextContent(/^2\.5$/);
+  });
+
+  it('caps quantities ≥ 100 at "99+" so the pill cannot crawl across the tile', () => {
+    renderCard({ isInCart: true, cartQuantity: 150 });
+    expect(screen.getByTestId('in-cart-badge')).toHaveTextContent('99+');
+  });
+
+  describe('formatChipQuantity (pure helper)', () => {
+    it('renders integers as-is', () => {
+      expect(formatChipQuantity(1)).toBe('1');
+      expect(formatChipQuantity(99)).toBe('99');
+    });
+
+    it('caps at "99+" from 100 upward (integers and fractions)', () => {
+      expect(formatChipQuantity(100)).toBe('99+');
+      expect(formatChipQuantity(100.5)).toBe('99+');
+      expect(formatChipQuantity(12345)).toBe('99+');
+    });
+
+    it('trims float artifacts to the 4dp quantity scale and strips trailing zeros', () => {
+      expect(formatChipQuantity(0.30000000000000004)).toBe('0.3');
+      expect(formatChipQuantity(2.5)).toBe('2.5');
+      expect(formatChipQuantity(1.25)).toBe('1.25');
+      expect(formatChipQuantity(0.0625)).toBe('0.0625');
+    });
   });
 });

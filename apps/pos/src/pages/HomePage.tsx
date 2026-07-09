@@ -14,6 +14,7 @@ import { useRefundFlowStore } from '@/stores/refundFlowStore';
 import { useRefundDraftStore } from '@/stores/refundDraftStore';
 import { dispatchScan } from '@/lib/scan/dispatcher';
 import { addItemGated, updateQuantityGated } from '@/lib/stock/cartIngress';
+import { sumSaleQuantities } from '@/lib/cartChipQuantities';
 import { resolveScannedCode } from '@/lib/scan/resolveScannedCode';
 import { routeScanResult } from '@/lib/scan/routeScanResult';
 import { setCachedScan } from '@/lib/scan/scanResolutionCache';
@@ -870,17 +871,11 @@ export function HomePage() {
   );
 
   // Owner polish 2026-07-09 (sub-task a): per-product cart quantity for the
-  // in-cart count chip. Cart quantities are plain JS numbers throughout the
-  // cart store (`CartItem.quantity`, cf. CartLineItem's `quantity + 1`);
-  // summing lines of the same product (e.g. different modifiers) mirrors that
-  // existing convention — display only, never money math.
-  const cartQuantities = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const item of cartItems) {
-      map[item.product.id] = (map[item.product.id] ?? 0) + item.quantity;
-    }
-    return map;
-  }, [cartItems]);
+  // in-cart count chip. Chip semantics = units being SOLD: sale-kind lines
+  // only — exchange-flow return lines (negative quantities) are excluded so
+  // the chip can never show "-1"/net-wrong counts; a return-only product has
+  // no entry and falls back to the check glyph. See sumSaleQuantities docs.
+  const cartQuantities = useMemo(() => sumSaleQuantities(cartItems), [cartItems]);
 
   // Task 52: Resume a persisted refund draft on app restart.
   // Bug 3 fix: branch cleanly — replaceCart only when there are buying items
