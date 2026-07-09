@@ -14,6 +14,12 @@ export interface OffsetPaginationProps {
   onPageChange: (page: number) => void
   onPerPageChange: (perPage: number) => void
   className?: string
+  /**
+   * Hide the per-page selector. Use when the endpoint hardcodes its page size
+   * server-side, so exposing a per-page picker would be misleading.
+   * Defaults to false — zero behavior change for existing consumers.
+   */
+  hidePerPage?: boolean
 }
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100]
@@ -28,6 +34,7 @@ export function OffsetPagination({
   onPageChange,
   onPerPageChange,
   className,
+  hidePerPage = false,
 }: OffsetPaginationProps) {
   const { t } = useTranslation('common')
 
@@ -59,20 +66,22 @@ export function OffsetPagination({
         </span>
 
         {/* Per page selector */}
-        <div className="flex items-center gap-2">
-          <span className={cn('text-sm', textColors.tertiary)}>{t('pagination.rowsPerPage')}:</span>
-          <Select
-            value={perPage}
-            onChange={(e) => { onPerPageChange(Number(e.target.value)); }}
-            className="w-auto text-sm"
-          >
-            {PER_PAGE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </Select>
-        </div>
+        {!hidePerPage && (
+          <div className="flex items-center gap-2">
+            <span className={cn('text-sm', textColors.tertiary)}>{t('pagination.rowsPerPage')}:</span>
+            <Select
+              value={perPage}
+              onChange={(e) => { onPerPageChange(Number(e.target.value)); }}
+              className="w-auto text-sm"
+            >
+              {PER_PAGE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
       </div>
 
       {/* Navigation */}

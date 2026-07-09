@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { ArrowDownCircle, ArrowUpCircle, Copy, Lock } from 'lucide-react'
+import { ArrowDownCircle, ArrowUpCircle, Copy, Inbox, Lock } from 'lucide-react'
 import { formatCurrency } from '@/lib/format'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/atoms/Button'
 import { Select } from '@/components/atoms/Select'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge'
 import { EntityLink } from '@/components/molecules/EntityLink'
+import { EmptyState } from '@/components/molecules/EmptyState'
+import { QueryError } from '@/components/QueryError'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
+import { DateRangeFilter } from '@/components/ui/filters/DateRangeFilter'
 import { useCompanyStore } from '@/stores/companyStore'
 import {
   useRepositoryMovements,
@@ -90,8 +93,8 @@ export function RepositoryMovementsTab({ repositoryId }: RepositoryMovementsTabP
 
   const [direction, setDirection] = useState<MovementDirection | ''>('')
   const [sourceType, setSourceType] = useState<MovementSourceType | ''>('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom, setDateFrom] = useState<string | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<string | undefined>(undefined)
   const [page, setPage] = useState(1)
 
   const filters: RepositoryMovementsFilters = {
@@ -102,7 +105,7 @@ export function RepositoryMovementsTab({ repositoryId }: RepositoryMovementsTabP
     ...(dateTo ? { date_to: dateTo } : {}),
   }
 
-  const { data, isLoading, error } = useRepositoryMovements(repositoryId, filters)
+  const { data, isLoading, error, refetch } = useRepositoryMovements(repositoryId, filters)
   const movements = data?.data ?? []
   const meta = data?.meta
 
@@ -119,9 +122,13 @@ export function RepositoryMovementsTab({ repositoryId }: RepositoryMovementsTabP
 
   if (error) {
     return (
-      <div className={cn(tokens.alert.base, tokens.alert.error)}>
-        {t('treasury:repositories.movements.loadError')}
-      </div>
+      <QueryError
+        error={error}
+        onRetry={() => {
+          void refetch()
+        }}
+        title={t('treasury:repositories.movements.loadError')}
+      />
     )
   }
 
@@ -135,7 +142,7 @@ export function RepositoryMovementsTab({ repositoryId }: RepositoryMovementsTabP
       </div>
 
       {/* Filters */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <label className={tokens.label.base} htmlFor="movements-filter-direction">
             {t('treasury:repositories.movements.filters.direction')}
@@ -178,52 +185,40 @@ export function RepositoryMovementsTab({ repositoryId }: RepositoryMovementsTabP
           </Select>
         </div>
 
-        <div>
-          <label className={tokens.label.base} htmlFor="movements-filter-date-from">
-            {t('treasury:repositories.movements.filters.dateFrom')}
-          </label>
-          <input
-            id="movements-filter-date-from"
-            type="date"
-            className={cn(tokens.input.base)}
-            value={dateFrom}
-            onChange={(e) => {
-              setDateFrom(e.target.value)
-              setPage(1)
-            }}
-          />
-        </div>
-
-        <div>
-          <label className={tokens.label.base} htmlFor="movements-filter-date-to">
-            {t('treasury:repositories.movements.filters.dateTo')}
-          </label>
-          <input
-            id="movements-filter-date-to"
-            type="date"
-            className={cn(tokens.input.base)}
-            value={dateTo}
-            onChange={(e) => {
-              setDateTo(e.target.value)
-              setPage(1)
-            }}
-          />
-        </div>
+        <DateRangeFilter
+          label={t('treasury:repositories.movements.filters.dateRange')}
+          fromValue={dateFrom}
+          toValue={dateTo}
+          onFromChange={(value) => {
+            setDateFrom(value)
+            setPage(1)
+          }}
+          onToChange={(value) => {
+            setDateTo(value)
+            setPage(1)
+          }}
+        />
       </div>
 
       {/* Content */}
       {movements.length === 0 ? (
-        <div className={cn('rounded-lg border-2 border-dashed p-12 text-center', borderColors.default)}>
-          <h3 className={cn('text-sm font-semibold', textColors.primary)}>
-            {t('treasury:repositories.movements.empty.title')}
-          </h3>
-          <p className={cn('mt-1 text-sm', textColors.tertiary)}>
-            {t('treasury:repositories.movements.empty.description')}
-          </p>
+        <div className="py-6">
+          <EmptyState
+            icon={<Inbox className={cn('mx-auto h-12 w-12', textColors.disabled)} />}
+            title={t('treasury:repositories.movements.empty.title')}
+            description={t('treasury:repositories.movements.empty.description')}
+          />
         </div>
       ) : (
         <div className={cn('overflow-hidden rounded-lg border bg-white', borderColors.light)}>
           <div className="overflow-x-auto">
+            {/*
+              Hand-rolled deliberately — the shared DataTable has no pagination
+              support, and the drill-down-tab genre (ProductMovementsTab, the
+              Overview transactions table) hand-rolls for the same reason.
+              Pairs with OffsetPagination below. Do not "fix" this toward
+              DataTable without adding pagination support to it first.
+            */}
             <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
               <thead className={tokens.table.header}>
                 <tr>
@@ -337,34 +332,17 @@ export function RepositoryMovementsTab({ repositoryId }: RepositoryMovementsTabP
           </div>
 
           {meta && (
-            <div className={cn('flex items-center justify-between border-t px-4 py-3', borderColors.light)}>
-              <span className={cn('text-sm', textColors.tertiary)}>
-                {meta.total} {meta.total === 1 ? t('common:pagination.item') : t('common:pagination.items')}
-              </span>
-              <div className="flex items-center gap-2">
-                <span className={cn('text-sm', textColors.tertiary)}>
-                  {t('common:pagination.page')} {meta.current_page} {t('common:pagination.of')} {meta.last_page}
-                </span>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => { setPage((p) => Math.max(1, p - 1)); }}
-                  disabled={meta.current_page <= 1}
-                >
-                  {t('common:pagination.previous')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => { setPage((p) => p + 1); }}
-                  disabled={meta.current_page >= meta.last_page}
-                >
-                  {t('common:pagination.next')}
-                </Button>
-              </div>
-            </div>
+            <OffsetPagination
+              currentPage={meta.current_page}
+              lastPage={meta.last_page}
+              total={meta.total}
+              perPage={meta.per_page}
+              from={null}
+              to={null}
+              hidePerPage
+              onPageChange={setPage}
+              onPerPageChange={() => { /* per_page is hardcoded server-side for this endpoint */ }}
+            />
           )}
         </div>
       )}

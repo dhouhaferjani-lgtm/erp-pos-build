@@ -304,7 +304,8 @@
         "sourceType": "Origine",
         "sourceTypeAll": "Toutes les origines",
         "dateFrom": "Du",
-        "dateTo": "Au"
+        "dateTo": "Au",
+        "dateRange": "Plage de dates"
       },
       "directions": {
         "in": "Entrée",

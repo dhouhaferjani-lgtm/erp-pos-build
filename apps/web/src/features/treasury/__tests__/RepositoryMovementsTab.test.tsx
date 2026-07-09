@@ -124,11 +124,23 @@ describe('RepositoryMovementsTab', () => {
     expect(screen.getByText('common:status.loading')).toBeInTheDocument()
   })
 
-  it('renders an error state', () => {
-    mockUseRepositoryMovements.mockReturnValue({ data: undefined, isLoading: false, error: new Error('boom') })
+  it('renders an error state with a retry affordance wired to refetch', async () => {
+    const refetch = vi.fn()
+    mockUseRepositoryMovements.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('boom'),
+      refetch,
+    })
+    const user = userEvent.setup()
     renderTab()
 
     expect(screen.getByText('treasury:repositories.movements.loadError')).toBeInTheDocument()
+
+    const retryButton = screen.getByRole('button', { name: 'actions.tryAgain' })
+    await user.click(retryButton)
+
+    expect(refetch).toHaveBeenCalledTimes(1)
   })
 
   it('renders an empty state when there are no movements', () => {
@@ -239,19 +251,29 @@ describe('RepositoryMovementsTab', () => {
     )
   })
 
-  it('wires date_from / date_to filters to the hook', () => {
+  it('wires date_from / date_to filters (shared DateRangeFilter) to the hook, resetting to page 1', () => {
     renderTab()
 
-    const dateFrom = screen.getByLabelText('treasury:repositories.movements.filters.dateFrom')
+    // DateRangeFilter renders two date inputs via common:dateFrom/dateTo
+    // placeholders rather than per-input <label htmlFor>.
+    const dateFrom = screen.getByPlaceholderText('dateFrom')
     fireEvent.change(dateFrom, { target: { value: '2026-07-01' } })
 
     expect(mockUseRepositoryMovements).toHaveBeenLastCalledWith(
       'repo-1',
-      expect.objectContaining({ date_from: '2026-07-01' }),
+      expect.objectContaining({ date_from: '2026-07-01', page: 1 }),
+    )
+
+    const dateTo = screen.getByPlaceholderText('dateTo')
+    fireEvent.change(dateTo, { target: { value: '2026-07-05' } })
+
+    expect(mockUseRepositoryMovements).toHaveBeenLastCalledWith(
+      'repo-1',
+      expect.objectContaining({ date_to: '2026-07-05', page: 1 }),
     )
   })
 
-  it('paginates using meta.last_page, requesting the next server page', async () => {
+  it('paginates via the shared OffsetPagination, requesting the next server page', async () => {
     mockUseRepositoryMovements.mockReturnValue({
       data: baseResponse({ meta: { current_page: 1, last_page: 3, per_page: 20, total: 60 } }),
       isLoading: false,
@@ -260,12 +282,31 @@ describe('RepositoryMovementsTab', () => {
     const user = userEvent.setup()
     renderTab()
 
-    await user.click(screen.getByRole('button', { name: 'common:pagination.next' }))
+    // OffsetPagination's t() calls omit the 'common:' namespace prefix (it
+    // calls useTranslation('common') then t('pagination.next') directly), so
+    // under the shared i18n test mock the accessible name is the bare key.
+    await user.click(screen.getByRole('button', { name: 'pagination.next' }))
 
     expect(mockUseRepositoryMovements).toHaveBeenLastCalledWith(
       'repo-1',
       expect.objectContaining({ page: 2 }),
     )
+  })
+
+  it('renders the shared OffsetPagination with the per-page selector hidden (server hardcodes per_page)', () => {
+    mockUseRepositoryMovements.mockReturnValue({
+      data: baseResponse({ meta: { current_page: 1, last_page: 3, per_page: 20, total: 60 } }),
+      isLoading: false,
+      error: null,
+    })
+    renderTab()
+
+    expect(screen.getByRole('button', { name: 'pagination.previous' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'pagination.next' })).toBeInTheDocument()
+    // Only the direction + source-type filter selects remain — the
+    // OffsetPagination per-page combobox is suppressed via hidePerPage.
+    expect(screen.getAllByRole('combobox')).toHaveLength(2)
+    expect(screen.queryByText('pagination.rowsPerPage:')).not.toBeInTheDocument()
   })
 
   it('disables previous on the first page and next on the last page', () => {
@@ -276,7 +317,7 @@ describe('RepositoryMovementsTab', () => {
     })
     renderTab()
 
-    expect(screen.getByRole('button', { name: 'common:pagination.previous' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'common:pagination.next' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'pagination.previous' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'pagination.next' })).toBeDisabled()
   })
 })

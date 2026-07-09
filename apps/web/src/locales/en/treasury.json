@@ -304,7 +304,8 @@
         "sourceType": "Source",
         "sourceTypeAll": "All sources",
         "dateFrom": "From",
-        "dateTo": "To"
+        "dateTo": "To",
+        "dateRange": "Date Range"
       },
       "directions": {
         "in": "In",
