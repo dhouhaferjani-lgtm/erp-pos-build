@@ -74,6 +74,24 @@ describe('settingsStore', () => {
     });
   });
 
+  describe('optional display fields (Task 16 — default-off field toggles)', () => {
+    it('defaults showSkuOnRows and showSkinTypeOnTiles to false', () => {
+      const s = useSettingsStore.getState();
+      expect(s.showSkuOnRows).toBe(false);
+      expect(s.showSkinTypeOnTiles).toBe(false);
+    });
+
+    it('setShowSkuOnRows flips the flag', () => {
+      useSettingsStore.getState().setShowSkuOnRows(true);
+      expect(useSettingsStore.getState().showSkuOnRows).toBe(true);
+    });
+
+    it('setShowSkinTypeOnTiles flips the flag', () => {
+      useSettingsStore.getState().setShowSkinTypeOnTiles(true);
+      expect(useSettingsStore.getState().showSkinTypeOnTiles).toBe(true);
+    });
+  });
+
   describe('appearance (theme knobs)', () => {
     it('defaults to light / orange / rounded / comfortable', () => {
       const s = useSettingsStore.getState();

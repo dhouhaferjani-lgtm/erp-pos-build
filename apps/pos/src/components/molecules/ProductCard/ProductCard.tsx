@@ -8,6 +8,7 @@ import { useProductImage } from '@/lib/images/useProductImage';
 import { bccomp, bcsum } from '@/lib/decimal';
 import { formatAvailableQty } from '@/lib/stock/stockGate';
 import { ProductThumb, StockBadge } from '@/components/ui';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useStockDisplay } from '@/components/organisms/ProductGrid/useStockDisplay';
 import {
   CARD_NAME_MIN_H_CLASS_GRID,
@@ -120,6 +121,14 @@ function ProductCardInner({
     locationStock,
     hardBlockOutOfStock,
   );
+
+  // Task 16 — optional-field toggle (default off): small skin-type indicator
+  // dots on the visual (vitrine) tile, sourced from parapharmacy metadata.
+  // Renders nothing when the flag is off or when the product has no
+  // (non-empty) suitable_skin_types.
+  const showSkinTypeOnTiles = useSettingsStore((s) => s.showSkinTypeOnTiles);
+  const skinTypes = product.parapharmacy_metadata?.suitable_skin_types ?? [];
+  const showSkinTypeDots = showSkinTypeOnTiles && displayMode === 'visual' && skinTypes.length > 0;
 
   // Arriving badge — only on the location-aware path, when anything is
   // incoming (branch transfer and/or purchase order).
@@ -371,6 +380,23 @@ function ProductCardInner({
           >
             {product.name}
           </h3>
+
+          {showSkinTypeDots && (
+            <div
+              data-testid="skin-type-dots"
+              aria-label={skinTypes.join(', ')}
+              className="mt-0.5 flex items-center gap-1"
+            >
+              {skinTypes.map((skinType) => (
+                <span
+                  key={skinType}
+                  data-testid="skin-type-dot"
+                  title={skinType}
+                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
 

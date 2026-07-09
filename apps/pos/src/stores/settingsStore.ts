@@ -88,6 +88,17 @@ interface SettingsState {
   corner: CornerStyle;
   /** Appearance — product-grid density (column step). */
   density: Density;
+  /**
+   * Task 16 — optional-field toggle. Default-off. When true, `ProductListRow`
+   * shows the product `sku` as a small muted second line under the name.
+   */
+  showSkuOnRows: boolean;
+  /**
+   * Task 16 — optional-field toggle. Default-off. When true, `ProductCard`
+   * (vitrine tile) shows small skin-type indicator dots sourced from
+   * `product.parapharmacy_metadata?.suitable_skin_types`.
+   */
+  showSkinTypeOnTiles: boolean;
   setDisplayMode: (mode: DisplayMode) => void;
   setLanguage: (lang: string) => void;
   setTouchMode: (enabled: boolean) => void;
@@ -101,6 +112,8 @@ interface SettingsState {
   setAccent: (accent: AccentName) => void;
   setCorner: (corner: CornerStyle) => void;
   setDensity: (density: Density) => void;
+  setShowSkuOnRows: (enabled: boolean) => void;
+  setShowSkinTypeOnTiles: (enabled: boolean) => void;
 }
 
 export const SUPPORTED_LANGUAGES = [
@@ -124,6 +137,8 @@ export const useSettingsStore = create<SettingsState>()(
       accent: DEFAULT_THEME_SETTINGS.accent,
       corner: DEFAULT_THEME_SETTINGS.corner,
       density: DEFAULT_THEME_SETTINGS.density,
+      showSkuOnRows: false,
+      showSkinTypeOnTiles: false,
 
       setDisplayMode: (mode: DisplayMode) => {
         set({ displayMode: mode });
@@ -176,6 +191,14 @@ export const useSettingsStore = create<SettingsState>()(
 
       setDensity: (density: Density) => {
         set({ density });
+      },
+
+      setShowSkuOnRows: (enabled: boolean) => {
+        set({ showSkuOnRows: enabled });
+      },
+
+      setShowSkinTypeOnTiles: (enabled: boolean) => {
+        set({ showSkinTypeOnTiles: enabled });
       },
     }),
     {

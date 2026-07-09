@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useCurrency } from '@/lib/currency';
 import { useProductImage } from '@/lib/images/useProductImage';
 import { ProductThumb, StockBadge } from '@/components/ui';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useStockDisplay } from './useStockDisplay';
 import type { POSProduct } from '@/types/product';
 import type { LocationStockDisplay } from '@/lib/stock/gridStock';
@@ -35,6 +36,9 @@ function ProductListRowInner({
   const { format } = useCurrency();
   const localImage = useProductImage(product.id, product.image_url);
   const imageSrc = localImage ?? product.image_url;
+  // Task 16 — optional-field toggle (default off): show the product SKU as a
+  // small muted second line under the name.
+  const showSkuOnRows = useSettingsStore((s) => s.showSkuOnRows);
 
   const { stockLabel, status, isActivationBlocked } = useStockDisplay(
     product,
@@ -81,6 +85,14 @@ function ProductListRowInner({
         >
           {product.name}
         </p>
+        {showSkuOnRows && (
+          <p
+            data-testid="sku-row"
+            className="w-full truncate text-[11px] leading-[1.2] text-ink-muted"
+          >
+            {product.sku}
+          </p>
+        )}
       </div>
 
       {stockLabel !== null && status !== null && (

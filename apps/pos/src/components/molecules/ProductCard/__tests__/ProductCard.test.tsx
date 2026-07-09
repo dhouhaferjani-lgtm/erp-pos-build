@@ -6,6 +6,17 @@ import { ProductCard, type ProductCardProps } from '../ProductCard';
 import { makeProduct } from '@/test/helpers';
 import type { POSProduct } from '@/types/product';
 
+// Task 16 — optional-field toggle. Mutable so individual tests can flip
+// `showSkinTypeOnTiles` without re-mocking the module.
+const settingsStoreMock = vi.hoisted(() => ({
+  state: { showSkinTypeOnTiles: false },
+}));
+
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: <T,>(selector: (s: typeof settingsStoreMock.state) => T): T =>
+    selector(settingsStoreMock.state),
+}));
+
 vi.mock('react-i18next', async (importActual) => {
   const actual = await importActual<typeof import('react-i18next')>();
   return {
@@ -105,6 +116,67 @@ describe('ProductCard', () => {
     const price = screen.getByTestId('price-row');
     expect(price.className).toContain('text-ink');
     expect(price.className).not.toContain('accent');
+  });
+
+  describe('showSkinTypeOnTiles (Task 16 — optional-field toggle, default off)', () => {
+    it('does not render skin-type dots when the flag is off, even with data', () => {
+      settingsStoreMock.state.showSkinTypeOnTiles = false;
+      renderCard({
+        displayMode: 'visual',
+        product: makeProduct({
+          parapharmacy_metadata: {
+            suitable_skin_types: ['oily', 'dry'],
+            equivalent_product_ids: [],
+            complement_product_ids: [],
+            routine_refs: [],
+          },
+        }),
+      });
+
+      expect(screen.queryByTestId('skin-type-dots')).not.toBeInTheDocument();
+    });
+
+    it('does not render skin-type dots when the flag is on but suitable_skin_types is empty/absent', () => {
+      settingsStoreMock.state.showSkinTypeOnTiles = true;
+      renderCard({ displayMode: 'visual', product: makeProduct({}) });
+
+      expect(screen.queryByTestId('skin-type-dots')).not.toBeInTheDocument();
+    });
+
+    it('renders one dot per skin type when the flag is on and data is present', () => {
+      settingsStoreMock.state.showSkinTypeOnTiles = true;
+      renderCard({
+        displayMode: 'visual',
+        product: makeProduct({
+          parapharmacy_metadata: {
+            suitable_skin_types: ['oily', 'dry'],
+            equivalent_product_ids: [],
+            complement_product_ids: [],
+            routine_refs: [],
+          },
+        }),
+      });
+
+      const container = screen.getByTestId('skin-type-dots');
+      expect(container.querySelectorAll('[data-testid="skin-type-dot"]')).toHaveLength(2);
+    });
+
+    it('does not render skin-type dots in grid (compact) mode even with data + flag on', () => {
+      settingsStoreMock.state.showSkinTypeOnTiles = true;
+      renderCard({
+        displayMode: 'grid',
+        product: makeProduct({
+          parapharmacy_metadata: {
+            suitable_skin_types: ['oily'],
+            equivalent_product_ids: [],
+            complement_product_ids: [],
+            routine_refs: [],
+          },
+        }),
+      });
+
+      expect(screen.queryByTestId('skin-type-dots')).not.toBeInTheDocument();
+    });
   });
 });
 

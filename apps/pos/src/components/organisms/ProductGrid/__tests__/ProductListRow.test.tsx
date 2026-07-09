@@ -12,6 +12,17 @@ import { render, screen } from '@testing-library/react';
 import { ProductListRow, type ProductListRowProps } from '../ProductListRow';
 import { makeProduct } from '@/test/helpers';
 
+// Task 16 — optional-field toggle. Mutable so individual tests can flip
+// `showSkuOnRows` without re-mocking the module.
+const settingsStoreMock = vi.hoisted(() => ({
+  state: { showSkuOnRows: false },
+}));
+
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: <T,>(selector: (s: typeof settingsStoreMock.state) => T): T =>
+    selector(settingsStoreMock.state),
+}));
+
 vi.mock('react-i18next', async (importActual) => {
   const actual = await importActual<typeof import('react-i18next')>();
   return {
@@ -116,5 +127,21 @@ describe('ProductListRow', () => {
     const eye = screen.getByTestId('view-details-button');
     eye.click();
     expect(onViewDetails).toHaveBeenCalledTimes(1);
+  });
+
+  describe('showSkuOnRows (Task 16 — optional-field toggle, default off)', () => {
+    it('does not render the SKU line when the flag is off', () => {
+      settingsStoreMock.state.showSkuOnRows = false;
+      renderRow({ product: makeProduct({ sku: 'SKU-999' }) });
+
+      expect(screen.queryByTestId('sku-row')).not.toBeInTheDocument();
+    });
+
+    it('renders the SKU line when the flag is on', () => {
+      settingsStoreMock.state.showSkuOnRows = true;
+      renderRow({ product: makeProduct({ sku: 'SKU-999' }) });
+
+      expect(screen.getByTestId('sku-row')).toHaveTextContent('SKU-999');
+    });
   });
 });
