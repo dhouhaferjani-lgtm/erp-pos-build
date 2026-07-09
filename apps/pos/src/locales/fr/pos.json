@@ -711,6 +711,15 @@
     "gridMode": "Vue grille",
     "visualMode": "Vue images"
   },
+  "table": {
+    "ariaLabel": "Tableau des produits",
+    "colCode": "Code",
+    "colProduct": "Produit",
+    "colCategory": "Catégorie",
+    "colStock": "Stock",
+    "colPrice": "Prix",
+    "colAction": "Ajouter"
+  },
   "advancedPayments": {
     "back": "Retour",
     "title": "Paiement",

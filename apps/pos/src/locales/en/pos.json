@@ -711,6 +711,15 @@
     "gridMode": "Grid view",
     "visualMode": "Image view"
   },
+  "table": {
+    "ariaLabel": "Product table",
+    "colCode": "Code",
+    "colProduct": "Product",
+    "colCategory": "Category",
+    "colStock": "Stock",
+    "colPrice": "Price",
+    "colAction": "Add"
+  },
   "advancedPayments": {
     "back": "Back",
     "title": "Payment",
