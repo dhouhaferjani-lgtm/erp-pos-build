@@ -8,6 +8,7 @@ import { useProductImage } from '@/lib/images/useProductImage';
 import { bccomp, bcsum } from '@/lib/decimal';
 import { formatAvailableQty } from '@/lib/stock/stockGate';
 import { ProductThumb, StockBadge } from '@/components/ui';
+import { useStockDisplay } from '@/components/organisms/ProductGrid/useStockDisplay';
 import {
   CARD_NAME_MIN_H_CLASS_GRID,
   CARD_NAME_MIN_H_CLASS_VISUAL,
@@ -111,29 +112,14 @@ function ProductCardInner({
   const imageSrc = localImage ?? product.image_url;
   const hasModifiers = (product.modifier_groups?.length ?? 0) > 0;
 
-  // Stock chrome — three rendering paths (see `locationStock` prop docs).
-  let isOutOfStock = false;
-  let isLowStock = false;
-  let stockLabel: string | null = null;
-  if (locationStock === undefined) {
-    // Legacy path — unchanged for Menu tenants (999) and browser dev.
-    isOutOfStock = product.stock_quantity <= 0;
-    isLowStock = product.stock_quantity > 0 && product.stock_quantity <= 10;
-    // Number ALWAYS shown for ok/low (Task 10 — unified badge format); only
-    // `out` renders a wordless label. Badge colour still keys off isLowStock.
-    stockLabel = isOutOfStock
-      ? t('products.outOfStock')
-      : t('products.stock', { count: product.stock_quantity });
-  } else if (locationStock !== null) {
-    isOutOfStock = bccomp(locationStock.available, '0') <= 0;
-    isLowStock = !isOutOfStock && bccomp(locationStock.available, '10') <= 0;
-    stockLabel = isOutOfStock
-      ? t('products.outOfStock')
-      : (t as unknown as TranslateWithStringCount)('products.stock', {
-          count: formatAvailableQty(locationStock.available),
-        });
-  }
-  // locationStock === null → exempt: stockLabel stays null, no gating.
+  // Stock chrome — three rendering paths, extracted to `useStockDisplay`
+  // (see `locationStock` prop docs) so `ProductListRow` shares the exact
+  // same derivation.
+  const { isOutOfStock, stockLabel, status, isActivationBlocked } = useStockDisplay(
+    product,
+    locationStock,
+    hardBlockOutOfStock,
+  );
 
   // Arriving badge — only on the location-aware path, when anything is
   // incoming (branch transfer and/or purchase order).
@@ -163,11 +149,6 @@ function ProductCardInner({
 
   const nameMinHClass =
     displayMode === 'grid' ? CARD_NAME_MIN_H_CLASS_GRID : CARD_NAME_MIN_H_CLASS_VISUAL;
-
-  // Activation refuses only under 'block' policy (Codex final-review P1):
-  // under 'warn'/'off' the tap must reach the stock gate, which allows the
-  // add and surfaces the warning toast.
-  const isActivationBlocked = isOutOfStock && hardBlockOutOfStock;
 
   // Tap-confirm ring pulse — applied via direct DOM manipulation to avoid a
   // React state update inside event handlers (which triggers act() warnings in
@@ -424,10 +405,10 @@ function ProductCardInner({
             displayMode === 'visual' ? 'max-w-full' : 'shrink-0',
           )}
         >
-          {stockLabel !== null && (
+          {stockLabel !== null && status !== null && (
             <StockBadge
               data-testid="stock-row"
-              status={isOutOfStock ? 'out' : isLowStock ? 'low' : 'ok'}
+              status={status}
               className="max-w-full shrink-0 px-[7px] py-[3px] text-[10.5px] font-semibold"
             >
               {stockLabel}
