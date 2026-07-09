@@ -36,14 +36,14 @@ function isAcceptedType(file: File): boolean {
   return file.type.startsWith('image/') || file.type === 'application/pdf'
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${String(bytes)} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 export function UploadScanPage() {
   const { t } = useTranslation(['documentIngestions'])
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${String(bytes)} ${t('upload.units.b')}`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${t('upload.units.kb')}`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} ${t('upload.units.mb')}`
+  }
   const navigate = useNavigate()
   const uploadMutation = useUploadDocumentIngestion()
   const [kind, setKind] = useState<DocumentKind | ''>('')

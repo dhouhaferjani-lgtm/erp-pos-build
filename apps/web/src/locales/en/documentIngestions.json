@@ -103,6 +103,11 @@
     },
     "remove": "Remove file",
     "selectedFile": "{{name}} ({{size}})",
-    "title": "Upload scan"
+    "title": "Upload scan",
+    "units": {
+      "b": "B",
+      "kb": "KB",
+      "mb": "MB"
+    }
   }
 }

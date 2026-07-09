@@ -103,6 +103,11 @@
     },
     "remove": "Supprimer le fichier",
     "selectedFile": "{{name}} ({{size}})",
-    "title": "Téléverser un scan"
+    "title": "Téléverser un scan",
+    "units": {
+      "b": "o",
+      "kb": "Ko",
+      "mb": "Mo"
+    }
   }
 }
