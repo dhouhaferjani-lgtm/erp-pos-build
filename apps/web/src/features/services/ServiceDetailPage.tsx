@@ -12,6 +12,7 @@ import {
   FolderTree,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { formatCurrency as formatMoney, formatPercent } from '../../lib/format'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -70,13 +71,10 @@ export function ServiceDetailPage() {
 
   const taxConfigName = useTaxConfigName(service?.default_tax_configuration_id)
 
-  const formatCurrency = (amount: string | null) => {
+  const formatServiceCurrency = (amount: string | null) => {
     if (!amount) return '-'
     const currencyCode = service?.currency ?? currentCompany?.currency ?? 'USD'
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currencyCode,
-    }).format(parseFloat(amount))
+    return formatMoney(amount, { currency: currencyCode, locale: 'en-US' })
   }
 
   const formatDuration = (minutes: number | null) => {
@@ -235,7 +233,7 @@ export function ServiceDetailPage() {
             <div>
               <dt className="text-sm text-gray-500">{t('services.fields.basePrice', 'Base Price')}</dt>
               <dd className="mt-1 text-lg font-semibold text-gray-900">
-                {formatCurrency(service.base_price)}
+                {formatServiceCurrency(service.base_price)}
               </dd>
             </div>
           )}
@@ -244,7 +242,7 @@ export function ServiceDetailPage() {
               <div>
                 <dt className="text-sm text-gray-500">{t('services.fields.hourlyRate', 'Hourly Rate')}</dt>
                 <dd className="mt-1 text-lg font-semibold text-gray-900">
-                  {formatCurrency(service.hourly_rate)}/h
+                  {formatServiceCurrency(service.hourly_rate)}/h
                 </dd>
               </div>
               <div>
@@ -259,7 +257,7 @@ export function ServiceDetailPage() {
             <div>
               <dt className="text-sm text-gray-500">{t('services.fields.percentage', 'Percentage')}</dt>
               <dd className="mt-1 text-lg font-semibold text-gray-900">
-                {service.base_price}%
+                {formatPercent(service.base_price)}
               </dd>
             </div>
           )}
@@ -267,7 +265,7 @@ export function ServiceDetailPage() {
             <div>
               <dt className="text-sm text-gray-500">{t('services.fields.taxRate', 'Tax Rate')}</dt>
               <dd className="mt-1 text-sm font-medium text-gray-900">
-                {taxConfigName ?? (service.tax_rate ? `${service.tax_rate}%` : '—')}
+                {taxConfigName ?? (service.tax_rate ? formatPercent(service.tax_rate) : '—')}
               </dd>
             </div>
           )}

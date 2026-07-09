@@ -92,4 +92,32 @@ describe('PricingIntelligencePanel', () => {
     expect(screen.getByText((content) => content.includes('pricing.floorPrice'))).toBeInTheDocument()
     expect(screen.getByText('pricing.sell_below_minimum_margin')).toBeInTheDocument()
   })
+
+  it('trims percent displays without changing source values', () => {
+    mockHasPermission.mockReturnValue(true)
+
+    render(
+      <PricingIntelligencePanel
+        product={{
+          ...product,
+          tax_rate: '19.0000',
+          max_discount_percent: '12.5000',
+          effective_margins: {
+            target_margin: '30.0000',
+            minimum_margin: '15.0000',
+            source: 'product',
+          },
+        }}
+        currency="EUR"
+        locale="en-US"
+      />,
+    )
+
+    expect(screen.getByText('19%')).toBeInTheDocument()
+    expect(screen.getByText('12.5%')).toBeInTheDocument()
+    expect(screen.getByText('25%')).toBeInTheDocument()
+    expect(screen.getByText('pricing.marginThresholds')).toBeInTheDocument()
+    expect(screen.queryByText('19.0000%')).not.toBeInTheDocument()
+    expect(screen.queryByText('12.5000%')).not.toBeInTheDocument()
+  })
 })

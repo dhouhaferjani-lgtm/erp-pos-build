@@ -184,20 +184,20 @@ class MarginService
     /**
      * Calculate suggested sell price based on cost and target margin.
      */
-    public function getSuggestedPrice(Product $product): float
+    public function getSuggestedPrice(Product $product): string
     {
         $cost = $this->toNumericString($product->cost_price ?? '0');
         $margins = $this->getEffectiveMargins($product);
 
         // cost <= 0 → fall back to current sale price
         if (bccomp($cost, '0', $this->intermediateScale($product)) <= 0) {
-            return (float) CurrencyScale::bcformat(
+            return CurrencyScale::bcformat(
                 $this->toNumericString($product->sale_price ?? '0'),
                 $this->scale($product),
             );
         }
 
-        return (float) $this->priceFromMargin($cost, $this->toNumericString($margins['target_margin']), $product);
+        return $this->priceFromMargin($cost, $this->toNumericString($margins['target_margin']), $product);
     }
 
     /**
@@ -257,7 +257,7 @@ class MarginService
      * margin% = ((sellPrice - cost) / cost) * 100, computed via bcmath and
      * rounded once to MARGIN_SCALE. Returns null when cost <= 0.
      */
-    public function calculateMargin(string|int|float $cost, string|int|float $sellPrice): ?float
+    public function calculateMargin(string|int|float $cost, string|int|float $sellPrice): ?string
     {
         $costStr = $this->toNumericString($cost);
         $sellStr = $this->toNumericString($sellPrice);
@@ -272,13 +272,13 @@ class MarginService
         $ratio = bcdiv($diff, $costStr, $inter + 2);
         $percent = bcmul($ratio, '100', $inter + 2);
 
-        return (float) $this->bcRoundHalfUp($percent, self::MARGIN_SCALE);
+        return $this->bcRoundHalfUp($percent, self::MARGIN_SCALE);
     }
 
     /**
      * Get margin indicator level for a sell price.
      *
-     * @return array{level: string, message: string, actual_margin: float|null, target_margin?: float, minimum_margin?: float, loss_amount?: float}
+     * @return array{level: string, message: string, actual_margin: string|null, target_margin?: string, minimum_margin?: string, loss_amount?: string}
      */
     public function getMarginLevel(Product $product, string|int|float $sellPrice): array
     {
@@ -303,14 +303,14 @@ class MarginService
                 'level' => self::LEVEL_RED,
                 'message' => 'Below cost - LOSS',
                 'actual_margin' => $actualMargin,
-                'loss_amount' => (float) $this->bcRoundHalfUp(
+                'loss_amount' => $this->bcRoundHalfUp(
                     bcsub($cost, $sell, $inter),
                     $scale,
                 ),
             ];
         }
 
-        $actualMarginStr = CurrencyScale::bcformat((string) $actualMargin, self::MARGIN_SCALE);
+        $actualMarginStr = CurrencyScale::bcformat($actualMargin ?? '0', self::MARGIN_SCALE);
 
         // Below minimum margin (actual < minimum)
         if (bccomp($actualMarginStr, $this->toNumericString($margins['minimum_margin']), self::MARGIN_SCALE) < 0) {
@@ -318,7 +318,7 @@ class MarginService
                 'level' => self::LEVEL_ORANGE,
                 'message' => 'Below minimum margin',
                 'actual_margin' => $actualMargin,
-                'minimum_margin' => (float) $margins['minimum_margin'],
+                'minimum_margin' => $margins['minimum_margin'],
             ];
         }
 
@@ -328,7 +328,7 @@ class MarginService
                 'level' => self::LEVEL_YELLOW,
                 'message' => 'Below target margin',
                 'actual_margin' => $actualMargin,
-                'target_margin' => (float) $margins['target_margin'],
+                'target_margin' => $margins['target_margin'],
             ];
         }
 

@@ -28,6 +28,7 @@ import {
 } from './api/withholdingApi'
 import type { CertificateStatus, WithholdingDirection } from './types'
 import { useCurrency } from '@/hooks/useCurrency'
+import { formatNumber, formatPercent } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { Button } from '@/components/atoms/Button'
@@ -333,21 +334,21 @@ export function WithholdingCertificateDetail() {
           <div className={cn('flex items-center justify-between border-b pb-2', borderColors.light)}>
             <span className={cn('text-sm', textColors.tertiary)}>{t('certificates.grossAmount')}</span>
             <span className={cn('text-lg font-mono font-semibold tabular-nums', textColors.primary)}>
-              {parseFloat(certificate.gross_amount).toFixed(decimals)} {certificate.currency}
+              {formatNumber(certificate.gross_amount, decimals)} {certificate.currency}
             </span>
           </div>
           <div className={cn('flex items-center justify-between border-b pb-2', borderColors.light)}>
             <span className={cn('text-sm', textColors.tertiary)}>
-              {t('certificates.rate')} ({certificate.rate_percentage}%)
+              {t('certificates.rate')} ({formatPercent(certificate.rate_percentage)})
             </span>
             <span className={cn('text-lg font-mono font-semibold tabular-nums', textColors.error)}>
-              - {parseFloat(certificate.withholding_amount).toFixed(decimals)} {certificate.currency}
+              - {formatNumber(certificate.withholding_amount, decimals)} {certificate.currency}
             </span>
           </div>
           <div className="flex items-center justify-between pt-2">
             <span className={cn('text-base font-semibold', textColors.primary)}>{t('certificates.netAmount')}</span>
             <span className={cn('text-2xl font-mono font-bold tabular-nums', textColors.primary)}>
-              {parseFloat(certificate.net_amount).toFixed(decimals)} {certificate.currency}
+              {formatNumber(certificate.net_amount, decimals)} {certificate.currency}
             </span>
           </div>
         </div>

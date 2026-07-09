@@ -7,6 +7,8 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { fetchTaxBreakdown, type TaxBreakdown } from '../api/taxApi'
 import { getDecimals } from '@/hooks/useCurrency'
+import { bccomp } from '@/lib/decimal'
+import { formatNumber, formatPercent } from '@/lib/format'
 
 export interface DocumentTotalsProps {
   documentId: string
@@ -51,7 +53,7 @@ export function DocumentTotals({
   const decimals = getDecimals(currency)
 
   const formatAmount = (amount: string | number): string => {
-    return parseFloat(String(amount)).toFixed(decimals)
+    return formatNumber(amount, decimals)
   }
 
   if (isLoading) {
@@ -77,8 +79,8 @@ export function DocumentTotals({
     )
   }
 
-  const hasStampDuty = parseFloat(taxBreakdown.stamp_duty_amount) > 0
-  const hasTaxes = parseFloat(taxBreakdown.total_tax_amount) > 0
+  const hasStampDuty = bccomp(taxBreakdown.stamp_duty_amount, '0') > 0
+  const hasTaxes = bccomp(taxBreakdown.total_tax_amount, '0') > 0
   const hasBalanceDue = showBalanceDue && balanceDue !== undefined && balanceDue > 0
 
   return (
@@ -100,7 +102,7 @@ export function DocumentTotals({
             .filter((detail) => !detail.tax_name.toLowerCase().includes('timbre'))
             .map((detail, index) => {
               const displayName = detail.tax_type === 'percentage' && detail.tax_rate
-                ? `${detail.tax_name} ${detail.tax_rate}%`
+                ? `${detail.tax_name} ${formatPercent(detail.tax_rate)}`
                 : detail.tax_name
 
               return (

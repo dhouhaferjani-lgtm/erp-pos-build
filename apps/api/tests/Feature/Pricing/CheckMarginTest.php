@@ -131,6 +131,8 @@ class CheckMarginTest extends TestCase
 
         $marginLevel = $response->json('data.margin_level');
         $this->assertEquals(MarginService::LEVEL_GREEN, $marginLevel['level']);
+        $this->assertSame('130.00', $response->json('data.suggested_price'));
+        $this->assertSame('40.00', $marginLevel['actual_margin']);
     }
 
     public function test_margin_level_yellow_for_below_target(): void

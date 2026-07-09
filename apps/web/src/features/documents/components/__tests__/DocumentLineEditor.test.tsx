@@ -502,9 +502,11 @@ describe('DocumentLineEditor — designation cells', () => {
     await user.type(screen.getByRole('spinbutton', { name: 'Free qty' }), '1')
 
     await user.click(screen.getByRole('button', { name: 'Total HT' }))
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Unit Price' }), {
+    const totalInput = screen.getByRole('spinbutton', { name: 'Unit Price' })
+    fireEvent.change(totalInput, {
       target: { value: '100.000' },
     })
+    fireEvent.blur(totalInput)
 
     expect(onChange).toHaveBeenLastCalledWith([
       expect.objectContaining({
@@ -548,9 +550,11 @@ describe('DocumentLineEditor — designation cells', () => {
     await user.click(screen.getByRole('button', { name: 'Total HT' }))
     expect(screen.getByRole('spinbutton', { name: 'Unit Price' })).toHaveValue(30)
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Unit Price' }), {
+    const totalInput = screen.getByRole('spinbutton', { name: 'Unit Price' })
+    fireEvent.change(totalInput, {
       target: { value: '33.000' },
     })
+    fireEvent.blur(totalInput)
 
     expect(onChange).toHaveBeenLastCalledWith([
       expect.objectContaining({
@@ -605,9 +609,11 @@ describe('DocumentLineEditor — designation cells', () => {
 
     render(<ControlledEditor />, { wrapper: createWrapper() })
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Unit Price' }), {
+    const totalInput = screen.getByRole('spinbutton', { name: 'Unit Price' })
+    fireEvent.change(totalInput, {
       target: { value: '36.000' },
     })
+    fireEvent.blur(totalInput)
 
     expect(onChange).toHaveBeenLastCalledWith([
       expect.objectContaining({
@@ -650,9 +656,11 @@ describe('DocumentLineEditor — designation cells', () => {
 
     render(<ControlledEditor />, { wrapper: createWrapper() })
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Unit Price' }), {
+    const totalInput = screen.getByRole('spinbutton', { name: 'Unit Price' })
+    fireEvent.change(totalInput, {
       target: { value: '35.000' },
     })
+    fireEvent.blur(totalInput)
 
     expect(onChange).toHaveBeenLastCalledWith([
       expect.objectContaining({
@@ -722,7 +730,7 @@ describe('DocumentLineEditor — designation cells', () => {
         ],
       })
     })
-    expect(await screen.findByText('Cost 12.500000 · Last buy 11.900000 · Margin 30.00%')).toBeInTheDocument()
+    expect(await screen.findByText('Cost 12.500000 · Last buy 11.900000 · Margin 30%')).toBeInTheDocument()
   })
 
   it('shows server-driven blocked margin policy and applies suggested price', async () => {

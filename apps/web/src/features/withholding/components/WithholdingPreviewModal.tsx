@@ -10,6 +10,8 @@ import { Input } from '@/components/atoms/Input'
 import { Textarea } from '@/components/atoms/Textarea'
 import { Spinner } from '@/components/atoms/Spinner'
 import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
+import { bcdiv, bcmul, bcsub } from '@/lib/decimal'
+import { formatNumber, formatPercent } from '@/lib/format'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import type { TransactionType } from '../types'
@@ -54,12 +56,13 @@ export function WithholdingPreviewModal({
   }, [isOpen, partnerId, amount, currency, transactionType])
 
   const preview = previewMutation.data
+  const manualRateValue = manualRate.trim() === '' ? '0' : manualRate
 
   const handleApply = () => {
     if (manualOverride) {
-      const rate = parseFloat(manualRate) / 100
-      const withholdingAmount = (parseFloat(amount) * rate).toFixed(decimals)
-      onApply(withholdingAmount, rate.toFixed(4))
+      const rate = bcdiv(manualRateValue, '100', 4)
+      const withholdingAmount = bcmul(amount, rate, decimals)
+      onApply(withholdingAmount, rate)
     } else if (preview) {
       onApply(preview.withholding_amount ?? '', preview.withholding_rate ?? '')
     }
@@ -67,12 +70,14 @@ export function WithholdingPreviewModal({
   }
 
   const calculatedWithholding = manualOverride
-    ? (parseFloat(amount) * parseFloat(manualRate) / 100).toFixed(decimals)
+    ? bcmul(amount, bcdiv(manualRateValue, '100', 4), decimals)
     : preview?.withholding_amount ?? '0.' + '0'.repeat(decimals)
 
   const calculatedNet = manualOverride
-    ? (parseFloat(amount) - parseFloat(calculatedWithholding)).toFixed(decimals)
+    ? bcsub(amount, calculatedWithholding, decimals)
     : preview?.net_amount ?? amount
+
+  const displayedRate = manualOverride ? manualRateValue : String(preview?.rate_percentage ?? 0)
 
   return (
     <Modal
@@ -142,12 +147,12 @@ export function WithholdingPreviewModal({
                 <div className="flex items-center justify-between text-sm">
                   <span className={textColors.tertiary}>{t('certificates.grossAmount')}</span>
                   <span className={cn('font-mono font-semibold', textColors.primary)}>
-                    {parseFloat(amount).toFixed(decimals)} {currency}
+                    {formatNumber(amount, decimals)} {currency}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className={textColors.tertiary}>
-                    {t('certificates.rate')} ({manualOverride ? manualRate : (preview.rate_percentage ?? 0)}%)
+                    {t('certificates.rate')} ({formatPercent(displayedRate)})
                   </span>
                   <span className={cn('font-mono font-semibold', textColors.error)}>
                     - {calculatedWithholding} {currency}

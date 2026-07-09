@@ -50,7 +50,7 @@ final class WorkOrderLineFactory extends Factory
             'quantity' => '1.000',
             'unit' => 'pc',
             'unit_price' => '50.000',
-            'tax_rate' => '19.000',
+            'tax_rate' => '19.00',
             'discount_percent' => '0.00',
             'line_total_excl_tax' => '50.000',
             'line_total_tax' => '9.500',

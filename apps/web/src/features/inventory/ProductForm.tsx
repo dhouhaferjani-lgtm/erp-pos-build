@@ -19,6 +19,8 @@ import { Checkbox } from '../../components/atoms/Checkbox/Checkbox'
 import { FormField } from '../../components/atoms/FormField/FormField'
 import { Input } from '../../components/atoms/Input/Input'
 import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
+import { DraftMoneyInput } from '../../components/atoms/DraftMoneyInput'
+import { DraftQuantityInput } from '../../components/atoms/DraftQuantityInput'
 import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
 import { Textarea } from '../../components/atoms/Textarea/Textarea'
 import { Toggle } from '../../components/atoms/Toggle/Toggle'
@@ -936,12 +938,12 @@ export function ProductForm() {
         <label htmlFor="ready_margin_percent" className={cn('block text-start text-xs', textColors.tertiary)}>
           {t('inventory:products.marginPercent')}
         </label>
-        <Input
+        <DraftQuantityInput
           id="ready_margin_percent"
           aria-label={t('inventory:products.marginPercent')}
-          inputMode="decimal"
-          value={marginPercentValue}
-          onChange={(event) => { handleMarginChange(event.target.value) }}
+          decimalPlaces={2}
+          initialValue={marginPercentValue}
+          onCommit={handleMarginChange}
           className="mt-1"
         />
       </div>
@@ -951,12 +953,12 @@ export function ProductForm() {
         <label htmlFor="ready_price_ht" className={cn('block text-start text-xs', textColors.tertiary)}>
           {t('inventory:products.priceHt')}
         </label>
-        <MoneyInput
+        <DraftMoneyInput
           id="ready_price_ht"
           aria-label={t('inventory:products.priceHt')}
           currency={currency}
-          value={priceHtValue}
-          onChange={handlePriceHtChange}
+          initialValue={priceHtValue}
+          onCommit={handlePriceHtChange}
           className="mt-1"
         />
       </div>
@@ -973,12 +975,12 @@ export function ProductForm() {
             </span>
           )}
         </div>
-        <MoneyInput
+        <DraftMoneyInput
           id="ready_price_ttc"
           aria-label={t('inventory:products.priceTtc')}
           currency={currency}
-          value={priceTtcValue}
-          onChange={handlePriceTtcChange}
+          initialValue={priceTtcValue}
+          onCommit={handlePriceTtcChange}
           className="mt-1"
         />
       </div>

@@ -219,6 +219,20 @@ describe('EndOfDayPreviewModal', () => {
     expect(allText).toContain('130.00');
   });
 
+  it('formats VAT rates at the display boundary without changing preview data', async () => {
+    mockBuildEndOfDayPreview.mockResolvedValueOnce({
+      ...samplePreview,
+      vat_breakdown: [
+        { tax_rate: 19.1234, net_amount: '37.82', vat_amount: '7.18', gross_amount: '45.00' },
+      ],
+    });
+
+    renderModal();
+
+    expect(await screen.findByText('19.12%')).toBeInTheDocument();
+    expect(screen.queryByText('19.1234%')).not.toBeInTheDocument();
+  });
+
   it('Cancel button closes the modal without calling onConfirmAndClose', async () => {
     const onConfirmAndClose = vi.fn();
     const onClose = vi.fn();

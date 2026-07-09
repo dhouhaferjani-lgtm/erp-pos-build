@@ -126,7 +126,7 @@ class WorkOrderLine extends Model
             'display_order' => 'integer',
             'quantity' => 'decimal:4',
             'unit_price' => 'decimal:3',
-            'tax_rate' => 'decimal:3',
+            'tax_rate' => 'decimal:2',
             'discount_percent' => 'decimal:2',
             'line_total_excl_tax' => 'decimal:3',
             'line_total_tax' => 'decimal:3',

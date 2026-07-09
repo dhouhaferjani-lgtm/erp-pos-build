@@ -56,6 +56,10 @@ interface ReceiptLineJson {
 }
 
 export interface VatBreakdownItem {
+  /**
+   * Tax rate percentage. Keep numeric to mirror the signed Z-report aggregate;
+   * callers must format it only when rendering.
+   */
   tax_rate: number;
   net_amount: string;
   vat_amount: string;
@@ -299,7 +303,9 @@ export async function buildEndOfDayPreview(
     cashRefundImpact,
   );
 
-  // 5. Build VAT breakdown sorted by rate ascending
+  // 5. Build VAT breakdown sorted by rate ascending. tax_rate intentionally
+  // remains a number to match the signed Z-report aggregate/wire shape; trim or
+  // round only at display boundaries.
   const vatBreakdown: VatBreakdownItem[] = Array.from(vatByRate.entries())
     .sort(([a], [b]) => parseFloat(a) - parseFloat(b))
     .map(([rate, totals]) => ({

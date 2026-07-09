@@ -12,6 +12,7 @@ import type { DocumentLine } from '../../../types/document'
 import { DesignationCell } from './DesignationCell'
 import { textColors } from '../../../lib/designTokens'
 import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
+import { formatPercent } from '../../../lib/format'
 
 export interface DocumentLinesProps {
   /** Array of document lines to display */
@@ -115,7 +116,7 @@ export function DocumentLines({
                     {formatAmount(line.unit_price)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm text-gray-500">
-                    {line.tax_rate}%
+                    {formatPercent(line.tax_rate)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
                     {formatAmount(line.line_total)}

@@ -56,6 +56,7 @@ class WithholdingCalculationServiceTest extends TestCase
         $this->assertEquals('0.0300', $calculation->withholdingRate);
         $this->assertEquals('30.000', $calculation->withholdingAmount);
         $this->assertEquals('970.000', $calculation->netAmount);
+        $this->assertSame('3.00', $calculation->toArray()['rate_percentage']);
         $this->assertEquals($rule->id, $calculation->ruleId);
         $this->assertNull($calculation->overrideReason);
     }

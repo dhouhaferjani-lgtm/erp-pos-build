@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { tokens } from '../../../lib/designTokens'
 import { cn } from '../../../lib/utils'
+import { formatPercent } from '../../../lib/format'
 import { useTaxConfigurations } from '../../../hooks/useTaxConfigurations'
 import { TaxConfigFormModal } from '../../organisms/TaxConfigFormModal'
 import type { TaxConfiguration } from '../../../features/settings/types/tax'
@@ -20,7 +21,7 @@ export interface TaxConfigurationSelectProps {
 
 function getConfigDisplayLabel(config: TaxConfiguration): string {
   if (config.tax_type === 'PERCENTAGE' && config.percentage_rate) {
-    return `${config.name} (${config.percentage_rate}%)`
+    return `${config.name} (${formatPercent(config.percentage_rate)})`
   }
   if (config.tax_type === 'FIXED_AMOUNT' && config.fixed_amount) {
     return `${config.name} (${config.fixed_amount})`

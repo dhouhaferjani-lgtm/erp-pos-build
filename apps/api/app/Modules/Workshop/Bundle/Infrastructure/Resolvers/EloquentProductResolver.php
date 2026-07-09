@@ -45,7 +45,7 @@ final class EloquentProductResolver implements ProductResolverInterface
                 : null,
             currency: $currency,
             tax_rate: $product->tax_rate !== null
-                ? CurrencyScale::bcformat($product->tax_rate, 3)
+                ? CurrencyScale::bcformat($product->tax_rate, 2)
                 : null,
             unit: (string) $unit,
         );

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Info, Plus, Trash2 } from 'lucide-react'
-import { formatCurrency } from '../../../lib/format'
+import { formatCurrency, formatPercent } from '../../../lib/format'
 import { bcadd, bccomp, bcdiv, bcmul, bcsub } from '../../../lib/decimal'
 import { apiPost } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
@@ -11,9 +11,12 @@ import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms/AddQuickProductModal/AddQuickProductModal'
 import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSelect'
 import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
+import { DraftMoneyInput } from '../../../components/atoms/DraftMoneyInput'
 import { QuantityInput } from '../../../components/atoms/QuantityInput/QuantityInput'
 import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '../../../components/molecules/line-items/LineItemsTable'
-import { LineItemEntryBar, ProductCell, type LineItemEntryAddMeta, type ProductLineProduct } from '../../../components/molecules/line-items'
+import { LineItemEntryBar, type LineItemEntryAddMeta } from '../../../components/molecules/line-items/LineItemEntryBar'
+import { ProductCell } from '../../../components/molecules/line-items/ProductCell'
+import type { ProductLineProduct } from '../../../components/molecules/line-items/useProductLineLookup'
 import { useCompanyConfig } from '../../../contexts/CompanyConfigContext'
 import { DesignationCell } from './DesignationCell'
 import { NotesCell } from './NotesCell'
@@ -594,24 +597,37 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         return (
           <div className="relative flex min-w-40 flex-col items-end gap-1">
             <div className="flex items-center justify-end gap-2">
-              <MoneyInput
-                currency={companyCurrency}
-                min="0"
-                error={isBlocked}
-                value={(line.price_entry_mode ?? 'unit') === 'total' ? calculateNetExtendedAmount(line) : decimalValue(line.unit_price)}
-                onFocus={() => {
-                  setFocusedPriceLineId(line.id)
-                }}
-                onChange={(value) => {
-                  if ((line.price_entry_mode ?? 'unit') === 'total') {
+              {(line.price_entry_mode ?? 'unit') === 'total' ? (
+                <DraftMoneyInput
+                  currency={companyCurrency}
+                  min="0"
+                  error={isBlocked}
+                  initialValue={calculateNetExtendedAmount(line)}
+                  onFocus={() => {
+                    setFocusedPriceLineId(line.id)
+                  }}
+                  onCommit={(value) => {
                     handleUpdateLine(line.id, { line_total: value })
-                    return
-                  }
-                  handleUpdateLine(line.id, { unit_price: value })
-                }}
-                aria-label={t('sales:lineItems.unitPrice')}
-                className={`${tokens.input.base} w-28 text-end text-sm`}
-              />
+                  }}
+                  aria-label={t('sales:lineItems.unitPrice')}
+                  className={`${tokens.input.base} w-28 text-end text-sm`}
+                />
+              ) : (
+                <MoneyInput
+                  currency={companyCurrency}
+                  min="0"
+                  error={isBlocked}
+                  value={decimalValue(line.unit_price)}
+                  onFocus={() => {
+                    setFocusedPriceLineId(line.id)
+                  }}
+                  onChange={(value) => {
+                    handleUpdateLine(line.id, { unit_price: value })
+                  }}
+                  aria-label={t('sales:lineItems.unitPrice')}
+                  className={`${tokens.input.base} w-28 text-end text-sm`}
+                />
+              )}
               {purchaseBonusEnabled && (
                 <button
                   type="button"
@@ -638,7 +654,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                     {' · '}
                     {t('sales:lineItems.pricing.lastBuy', { amount: pricingItem.last_purchase_cost ?? '-' })}
                     {' · '}
-                    {t('sales:lineItems.pricing.margin', { percent: pricingItem.target_margin_pct })}
+                    {t('sales:lineItems.pricing.margin', { percent: formatPercent(pricingItem.target_margin_pct).replace(/%$/, '') })}
                   </span>
                   <button
                     type="button"
@@ -665,7 +681,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                     {t('sales:lineItems.pricing.lastSale', { amount: pricingItem.last_sale_to_partner?.unit_price ?? '-' })}
                   </div>
                   <div className={textColors.secondary}>
-                    {t('sales:lineItems.pricing.minimumMargin', { percent: pricingItem.minimum_margin_pct })}
+                    {t('sales:lineItems.pricing.minimumMargin', { percent: formatPercent(pricingItem.minimum_margin_pct).replace(/%$/, '') })}
                   </div>
                 </div>
                 <button
@@ -694,7 +710,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       cellClassName: 'text-end',
       Cell: ({ line }) => (
         readonly ? (
-          <span className={`text-sm ${textColors.primary}`}>{line.discount_percent ?? '0'}%</span>
+          <span className={`text-sm ${textColors.primary}`}>{formatPercent(line.discount_percent ?? '0')}</span>
         ) : (
           <input
             type="number"
@@ -721,14 +737,14 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
       cellClassName: 'text-end',
       Cell: ({ line }) => (
         readonly ? (
-          <span className={`text-sm ${textColors.disabled}`}>{line.tax_rate}%</span>
+          <span className={`text-sm ${textColors.disabled}`}>{formatPercent(line.tax_rate)}</span>
         ) : (
           <TaxConfigurationSelect
             value={line.tax_configuration_id ?? null}
             onChange={(configId, taxRate) => {
               handleUpdateLine(line.id, {
                 tax_configuration_id: configId,
-                tax_rate: Number(taxRate) || 0,
+                tax_rate: taxRate.trim() === '' ? '0' : taxRate,
               })
             }}
             {...(taxDocumentType !== undefined ? { documentType: taxDocumentType } : {})}

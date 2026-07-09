@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -56,7 +56,7 @@ vi.mock('./hooks/useTaxConfigurations', () => ({
   }),
 }))
 
-vi.mock('@/components/organisms', () => ({ TaxConfigFormModal: () => null }))
+vi.mock('@/components/organisms/TaxConfigFormModal', () => ({ TaxConfigFormModal: () => null }))
 vi.mock('@/components/ui/ConfirmDialog', () => ({ ConfirmDialog: () => null }))
 
 function taxCompanySettings() {
@@ -138,5 +138,17 @@ describe('TaxSettingsPage (canonical primitives)', () => {
     render(<TaxSettingsPage />, { wrapper: wrapper() })
     const save = await screen.findByRole('button', { name: 'common:save' })
     expect(save.tagName).toBe('BUTTON')
+  })
+
+  it('trims percentage tax rates for display', async () => {
+    render(<TaxSettingsPage />, { wrapper: wrapper() })
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'settings:tax.configurations.tabs.taxes' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('19%')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('19.000%')).not.toBeInTheDocument()
   })
 })

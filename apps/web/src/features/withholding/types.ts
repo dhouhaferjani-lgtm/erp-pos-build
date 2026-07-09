@@ -16,7 +16,7 @@ export interface WithholdingCalculation {
   withholding_amount: string;
   net_amount: string;
   currency: string;
-  rate_percentage: number;
+  rate_percentage: string;
   rule_id: string | null;
   rule_code: string | null;
   rule_name: string | null;
@@ -28,12 +28,12 @@ export interface WithholdingCalculation {
 export interface WithholdingPreviewResponse {
   should_withhold: boolean;
   calculation: WithholdingCalculation | null;
-  suggested_rate: number | null;
+  suggested_rate: string | null;
   // Flat properties (returned directly by some API variants)
   withholding_amount?: string;
   withholding_rate?: string;
   net_amount?: string;
-  rate_percentage?: number;
+  rate_percentage?: string;
   rule?: {
     id: string;
     code: string;

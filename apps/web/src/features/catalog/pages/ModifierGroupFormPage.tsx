@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Input, FormField, Button, Select, MoneyInput, QuantityInput, Checkbox } from '@/components/atoms'
+import { Input, FormField, Button, Select, MoneyInput, Checkbox, DraftMoneyInput, DraftQuantityInput } from '@/components/atoms'
 import { PageHeader } from '@/components/molecules'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { ProductLineSelect } from '@/components/molecules/line-items'
@@ -11,58 +11,6 @@ import { cn } from '@/lib/utils'
 import { tokens, textColors } from '@/lib/designTokens'
 import { useCompanyConfig } from '@/contexts'
 
-/** Controlled MoneyInput that only fires onCommit on blur — prevents per-keystroke API calls in table rows. */
-function BlurMoneyInput({
-  initialValue,
-  currency,
-  onCommit,
-  className,
-}: {
-  initialValue: string
-  currency: string
-  onCommit: (value: string) => void
-  className?: string
-}) {
-  const [draft, setDraft] = useState(initialValue)
-  return (
-    <MoneyInput
-      currency={currency}
-      min="-999999"
-      value={draft}
-      onChange={setDraft}
-      onBlur={() => { if (draft !== initialValue) onCommit(draft) }}
-      className={className}
-    />
-  )
-}
-
-/** Controlled QuantityInput that only fires onCommit on blur — prevents per-keystroke API calls in table rows. */
-function BlurQuantityInput({
-  initialValue,
-  decimalPlaces,
-  onCommit,
-  className,
-  placeholder,
-}: {
-  initialValue: string
-  decimalPlaces: number
-  onCommit: (value: string) => void
-  className?: string
-  placeholder?: string
-}) {
-  const [draft, setDraft] = useState(initialValue)
-  return (
-    <QuantityInput
-      decimalPlaces={decimalPlaces}
-      min="0"
-      value={draft}
-      onChange={setDraft}
-      onBlur={() => { if (draft !== initialValue) onCommit(draft) }}
-      className={className}
-      {...(placeholder !== undefined ? { placeholder } : {})}
-    />
-  )
-}
 import {
   useModifierGroup,
   useCreateModifierGroup,
@@ -325,11 +273,12 @@ export function ModifierGroupFormPage() {
                       />
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm">
-                      <BlurMoneyInput
+                      <DraftMoneyInput
                         initialValue={mod.price_adjustment}
                         currency={currency}
                         onCommit={(v) => { handleUpdateModifier(mod.id, 'price_adjustment', v) }}
                         className="!mt-0 w-24"
+                        min="-999999"
                       />
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm">
@@ -347,12 +296,13 @@ export function ModifierGroupFormPage() {
                           className="min-w-[160px]"
                         />
                         {mod.component_id && (
-                          <BlurQuantityInput
-                            initialValue={mod.component_quantity ?? ''}
-                            decimalPlaces={4}
-                            onCommit={(v) => { handleUpdateModifier(mod.id, 'component_quantity', v) }}
-                            className="!mt-0 w-20"
-                            placeholder={t('catalog:quantity')}
+                            <DraftQuantityInput
+                              initialValue={mod.component_quantity ?? ''}
+                              decimalPlaces={4}
+                              min="0"
+                              onCommit={(v) => { handleUpdateModifier(mod.id, 'component_quantity', v) }}
+                              className="!mt-0 w-20"
+                              placeholder={t('catalog:quantity')}
                           />
                         )}
                       </div>

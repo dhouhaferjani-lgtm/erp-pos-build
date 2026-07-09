@@ -99,7 +99,7 @@ class Service extends Model
             'default_duration_minutes' => 'integer',
             'base_price' => 'decimal:3',
             'hourly_rate' => 'decimal:3',
-            'tax_rate' => 'decimal:3',
+            'tax_rate' => 'decimal:2',
         ];
     }
 

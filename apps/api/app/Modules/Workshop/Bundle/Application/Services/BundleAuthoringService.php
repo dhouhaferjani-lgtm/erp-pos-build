@@ -58,7 +58,7 @@ final readonly class BundleAuthoringService
             : null;
         $bundle->currency = strtoupper($command->currency);
         $bundle->tax_rate = $command->tax_rate !== null
-            ? CurrencyScale::bcformat($command->tax_rate, 3)
+            ? CurrencyScale::bcformat($command->tax_rate, 2)
             : null;
         $bundle->estimated_labor_hours = $command->estimated_labor_hours !== null
             ? CurrencyScale::bcformat($command->estimated_labor_hours, 2)
@@ -102,7 +102,7 @@ final readonly class BundleAuthoringService
             $bundle->base_price = CurrencyScale::bcformat($command->base_price, $scale);
         }
         if ($command->tax_rate !== null) {
-            $bundle->tax_rate = CurrencyScale::bcformat($command->tax_rate, 3);
+            $bundle->tax_rate = CurrencyScale::bcformat($command->tax_rate, 2);
         }
         if ($command->estimated_labor_hours !== null) {
             $bundle->estimated_labor_hours = CurrencyScale::bcformat($command->estimated_labor_hours, 2);

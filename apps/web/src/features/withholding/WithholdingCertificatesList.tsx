@@ -24,6 +24,7 @@ import {
   useVoidWithholdingCertificate,
 } from './hooks/useWithholding'
 import { cn } from '@/lib/utils'
+import { formatNumber, formatPercent } from '@/lib/format'
 import { tokens, textColors } from '@/lib/designTokens'
 import { Button, Input, Select, StatusBadge, statusTone, type StatusTone } from '@/components/atoms'
 import {
@@ -150,14 +151,14 @@ export function WithholdingCertificatesList() {
       header: t('certificates.grossAmount'),
       numeric: true,
       cellClassName: 'font-mono',
-      render: (cert) => `${parseFloat(cert.gross_amount).toFixed(decimals)} ${cert.currency}`,
+      render: (cert) => `${formatNumber(cert.gross_amount, decimals)} ${cert.currency}`,
     },
     {
       key: 'rate',
       header: t('certificates.rate'),
       numeric: true,
       cellClassName: 'font-mono',
-      render: (cert) => `${String(cert.rate_percentage)}%`,
+      render: (cert) => formatPercent(cert.rate_percentage),
     },
     {
       key: 'withholdingAmount',
@@ -165,7 +166,7 @@ export function WithholdingCertificatesList() {
       numeric: true,
       cellClassName: cn('font-mono font-semibold', textColors.error),
       render: (cert) =>
-        `${parseFloat(cert.withholding_amount).toFixed(decimals)} ${cert.currency}`,
+        `${formatNumber(cert.withholding_amount, decimals)} ${cert.currency}`,
     },
     {
       key: 'status',

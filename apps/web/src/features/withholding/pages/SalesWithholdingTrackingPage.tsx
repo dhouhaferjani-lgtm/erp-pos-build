@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { AlertCircle, CheckCircle, FileText } from 'lucide-react'
 import { useSalesWithholdingTracking, useMarkCertificateReceived } from '../hooks/useWithholding'
 import { useCurrency } from '@/hooks/useCurrency'
+import { bcmul } from '@/lib/decimal'
+import { formatNumber, formatPercent } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { tokens, textColors } from '@/lib/designTokens'
 import { Button, FormField, Input, Select, StatusBadge } from '@/components/atoms'
@@ -93,7 +95,7 @@ export function SalesWithholdingTrackingPage() {
       header: t('salesWithholding.invoiceAmount'),
       numeric: true,
       cellClassName: 'font-mono',
-      render: (record) => parseFloat(record.invoiceAmount).toFixed(decimals),
+      render: (record) => formatNumber(record.invoiceAmount, decimals),
     },
     {
       key: 'withholdingRate',
@@ -102,21 +104,21 @@ export function SalesWithholdingTrackingPage() {
       }),
       numeric: true,
       cellClassName: cn('font-mono', textColors.tertiary),
-      render: (record) => `${(parseFloat(record.withholdingRate) * 100).toFixed(4)}%`,
+      render: (record) => formatPercent(bcmul(record.withholdingRate, '100', 2)),
     },
     {
       key: 'withholdingAmount',
       header: t('salesWithholding.withheldAmount'),
       numeric: true,
       cellClassName: cn('font-mono font-semibold', textColors.error),
-      render: (record) => parseFloat(record.withholdingAmount).toFixed(decimals),
+      render: (record) => formatNumber(record.withholdingAmount, decimals),
     },
     {
       key: 'expectedReceivable',
       header: t('salesWithholding.expectedReceivable'),
       numeric: true,
       cellClassName: 'font-mono',
-      render: (record) => parseFloat(record.expectedReceivable).toFixed(decimals),
+      render: (record) => formatNumber(record.expectedReceivable, decimals),
     },
     {
       key: 'certificateStatus',

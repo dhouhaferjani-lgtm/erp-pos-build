@@ -6,6 +6,8 @@ import { api } from '../../../../lib/api'
 import { MarginIndicator } from './MarginIndicator'
 import { Button, MoneyInput } from '@/components/atoms'
 import { useCurrency } from '@/hooks/useCurrency'
+import { bccomp, bcmul } from '@/lib/decimal'
+import { formatNumber, formatPercent } from '@/lib/format'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -32,8 +34,8 @@ interface MarginCheckResponse {
 
 interface PriceInputWithMarginProps {
   productId: string
-  value: number
-  onChange: (value: number) => void
+  value: string | number
+  onChange: (value: string) => void
   label?: string
   disabled?: boolean
   showSuggestedPrice?: boolean
@@ -51,16 +53,15 @@ export function PriceInputWithMargin({
   const { currency, decimals } = useCurrency()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
-  const [localValue, setLocalValue] = useState(value.toString())
-  const [debouncedValue, setDebouncedValue] = useState(value)
+  const [localValue, setLocalValue] = useState(() => value.toString())
+  const [debouncedValue, setDebouncedValue] = useState(() => value.toString())
 
   const resolvedLabel = label ?? t('pricing.salePrice')
 
   // Debounce the value for API calls
   useEffect(() => {
     const timer = setTimeout(() => {
-      const numValue = parseFloat(localValue) || 0
-      setDebouncedValue(numValue)
+      setDebouncedValue(localValue.trim() === '' ? '0' : localValue)
     }, 500)
 
     return () => { clearTimeout(timer); }
@@ -76,7 +77,7 @@ export function PriceInputWithMargin({
       })
       return response.data
     },
-    enabled: debouncedValue > 0 && !disabled && !!tenantId && !!companyId,
+    enabled: bccomp(debouncedValue, '0') > 0 && !disabled && !!tenantId && !!companyId,
     staleTime: 10000, // Cache for 10 seconds
   })
 
@@ -84,15 +85,14 @@ export function PriceInputWithMargin({
 
   const handleChange = (raw: string) => {
     setLocalValue(raw)
-    const numValue = parseFloat(raw) || 0
-    onChange(numValue)
+    onChange(raw.trim() === '' ? '0' : raw)
   }
 
   const applySuggestedPrice = () => {
     if (marginInfo?.suggested_price) {
-      const suggested = parseFloat(marginInfo.suggested_price)
-      setLocalValue(suggested.toFixed(decimals))
-      onChange(suggested)
+      const suggested = bcmul(marginInfo.suggested_price, '1', decimals)
+      setLocalValue(suggested)
+      onChange(marginInfo.suggested_price)
     }
   }
 
@@ -112,7 +112,7 @@ export function PriceInputWithMargin({
       />
 
       {/* Margin Indicator */}
-      {isLoading && debouncedValue > 0 && (
+      {isLoading && bccomp(debouncedValue, '0') > 0 && (
         <div className={`flex items-center gap-2 text-sm ${textColors.tertiary}`}>
           <Loader2 className={`h-4 w-4 animate-spin ${textColors.brand}`} />
           {t('pricing.checkingMargin')}
@@ -134,25 +134,25 @@ export function PriceInputWithMargin({
               <div>
                 <span className={textColors.tertiary}>{t('pricing.costPrice')}:</span>
                 <span className={`ms-1 font-medium ${textColors.primary}`}>
-                  ${parseFloat(marginInfo.cost_price).toFixed(decimals)}
+                  ${formatNumber(marginInfo.cost_price, decimals)}
                 </span>
               </div>
               <div>
                 <span className={textColors.tertiary}>{t('pricing.margin')}:</span>
                 <span className={`ms-1 font-medium ${textColors.primary}`}>
-                  {marginInfo.margin_level.percentage.toFixed(1)}%
+                  {formatPercent(marginInfo.margin_level.percentage)}
                 </span>
               </div>
               <div>
                 <span className={textColors.tertiary}>{t('pricing.targetMarginShort')}:</span>
                 <span className={`ms-1 font-medium ${textColors.primary}`}>
-                  {parseFloat(marginInfo.margins.target_margin).toFixed(1)}%
+                  {formatPercent(marginInfo.margins.target_margin)}
                 </span>
               </div>
               <div>
                 <span className={textColors.tertiary}>{t('pricing.minimumMarginShort')}:</span>
                 <span className={`ms-1 font-medium ${textColors.primary}`}>
-                  {parseFloat(marginInfo.margins.minimum_margin).toFixed(1)}%
+                  {formatPercent(marginInfo.margins.minimum_margin)}
                 </span>
               </div>
             </div>
@@ -171,7 +171,7 @@ export function PriceInputWithMargin({
                 <span>{t('pricing.suggestedPriceButton')}</span>
               </div>
               <span className="font-semibold tabular-nums">
-                ${parseFloat(marginInfo.suggested_price).toFixed(decimals)}
+                ${formatNumber(marginInfo.suggested_price, decimals)}
               </span>
             </Button>
           )}

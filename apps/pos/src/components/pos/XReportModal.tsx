@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useCurrency } from '@/lib/currency';
+import { formatPercent } from '@/lib/format';
 import { Modal } from './Modal';
 import { Loader2 } from 'lucide-react';
 import type { XReportResponse } from '@/api/reportApi';
@@ -72,7 +73,7 @@ export function XReportModal({ isOpen, onClose, report, isLoading, error }: XRep
                 <tbody>
                   {report.vat_breakdown.map((row) => (
                     <tr key={row.tax_rate} className="border-b border-border-subtle">
-                      <td className="py-2">{row.tax_rate}%</td>
+                      <td className="py-2">{formatPercent(row.tax_rate)}</td>
                       <td className="py-2 text-right">{format(row.net_amount)}</td>
                       <td className="py-2 text-right">{format(row.vat_amount)}</td>
                       <td className="py-2 text-right">{format(row.gross_amount)}</td>

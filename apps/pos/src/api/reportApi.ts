@@ -18,6 +18,10 @@ import type { LocalZReport } from '@/lib/offline/types';
 export type { GenerateZReportOpts };
 
 export interface VatBreakdownItem {
+  /**
+   * Tax rate percentage. Local report/fiscal event paths keep this numeric;
+   * UI components format it at display only.
+   */
   tax_rate: number;
   net_amount: string;
   vat_amount: string;
@@ -208,6 +212,8 @@ function localZReportToResponse(report: LocalZReport, decimals: number): ZReport
       voided_count: report.report_data.voided_count,
       opening_cash: new Big(report.opening_cash).toFixed(decimals),
       expected_cash: new Big(report.expected_cash).toFixed(decimals),
+      // Preserve local Z-report tax_rate as a number; it can feed fiscal event
+      // authoring and must only be formatted in presentation components.
       vat_breakdown: report.report_data.vat_breakdown.map((v) => ({
         tax_rate: v.tax_rate,
         net_amount: v.net_amount,
@@ -445,6 +451,8 @@ async function generateLocalXReport(
     net_sales: bcformat(netSales, decimals),
     tax_amount: bcformat(taxAmount, decimals),
     refunds_count: 0,
+    // Preserve the local X-report/fiscal event tax_rate as a number; trim or
+    // round only where the report is rendered.
     vat_breakdown: Array.from(vatByRate.entries())
       .sort(([a], [b]) => parseFloat(a) - parseFloat(b))
       .map(([rate, totals]) => ({

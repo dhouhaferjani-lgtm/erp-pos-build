@@ -163,8 +163,8 @@ class Product extends Model implements SellableContract
             // and WeightedAverageCostService.
             'cost_price' => 'decimal:6',
             'last_purchase_cost' => 'decimal:6',
-            'target_margin_override' => 'decimal:3',
-            'minimum_margin_override' => 'decimal:3',
+            'target_margin_override' => 'decimal:2',
+            'minimum_margin_override' => 'decimal:2',
             'max_discount_percent' => 'decimal:2',
             'tax_rate' => 'decimal:2',
             'units_per_pack' => 'integer',

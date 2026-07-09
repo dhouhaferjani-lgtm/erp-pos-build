@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { WithholdingPreviewModal } from './WithholdingPreviewModal'
@@ -67,5 +68,27 @@ describe('WithholdingPreviewModal', () => {
     expect(screen.getByText(/100\.000/)).toBeInTheDocument()
     // Rule details surfaced in the recommendation panel
     expect(screen.getByText(/Services 10%/)).toBeInTheDocument()
+  })
+
+  it('treats a cleared manual rate as zero instead of crashing', async () => {
+    const user = userEvent.setup()
+    const onApply = vi.fn()
+    mockPreviewMutation.data = {
+      should_withhold: true,
+      withholding_amount: '100.000',
+      withholding_rate: '0.1000',
+      net_amount: '900.000',
+      rate_percentage: 10,
+      rule: { id: 'r1', code: 'WHT-10', name: 'Services 10%' },
+    }
+
+    render(<WithholdingPreviewModal {...baseProps} onApply={onApply} />)
+
+    await user.click(screen.getByLabelText('preview.manualOverride'))
+    await user.clear(screen.getByLabelText('preview.manualRate'))
+    expect(screen.getByText(/certificates\.rate \(0%\)/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'preview.applyWithholding' }))
+    expect(onApply).toHaveBeenCalledWith('0.000', '0.0000')
   })
 })
