@@ -7,6 +7,7 @@
     "reject": "Rejeter",
     "review": "Revoir",
     "startExtraction": "Démarrer l'extraction",
+    "startScan": "Démarrer le scan",
     "upload": "Téléverser un scan"
   },
   "fields": {
@@ -86,16 +87,22 @@
     "uploaded": "Téléversé"
   },
   "upload": {
+    "browse": "Parcourir les fichiers",
+    "dropHint": "Glissez-déposez un fichier ici, ou",
     "errors": {
       "duplicate": "Ce fichier source est déjà dans la file des scans.",
       "fileRequired": "Choisissez un fichier source.",
       "fileTooLarge": "Le fichier dépasse la limite d'envoi.",
+      "fileTooLargeDetailed": "PDF ou image jusqu'à {{max}} Mo — ce fichier fait {{actual}} Mo.",
+      "invalidType": "Choisissez un fichier PDF ou image.",
       "kindRequired": "Choisissez un type de document."
     },
     "fileHint": "PDF ou image jusqu'à 20 Mo.",
     "placeholders": {
       "kind": "Choisir un type de document"
     },
+    "remove": "Supprimer le fichier",
+    "selectedFile": "{{name}} ({{size}})",
     "title": "Téléverser un scan"
   }
 }

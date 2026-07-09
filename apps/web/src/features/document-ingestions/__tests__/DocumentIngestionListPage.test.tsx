@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/authStore'
@@ -144,70 +143,12 @@ describe('DocumentIngestionListPage', () => {
     expect(within(scansTable).getByText('Unknown confidence')).toBeInTheDocument()
   })
 
-  it('validates upload kind and file size before posting multipart form data', async () => {
-    const user = userEvent.setup()
+  it('links the upload action to the dedicated upload page', async () => {
     mockApiGet.mockResolvedValue(listResponse())
 
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: 'Upload scan' }))
-    await user.click(screen.getByRole('button', { name: 'Start extraction' }))
-
-    expect(await screen.findByText('Choose a document type.')).toBeInTheDocument()
-    expect(mockApiPost).not.toHaveBeenCalled()
-
-    const dialog = screen.getByRole('dialog', { name: 'Upload scan' })
-    await user.selectOptions(within(dialog).getByLabelText('Document type'), 'supplier_invoice')
-    const file = new File(['invoice'], 'invoice.pdf', { type: 'application/pdf' })
-    await user.upload(within(dialog).getByLabelText('Source file'), file)
-
-    mockApiPost.mockResolvedValueOnce({
-      data: {
-        data: {
-          id: 'ing-3',
-          kind: 'supplier_invoice',
-          status: 'uploaded',
-        },
-      },
-    })
-    await user.click(screen.getByRole('button', { name: 'Start extraction' }))
-
-    await waitFor(() => expect(mockApiPost).toHaveBeenCalled())
-    const [url, body] = mockApiPost.mock.calls[0] as [string, FormData]
-    expect(url).toBe('/document-ingestions')
-    expect(body).toBeInstanceOf(FormData)
-    expect(body.get('kind')).toBe('supplier_invoice')
-    expect(body.get('file')).toBe(file)
-  })
-
-  it('branches duplicate uploads by the DUPLICATE_DOCUMENT error code', async () => {
-    const user = userEvent.setup()
-    mockApiGet.mockResolvedValue(listResponse())
-
-    renderPage()
-
-    await user.click(await screen.findByRole('button', { name: 'Upload scan' }))
-    const dialog = screen.getByRole('dialog', { name: 'Upload scan' })
-    await user.selectOptions(within(dialog).getByLabelText('Document type'), 'supplier_delivery_note')
-    await user.upload(
-      within(dialog).getByLabelText('Source file'),
-      new File(['duplicate'], 'duplicate.pdf', { type: 'application/pdf' }),
-    )
-
-    mockApiPost.mockRejectedValueOnce({
-      response: {
-        data: {
-          error: {
-            code: 'DUPLICATE_DOCUMENT',
-            message: 'This document has already been uploaded.',
-            errors: { file: ['duplicate'] },
-          },
-        },
-      },
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Start extraction' }))
-
-    expect(await screen.findByText('This source file is already in the scan queue.')).toBeInTheDocument()
+    const uploadLink = await screen.findByRole('link', { name: 'Upload scan' })
+    expect(uploadLink).toHaveAttribute('href', '/purchases/scans/new')
   })
 })

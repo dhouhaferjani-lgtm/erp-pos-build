@@ -7,6 +7,7 @@
     "reject": "Reject",
     "review": "Review",
     "startExtraction": "Start extraction",
+    "startScan": "Start scan",
     "upload": "Upload scan"
   },
   "fields": {
@@ -86,16 +87,22 @@
     "uploaded": "Uploaded"
   },
   "upload": {
+    "browse": "Browse files",
+    "dropHint": "Drag and drop a file here, or",
     "errors": {
       "duplicate": "This source file is already in the scan queue.",
       "fileRequired": "Choose a source file.",
       "fileTooLarge": "The file is larger than the upload limit.",
+      "fileTooLargeDetailed": "PDF or image up to {{max}} MB — this file is {{actual}} MB.",
+      "invalidType": "Choose a PDF or image file.",
       "kindRequired": "Choose a document type."
     },
     "fileHint": "PDF or image up to 20 MB.",
     "placeholders": {
       "kind": "Choose a document type"
     },
+    "remove": "Remove file",
+    "selectedFile": "{{name}} ({{size}})",
     "title": "Upload scan"
   }
 }

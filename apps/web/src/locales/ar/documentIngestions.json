@@ -7,6 +7,7 @@
     "reject": "رفض",
     "review": "مراجعة",
     "startExtraction": "بدء الاستخراج",
+    "startScan": "بدء المسح",
     "upload": "رفع مسح"
   },
   "fields": {
@@ -85,16 +86,22 @@
     "uploaded": "مرفوع"
   },
   "upload": {
+    "browse": "تصفح الملفات",
+    "dropHint": "اسحب وأفلت ملفا هنا، أو",
     "errors": {
       "duplicate": "هذا الملف المصدر موجود بالفعل في قائمة المسوحات.",
       "fileRequired": "اختر ملفا مصدرا.",
       "fileTooLarge": "الملف أكبر من حد الرفع.",
+      "fileTooLargeDetailed": "PDF أو صورة حتى {{max}} ميغابايت — حجم هذا الملف {{actual}} ميغابايت.",
+      "invalidType": "اختر ملف PDF أو صورة.",
       "kindRequired": "اختر نوع المستند."
     },
     "fileHint": "PDF أو صورة حتى 20 ميغابايت.",
     "placeholders": {
       "kind": "اختر نوع المستند"
     },
+    "remove": "إزالة الملف",
+    "selectedFile": "{{name}} ({{size}})",
     "title": "رفع مسح"
   }
 }
