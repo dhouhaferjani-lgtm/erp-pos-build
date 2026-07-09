@@ -437,7 +437,7 @@ export function ProductGrid({
     virtualizer.measure();
     // virtualizer is intentionally omitted — it's a new instance every
     // render; the resetKey captures the change-trigger we care about.
-    // eslint-disable-next-line react-hooks/exhaustive-deps, react-doctor/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
 
   if (isLoading) {

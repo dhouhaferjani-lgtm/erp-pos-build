@@ -53,8 +53,8 @@ export function PriceInputWithMargin({
   const { currency, decimals } = useCurrency()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
-  const [localValue, setLocalValue] = useState(value.toString())
-  const [debouncedValue, setDebouncedValue] = useState(value.toString())
+  const [localValue, setLocalValue] = useState(() => value.toString())
+  const [debouncedValue, setDebouncedValue] = useState(() => value.toString())
 
   const resolvedLabel = label ?? t('pricing.salePrice')
 

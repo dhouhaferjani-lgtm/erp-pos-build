@@ -6,8 +6,9 @@ function incrementDecimalDigits(digits: string): string {
   const chars = digits.split('');
 
   for (let index = chars.length - 1; index >= 0; index -= 1) {
-    if (chars[index] !== '9') {
-      chars[index] = String.fromCharCode(chars[index].charCodeAt(0) + 1);
+    const digit = chars[index] ?? '0';
+    if (digit !== '9') {
+      chars[index] = String.fromCharCode(digit.charCodeAt(0) + 1);
       return chars.join('');
     }
 

@@ -157,18 +157,55 @@ After:
 5. May the hero show any non-editable price summary, or must all price/cost/
    margin facts live only in the canonical pricing section?
 
-## Verification So Far
+## Final Verification
 
-A4 latest:
+Backend:
+
+- `php artisan test tests/Feature/Billing/CreateManualInvoicePrecisionTest.php tests/Feature/POS/DiscountAdminBypassParityTest.php tests/Feature/Precision/PercentIngressGuardTest.php tests/Feature/Pricing/CheckMarginTest.php tests/Feature/Pricing/MarginCheckPrecisionTest.php tests/Feature/Workshop/Bundle/TaxRateScaleConsistencyTest.php tests/Feature/Workshop/IngressPrecisionTest.php tests/Unit/Product/MarginServiceTest.php tests/Unit/Shared/Precision/PercentScaleDriftScannerTest.php tests/Unit/Taxation/CertificatePDFServiceTest.php tests/Unit/Taxation/WithholdingCalculationServiceTest.php`
+  - exited 0; 233 assertions. Existing PHPUnit doc-comment/file-get-content
+    warnings were emitted.
+- `./vendor/bin/phpstan analyse --level=8 ...`
+  - 21 changed backend source paths, no errors.
+- `./vendor/bin/pint --test ...`
+  - changed backend PHP paths passed.
+
+Web:
+
+- `pnpm --filter @autoerp/web test src/lib/format.test.ts src/components/atoms/DraftMoneyInput.test.tsx src/components/atoms/TaxConfigurationSelect/TaxConfigurationSelect.test.tsx src/features/inventory/ProductForm.test.tsx src/features/inventory/components/pricing/PriceInputWithMargin.test.tsx src/features/inventory/components/pricing/PricingIntelligencePanel.test.tsx src/features/settings/TaxSettingsPage.test.tsx src/features/settings/components/InventorySettings.test.tsx src/features/treasury/components/ToleranceSettingsDisplay.test.tsx src/features/documents/components/DocumentTotals.test.tsx src/features/documents/components/__tests__/DocumentLineEditor.test.tsx src/features/withholding/components/WithholdingPreviewModal.test.tsx src/features/withholding/pages/WithholdingRulesPage.test.tsx src/features/withholding/pages/SalesWithholdingTrackingPage.test.tsx src/features/withholding/WithholdingCertificatesList.test.tsx src/features/withholding/WithholdingCertificateDetail.test.tsx`
+  - 16 files, 133 tests passed. Existing `--localstorage-file` and React
+    `act(...)` warnings were emitted.
+- `pnpm --filter @autoerp/web typecheck`
+  - passed.
+- `pnpm --filter @autoerp/web exec eslint . --quiet`
+  - passed.
+
+POS:
 
 - `pnpm --filter @autoerp/pos test src/lib/offline/__tests__/endOfDayPreview.test.ts src/lib/offline/__tests__/zReportService.test.ts src/lib/format.test.ts src/components/pos/EndOfDayPreviewModal.test.tsx src/components/pos/FiscalReportModals.test.tsx`
   - 5 files, 74 tests passed.
+- `pnpm --filter @autoerp/pos typecheck`
+  - passed.
+- `pnpm --filter @autoerp/pos exec eslint . --quiet`
+  - passed after removing one stale `react-doctor/exhaustive-deps` inline rule
+    token from `ProductGrid.tsx`; the active `react-hooks/exhaustive-deps`
+    disable remains.
 - `apps/pos/scripts/check-fiscal-fixture-parity.sh`
   - 2 files, 29 tests passed.
 - `apps/api/scripts/check-saleReceipt-chokepoints.sh`
   - manifest receiver validator passed; 8 chokepoint call sites reconciled.
-- `pnpm --filter @autoerp/pos exec eslint ... --quiet`
-  - scoped touched POS paths passed.
 
-Final full by-path verification, browser check, and branch push are still
-pending at this checkpoint.
+Browser check:
+
+- Vite served the web app at `http://localhost:5174/`.
+- One-off Playwright browser check with mocked local API data opened
+  `/inventory/products/new`.
+- Verified `TVA 19% (19%)` is visible and raw `19.0000%` is absent.
+- Verified Margin, HT, and TTC fields keep literal typed drafts while focused:
+  `12.345`, `123.456`, and `146.912`.
+- Verified edit section anchors for General/Pricing/Inventory are present.
+
+Track B:
+
+- Proposal reviewed by Opus; blockers reconciled.
+- Implementation remains blocked pending owner answers to the sign-off questions
+  above.

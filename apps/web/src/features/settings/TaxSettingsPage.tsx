@@ -19,13 +19,13 @@ import { Button } from '../../components/atoms/Button'
 import { FormField } from '../../components/atoms/FormField'
 import { Input } from '../../components/atoms/Input'
 import { Select } from '../../components/atoms/Select'
-import { StatusBadge } from '../../components/atoms/StatusBadge'
+import { StatusBadge } from '../../components/atoms/StatusBadge/StatusBadge'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import {
   useTaxConfigurations,
   useDeleteTaxConfiguration,
 } from './hooks/useTaxConfigurations'
-import { TaxConfigFormModal } from '../../components/organisms'
+import { TaxConfigFormModal } from '../../components/organisms/TaxConfigFormModal'
 import type {
   TaxConfiguration,
   CompanyTaxStatus,

@@ -56,7 +56,7 @@ vi.mock('./hooks/useTaxConfigurations', () => ({
   }),
 }))
 
-vi.mock('@/components/organisms', () => ({ TaxConfigFormModal: () => null }))
+vi.mock('@/components/organisms/TaxConfigFormModal', () => ({ TaxConfigFormModal: () => null }))
 vi.mock('@/components/ui/ConfirmDialog', () => ({ ConfirmDialog: () => null }))
 
 function taxCompanySettings() {
