@@ -548,6 +548,9 @@
     "displayMode": "Mode d'affichage",
     "gridMode": "Grille",
     "visualMode": "Visuel",
+    "vitrineMode": "Vitrine",
+    "listeMode": "Liste",
+    "tableauMode": "Tableau",
     "peripherals": "Périphériques",
     "printer": "Imprimante de tickets",
     "scanner": "Lecteur de code-barres",
@@ -709,7 +712,10 @@
     "mode": "Mode d'affichage",
     "inStockOnly": "En stock",
     "gridMode": "Vue grille",
-    "visualMode": "Vue images"
+    "visualMode": "Vue images",
+    "vitrine": "Vitrine",
+    "liste": "Liste",
+    "tableau": "Tableau"
   },
   "table": {
     "ariaLabel": "Tableau des produits",

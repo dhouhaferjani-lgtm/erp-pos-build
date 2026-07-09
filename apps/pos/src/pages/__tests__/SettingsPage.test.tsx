@@ -112,7 +112,7 @@ vi.mock('@/stores/operatorStore', () => ({
 vi.mock('@/stores/settingsStore', () => ({
   useSettingsStore: <T,>(selector: (s: unknown) => T): T => {
     return selector({
-      displayMode: 'grid', language: 'en', touchMode: false, fullscreen: false,
+      displayMode: 'liste', language: 'en', touchMode: false, fullscreen: false,
       setDisplayMode: vi.fn(), setLanguage: vi.fn(), setTouchMode: vi.fn(), setFullscreen: vi.fn(),
       inactivityTimeout: 300, lockAfterSale: false,
       setInactivityTimeout: vi.fn(), setLockAfterSale: vi.fn(),

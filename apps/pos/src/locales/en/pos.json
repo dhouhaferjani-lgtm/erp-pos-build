@@ -548,6 +548,9 @@
     "displayMode": "Display Mode",
     "gridMode": "Grid",
     "visualMode": "Visual",
+    "vitrineMode": "Showcase",
+    "listeMode": "List",
+    "tableauMode": "Table",
     "peripherals": "Peripherals",
     "printer": "Receipt Printer",
     "scanner": "Barcode Scanner",
@@ -709,7 +712,10 @@
     "mode": "Display mode",
     "inStockOnly": "In Stock",
     "gridMode": "Grid view",
-    "visualMode": "Image view"
+    "visualMode": "Image view",
+    "vitrine": "Showcase",
+    "liste": "List",
+    "tableau": "Table"
   },
   "table": {
     "ariaLabel": "Product table",

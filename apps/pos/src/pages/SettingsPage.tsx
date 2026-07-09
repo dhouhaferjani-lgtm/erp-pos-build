@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Monitor, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon, Trash2, SlidersHorizontal } from 'lucide-react';
+import { List, Table, Image, Globe, Printer, Search, CheckCircle, AlertCircle, Loader2, Hand, Maximize, Shield, RefreshCw, LogOut, Sun, Moon, Trash2, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tokens } from '@/lib/designTokens';
 import { SegmentedControl } from '@/components/ui';
@@ -242,30 +242,43 @@ export function SettingsPage() {
               </label>
               <div className={cn(tokens.segmented.root, 'flex')}>
                 <button
-                  onClick={() => setDisplayMode('grid')}
+                  onClick={() => setDisplayMode('vitrine')}
                   className={cn(
                     tokens.segmented.item,
                     'flex flex-1 items-center justify-center gap-2',
-                    displayMode === 'grid'
-                      ? tokens.segmented.itemActive
-                      : tokens.segmented.itemInactive,
-                  )}
-                >
-                  <Monitor className="h-4 w-4" />
-                  {t('settings.gridMode')}
-                </button>
-                <button
-                  onClick={() => setDisplayMode('visual')}
-                  className={cn(
-                    tokens.segmented.item,
-                    'flex flex-1 items-center justify-center gap-2',
-                    displayMode === 'visual'
+                    displayMode === 'vitrine'
                       ? tokens.segmented.itemActive
                       : tokens.segmented.itemInactive,
                   )}
                 >
                   <Image className="h-4 w-4" />
-                  {t('settings.visualMode')}
+                  {t('settings.vitrineMode')}
+                </button>
+                <button
+                  onClick={() => setDisplayMode('liste')}
+                  className={cn(
+                    tokens.segmented.item,
+                    'flex flex-1 items-center justify-center gap-2',
+                    displayMode === 'liste'
+                      ? tokens.segmented.itemActive
+                      : tokens.segmented.itemInactive,
+                  )}
+                >
+                  <List className="h-4 w-4" />
+                  {t('settings.listeMode')}
+                </button>
+                <button
+                  onClick={() => setDisplayMode('tableau')}
+                  className={cn(
+                    tokens.segmented.item,
+                    'flex flex-1 items-center justify-center gap-2',
+                    displayMode === 'tableau'
+                      ? tokens.segmented.itemActive
+                      : tokens.segmented.itemInactive,
+                  )}
+                >
+                  <Table className="h-4 w-4" />
+                  {t('settings.tableauMode')}
                 </button>
               </div>
             </div>

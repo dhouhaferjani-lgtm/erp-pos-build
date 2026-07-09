@@ -27,7 +27,7 @@ import { ProductDetailDrawer } from '@/components/organisms/ProductDetailDrawer'
 import { ReportsPage } from '@/pages/ReportsPage';
 import { ShiftClosurePage } from '@/pages/ShiftClosurePage';
 import { ACCENTS, type AccentName, type Density } from '@/lib/theme';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, type DisplayMode } from '@/stores/settingsStore';
 import { useProductStore } from '@/stores/productStore';
 import { formatCurrency } from '@/lib/currency';
 import { cn } from '@/lib/utils';
@@ -210,8 +210,12 @@ export function ThemePreviewPage() {
         <SegmentedControl
           ariaLabel="displayMode"
           value={displayMode}
-          onChange={(m) => setDisplayMode(m as 'grid' | 'visual')}
-          options={[{ value: 'visual', label: 'Vignettes' }, { value: 'grid', label: 'Liste' }]}
+          onChange={(m) => setDisplayMode(m as DisplayMode)}
+          options={[
+            { value: 'vitrine', label: 'Vitrine' },
+            { value: 'liste', label: 'Liste' },
+            { value: 'tableau', label: 'Tableau' },
+          ]}
         />
       </div>
 
