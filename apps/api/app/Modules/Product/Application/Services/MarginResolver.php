@@ -45,29 +45,39 @@ final class MarginResolver
      * Eager-loads company + category (2 queries max) then fetches all referenced
      * ancestor category rows in a single whereIn query.
      *
+     * Callers that already loaded the ancestor category rows (keyed by id, including
+     * each product's own category) may pass them via $ancestorsById to skip the
+     * internal whereIn query and share a single load — the map MUST cover every id in
+     * each product's category path.
+     *
      * @param  EloquentCollection<int, Product>  $products
+     * @param  Collection<int, Category>|null  $ancestorsById
      * @return array<string, EffectiveMargins> keyed by product id
      */
-    public function resolveMany(EloquentCollection $products): array
+    public function resolveMany(EloquentCollection $products, ?Collection $ancestorsById = null): array
     {
         // Eager-load company + category so buildFrom() never lazy-loads per row.
         $products->loadMissing(['company', 'category']);
 
-        // Collect every category id referenced in all product paths (including self)
-        // then fetch them all in ONE query — no per-product round-trips.
-        $ancestorIds = $products
-            ->map(fn (Product $p) => $p->category)
-            ->filter()
-            ->flatMap(fn (Category $c) => explode('/', $c->path))
-            ->filter(fn (string $id) => $id !== '')
-            ->unique()
-            ->values()
-            ->all();
+        if ($ancestorsById === null) {
+            // Collect every category id referenced in all product paths (including self)
+            // then fetch them all in ONE query — no per-product round-trips.
+            $ancestorIds = $products
+                ->map(fn (Product $p) => $p->category)
+                ->filter()
+                ->flatMap(fn (Category $c) => explode('/', $c->path))
+                ->filter(fn (string $id) => $id !== '')
+                ->unique()
+                ->values()
+                ->all();
 
-        /** @var Collection<int, Category> $byId */
-        $byId = $ancestorIds
-            ? Category::query()->whereIn('id', $ancestorIds)->get()->keyBy('id')
-            : collect();
+            /** @var Collection<int, Category> $ancestorsById */
+            $ancestorsById = $ancestorIds
+                ? Category::query()->whereIn('id', $ancestorIds)->get()->keyBy('id')
+                : collect();
+        }
+
+        $byId = $ancestorsById;
 
         $out = [];
         foreach ($products as $product) {

@@ -109,6 +109,7 @@ final class DiscountPolicyServiceTest extends TestCase
         string $currency = 'EUR',
         string $priceBasis = PriceBasis::Ht->value,
         string $productId = 'product-1',
+        bool $callerHasFloorOverride = false,
     ): DiscountPolicyContext {
         return new DiscountPolicyContext(
             companyId: 'company-1',
@@ -120,7 +121,42 @@ final class DiscountPolicyServiceTest extends TestCase
             taxRate: null,
             taxConfigurationId: null,
             priceBasis: $priceBasis,
+            callerHasFloorOverride: $callerHasFloorOverride,
         );
+    }
+
+    public function test_block_mode_blocks_when_caller_lacks_floor_override(): void
+    {
+        $verdict = $this->serviceWithSubject(
+            $this->subject(wac: '100.000000', minimumMargin: '10.00', discountFloorMode: 'Block'),
+        )->resolve($this->context(price: '105.000', currency: 'TND'));
+
+        self::assertSame('pricing.sell_below_minimum_margin', $verdict->requiresPermission);
+        self::assertTrue($verdict->blocksSale);
+        self::assertFalse($verdict->allowed);
+        self::assertSame('block', $verdict->severity);
+    }
+
+    public function test_block_mode_allows_when_caller_holds_floor_override(): void
+    {
+        $verdict = $this->serviceWithSubject(
+            $this->subject(wac: '100.000000', minimumMargin: '10.00', discountFloorMode: 'Block'),
+        )->resolve($this->context(price: '105.000', currency: 'TND', callerHasFloorOverride: true));
+
+        self::assertSame('pricing.sell_below_minimum_margin', $verdict->requiresPermission);
+        self::assertFalse($verdict->blocksSale);
+        self::assertTrue($verdict->allowed);
+        self::assertSame('warn', $verdict->severity);
+    }
+
+    public function test_warn_requires_permission_mode_blocks_when_caller_lacks_floor_override(): void
+    {
+        $verdict = $this->serviceWithSubject(
+            $this->subject(wac: '100.000000', minimumMargin: '10.00', discountFloorMode: 'WarnRequiresPermission'),
+        )->resolve($this->context(price: '105.000', currency: 'TND'));
+
+        self::assertTrue($verdict->blocksSale);
+        self::assertFalse($verdict->allowed);
     }
 
     public function test_regulatory_below_cost_floor_is_advisory_and_never_blocks(): void

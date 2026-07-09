@@ -87,6 +87,7 @@ final class ProductShowCostRedactionTest extends TestCase
             ->getJson("/api/v1/products/{$this->product->id}")
             ->assertOk()
             ->assertJsonPath('data.cost_price', fn (?string $value): bool => $value !== null)
+            ->assertJsonPath('data.last_purchase_cost', fn (?string $value): bool => $value !== null)
             ->assertJsonPath('data.purchase_price', fn (?string $value): bool => $value !== null);
     }
 
@@ -103,6 +104,7 @@ final class ProductShowCostRedactionTest extends TestCase
             ->getJson("/api/v1/products/{$this->product->id}")
             ->assertOk()
             ->assertJsonPath('data.cost_price', null)
+            ->assertJsonPath('data.last_purchase_cost', null)
             ->assertJsonPath('data.purchase_price', null)
             ->assertJsonPath('data.target_margin_override', null)
             ->assertJsonPath('data.minimum_margin_override', null)

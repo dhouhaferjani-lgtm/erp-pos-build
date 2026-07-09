@@ -1746,6 +1746,7 @@ description: string | null;
 sale_price: string | null;
 purchase_price: string | null;
 cost_price: string | null;
+last_purchase_cost: string | null;
 tax_rate: string | null;
 default_tax_configuration_id: string | null;
 unit: string | null;
@@ -2433,6 +2434,7 @@ taxRate: string | null;
 taxConfigurationId: string | null;
 priceBasis: string;
 userId: string | null;
+callerHasFloorOverride: boolean;
 };
 export type DiscountPolicyLineContext = {
 productId: string;

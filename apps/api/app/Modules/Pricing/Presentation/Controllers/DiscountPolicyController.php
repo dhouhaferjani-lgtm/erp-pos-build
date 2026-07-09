@@ -36,6 +36,13 @@ final class DiscountPolicyController extends Controller
 
         $companyId = $this->companyContext->requireCompanyId();
 
+        $user = $request->user();
+        // Privilege claim — resolved server-side from the authenticated user, never from
+        // the request payload — so the advisory verdict's blocksSale/allowed matches the
+        // authoritative document-layer enforcement for this caller.
+        $callerHasFloorOverride = $user !== null
+            && ($user->can('pricing.sell_below_minimum_margin') || $user->can('pricing.sell_below_cost'));
+
         $context = new DiscountPolicyContext(
             companyId: $companyId,
             productId: $validated['product_id'],
@@ -46,7 +53,8 @@ final class DiscountPolicyController extends Controller
             taxRate: $validated['tax_rate'] ?? null,
             taxConfigurationId: $validated['tax_configuration_id'] ?? null,
             priceBasis: $validated['price_basis'],
-            userId: $request->user()?->getAuthIdentifier(),
+            userId: $user?->getAuthIdentifier(),
+            callerHasFloorOverride: $callerHasFloorOverride,
         );
 
         try {

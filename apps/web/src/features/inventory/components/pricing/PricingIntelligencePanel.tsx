@@ -90,8 +90,9 @@ export function PricingIntelligencePanel({
   const minimumMargin = product.effective_margins?.minimum_margin ?? null
   const marginState = resolveMarginState(product.cost_price, product.sale_price, targetMargin, minimumMargin)
   // Prefer the backend-resolved rate (tax config → fallback) so TTC matches the floor's basis (R3-6).
-  const resolvedTaxRate =
-    (typeof verdict?.meta?.resolvedTaxRate === 'string' ? verdict.meta.resolvedTaxRate : null) ?? product.tax_rate
+  // meta is an index-signature record — access with brackets (noPropertyAccessFromIndexSignature).
+  const metaTaxRate = verdict?.meta['resolvedTaxRate']
+  const resolvedTaxRate = (typeof metaTaxRate === 'string' ? metaTaxRate : null) ?? product.tax_rate
   const salePriceTtc = product.sale_price !== null
     ? priceTtcFromHt(product.sale_price, resolvedTaxRate, moneyScale)
     : null

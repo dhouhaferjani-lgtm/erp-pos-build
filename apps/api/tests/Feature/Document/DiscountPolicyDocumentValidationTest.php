@@ -24,6 +24,7 @@ use App\Shared\DTOs\DiscountPolicyContext;
 use App\Shared\DTOs\DiscountPolicyVerdict;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -175,6 +176,25 @@ final class DiscountPolicyDocumentValidationTest extends TestCase
 
         self::assertSame(1, $spy->resolveManyCalls);
         self::assertCount(2, $spy->lastContexts);
+    }
+
+    public function test_document_validator_threads_line_variant_id_into_context(): void
+    {
+        $spy = new SpyDiscountPolicyService;
+        $this->app->instance(DiscountPolicyInterface::class, $spy);
+        $product = $this->product();
+        $variantId = Str::uuid()->toString();
+
+        $payload = $this->payload($product, unitPrice: '150.000');
+        $payload['lines'][0]['variant_id'] = $variantId;
+
+        $this->actingAs($this->manager, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/orders', $payload)
+            ->assertCreated();
+
+        self::assertArrayHasKey('line-0', $spy->lastContexts);
+        self::assertSame($variantId, $spy->lastContexts['line-0']->variantId);
     }
 
     public function test_sales_order_persists_the_same_discounted_net_price_checked_by_policy(): void

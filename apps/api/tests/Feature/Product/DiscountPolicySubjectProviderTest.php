@@ -74,7 +74,9 @@ final class DiscountPolicySubjectProviderTest extends TestCase
         self::assertSame('100.123456', $subjects['line-0']->wacNet);
         self::assertSame('98.000000', $subjects['line-0']->lastPurchaseCost);
         self::assertNotSame('', $subjects['line-0']->policyVersion);
-        self::assertLessThanOrEqual(6, count(DB::getQueryLog()));
+        // Ancestor categories are loaded ONCE and shared across margin/cap/tax resolution.
+        // Deduping the previously-duplicated Category whereIn drops the batch to <= 5 queries.
+        self::assertLessThanOrEqual(5, count(DB::getQueryLog()));
     }
 
     public function test_subject_uses_product_cap_before_category_and_company(): void

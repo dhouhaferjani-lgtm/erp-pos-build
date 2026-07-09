@@ -193,6 +193,13 @@ class PermissionSeeder extends Seeder
             'inventory.view',
             'reports.view',
             'pricing.view',
+            // Pricing cost/margin controls — aligned with RolesAndPermissionsSeeder's
+            // `manager` role so this (currently inert) seeder can't become a
+            // "wrong seeder" foot-gun that silently strips a manager's ability to
+            // view cost prices or override the margin floor.
+            'pricing.view_cost_prices',
+            'pricing.sell_below_target_margin',
+            'pricing.sell_below_minimum_margin',
             // POS Management
             'pos.view', 'pos.operate', 'pos.manage_terminals', 'pos.open_shift', 'pos.close_shift', 'pos.cash_drawer', 'pos.reports',
         ]);

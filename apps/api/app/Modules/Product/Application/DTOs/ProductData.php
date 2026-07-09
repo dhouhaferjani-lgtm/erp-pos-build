@@ -30,6 +30,7 @@ class ProductData extends Data
         public ?string $sale_price,
         public ?string $purchase_price,
         public ?string $cost_price,
+        public ?string $last_purchase_cost,
         public ?string $tax_rate,
         public ?string $default_tax_configuration_id,
         public ?string $unit,
@@ -80,6 +81,7 @@ class ProductData extends Data
             sale_price: $product->sale_price !== null ? (string) $product->sale_price : null,
             purchase_price: $product->purchase_price !== null ? (string) $product->purchase_price : null,
             cost_price: (string) $product->cost_price,
+            last_purchase_cost: $product->last_purchase_cost !== null ? (string) $product->last_purchase_cost : null,
             tax_rate: $product->tax_rate !== null ? (string) $product->tax_rate : null,
             default_tax_configuration_id: $product->default_tax_configuration_id,
             unit: $product->unit,
@@ -144,6 +146,7 @@ class ProductData extends Data
     {
         $this->purchase_price = null;
         $this->cost_price = null;
+        $this->last_purchase_cost = null;
         $this->target_margin_override = null;
         $this->minimum_margin_override = null;
         $this->effective_margins = null;

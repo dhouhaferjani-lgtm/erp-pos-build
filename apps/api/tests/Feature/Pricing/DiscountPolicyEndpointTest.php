@@ -6,6 +6,7 @@ namespace Tests\Feature\Pricing;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\DiscountFloorMode;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -94,6 +95,41 @@ final class DiscountPolicyEndpointTest extends TestCase
             ->assertJsonPath('data.requiresPermission', 'pricing.sell_below_minimum_margin')
             ->assertJsonPath('data.blocksSale', false)
             ->assertJsonPath('meta.currency', 'EUR');
+    }
+
+    public function test_block_mode_verdict_is_non_blocking_for_floor_override_holder(): void
+    {
+        $this->company->update(['discount_floor_mode' => DiscountFloorMode::Block]);
+        $manager = $this->user('manager-block-holder@example.com');
+        $manager->assignRole('manager');
+        $this->attachToCompany($manager);
+
+        $this->actingAs($manager, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/pricing/discount-policy', $this->payload('109.99'))
+            ->assertOk()
+            ->assertJsonPath('data.requiresPermission', 'pricing.sell_below_minimum_margin')
+            ->assertJsonPath('data.blocksSale', false)
+            ->assertJsonPath('data.allowed', true)
+            ->assertJsonPath('data.severity', 'warn');
+    }
+
+    public function test_block_mode_verdict_blocks_caller_without_floor_override(): void
+    {
+        $this->company->update(['discount_floor_mode' => DiscountFloorMode::Block]);
+        // Can view cost prices (route gate) but holds NEITHER floor-override permission.
+        $viewer = $this->user('viewer-block-nonholder@example.com');
+        $viewer->givePermissionTo('pricing.view_cost_prices');
+        $this->attachToCompany($viewer);
+
+        $this->actingAs($viewer, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/pricing/discount-policy', $this->payload('109.99'))
+            ->assertOk()
+            ->assertJsonPath('data.requiresPermission', 'pricing.sell_below_minimum_margin')
+            ->assertJsonPath('data.blocksSale', true)
+            ->assertJsonPath('data.allowed', false)
+            ->assertJsonPath('data.severity', 'block');
     }
 
     public function test_discount_policy_endpoint_denies_sibling_company_cost_access(): void

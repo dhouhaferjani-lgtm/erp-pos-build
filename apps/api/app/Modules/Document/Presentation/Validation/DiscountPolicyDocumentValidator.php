@@ -52,6 +52,12 @@ final class DiscountPolicyDocumentValidator
 
         $company = $this->companyContext->requireCompany();
         $scale = $this->scaleResolver->getScale($company->currency);
+
+        // Privilege claim — resolved server-side from the authenticated user, never
+        // from the request payload. Mirrors the override rights enforced by shouldReject().
+        $callerHasFloorOverride = $user->can('pricing.sell_below_minimum_margin')
+            || $user->can('pricing.sell_below_cost');
+
         $contexts = [];
         $lineIndexesByKey = [];
 
@@ -79,7 +85,7 @@ final class DiscountPolicyDocumentValidator
             $contexts[$lineKey] = new DiscountPolicyContext(
                 companyId: $company->id,
                 productId: $productId,
-                variantId: null,
+                variantId: isset($line['variant_id']) ? (string) $line['variant_id'] : null,
                 effectiveUnitPrice: $effectiveUnitPrice,
                 currency: $company->currency,
                 quantity: $quantity,
@@ -87,6 +93,7 @@ final class DiscountPolicyDocumentValidator
                 taxConfigurationId: isset($line['tax_configuration_id']) ? (string) $line['tax_configuration_id'] : null,
                 priceBasis: PriceBasis::Ht->value,
                 userId: $user->id,
+                callerHasFloorOverride: $callerHasFloorOverride,
             );
             $lineIndexesByKey[$lineKey] = (int) $index;
         }

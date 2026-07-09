@@ -436,6 +436,75 @@ class ListProductsTest extends TestCase
             ->assertJsonCount(1, 'data');
     }
 
+    public function test_list_redacts_cost_fields_for_non_holder(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Costed List Product',
+            'sku' => 'COST-LIST-001',
+            'cost_price' => '12.500',
+            'last_purchase_cost' => '11.000',
+            'purchase_price' => '10.000',
+            'sale_price' => '20.000',
+        ]);
+
+        // A products.view-only caller (no pricing.view_cost_prices) must not see
+        // WAC/cost data in the list any more than in show().
+        $viewer = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Cost Viewer',
+            'email' => 'cost-list-viewer@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+        $viewer->givePermissionTo('products.view');
+
+        UserCompanyMembership::create([
+            'user_id' => $viewer->id,
+            'company_id' => $this->company->id,
+            'role' => MembershipRole::Viewer,
+        ]);
+
+        $this->assertFalse($viewer->can('pricing.view_cost_prices'), 'guard precondition');
+
+        $this->actingAs($viewer, 'sanctum')
+            ->getJson('/api/v1/products')
+            ->assertOk()
+            ->assertJsonPath('data.0.cost_price', null)
+            ->assertJsonPath('data.0.last_purchase_cost', null)
+            ->assertJsonPath('data.0.purchase_price', null)
+            ->assertJsonPath('data.0.target_margin_override', null)
+            ->assertJsonPath('data.0.minimum_margin_override', null)
+            ->assertJsonPath('data.0.effective_margins', null)
+            // Non-cost fields still present.
+            ->assertJsonPath('data.0.sale_price', fn (?string $value): bool => $value !== null);
+    }
+
+    public function test_list_exposes_cost_fields_for_holder(): void
+    {
+        Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Costed List Product',
+            'sku' => 'COST-LIST-002',
+            'cost_price' => '12.500',
+            'last_purchase_cost' => '11.000',
+            'purchase_price' => '10.000',
+            'sale_price' => '20.000',
+        ]);
+
+        // $this->user is an admin and holds pricing.view_cost_prices.
+        $this->assertTrue($this->user->can('pricing.view_cost_prices'), 'guard precondition');
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/products')
+            ->assertOk()
+            ->assertJsonPath('data.0.cost_price', fn (?string $value): bool => $value !== null)
+            ->assertJsonPath('data.0.last_purchase_cost', fn (?string $value): bool => $value !== null)
+            ->assertJsonPath('data.0.purchase_price', fn (?string $value): bool => $value !== null);
+    }
+
     public function test_can_filter_active_products(): void
     {
         Product::create([

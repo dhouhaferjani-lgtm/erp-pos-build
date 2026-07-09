@@ -142,13 +142,24 @@ class ProductController extends Controller
         /** @var array<string, ProductMediaData> $mediaMap */
         $mediaMap = $this->catalogMedia->forProducts($productIds, $company->tenant_id);
 
+        // Cost/margin confidentiality: redact WAC/margins server-side for callers
+        // without pricing.view_cost_prices — the list endpoint must not leak cost
+        // data any more than show() does (Rev 3 R3-2 / F2).
+        /** @var User $user */
+        $user = $request->user();
+        $redactCost = ! $user->can('pricing.view_cost_prices');
+
         // Map each product model to its DTO with media injected.
         /** @var array<int, ProductData> $data */
         $data = array_map(
-            fn (Product $item): ProductData => ProductData::fromModel(
-                $item,
-                $mediaMap[$item->id] ?? ProductMediaData::makeEmpty(),
-            ),
+            function (Product $item) use ($mediaMap, $redactCost): ProductData {
+                $dto = ProductData::fromModel(
+                    $item,
+                    $mediaMap[$item->id] ?? ProductMediaData::makeEmpty(),
+                );
+
+                return $redactCost ? $dto->withoutCostFields() : $dto;
+            },
             $paginator->items(),
         );
 

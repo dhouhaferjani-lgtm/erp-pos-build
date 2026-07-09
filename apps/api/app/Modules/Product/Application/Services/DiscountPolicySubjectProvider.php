@@ -43,8 +43,11 @@ final class DiscountPolicySubjectProvider implements DiscountPolicySubjectProvid
 
         /** @var Collection<string, Product> $productsById */
         $productsById = $products->keyBy('id');
-        $marginsByProductId = $this->marginResolver->resolveMany($products);
+        // Load ancestor categories ONCE and reuse the same map for margin resolution,
+        // discount-cap resolution, and tax-configuration lookup — avoids a duplicate
+        // identical Category whereIn query (MarginResolver would otherwise re-fetch it).
         $categoriesById = $this->loadCategoryAncestors($products);
+        $marginsByProductId = $this->marginResolver->resolveMany($products, $categoriesById);
         $taxConfigurationsById = $this->loadTaxConfigurations($products, $categoriesById);
         $policyAsOf = now()->toIso8601String();
 

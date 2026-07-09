@@ -72,6 +72,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'pricing.view',
             'pricing.manage',
             'pricing.view_cost_prices',
+            'pricing.sell_below_target_margin',
             'pricing.sell_below_minimum_margin',
             'pricing.sell_below_cost',
 
@@ -492,7 +493,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'catalog.labels.print',
             'workshop-bundles.view', 'workshop-bundles.manage',
             'pricing.view', 'pricing.manage',
-            'pricing.view_cost_prices', 'pricing.sell_below_minimum_margin', 'pricing.sell_below_cost',
+            'pricing.view_cost_prices', 'pricing.sell_below_target_margin', 'pricing.sell_below_minimum_margin', 'pricing.sell_below_cost',
             'menus.view', 'menus.manage',
             'promotions.view', 'promotions.manage',
             'coupons.view', 'coupons.manage',

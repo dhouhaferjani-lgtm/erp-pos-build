@@ -90,7 +90,7 @@ final class DiscountPolicyService implements DiscountPolicyInterface
         $scale = $this->scaleResolver->getScale($context->currency);
         $effectiveNet = $this->effectiveNetPrice($context, $subject, $scale);
         $maxDiscountPercent = $this->capResolver->resolve($subject);
-        $discountPercent = $this->discountPercent($subject, $effectiveNet);
+        $discountPercent = $this->discountPercent($subject, $effectiveNet, $scale);
 
         // Enforceable floors (cost / minimum-margin / discount-cap) follow the company mode.
         $contributions = $this->floorContributions($subject, $maxDiscountPercent, $scale);
@@ -119,6 +119,9 @@ final class DiscountPolicyService implements DiscountPolicyInterface
 
         if ($belowEnforceableFloor) {
             $reasons[] = $enforceableWinner['basis'] === FloorBasis::DiscountCap->value ? 'discount_cap' : 'minimum_margin_floor';
+            // A discount-cap breach intentionally reuses pricing.sell_below_minimum_margin:
+            // Phase-1 (web/advisory) has no dedicated cap-override permission, so the
+            // margin-override right doubles as the cap-override right (spec Rev 2 §8).
             $requiresPermission ??= self::PERMISSION_BELOW_MINIMUM_MARGIN;
         }
 
@@ -127,7 +130,18 @@ final class DiscountPolicyService implements DiscountPolicyInterface
             $reasons[] = 'legal_below_cost';
         }
 
-        $blocksSale = $requiresPermission !== null && $subject->discountFloorMode === DiscountFloorMode::Block->value;
+        // Mirror DiscountPolicyDocumentValidator::shouldReject() so the advisory verdict
+        // agrees with authoritative document enforcement: an enforcing mode (Block or
+        // WarnRequiresPermission) rejects a floor breach UNLESS the caller holds a
+        // floor-override permission (set server-side, never from the request payload).
+        $enforcingMode = in_array(
+            $subject->discountFloorMode,
+            [DiscountFloorMode::Block->value, DiscountFloorMode::WarnRequiresPermission->value],
+            true,
+        );
+        $blocksSale = $requiresPermission !== null
+            && ! $context->callerHasFloorOverride
+            && $enforcingMode;
         $severity = $blocksSale
             ? 'block'
             : ($requiresPermission !== null || $belowAdvisoryFloor ? 'warn' : 'ok');
@@ -284,9 +298,10 @@ final class DiscountPolicyService implements DiscountPolicyInterface
         return CurrencyScale::bcround(bcdiv($price, $factor, $scale + 4), $scale);
     }
 
-    private function discountPercent(DiscountPolicySubject $subject, string $effectiveNet): ?string
+    private function discountPercent(DiscountPolicySubject $subject, string $effectiveNet, int $scale): ?string
     {
-        $salePriceNet = $this->positiveNumericOrNull($subject->salePriceNet, self::PERCENT_SCALE);
+        // salePriceNet is a MONEY value — validate it at the currency scale, not PERCENT_SCALE.
+        $salePriceNet = $this->positiveNumericOrNull($subject->salePriceNet, $scale);
         if ($salePriceNet === null) {
             return null;
         }
