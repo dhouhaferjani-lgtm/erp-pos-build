@@ -523,7 +523,11 @@
     "tabs": {
       "details": "Détails",
       "equivalentsIntro": "Produits équivalents pour substitution ou préférence.",
-      "complementsIntro": "Produits complémentaires pour compléter la vente."
+      "complementsIntro": "Produits complémentaires pour compléter la vente.",
+      "stockLots": "Stock & lots",
+      "otherBranches": "Autres officines",
+      "stockLotsComingSoon": "Suivi des lots par numéro et date de péremption — bientôt disponible.",
+      "otherBranchesComingSoon": "Stock des autres officines — bientôt disponible."
     },
     "stock": "Stock",
     "stockAtLocation": "Stock à cet emplacement",

@@ -523,7 +523,11 @@
     "tabs": {
       "details": "Details",
       "equivalentsIntro": "Equivalent products for substitution or preference.",
-      "complementsIntro": "Complementary products to complete the sale."
+      "complementsIntro": "Complementary products to complete the sale.",
+      "stockLots": "Stock & Batches",
+      "otherBranches": "Other Branches",
+      "stockLotsComingSoon": "Batch tracking by lot number and expiry date — coming soon.",
+      "otherBranchesComingSoon": "Stock at other branches — coming soon."
     },
     "stock": "Stock",
     "stockAtLocation": "Stock at this location",

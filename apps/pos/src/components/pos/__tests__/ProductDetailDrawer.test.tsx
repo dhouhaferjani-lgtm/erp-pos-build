@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ProductDetailDrawer } from '@/components/pos/ProductDetailDrawer';
 import type { POSProduct } from '@/types/product';
 
@@ -76,5 +78,73 @@ describe('ProductDetailDrawer own-location stock', () => {
   it('falls back to legacy stock_quantity when slice is undefined', () => {
     render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
     expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('999');
+  });
+});
+
+// Task 18 — restyle + new tab shells + OOS-policy alignment
+describe('ProductDetailDrawer — tab shells (Task 18)', () => {
+  it('shows all five tabs, including the Stock & lots and Autres officines shells', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    expect(screen.getByRole('tab', { name: 'productDetail.tabs.details' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.routine/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.complements/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'productDetail.tabs.stockLots' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'productDetail.tabs.otherBranches' })).toBeInTheDocument();
+  });
+
+  it('renders a placeholder (not batch data) on the Stock & lots tab', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'productDetail.tabs.stockLots' }));
+    expect(screen.getByText('productDetail.tabs.stockLotsComingSoon')).toBeInTheDocument();
+    expect(screen.queryByTestId('routine-step-row')).toBeNull();
+    expect(screen.queryByTestId('merch-add-btn')).toBeNull();
+  });
+
+  it('renders a placeholder (not branch data) on the Autres officines tab', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'productDetail.tabs.otherBranches' }));
+    expect(screen.getByText('productDetail.tabs.otherBranchesComingSoon')).toBeInTheDocument();
+  });
+});
+
+describe('ProductDetailDrawer — OOS-policy alignment (Task 18)', () => {
+  const outOfStockProduct = { ...product, stock_quantity: 0 } as POSProduct;
+
+  it('disables add-to-cart when out of stock and hardBlockOutOfStock is true (default, block policy)', () => {
+    render(<ProductDetailDrawer isOpen product={outOfStockProduct} onClose={() => {}} />);
+    expect(screen.getByRole('button', { name: 'productDetail.addToCart' })).toBeDisabled();
+  });
+
+  it('enables add-to-cart when out of stock but hardBlockOutOfStock is false (warn/off policy) so the tap reaches the stock gate', () => {
+    render(
+      <ProductDetailDrawer
+        isOpen
+        product={outOfStockProduct}
+        onClose={() => {}}
+        hardBlockOutOfStock={false}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'productDetail.addToCart' })).not.toBeDisabled();
+  });
+
+  it('never disables when stock-exempt (locationStock null), regardless of policy', () => {
+    render(
+      <ProductDetailDrawer
+        isOpen
+        product={outOfStockProduct}
+        onClose={() => {}}
+        locationStock={null}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'productDetail.addToCart' })).not.toBeDisabled();
+  });
+});
+
+describe('ProductDetailDrawer — Strategy A accent repoint (Task 18)', () => {
+  it('contains no bg-accent/text-accent/border-accent Tailwind classes', () => {
+    const sourcePath = join(process.cwd(), 'src/components/pos/ProductDetailDrawer.tsx');
+    const source = readFileSync(sourcePath, 'utf-8');
+    expect(source).not.toMatch(/\b(?:bg|text|border)-accent(?:-\w+)?\b/);
   });
 });

@@ -1631,6 +1631,7 @@ export function HomePage() {
         product={detailProduct}
         onClose={() => setDetailProduct(null)}
         locationStock={detailProduct ? locationStock[detailProduct.id] : undefined}
+        hardBlockOutOfStock={posStockPolicy === 'block'}
       />
 
       {/* T2.1 Step B — barcode collision chooser. Mounts when the scan

@@ -8,6 +8,7 @@ import { addItemGated } from '@/lib/stock/cartIngress';
 import { cn } from '@/lib/utils';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { StockBadge } from '@/components/ui/StockBadge';
+import { tokens } from '@/lib/designTokens';
 import { useProductStore, hasModule } from '@/stores/productStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
@@ -21,9 +22,17 @@ interface ProductDetailDrawerProps {
   product: POSProduct | null;
   /** Same slice semantics as ProductCard: object -> location-aware; null -> exempt (no chrome); undefined -> legacy fallback. */
   locationStock?: LocationStockDisplay | null;
+  /**
+   * Task 18 — OOS-policy alignment with ProductCard/useStockDisplay: under
+   * 'warn'/'off' the tap must reach the stock gate (which allows the add and
+   * surfaces the warning toast), only 'block' pre-disables here. Defaults to
+   * `true` (fail-safe) — HomePage threads `posStockPolicy === 'block'`, the
+   * same value it passes to the grid.
+   */
+  hardBlockOutOfStock?: boolean;
 }
 
-type DetailTab = 'details' | 'routine' | 'equivalents' | 'complements';
+type DetailTab = 'details' | 'routine' | 'equivalents' | 'complements' | 'stock_lots' | 'other_branches';
 
 interface RoutineStep {
   product: POSProduct;
@@ -39,6 +48,7 @@ export function ProductDetailDrawer({
   onClose,
   product,
   locationStock,
+  hardBlockOutOfStock = true,
 }: ProductDetailDrawerProps) {
   const { t } = useTranslation('pos');
   const { t: tSmart } = useTranslation('smart-prompts');
@@ -70,6 +80,11 @@ export function ProductDetailDrawer({
   const exempt = locationStock === null;
   const available = hasSlice ? locationStock!.available : null;
   const isOut = available !== null ? bccomp(available, '0') <= 0 : product.stock_quantity <= 0;
+  // Codex-P1 parity with ProductCard/useStockDisplay: activation refuses only
+  // under 'block' policy — under 'warn'/'off' the tap must reach the stock
+  // gate. Out-of-stock STYLING (badge, price-panel red text) stays keyed off
+  // `isOut && !exempt` alone; only the button's DISABLE respects policy.
+  const isActivationBlocked = isOut && !exempt && hardBlockOutOfStock;
   const isLow = !isOut && (available !== null ? bccomp(available, '10') <= 0 : product.stock_quantity <= 10);
   const stockText = available !== null ? formatAvailableQty(available) : String(product.stock_quantity);
   const stockStatus = isOut ? 'out' : isLow ? 'low' : 'ok';
@@ -91,6 +106,9 @@ export function ProductDetailDrawer({
     { id: 'routine', label: t('productDetail.merchandising.routine'), count: routineSteps.length },
     { id: 'equivalents', label: t('productDetail.merchandising.equivalents'), count: equivalents.length },
     { id: 'complements', label: t('productDetail.merchandising.complements'), count: complements.length },
+    // Task 18 — shells only (Spec 2 owns the batch/branch data + resolution).
+    { id: 'stock_lots', label: t('productDetail.tabs.stockLots') },
+    { id: 'other_branches', label: t('productDetail.tabs.otherBranches') },
   ];
 
   return (
@@ -130,7 +148,7 @@ export function ProductDetailDrawer({
             )}
           </div>
 
-          <div className="mt-5 text-xs font-bold tracking-[0.06em] text-accent uppercase">{brand}</div>
+          <div className="mt-5 text-xs font-bold tracking-[0.06em] text-ink-muted uppercase">{brand}</div>
           <h2 className="mt-1 font-display text-[21px] leading-tight font-bold text-ink-strong">
             {product.name}
           </h2>
@@ -162,14 +180,9 @@ export function ProductDetailDrawer({
           <button
             type="button"
             aria-label={t('productDetail.addToCart')}
-            disabled={isOut && !exempt}
+            disabled={isActivationBlocked}
             onClick={() => { void addItemGated(product); }}
-            className={cn(
-              'mt-5 flex h-[54px] w-full items-center justify-center gap-2 rounded-ctl text-base font-bold shadow-sm',
-              isOut && !exempt
-                ? 'cursor-not-allowed border border-border-subtle bg-surface-sunken text-ink-faint shadow-none'
-                : 'bg-accent text-ink-inverse active:bg-accent-strong',
-            )}
+            className={cn(tokens.button.primary, 'mt-5 h-[54px] w-full text-base shadow-sm')}
           >
             <ShoppingCart className="h-5 w-5" aria-hidden="true" />
             {t('productDetail.addToCart')}
@@ -192,7 +205,7 @@ export function ProductDetailDrawer({
                 className={cn(
                   'min-h-12 border-b-2 px-4 pt-2 pb-3 text-sm font-semibold',
                   activeTab === tab.id
-                    ? 'border-accent text-ink-strong'
+                    ? 'border-action text-ink-strong'
                     : 'border-transparent text-ink-muted active:text-ink',
                 )}
               >
@@ -230,6 +243,12 @@ export function ProductDetailDrawer({
             )}
             {activeTab === 'complements' && (
               <RelatedPanel products={complements} emptyText={t('productDetail.merchandising.empty')} intro={t('productDetail.tabs.complementsIntro')} />
+            )}
+            {activeTab === 'stock_lots' && (
+              <EmptyState>{t('productDetail.tabs.stockLotsComingSoon')}</EmptyState>
+            )}
+            {activeTab === 'other_branches' && (
+              <EmptyState>{t('productDetail.tabs.otherBranchesComingSoon')}</EmptyState>
             )}
 
             <CrossLocationStockSection
@@ -322,11 +341,11 @@ function DetailsPanel({
 
       <SectionTitle>{t('productDetail.availabilityTitle')}</SectionTitle>
       <div className="flex flex-col gap-2">
-        <div className="flex min-h-12 items-center gap-3 rounded-ctl border border-accent-subtle bg-accent-tint px-4">
-          <MapPin className="h-4 w-4 shrink-0 text-accent-strong" aria-hidden="true" />
+        <div className="flex min-h-12 items-center gap-3 rounded-ctl border border-action-subtle bg-action-subtle px-4">
+          <MapPin className="h-4 w-4 shrink-0 text-action" aria-hidden="true" />
           <span className="min-w-0 flex-1 text-sm font-semibold text-ink">
             {currentLocationName ?? t('productDetail.currentBranch')}
-            <span className="ml-2 rounded-pill bg-surface-raised px-2 py-0.5 text-xs font-bold text-accent-strong">
+            <span className="ml-2 rounded-pill bg-surface-raised px-2 py-0.5 text-xs font-bold text-action">
               {t('productDetail.here')}
             </span>
           </span>
@@ -361,18 +380,18 @@ function RoutinePanel({
           onClick={() => { void addItemGated(step.product); }}
           className="flex min-h-[64px] w-full items-center gap-3 rounded-card border border-border-subtle bg-surface-raised px-3 text-left active:bg-surface-sunken"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-accent text-sm font-bold text-ink-inverse">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-action text-sm font-bold text-ink-inverse">
             {step.step_order}
           </span>
           <ProductThumb name={step.product.name} category={step.product.category} imageUrl={step.product.image_url} size={48} />
           <span className="min-w-0 flex-1">
-            <span className="block text-xs font-bold tracking-wide text-accent uppercase">{step.step_label}</span>
+            <span className="block text-xs font-bold tracking-wide text-ink-muted uppercase">{step.step_label}</span>
             <span className="block truncate text-sm font-semibold text-ink">{step.product.name}</span>
           </span>
           {step.product.id === currentProductId ? (
-            <span className="rounded-pill bg-accent-tint px-3 py-1 text-xs font-bold text-accent-strong">{currentLabel}</span>
+            <span className="rounded-pill bg-action-subtle px-3 py-1 text-xs font-bold text-action">{currentLabel}</span>
           ) : (
-            <span data-testid="merch-add-btn" className="flex h-10 w-10 items-center justify-center rounded-ctl bg-accent-tint text-accent-strong">
+            <span data-testid="merch-add-btn" className="flex h-10 w-10 items-center justify-center rounded-ctl bg-action-subtle text-action">
               <Plus className="h-5 w-5" aria-hidden="true" />
             </span>
           )}
@@ -412,7 +431,7 @@ function RelatedPanel({
               <span className="block truncate text-sm font-semibold text-ink">{product.name}</span>
               <span className="block font-mono text-sm font-semibold text-ink-strong">{product.sale_price}</span>
             </span>
-            <Plus className="h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
+            <Plus className="h-5 w-5 shrink-0 text-action" aria-hidden="true" />
           </button>
         ))}
       </div>
