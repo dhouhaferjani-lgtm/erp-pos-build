@@ -156,7 +156,13 @@ final class PaymentAllocationServiceTolerancePersistenceTest extends TestCase
             'payment_method_id' => $this->paymentMethod->id,
             'amount' => '99.9500',
             'currency' => 'TND',
-            'payment_date' => '2025-01-15',
+            // Branch-caused red (audit N2, 2026-07-09): the closed-period guard
+            // (GeneralLedgerService::postEntryNow, Wave B Task 8) rejects the
+            // tolerance journal entry this test's underpayment triggers when
+            // dated into a backdated, now-closed period. Use the current date
+            // (same pattern as createInvoice()'s document_date => now()) so the
+            // payment falls in the always-open current fiscal period.
+            'payment_date' => now()->toDateString(),
             'status' => 'completed',
             'payment_type' => 'document_payment',
         ]);
