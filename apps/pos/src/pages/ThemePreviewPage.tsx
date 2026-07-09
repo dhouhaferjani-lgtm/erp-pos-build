@@ -27,7 +27,7 @@ import { ProductGrid } from '@/components/organisms/ProductGrid';
 import { ProductCard } from '@/components/molecules/ProductCard';
 import { ProductListRow } from '@/components/organisms/ProductGrid/ProductListRow';
 import { ProductTable } from '@/components/organisms/ProductGrid/ProductTable';
-import { ProductDetailDrawer } from '@/components/organisms/ProductDetailDrawer';
+import { ProductDetailDrawer, ProductDetailSheet, type DetailTab } from '@/components/organisms/ProductDetailDrawer';
 import { PaymentSummary } from '@/components/pos/PaymentSummary';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { ShiftClosurePage } from '@/pages/ShiftClosurePage';
@@ -367,6 +367,8 @@ export function ThemePreviewPage() {
   const [expandedLine, setExpandedLine] = useState<string | null>('l2');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailProduct, setDetailProduct] = useState<POSProduct | null>(null);
+  // Inline (no-overlay) drawer-sheet preview — headless visual verification.
+  const [drawerPreviewTab, setDrawerPreviewTab] = useState<DetailTab>('details');
   // Sell-screen preview state
   const displayMode = useSettingsStore((s) => s.displayMode);
   const setDisplayMode = useSettingsStore((s) => s.setDisplayMode);
@@ -773,6 +775,23 @@ export function ThemePreviewPage() {
               >
                 Ouvrir fiche produit
               </Button>
+            </div>
+          </Section>
+        </div>
+
+        <div className="lg:col-span-2">
+          <Section title="Fiche produit — sheet rendu inline (sans overlay, pour capture headless)">
+            <div
+              data-testid="product-drawer-preview"
+              className="overflow-x-auto rounded-panel border border-border-subtle bg-surface-canvas p-6"
+            >
+              <ProductDetailSheet
+                product={SELL_PRODUCTS[0]!}
+                onClose={() => undefined}
+                locationStock={{ available: '14.0000', incoming_transfer: '0.0000', incoming_po: '0.0000' }}
+                activeTab={drawerPreviewTab}
+                onTabChange={setDrawerPreviewTab}
+              />
             </div>
           </Section>
         </div>

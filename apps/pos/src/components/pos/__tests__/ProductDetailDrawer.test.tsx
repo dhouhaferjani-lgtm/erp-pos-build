@@ -7,7 +7,14 @@ import type { POSProduct } from '@/types/product';
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
-  useTranslation: () => ({ t: (k: string) => k }),
+  useTranslation: () => ({
+    // Interpolation-aware stub: the unified stock badge goes through
+    // t('products.stock', { count }) (useStockDisplay), so the mock must
+    // surface the count or the "Stock N" assertions can't distinguish the
+    // unified recipe from a bare number.
+    t: (k: string, opts?: Record<string, unknown>) =>
+      opts && 'count' in opts ? `${k}:${String(opts.count)}` : k,
+  }),
 }));
 vi.mock('@/lib/currency', () => ({ useCurrency: () => ({ format: (n: string | number) => `${n}` }) }));
 // F8 — the drawer now renders CrossLocationStockSection, which pulls two network
@@ -78,6 +85,100 @@ describe('ProductDetailDrawer own-location stock', () => {
   it('falls back to legacy stock_quantity when slice is undefined', () => {
     render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
     expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('999');
+  });
+
+  // Owner review defect 3 — the bare "• 14" chip: the drawer must use the
+  // SAME unified stock language as the grid surfaces (useStockDisplay →
+  // t('products.stock', { count }) / t('products.outOfStock')), not a bare
+  // unlabelled number.
+  it('renders the unified grid stock language (products.stock + count) for the slice path', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}}
+      locationStock={{ available: '14.0000', incoming_transfer: '0.0000', incoming_po: '0.0000' }} />);
+    expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('products.stock:14');
+  });
+
+  it('renders the unified grid stock language for the legacy stock_quantity path', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('products.stock:999');
+  });
+
+  it('renders products.outOfStock (unified language) when the slice is depleted', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}}
+      locationStock={{ available: '0.0000', incoming_transfer: '0.0000', incoming_po: '0.0000' }} />);
+    expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('products.outOfStock');
+  });
+});
+
+// Owner review defect 2 — zero-count tabs must not announce emptiness: the
+// tab stays tappable but the count badge only renders when > 0.
+describe('ProductDetailDrawer — zero-count tab badges', () => {
+  it('hides the count badge when the count is 0 (tab label stays, no "0")', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    const equivalents = screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ });
+    expect(equivalents.textContent).toBe('productDetail.merchandising.equivalents');
+    const complements = screen.getByRole('tab', { name: /productDetail\.merchandising\.complements/ });
+    expect(complements.textContent).toBe('productDetail.merchandising.complements');
+    const routine = screen.getByRole('tab', { name: /productDetail\.merchandising\.routine/ });
+    expect(routine.textContent).toBe('productDetail.merchandising.routine');
+  });
+
+  it('keeps zero-count tabs tappable (panel still opens)', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ }));
+    expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ }))
+      .toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+// Owner review defect 1 — the close X must never overlap the tab strip: it is
+// a flex sibling reserving its own gutter (not absolutely positioned over the
+// tabs), and the tab strip scrolls horizontally instead of wrapping.
+describe('ProductDetailDrawer — close button / tab strip structure', () => {
+  it('renders the close X as a non-absolute flex sibling of the tablist (reserved gutter)', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    const closeBtn = screen.getByRole('button', { name: 'products.filtersClose' });
+    expect(closeBtn.className).not.toContain('absolute');
+    const tablist = screen.getByRole('tablist');
+    expect(closeBtn.parentElement).toBe(tablist.parentElement);
+    expect(closeBtn.className).toContain('shrink-0');
+  });
+
+  it('lets the tab strip overflow horizontally with no mid-label wrapping', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    const tablist = screen.getByRole('tablist');
+    expect(tablist.className).toContain('overflow-x-auto');
+    expect(tablist.className).toContain('min-w-0');
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(tab.className).toContain('whitespace-nowrap');
+      expect(tab.className).toContain('shrink-0');
+      expect(tab.className).toContain('min-h-12');
+    }
+  });
+});
+
+// Owner review defect 4 — one coherent sheet: single container surface +
+// radius + shadow with an INSET internal divider between the panes, never a
+// gap exposing the backdrop or per-pane card chrome.
+describe('ProductDetailDrawer — one-sheet container', () => {
+  it('keeps the single-surface contract on the modal container', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    const modal = screen.getByTestId('product-detail-modal');
+    expect(modal.className).toContain('bg-surface-overlay');
+    expect(modal.className).toContain('shadow-2xl');
+    expect(modal.className).toContain('overflow-hidden');
+    expect(modal.className).toMatch(/rounded-/);
+    expect(modal.className).not.toMatch(/\bgap-/);
+  });
+
+  it('separates the panes with an inset internal divider, not an edge-to-edge pane border', () => {
+    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    const divider = screen.getByTestId('drawer-pane-divider');
+    expect(divider.className).toContain('w-px');
+    expect(divider.className).toContain('bg-border-subtle');
+    expect(divider.className).toMatch(/\bmy-/);
+    const left = screen.getByTestId('product-detail-left-column');
+    expect(left.className).not.toContain('border-r');
+    expect(left.className).not.toMatch(/\bshadow/);
   });
 });
 

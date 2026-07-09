@@ -2,8 +2,6 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, MapPin, Plus, ShoppingCart, X } from 'lucide-react';
 import { useCurrency } from '@/lib/currency';
-import { bccomp } from '@/lib/decimal';
-import { formatAvailableQty } from '@/lib/stock/stockGate';
 import { addItemGated } from '@/lib/stock/cartIngress';
 import { cn } from '@/lib/utils';
 import { ProductThumb } from '@/components/ui/ProductThumb';
@@ -13,6 +11,7 @@ import { useProductStore, hasModule } from '@/stores/productStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { CrossLocationStockSection } from '@/components/organisms/CrossLocationStockSection/CrossLocationStockSection';
+import { useStockDisplay } from '@/components/organisms/ProductGrid/useStockDisplay';
 import type { POSProduct } from '@/types/product';
 import type { LocationStockDisplay } from '@/lib/stock/gridStock';
 
@@ -32,7 +31,7 @@ interface ProductDetailDrawerProps {
   hardBlockOutOfStock?: boolean;
 }
 
-type DetailTab = 'details' | 'routine' | 'equivalents' | 'complements' | 'stock_lots' | 'other_branches';
+export type DetailTab = 'details' | 'routine' | 'equivalents' | 'complements' | 'stock_lots' | 'other_branches';
 
 interface RoutineStep {
   product: POSProduct;
@@ -50,6 +49,56 @@ export function ProductDetailDrawer({
   locationStock,
   hardBlockOutOfStock = true,
 }: ProductDetailDrawerProps) {
+  // Tab state lives HERE (not in the sheet) to preserve the historical
+  // semantics exactly: switching product resets to Details, but closing and
+  // reopening the SAME product keeps the last tab (the component instance
+  // stays mounted while returning null).
+  const [activeTab, setActiveTab] = useState<DetailTab>(DETAILS_TAB);
+  const [prevProductId, setPrevProductId] = useState<string | undefined>(product?.id);
+  if (product?.id !== prevProductId) {
+    setPrevProductId(product?.id);
+    setActiveTab(DETAILS_TAB);
+  }
+
+  if (!isOpen || !product) return null;
+
+  return (
+    <div className="fixed inset-0 z-[52] flex items-center justify-center bg-black/50 p-3 ez-fade-in" onClick={onClose}>
+      <ProductDetailSheet
+        product={product}
+        onClose={onClose}
+        locationStock={locationStock}
+        hardBlockOutOfStock={hardBlockOutOfStock}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
+    </div>
+  );
+}
+
+interface ProductDetailSheetProps {
+  product: POSProduct;
+  onClose: () => void;
+  locationStock?: LocationStockDisplay | null;
+  hardBlockOutOfStock?: boolean;
+  activeTab: DetailTab;
+  onTabChange: (tab: DetailTab) => void;
+}
+
+/**
+ * The drawer's sheet content, extracted so /theme-preview can render it
+ * inline (no overlay) for headless visual verification. The overlay host,
+ * placement, and z-strategy stay in ProductDetailDrawer — this component is
+ * purely the one-sheet surface.
+ */
+export function ProductDetailSheet({
+  product,
+  onClose,
+  locationStock,
+  hardBlockOutOfStock = true,
+  activeTab,
+  onTabChange,
+}: ProductDetailSheetProps) {
   const { t } = useTranslation('pos');
   const { t: tSmart } = useTranslation('smart-prompts');
   const { format } = useCurrency();
@@ -66,31 +115,18 @@ export function ProductDetailDrawer({
   const allProducts = useProductStore((s) => s.products);
   const hasMerchandising = hasModule(companyConfig, 'Merchandising');
 
-  const [activeTab, setActiveTab] = useState<DetailTab>(DETAILS_TAB);
-  const [prevProductId, setPrevProductId] = useState<string | undefined>(product?.id);
-  if (product?.id !== prevProductId) {
-    setPrevProductId(product?.id);
-    setActiveTab(DETAILS_TAB);
-  }
-
-  if (!isOpen || !product) return null;
+  // Owner review defect 3 — unified stock treatment: reuse the EXACT grid
+  // recipe (useStockDisplay → "Stock N" / "Rupture" + StockBadge status)
+  // instead of the previous hand-rolled bare number. Also keeps the OOS
+  // gating semantics aligned with ProductCard by construction (exempt slice
+  // → no chrome, never gated; 'block'-only pre-disable).
+  const { isOutOfStock, stockLabel, status, isActivationBlocked } = useStockDisplay(
+    product,
+    locationStock,
+    hardBlockOutOfStock,
+  );
 
   const meta = product.parapharmacy_metadata;
-  const hasSlice = locationStock !== undefined && locationStock !== null;
-  const exempt = locationStock === null;
-  const available = hasSlice ? locationStock!.available : null;
-  const isOut = available !== null ? bccomp(available, '0') <= 0 : product.stock_quantity <= 0;
-  // Codex-P1 parity with ProductCard/useStockDisplay: activation refuses only
-  // under 'block' policy — under 'warn'/'off' the tap must reach the stock
-  // gate. Out-of-stock STYLING (badge, price-panel red text) stays keyed off
-  // `isOut && !exempt` alone; only the button's DISABLE respects policy.
-  const isActivationBlocked = isOut && !exempt && hardBlockOutOfStock;
-  const isLow = !isOut && (available !== null ? bccomp(available, '10') <= 0 : product.stock_quantity <= 10);
-  const stockText = available !== null ? formatAvailableQty(available) : String(product.stock_quantity);
-  const stockStatus = isOut ? 'out' : isLow ? 'low' : 'ok';
-  const stockLabel = isOut
-    ? t('products.outOfStock')
-    : stockText;
   const showMerchandising = hasMerchandising && meta != null;
   const equivalents = showMerchandising ? getByIds(meta.equivalent_product_ids) : [];
   const complements = showMerchandising ? getByIds(meta.complement_product_ids) : [];
@@ -112,95 +148,96 @@ export function ProductDetailDrawer({
   ];
 
   return (
-    <div className="fixed inset-0 z-[52] flex items-center justify-center bg-black/50 p-3 ez-fade-in" onClick={onClose}>
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('productDetail.title')}
-        data-testid="product-detail-modal"
-        className="ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-[20px] bg-surface-overlay shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
+    <section
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('productDetail.title')}
+      data-testid="product-detail-modal"
+      className="ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-[20px] bg-surface-overlay shadow-2xl"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <aside
+        data-testid="product-detail-left-column"
+        className="flex w-[344px] shrink-0 flex-col px-6 py-7"
       >
+        <div className="relative flex h-[188px] shrink-0 items-center justify-center overflow-hidden rounded-card bg-surface-sunken">
+          <ProductThumb
+            name={product.name}
+            category={product.category}
+            imageUrl={product.image_url}
+            size={148}
+          />
+          {isOutOfStock && (
+            <span className="absolute top-3 left-3 rounded-pill border border-danger-subtle bg-surface-raised px-3 py-1.5 text-xs font-bold text-danger-strong">
+              {t('products.outOfStock')}
+            </span>
+          )}
+        </div>
+
+        <div className="mt-5 text-xs font-bold tracking-[0.06em] text-ink-muted uppercase">{brand}</div>
+        <h2 className="mt-1 font-display text-[21px] leading-tight font-bold text-ink-strong">
+          {product.name}
+        </h2>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {status !== null && stockLabel !== null && (
+            <StockBadge data-testid="drawer-stock-row" status={status}>
+              {stockLabel}
+            </StockBadge>
+          )}
+          {product.category && (
+            <span className="text-sm text-ink-faint">{product.category}</span>
+          )}
+        </div>
+
+        <div className="mt-5 flex items-end justify-between border-t border-border-subtle pt-5">
+          <div>
+            <div className="text-sm text-ink-faint">{t('productDetail.priceTtc')}</div>
+            <div className="font-mono text-[28px] leading-tight font-semibold tabular-nums text-ink-strong">
+              {priceText}
+              {showDtSuffix && <span className="ml-1 text-sm text-ink-faint">DT</span>}
+            </div>
+          </div>
+          <div className="text-right font-mono text-[11px] leading-relaxed text-ink-faint">
+            {product.sku && <div>{product.sku}</div>}
+            {product.barcode && <div>{product.barcode}</div>}
+          </div>
+        </div>
+
         <button
           type="button"
-          onClick={onClose}
-          aria-label={t('products.filtersClose')}
-          className="absolute top-4 right-4 z-10 flex h-12 w-12 items-center justify-center rounded-ctl border border-border-subtle bg-surface-raised text-ink-muted active:bg-surface-sunken"
+          aria-label={t('productDetail.addToCart')}
+          disabled={isActivationBlocked}
+          onClick={() => { void addItemGated(product); }}
+          className={cn(
+            tokens.button.primary,
+            // `shadow-sm` is a call-site addition on top of tokens.button.primary
+            // (which has no shadow) — without disabled:shadow-none the disabled
+            // state keeps looking elevated/tappable. A subtle border makes the
+            // disabled look read as inert rather than a duller primary button.
+            'mt-5 h-[54px] w-full text-base shadow-sm disabled:border disabled:border-border-subtle disabled:shadow-none',
+          )}
         >
-          <X className="h-5 w-5" aria-hidden="true" />
+          <ShoppingCart className="h-5 w-5" aria-hidden="true" />
+          {t('productDetail.addToCart')}
         </button>
+      </aside>
 
-        <aside
-          data-testid="product-detail-left-column"
-          className="flex w-[344px] shrink-0 flex-col border-r border-border-subtle px-6 py-7"
-        >
-          <div className="relative flex h-[188px] shrink-0 items-center justify-center overflow-hidden rounded-card bg-surface-sunken">
-            <ProductThumb
-              name={product.name}
-              category={product.category}
-              imageUrl={product.image_url}
-              size={148}
-            />
-            {isOut && !exempt && (
-              <span className="absolute top-3 left-3 rounded-pill border border-danger-subtle bg-surface-raised px-3 py-1.5 text-xs font-bold text-danger-strong">
-                {t('products.outOfStock')}
-              </span>
-            )}
-          </div>
+      {/* Owner review defect 4 — one coherent sheet: the pane separator is an
+          INSET internal divider (not an edge-to-edge pane border), so the two
+          panes read as zones of a single surface instead of two cards. */}
+      <div aria-hidden="true" data-testid="drawer-pane-divider" className="my-6 w-px shrink-0 bg-border-subtle" />
 
-          <div className="mt-5 text-xs font-bold tracking-[0.06em] text-ink-muted uppercase">{brand}</div>
-          <h2 className="mt-1 font-display text-[21px] leading-tight font-bold text-ink-strong">
-            {product.name}
-          </h2>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {!exempt && (
-              <StockBadge data-testid="drawer-stock-row" status={stockStatus}>
-                {stockLabel}
-              </StockBadge>
-            )}
-            {product.category && (
-              <span className="text-sm text-ink-faint">{product.category}</span>
-            )}
-          </div>
-
-          <div className="mt-5 flex items-end justify-between border-t border-border-subtle pt-5">
-            <div>
-              <div className="text-sm text-ink-faint">{t('productDetail.priceTtc')}</div>
-              <div className="font-mono text-[28px] leading-tight font-semibold tabular-nums text-ink-strong">
-                {priceText}
-                {showDtSuffix && <span className="ml-1 text-sm text-ink-faint">DT</span>}
-              </div>
-            </div>
-            <div className="text-right font-mono text-[11px] leading-relaxed text-ink-faint">
-              {product.sku && <div>{product.sku}</div>}
-              {product.barcode && <div>{product.barcode}</div>}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            aria-label={t('productDetail.addToCart')}
-            disabled={isActivationBlocked}
-            onClick={() => { void addItemGated(product); }}
-            className={cn(
-              tokens.button.primary,
-              // `shadow-sm` is a call-site addition on top of tokens.button.primary
-              // (which has no shadow) — without disabled:shadow-none the disabled
-              // state keeps looking elevated/tappable. A subtle border makes the
-              // disabled look read as inert rather than a duller primary button.
-              'mt-5 h-[54px] w-full text-base shadow-sm disabled:border disabled:border-border-subtle disabled:shadow-none',
-            )}
-          >
-            <ShoppingCart className="h-5 w-5" aria-hidden="true" />
-            {t('productDetail.addToCart')}
-          </button>
-        </aside>
-
-        <div data-testid="product-detail-right-column" className="flex min-w-0 flex-1 flex-col">
+      <div data-testid="product-detail-right-column" className="flex min-w-0 flex-1 flex-col">
+        {/* Owner review defect 1 — the close X is a flex sibling of the tab
+            strip with its own reserved gutter: it can never overlap a tab at
+            any width. The strip itself scrolls horizontally (scrollbar-none,
+            same recipe as the grid's category strip) and tabs never wrap
+            mid-label. */}
+        <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle pt-4 pr-4 pl-5">
           <div
             role="tablist"
             aria-label={t('productDetail.merchandising.ariaLabel')}
-            className="flex shrink-0 gap-1 border-b border-border-subtle px-6 pt-4"
+            className="scrollbar-none flex min-w-0 flex-1 gap-0.5 overflow-x-auto"
           >
             {tabs.map((tab) => (
               <button
@@ -208,65 +245,75 @@ export function ProductDetailDrawer({
                 type="button"
                 role="tab"
                 aria-selected={activeTab === tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => onTabChange(tab.id)}
                 className={cn(
-                  'min-h-12 border-b-2 px-4 pt-2 pb-3 text-sm font-semibold',
+                  'min-h-12 shrink-0 border-b-2 px-2.5 pt-2 pb-3 text-sm font-semibold whitespace-nowrap',
                   activeTab === tab.id
                     ? 'border-action text-ink-strong'
                     : 'border-transparent text-ink-muted active:text-ink',
                 )}
               >
                 {tab.label}
-                {tab.count !== undefined && (
-                  <span className="ml-2 font-mono text-xs text-ink-faint">{tab.count}</span>
+                {/* Owner review defect 2 — a zero count reads as a dead tab:
+                    the badge only renders when there is something behind it. */}
+                {tab.count !== undefined && tab.count > 0 && (
+                  <span className="ml-1.5 font-mono text-xs text-ink-faint">{tab.count}</span>
                 )}
               </button>
             ))}
           </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-            {activeTab === 'details' && (
-              <DetailsPanel
-                product={product}
-                benefitLabels={benefitLabels}
-                ingredientLabels={ingredientLabels}
-                currentLocationName={currentLocationName}
-                stockLabel={stockLabel}
-                isOut={isOut && !exempt}
-                t={t}
-                tSmart={tSmart}
-              />
-            )}
-            {activeTab === 'routine' && (
-              <RoutinePanel
-                steps={routineSteps}
-                currentProductId={product.id}
-                emptyText={t('productDetail.merchandising.empty')}
-                currentLabel={t('productDetail.currentSelection')}
-              />
-            )}
-            {activeTab === 'equivalents' && (
-              <RelatedPanel products={equivalents} emptyText={t('productDetail.merchandising.empty')} intro={t('productDetail.tabs.equivalentsIntro')} />
-            )}
-            {activeTab === 'complements' && (
-              <RelatedPanel products={complements} emptyText={t('productDetail.merchandising.empty')} intro={t('productDetail.tabs.complementsIntro')} />
-            )}
-            {activeTab === 'stock_lots' && (
-              <EmptyState>{t('productDetail.tabs.stockLotsComingSoon')}</EmptyState>
-            )}
-            {activeTab === 'other_branches' && (
-              <EmptyState>{t('productDetail.tabs.otherBranchesComingSoon')}</EmptyState>
-            )}
-
-            <CrossLocationStockSection
-              product={product}
-              canView={allowCrossLocation && canViewCrossLocation}
-              currentLocationId={currentLocationId}
-            />
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('products.filtersClose')}
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-ctl border border-border-subtle bg-surface-raised text-ink-muted active:bg-surface-sunken"
+          >
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
         </div>
-      </section>
-    </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {activeTab === 'details' && (
+            <DetailsPanel
+              product={product}
+              benefitLabels={benefitLabels}
+              ingredientLabels={ingredientLabels}
+              currentLocationName={currentLocationName}
+              stockLabel={stockLabel}
+              isOut={isOutOfStock}
+              t={t}
+              tSmart={tSmart}
+            />
+          )}
+          {activeTab === 'routine' && (
+            <RoutinePanel
+              steps={routineSteps}
+              currentProductId={product.id}
+              emptyText={t('productDetail.merchandising.empty')}
+              currentLabel={t('productDetail.currentSelection')}
+            />
+          )}
+          {activeTab === 'equivalents' && (
+            <RelatedPanel products={equivalents} emptyText={t('productDetail.merchandising.empty')} intro={t('productDetail.tabs.equivalentsIntro')} />
+          )}
+          {activeTab === 'complements' && (
+            <RelatedPanel products={complements} emptyText={t('productDetail.merchandising.empty')} intro={t('productDetail.tabs.complementsIntro')} />
+          )}
+          {activeTab === 'stock_lots' && (
+            <EmptyState>{t('productDetail.tabs.stockLotsComingSoon')}</EmptyState>
+          )}
+          {activeTab === 'other_branches' && (
+            <EmptyState>{t('productDetail.tabs.otherBranchesComingSoon')}</EmptyState>
+          )}
+
+          <CrossLocationStockSection
+            product={product}
+            canView={allowCrossLocation && canViewCrossLocation}
+            currentLocationId={currentLocationId}
+          />
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -310,7 +357,8 @@ function DetailsPanel({
   benefitLabels: string[];
   ingredientLabels: string[];
   currentLocationName: string | null;
-  stockLabel: string;
+  /** Unified stock label from useStockDisplay; null when stock-exempt (no figure shown). */
+  stockLabel: string | null;
   isOut: boolean;
   t: (key: string, options?: Record<string, unknown>) => string;
   tSmart: (key: string, options?: Record<string, unknown>) => string;
@@ -356,9 +404,11 @@ function DetailsPanel({
               {t('productDetail.here')}
             </span>
           </span>
-          <span className={cn('font-mono text-sm font-semibold', isOut ? 'text-danger-strong' : 'text-ink-strong')}>
-            {stockLabel}
-          </span>
+          {stockLabel !== null && (
+            <span className={cn('font-mono text-sm font-semibold', isOut ? 'text-danger-strong' : 'text-ink-strong')}>
+              {stockLabel}
+            </span>
+          )}
         </div>
       </div>
     </div>

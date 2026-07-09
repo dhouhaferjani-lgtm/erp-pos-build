@@ -1,1 +1,2 @@
-export { ProductDetailDrawer } from '@/components/pos/ProductDetailDrawer';
+export { ProductDetailDrawer, ProductDetailSheet } from '@/components/pos/ProductDetailDrawer';
+export type { DetailTab } from '@/components/pos/ProductDetailDrawer';
