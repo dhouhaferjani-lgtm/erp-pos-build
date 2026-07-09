@@ -13,6 +13,16 @@ const mockNavigate = vi.hoisted(() => vi.fn())
 const toastSuccess = vi.hoisted(() => vi.fn())
 const toastError = vi.hoisted(() => vi.fn())
 
+// This page renders SourceViewer, which imports pdfjs-dist (for in-app PDF
+// rendering) and its worker asset. jsdom has no DOMMatrix/canvas support, so
+// the real module fails to load; mock both — SourceViewer itself is unit
+// tested (SourceViewer.test.tsx), these tests don't assert on its internals.
+vi.mock('pdfjs-dist', () => ({
+  getDocument: vi.fn(),
+  GlobalWorkerOptions: { workerSrc: '' },
+}))
+vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: 'worker.js' }))
+
 vi.mock('@/lib/api', () => ({
   api: {
     get: mockApiGet,

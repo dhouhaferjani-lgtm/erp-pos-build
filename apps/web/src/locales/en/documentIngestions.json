@@ -84,6 +84,8 @@
     "rejectConfirm": "Reject this scan?",
     "source": "Source document",
     "openSource": "Open document in new tab",
+    "pageOf": "Page {{page}} of {{total}}",
+    "previewFailed": "The preview could not be rendered.",
     "sourceLine": "Receipt line",
     "sourceMissing": "Source preview is unavailable.",
     "supplier": "Supplier",

@@ -83,6 +83,8 @@
     "rejectConfirm": "رفض هذا المسح؟",
     "source": "المستند المصدر",
     "openSource": "فتح المستند في علامة تبويب جديدة",
+    "pageOf": "الصفحة {{page}} من {{total}}",
+    "previewFailed": "تعذّر عرض المعاينة.",
     "sourceLine": "سطر الاستلام",
     "sourceMissing": "معاينة المصدر غير متاحة.",
     "supplier": "المورد",

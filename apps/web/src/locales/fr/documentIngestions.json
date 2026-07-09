@@ -84,6 +84,8 @@
     "rejectConfirm": "Rejeter ce scan ?",
     "source": "Document source",
     "openSource": "Ouvrir le document dans un nouvel onglet",
+    "pageOf": "Page {{page}} sur {{total}}",
+    "previewFailed": "L'aperçu n'a pas pu être généré.",
     "sourceLine": "Ligne de réception",
     "sourceMissing": "L'aperçu source est indisponible.",
     "supplier": "Fournisseur",
