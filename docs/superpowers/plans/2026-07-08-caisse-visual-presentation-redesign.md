@@ -10,7 +10,22 @@
 
 **Tech Stack:** React 19 · Vite 7 · TypeScript strict · Tailwind CSS 4 · Zustand 5 · TanStack Query 5 · lucide-react · react-i18next · Vitest (jsdom) · Tauri 2. Visual verification via `/theme-preview` + `playwright-core` (system Chrome).
 
-**Spec:** `docs/superpowers/specs/2026-07-08-caisse-visual-presentation-redesign-design.md` (read it first; it is the source of intent).
+**Spec:** `docs/superpowers/specs/2026-07-08-caisse-visual-presentation-redesign-design.md` (read it first, incl. its **Rev 2 reconciliation** block, which is authoritative).
+
+## Rev 2 reconciliation (2026-07-09) — READ FIRST, overrides the task bodies below
+
+Folded from two adversarial reviews (`specs/reviews/2026-07-08-caisse-visual-presentation-spec-plan-adversarial-review*.md`). Where this block and a task body disagree, this block wins.
+
+- **Task 17 (SearchResultGroups) is DELETED** — equivalents-on-scan is deferred (owner 2026-07-09); the detail drawer's existing equivalents tab suffices. Also remove the `SearchResultGroups` fixture from Task 19 and any "render groups" wording from Task 15. `useStockDisplay` (extracted in Task 12) is still used by Liste/Tableau.
+- **Task 1 does NOT repoint `--accent`.** Repointing hits brand/Settings/Reports/ShiftClosure globally and the default accent is orange, not green. Task 1 = (a) focus ring `*:focus-visible` → `var(--action)` (`index.css:389`), (b) color-grammar doc comment, (c) `tokens.section` helpers (was Task 2 — merge). Leave `--accent`, `--color-brand`, and every `[data-accent]` block untouched. Selection→blue is delivered by switching *caisse surfaces* to `--action` tokens directly: ProductCard (Task 11), NavRail active (Task 5), TransactionCart in-cart, ProductDetailDrawer (Task 18).
+- **Task 5 targets the RIGHT duplicate-label source.** The two "Caisse" labels are in `src/locales/fr/pos.json:1036/1039` + `AppShell.tsx:82-87`, **not** `NavRail`. Rename one there. Replace the vacuous `getAllByRole('link')` test with one asserting the two nav destinations render distinct text (query by the actual rendered role/testid). Nav active state → `--action`.
+- **Task 6/7 path fix:** `TransactionCart` = `src/components/organisms/TransactionCart/TransactionCart.tsx` (NOT `components/pos/`). Task 6 must also restyle the **refund-mode footer** branch (`:277-305`), not only `PaymentSummary`, and fix the existing `parseFloat(item.line_total)` at `:372` (use `formatCurrency`/decimal string). Task 7: the chip root is already `min-w-0`; fix the outer wrapper `TransactionCart.tsx:136` (`shrink-0`) + the `shrink-0` wallet so points+balance don't force overflow (the loyalty cluster already `flex-wrap`s). Replace the vacuous chip test.
+- **Task 9 test must hit the placeholder branch** — render the no-image path that actually emits the hardcoded `bg-[#eef3f8]`/`text-[#5e6670]` (check whether `fullWidth` / a specific branch is required in `ProductThumb.tsx:60`); the prior test (`category="corps"`, no `fullWidth`) never reached it.
+- **Task 14 is ATOMIC + no legacy adopt.** Widen `displayMode` to `'vitrine'|'liste'|'tableau'` **and** update every consumer in the same task — `ProductGrid` local `DisplayMode` (`:25`), setter (`:167-168`), `ProductCard.displayMode` (`:36`), `cardSizing.getColumns`/`getCardMinH` (`:53-75`), `SettingsPage.setDisplayMode` calls (`:245/258`), `ThemePreviewPage` cast (`:210/213`) — so `pnpm typecheck` stays green. Add persist `version` bump + `migrate` (`grid→liste`, `visual→vitrine`). **Delete** the `pos-display-mode` legacy-adopt step (dead code; ProductGrid already single-sources the store).
+- **Task 15 needs an explicit per-mode virtualization design.** Liste = 1 product per virtual row (existing measured-row model). **Tableau** = a real `<table>`; virtualize `<tbody>` rows (or a windowed table) with a sticky header + ↑↓/⏎ keyboard nav — never fixed row heights (P3 clip). The existing ProductGrid unit test **mocks the virtualizer**, so it cannot catch clipping — Task 20 playwright with ≥200-item fixtures per mode is the real gate.
+- **Task 18 (drawer) also removes accent + aligns policy.** Repoint drawer add button (`:169/171`), active tab (`:193/195`), brand label (`:133`) → `--action`. Align out-of-stock: today it disables add on `isOut && !exempt` with no `hardBlockOutOfStock` (`:162/165`) — make it respect the terminal policy like ProductCard (note this small behavior change in the task).
+- **Add a real near-expiry reserved slot** — a conditional render point in ProductCard/ProductListRow/ProductTable that renders `null` until Spec 2 (so §8.2's "reserved" is real, not just a matrix row).
+- **Task 2 is merged into Task 1** (both are token-foundation); renumber or keep Task 2 as the `tokens.section` sub-step of Task 1. Ensure `tokens.section.*` lands before its consumers (Tasks 4/5/6).
 
 ## Global Constraints
 
@@ -449,7 +464,7 @@ test('legacy displayMode migrates', () => {
 
 ## Phase 9 — Search/scan result with equivalents
 
-### Task 17: SearchResultGroups (matched → equivalents → complements)
+### Task 17: SearchResultGroups (matched → equivalents → complements) — ⛔ STRUCK (Rev 2, deferred — do not implement; see reconciliation)
 
 **Files:**
 - Create: `src/components/organisms/ProductGrid/SearchResultGroups.tsx`
