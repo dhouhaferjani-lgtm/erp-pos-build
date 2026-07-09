@@ -132,7 +132,7 @@ export function CashCountTable({
                         )
                       }
                       data-testid={`tender-actual-input-${tender.payment_method_code}`}
-                      className="rounded border border-border-strong px-2 py-1 disabled:cursor-not-allowed disabled:bg-surface-sunken"
+                      className="rounded-ctl border border-border-strong px-2 py-1 disabled:cursor-not-allowed disabled:bg-surface-sunken"
                     >
                       {actual === '' ? '—' : actual}
                     </button>
@@ -156,7 +156,7 @@ export function CashCountTable({
 
       {activeMethodId !== null && !(blindMode && committed) && (
         <div
-          className="rounded-md border border-border-strong p-3"
+          className="rounded-ctl border border-border-strong p-3"
           data-testid="cash-count-numpad-panel"
         >
           <p className="mb-2 text-sm font-medium">

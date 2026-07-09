@@ -50,7 +50,7 @@ export function NumPad({
 
   // All keys share one neutral surface voice; meaning comes from glyph/label.
   const keyClass =
-    'flex items-center justify-center rounded-xl bg-surface-sunken text-xl font-semibold text-ink transition-colors active:bg-border-subtle active:scale-[0.97] select-none min-h-[56px]';
+    'flex items-center justify-center rounded-ctl bg-surface-sunken text-xl font-semibold text-ink transition-colors active:bg-border-subtle active:scale-[0.97] select-none min-h-[56px]';
 
   return (
     <div className={cn('grid grid-cols-4 gap-2', className)}>

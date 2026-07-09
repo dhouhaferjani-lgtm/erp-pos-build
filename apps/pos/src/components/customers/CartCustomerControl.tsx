@@ -43,7 +43,7 @@ export function CartCustomerControl({ onOpen }: CartCustomerControlProps) {
     return (
       <div
         data-testid="cart-customer-control"
-        className="flex min-h-11 min-w-0 items-center gap-1 rounded-xl border border-action bg-action-subtle pr-1 pl-3"
+        className="flex min-h-11 min-w-0 items-center gap-1 rounded-ctl border border-action bg-action-subtle pr-1 pl-3"
       >
         <User className="h-4 w-4 shrink-0 text-action-strong" aria-hidden />
         <button
@@ -60,7 +60,7 @@ export function CartCustomerControl({ onOpen }: CartCustomerControlProps) {
           onClick={onOpen}
           aria-label={t('customer.accountAndDeposit')}
           title={t('customer.accountAndDeposit')}
-          className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 text-action-strong hover:bg-action-subtle"
+          className="flex h-8 shrink-0 items-center gap-1 rounded-ctl px-1.5 text-action-strong hover:bg-action-subtle"
         >
           <Wallet className="h-4 w-4" aria-hidden />
           {hasCredit && (

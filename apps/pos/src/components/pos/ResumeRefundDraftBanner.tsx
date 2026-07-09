@@ -35,13 +35,13 @@ export function ResumeRefundDraftBanner({
       <div className="flex shrink-0 items-center gap-2">
         <button
           onClick={onResume}
-          className="rounded-md bg-warning px-3 py-1.5 text-sm font-semibold text-ink-inverse hover:bg-warning-strong active:bg-warning-strong"
+          className="rounded-ctl bg-warning px-3 py-1.5 text-sm font-semibold text-ink-inverse hover:bg-warning-strong active:bg-warning-strong"
         >
           {t('refundFlow.resumeBanner.resume')}
         </button>
         <button
           onClick={onDiscard}
-          className="rounded-md border border-warning-subtle bg-surface-raised px-3 py-1.5 text-sm font-medium text-warning-strong hover:bg-warning-surface active:bg-warning-surface"
+          className="rounded-ctl border border-warning-subtle bg-surface-raised px-3 py-1.5 text-sm font-medium text-warning-strong hover:bg-warning-surface active:bg-warning-surface"
         >
           {t('refundFlow.resumeBanner.discard')}
         </button>

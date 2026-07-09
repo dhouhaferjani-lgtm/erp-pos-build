@@ -218,7 +218,7 @@ export function SettingsPage() {
                   type="button"
                   onClick={() => scrollToSection(s.id)}
                   className={cn(
-                    'flex min-h-12 w-full items-center rounded-lg px-3 text-left text-sm font-medium transition-colors',
+                    'flex min-h-12 w-full items-center rounded-ctl px-3 text-left text-sm font-medium transition-colors',
                     activeSection === s.id
                       ? 'bg-accent-tint text-accent-strong'
                       : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
@@ -235,7 +235,7 @@ export function SettingsPage() {
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-12">
           <div className="mx-auto max-w-3xl space-y-6">
           {/* Display Preferences */}
-          <section id="settings-display" className="scroll-mt-4 rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-display" className="scroll-mt-4 rounded-card bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.display')}
             </h2>
@@ -299,7 +299,7 @@ export function SettingsPage() {
                   id="language-select"
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
-                  className="min-h-[44px] w-full appearance-none rounded-lg border border-border-strong bg-surface-raised py-2.5 pl-10 pr-8 text-base font-medium text-ink focus:border-action focus:outline-none focus:ring-2 focus:ring-action"
+                  className="min-h-[44px] w-full appearance-none rounded-ctl border border-border-strong bg-surface-raised py-2.5 pl-10 pr-8 text-base font-medium text-ink focus:border-action focus:outline-none focus:ring-2 focus:ring-action"
                 >
                   {SUPPORTED_LANGUAGES.map((lang) => (
                     <option key={lang.code} value={lang.code}>
@@ -316,7 +316,7 @@ export function SettingsPage() {
                 {t('settings.displayFields')}
               </label>
               <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-3">
+                <div className="flex items-center justify-between gap-3 rounded-tile bg-surface-sunken px-3 py-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <Tag className="h-4 w-4 shrink-0 text-ink-muted" />
                     <div className="min-w-0">
@@ -334,7 +334,7 @@ export function SettingsPage() {
                   />
                 </div>
 
-                <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-3">
+                <div className="flex items-center justify-between gap-3 rounded-tile bg-surface-sunken px-3 py-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <Droplet className="h-4 w-4 shrink-0 text-ink-muted" />
                     <div className="min-w-0">
@@ -356,7 +356,7 @@ export function SettingsPage() {
           </section>
 
           {/* Appearance — theme foundation knobs */}
-          <section id="settings-appearance" className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-appearance" className="rounded-card bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-1 text-base font-bold text-ink">
               {t('settings.appearance')}
             </h2>
@@ -444,13 +444,13 @@ export function SettingsPage() {
           </section>
 
           {/* Touch & Display */}
-          <section id="settings-touch" className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-touch" className="rounded-card bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.touchDisplay')}
             </h2>
             <div className="space-y-3">
               {/* Touch mode toggle */}
-              <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-3">
+              <div className="flex items-center justify-between rounded-tile bg-surface-sunken px-3 py-3">
                 <div className="flex items-center gap-2">
                   <Hand className="h-4 w-4 text-ink-muted" />
                   <div>
@@ -469,7 +469,7 @@ export function SettingsPage() {
               </div>
 
               {/* Fullscreen toggle */}
-              <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-3">
+              <div className="flex items-center justify-between rounded-tile bg-surface-sunken px-3 py-3">
                 <div className="flex items-center gap-2">
                   <Maximize className="h-4 w-4 text-ink-muted" />
                   <div>
@@ -492,7 +492,7 @@ export function SettingsPage() {
               </div>
 
               {/* Force Fullscreen — manual retry / escape hatch for BG9 */}
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-tile bg-surface-sunken px-3 py-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <Maximize className="h-4 w-4 shrink-0 text-ink-muted" />
                   <div className="min-w-0">
@@ -521,7 +521,7 @@ export function SettingsPage() {
               </div>
 
               {/* Confirm before removing a cart line (mis-tap guard) */}
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-tile bg-surface-sunken px-3 py-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <Trash2 className="h-4 w-4 shrink-0 text-ink-muted" />
                   <div className="min-w-0">
@@ -539,7 +539,7 @@ export function SettingsPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-sunken px-3 py-3">
+              <div className="flex items-center justify-between gap-3 rounded-tile bg-surface-sunken px-3 py-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <SlidersHorizontal className="h-4 w-4 shrink-0 text-ink-muted" />
                   <div className="min-w-0">
@@ -560,7 +560,7 @@ export function SettingsPage() {
           </section>
 
           {/* Security */}
-          <section id="settings-security" className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-security" className="rounded-card bg-surface-raised p-4 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <Shield className="h-5 w-5 text-ink-muted" />
               <h2 className="text-base font-bold text-ink">
@@ -596,7 +596,7 @@ export function SettingsPage() {
               </div>
 
               {/* Lock after each sale */}
-              <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-3">
+              <div className="flex items-center justify-between rounded-tile bg-surface-sunken px-3 py-3">
                 <div>
                   <span className="text-sm font-medium text-ink">
                     {t('settings.lockAfterSale')}
@@ -614,7 +614,7 @@ export function SettingsPage() {
           </section>
 
           {/* Receipt Printer */}
-          <section id="settings-printer" className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-printer" className="rounded-card bg-surface-raised p-4 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <Printer className="h-5 w-5 text-ink-muted" />
               <h2 className="text-base font-bold text-ink">
@@ -623,14 +623,14 @@ export function SettingsPage() {
             </div>
 
             {!isTauri ? (
-              <div className="rounded-lg border border-warning-subtle bg-warning-surface p-3 text-sm text-warning-strong">
+              <div className="rounded-tile border border-warning-subtle bg-warning-surface p-3 text-sm text-warning-strong">
                 {t('settings.printerDesktopOnly')}
               </div>
             ) : (
               <div className="space-y-4">
                 {/* Current printer */}
                 {printerConfig ? (
-                  <div className="rounded-lg border border-success-subtle bg-success-surface p-3">
+                  <div className="rounded-tile border border-success-subtle bg-success-surface p-3">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-success-strong">
@@ -646,7 +646,7 @@ export function SettingsPage() {
                       </div>
                       <button
                         onClick={clearPrinterConfig}
-                        className="rounded-md px-2 py-1 text-xs font-medium text-danger hover:bg-danger-surface"
+                        className="rounded-ctl px-2 py-1 text-xs font-medium text-danger hover:bg-danger-surface"
                       >
                         {t('settings.removePrinter')}
                       </button>
@@ -657,7 +657,7 @@ export function SettingsPage() {
                       <button
                         onClick={() => void handleTestPrint()}
                         disabled={isPrintingTest}
-                        className="flex items-center gap-1 rounded-lg bg-surface-raised px-3 py-2 text-xs font-medium text-ink-muted shadow-sm hover:bg-surface-sunken disabled:opacity-50"
+                        className="flex items-center gap-1 rounded-ctl bg-surface-raised px-3 py-2 text-xs font-medium text-ink-muted shadow-sm hover:bg-surface-sunken disabled:opacity-50"
                       >
                         {isPrintingTest ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
@@ -669,13 +669,13 @@ export function SettingsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-lg bg-surface-sunken p-3 text-center text-sm text-ink-faint">
+                  <div className="rounded-tile bg-surface-sunken p-3 text-center text-sm text-ink-faint">
                     {t('settings.noPrinterConfigured')}
                   </div>
                 )}
 
                 {/* Auto-print toggle */}
-                <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-3">
+                <div className="flex items-center justify-between rounded-tile bg-surface-sunken px-3 py-3">
                   <span className="text-sm font-medium text-ink">
                     {t('settings.autoPrintReceipts')}
                   </span>
@@ -692,7 +692,7 @@ export function SettingsPage() {
                 <button
                   onClick={() => void handleDiscoverPrinters()}
                   disabled={isDiscovering}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-border-strong bg-surface-raised px-4 py-3 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-ctl border border-border-strong bg-surface-raised px-4 py-3 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
                 >
                   {isDiscovering ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -715,7 +715,7 @@ export function SettingsPage() {
                         key={printer.id}
                         onClick={() => handleSelectPrinter(printer)}
                         className={cn(
-                          'flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left transition-colors',
+                          'flex w-full items-center justify-between rounded-tile border px-3 py-3 text-left transition-colors',
                           printerConfig?.address === printer.address
                             ? 'border-action bg-action-subtle'
                             : 'border-border-subtle bg-surface-raised hover:bg-surface-sunken',
@@ -748,7 +748,7 @@ export function SettingsPage() {
                 {printerStatus !== 'idle' && printerMessage && (
                   <div
                     className={cn(
-                      'flex items-center gap-2 rounded-lg p-3 text-sm',
+                      'flex items-center gap-2 rounded-tile p-3 text-sm',
                       printerStatus === 'success'
                         ? 'bg-success-surface text-success-strong'
                         : 'bg-danger-surface text-danger-strong',
@@ -776,18 +776,18 @@ export function SettingsPage() {
           <ScannerSettings />
 
           {/* Kitchen Printer (coming soon) */}
-          <section id="settings-kitchen" className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-kitchen" className="rounded-card bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.kitchenPrinter')}
             </h2>
-            <div className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-3">
+            <div className="flex items-center justify-between rounded-tile bg-surface-sunken px-3 py-3">
               <span className="text-sm font-medium text-ink">{t('settings.kitchenPrinter')}</span>
               <span className="text-xs text-ink-faint">{t('settings.comingSoon')}</span>
             </div>
           </section>
 
           {/* Terminal Info */}
-          <section id="settings-terminal" className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-terminal" className="rounded-card bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.terminal')}
             </h2>
@@ -817,7 +817,7 @@ export function SettingsPage() {
 
           {/* Device & Security — manager only */}
           {isManager && (
-            <section id="settings-device-security" data-testid="device-security-section" className="rounded-xl bg-surface-raised p-4 shadow-sm">
+            <section id="settings-device-security" data-testid="device-security-section" className="rounded-card bg-surface-raised p-4 shadow-sm">
               <h2 className="mb-4 text-base font-bold text-ink">{t('settings.deviceSecurity')}</h2>
               {terminal && (
                 <div className="mb-3">
@@ -843,7 +843,7 @@ export function SettingsPage() {
                         navigate('/');
                       }
                     }}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-warning-subtle bg-warning-surface px-4 py-3 text-sm font-medium text-warning-strong hover:opacity-90"
+                    className="flex w-full items-center justify-center gap-2 rounded-ctl border border-warning-subtle bg-warning-surface px-4 py-3 text-sm font-medium text-warning-strong hover:opacity-90"
                   >
                     <RefreshCw className="h-4 w-4" />{t('terminal.changeTerminal')}
                   </button>
@@ -853,7 +853,7 @@ export function SettingsPage() {
                 type="button"
                 data-testid="device-unbind-button"
                 onClick={() => setShowUnbindConfirm(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-danger-subtle bg-danger-surface px-4 py-3 text-sm font-medium text-danger-strong hover:opacity-90"
+                className="flex w-full items-center justify-center gap-2 rounded-ctl border border-danger-subtle bg-danger-surface px-4 py-3 text-sm font-medium text-danger-strong hover:opacity-90"
               >
                 <LogOut className="h-4 w-4" />{t('settings.deviceUnbind')}
               </button>
@@ -861,7 +861,7 @@ export function SettingsPage() {
           )}
 
           {/* About */}
-          <section id="settings-about" className="rounded-xl bg-surface-raised p-4 shadow-sm">
+          <section id="settings-about" className="rounded-card bg-surface-raised p-4 shadow-sm">
             <h2 className="mb-4 text-base font-bold text-ink">
               {t('settings.about')}
             </h2>
@@ -960,7 +960,7 @@ function ManualPrinterEntry({
   }
 
   return (
-    <div className="rounded-lg border border-border-subtle p-3">
+    <div className="rounded-tile border border-border-subtle p-3">
       <p className="mb-2 text-xs font-medium uppercase text-ink-faint">
         {t('settings.manualNetworkPrinter')}
       </p>
@@ -970,14 +970,14 @@ function ManualPrinterEntry({
           value={ipAddress}
           onChange={(e) => setIpAddress(e.target.value)}
           placeholder={t('settings.ipAddressPlaceholder')}
-          className="min-h-[44px] flex-1 rounded-lg border border-border-strong px-3 text-sm focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-[44px] flex-1 rounded-ctl border border-border-strong px-3 text-sm focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
         <input
           type="text"
           value={port}
           onChange={(e) => setPort(e.target.value)}
           placeholder="9100"
-          className="min-h-[44px] w-20 rounded-lg border border-border-strong px-3 text-sm focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="min-h-[44px] w-20 rounded-ctl border border-border-strong px-3 text-sm focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
       <div className="mt-2 flex gap-2">
@@ -1017,7 +1017,7 @@ function ToggleSwitch({
       role="switch"
       aria-checked={checked}
       className={cn(
-        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-pill transition-colors',
         checked ? 'bg-action' : 'bg-border-strong',
       )}
     >

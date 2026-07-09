@@ -63,7 +63,7 @@ export function SyncButton() {
       onClick={handleClick}
       disabled={isSyncing}
       className={cn(
-        'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50',
+        'flex items-center gap-1.5 rounded-ctl px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50',
       )}
       aria-label={buttonAriaLabel}
     >

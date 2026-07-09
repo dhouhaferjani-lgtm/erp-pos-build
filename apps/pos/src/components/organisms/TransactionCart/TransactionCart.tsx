@@ -149,7 +149,7 @@ export function TransactionCart({
             <ShoppingCart className="h-5 w-5 shrink-0 text-ink-muted" />
             <h2 className="text-lg font-bold text-ink">{t('cart.title')}</h2>
             {itemCount > 0 && (
-              <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-action px-2 text-sm font-medium text-ink-inverse tabular-nums">
+              <span className="flex h-6 min-w-[24px] items-center justify-center rounded-pill bg-action px-2 text-sm font-medium text-ink-inverse tabular-nums">
                 {itemCount}
               </span>
             )}
@@ -321,7 +321,7 @@ export function TransactionCart({
               // cart). Total sits flat on the navy (no nested bg-action pill)
               // in `text-pay-navy-fg`, verified >=7:1 against `--pay-navy`
               // (see task-6-report.md contrast table).
-              <div className={cn(tokens.section.footer, 'space-y-1.5 rounded-xl px-3 py-2 shadow-sm')}>
+              <div className={cn(tokens.section.footer, 'space-y-1.5 rounded-card px-3 py-2 shadow-sm')}>
                 <div className="flex items-center justify-between">
                   <span className="text-lg font-medium">{t('common.total')}</span>
                   <span className="font-mono text-2xl font-bold tabular-nums text-pay-navy-fg">
@@ -440,7 +440,7 @@ function ReturnLineItem({
           {/* Decrement (reduce return qty or keep item) */}
           <button
             onClick={handleDecrement}
-            className="flex h-12 w-12 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
+            className="flex h-12 w-12 items-center justify-center rounded-ctl border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.decrementQty')}
           >
             <span className="text-base font-bold leading-none">−</span>
@@ -458,7 +458,7 @@ function ReturnLineItem({
           {/* Increment (return more) */}
           <button
             onClick={handleIncrement}
-            className="flex h-12 w-12 items-center justify-center rounded-md border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
+            className="flex h-12 w-12 items-center justify-center rounded-ctl border border-danger-subtle bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.incrementQty')}
           >
             <span className="text-base font-bold leading-none">+</span>
@@ -467,7 +467,7 @@ function ReturnLineItem({
           {/* Remove = keep item, don't refund */}
           <button
             onClick={() => onRemove(item.id)}
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-danger-surface text-danger-strong active:opacity-80"
+            className="flex h-7 w-7 items-center justify-center rounded-ctl bg-danger-surface text-danger-strong active:opacity-80"
             aria-label={t('cart.removeItem')}
           >
             <Trash2 className="h-4 w-4" />

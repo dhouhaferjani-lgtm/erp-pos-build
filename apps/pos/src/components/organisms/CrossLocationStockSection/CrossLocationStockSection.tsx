@@ -67,7 +67,7 @@ export function CrossLocationStockSection({ product, canView, currentLocationId 
       {hasVariants && (
         <select
           aria-label={t('crossLocationStock.variant')}
-          className="mb-2 w-full rounded-md border border-gray-200 px-2 py-1 text-sm"
+          className="mb-2 w-full rounded-sm border border-gray-200 px-2 py-1 text-sm"
           value={variantId ?? ''}
           onChange={(e) => setSelectedVariant(e.target.value)}
         >

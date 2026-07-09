@@ -284,7 +284,7 @@ const ProductTableRow = memo(function ProductTableRow({
               e.stopPropagation();
               onViewDetails(product);
             }}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-ink-muted transition-colors hover:bg-border-subtle hover:text-ink active:bg-border-subtle"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-ctl bg-surface-sunken text-ink-muted transition-colors hover:bg-border-subtle hover:text-ink active:bg-border-subtle"
             title={viewDetailsLabel}
           >
             <Eye className="h-4 w-4" />
@@ -302,7 +302,7 @@ const ProductTableRow = memo(function ProductTableRow({
             activate();
           }}
           className={cn(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors',
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-sm transition-colors',
             isActivationBlocked
               ? 'cursor-not-allowed bg-surface-sunken text-ink-faint'
               : 'cursor-pointer bg-action text-ink-inverse hover:bg-action-hover active:bg-action-strong',

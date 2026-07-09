@@ -209,7 +209,7 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
   if (!customer) {
     return (
       <div
-        className="flex h-[28rem] w-[26rem] flex-col items-center justify-center rounded-lg border border-gray-200 bg-white p-6"
+        className="flex h-[28rem] w-[26rem] flex-col items-center justify-center rounded-panel border border-gray-200 bg-white p-6"
         data-testid="account-charge-confirmation"
       >
         <p className="text-sm text-gray-600">
@@ -220,7 +220,7 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
         <button
           type="button"
           onClick={props.onCancel}
-          className="mt-4 rounded-md border border-gray-300 px-4 py-2 text-sm"
+          className="mt-4 rounded-sm border border-gray-300 px-4 py-2 text-sm"
         >
           {t('account_charge.cancel', { defaultValue: 'Cancel' })}
         </button>
@@ -242,7 +242,7 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
 
   return (
     <div
-      className="flex h-[34rem] w-[26rem] flex-col rounded-lg border border-gray-200 bg-white p-6"
+      className="flex h-[34rem] w-[26rem] flex-col rounded-panel border border-gray-200 bg-white p-6"
       data-testid="account-charge-confirmation"
     >
       <h2 className="text-lg font-semibold text-gray-900">
@@ -266,7 +266,7 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
           </span>
         </div>
 
-        <div className="rounded-md bg-gray-50 p-3">
+        <div className="rounded-sm bg-gray-50 p-3">
           <p className="text-xs uppercase tracking-wide text-gray-500">
             {t('account_charge.receivable_balance', { defaultValue: 'Receivable balance' })}
           </p>
@@ -283,7 +283,7 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
           </div>
         </div>
 
-        <div className="rounded-md bg-gray-50 p-3">
+        <div className="rounded-sm bg-gray-50 p-3">
           <div className="flex items-center justify-between text-sm text-gray-900">
             <span>
               {t('account_charge.credit_limit', { defaultValue: 'Credit limit' })}
@@ -377,7 +377,7 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
           type="button"
           onClick={props.onCancel}
           disabled={props.isProcessing}
-          className="flex-1 rounded-md border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50"
+          className="flex-1 rounded-ctl border border-gray-300 py-2 text-sm text-gray-700 disabled:opacity-50"
         >
           {t('account_charge.cancel', { defaultValue: 'Cancel' })}
         </button>
@@ -386,7 +386,7 @@ export function AccountChargeConfirmation(props: AccountChargeConfirmationProps)
           onClick={() => void props.onConfirm(override)}
           disabled={!confirmable || props.isProcessing}
           data-testid="account-charge-confirm"
-          className="flex-1 rounded-md bg-blue-600 py-2 text-sm font-medium text-white disabled:bg-gray-400"
+          className="flex-1 rounded-ctl bg-blue-600 py-2 text-sm font-medium text-white disabled:bg-gray-400"
         >
           {t('account_charge.confirm', { defaultValue: 'Charge to account' })}
         </button>

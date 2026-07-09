@@ -1445,7 +1445,7 @@ export function HomePage() {
       {/* Barcode scan feedback */}
       {scanMessage && (
         <div
-          className={`absolute left-1/2 top-2 z-50 -translate-x-1/2 rounded-lg px-4 py-2 text-sm font-medium shadow-lg transition-opacity ${
+          className={`absolute left-1/2 top-2 z-50 -translate-x-1/2 rounded-tile px-4 py-2 text-sm font-medium shadow-lg transition-opacity ${
             scanMessage.type === 'success'
               ? 'bg-green-600 text-white'
               : scanMessage.type === 'info'

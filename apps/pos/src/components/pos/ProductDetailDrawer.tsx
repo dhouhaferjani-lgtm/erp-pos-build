@@ -49,10 +49,10 @@ export function ProductDetailDrawer({
   locationStock,
   hardBlockOutOfStock = true,
 }: ProductDetailDrawerProps) {
-  // Tab state lives HERE (not in the sheet) to preserve the historical
-  // semantics exactly: switching product resets to Details, but closing and
-  // reopening the SAME product keeps the last tab (the component instance
-  // stays mounted while returning null).
+  // Tab state lives HERE (not in the sheet) so it survives the sheet
+  // unmounting while closed. Note it resets whenever product?.id changes —
+  // including on close, since HomePage nulls the product (product → null) —
+  // so in practice reopening always starts on Details.
   const [activeTab, setActiveTab] = useState<DetailTab>(DETAILS_TAB);
   const [prevProductId, setPrevProductId] = useState<string | undefined>(product?.id);
   if (product?.id !== prevProductId) {
@@ -153,7 +153,7 @@ export function ProductDetailSheet({
       aria-modal="true"
       aria-label={t('productDetail.title')}
       data-testid="product-detail-modal"
-      className="ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-[20px] bg-surface-overlay shadow-2xl"
+      className="ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-panel bg-surface-overlay shadow-2xl"
       onClick={(event) => event.stopPropagation()}
     >
       <aside

@@ -53,7 +53,7 @@ export function LoyaltyEnrollDialog({ open, customer, onClose, onEnrolled }: Pro
             aria-label={t('loyalty.enrollPhoneLabel')}
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
-            className="rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+            className="rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
           />
         </label>
         {error && <div className="text-xs font-medium text-danger-strong">{error}</div>}

@@ -53,7 +53,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         type={type}
         disabled={disabled}
         className={cn(
-          'inline-flex shrink-0 items-center justify-center rounded-xl transition-colors',
+          'inline-flex shrink-0 items-center justify-center rounded-ctl transition-colors',
           // Disabled recipe mirrors Button's: a VISIBLE sunken chip + faint
           // ink — never transparent. A transparent disabled square is nearly
           // invisible on the navy payment footer while the adjacent disabled

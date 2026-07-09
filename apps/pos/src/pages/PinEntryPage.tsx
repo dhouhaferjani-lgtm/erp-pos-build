@@ -56,7 +56,7 @@ export function PinEntryPage({ isLocked }: PinEntryPageProps) {
         </div>
 
         {error && (
-          <div className="mb-4 rounded-md bg-red-50 p-3 text-center text-sm text-red-700">
+          <div className="mb-4 rounded-sm bg-red-50 p-3 text-center text-sm text-red-700">
             {error}
           </div>
         )}

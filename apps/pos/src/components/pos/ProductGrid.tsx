@@ -100,7 +100,7 @@ export function ProductGrid({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('products.searchPlaceholder')}
-            className="w-full rounded-lg border border-gray-300 py-3 pl-10 pr-10 text-base focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full rounded-ctl border border-gray-300 py-3 pl-10 pr-10 text-base focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
           {searchQuery && (
             <button
@@ -114,11 +114,11 @@ export function ProductGrid({
         </div>
 
         {/* Display mode toggle */}
-        <div className="flex rounded-lg border border-gray-300 bg-white">
+        <div className="flex rounded-ctl border border-gray-300 bg-white">
           <button
             onClick={() => handleDisplayModeChange('grid')}
             className={cn(
-              'flex h-12 w-12 items-center justify-center rounded-l-lg transition-colors',
+              'flex h-12 w-12 items-center justify-center rounded-l-ctl transition-colors',
               displayMode === 'grid'
                 ? 'bg-primary-600 text-white'
                 : 'text-gray-700 hover:bg-gray-100',
@@ -130,7 +130,7 @@ export function ProductGrid({
           <button
             onClick={() => handleDisplayModeChange('visual')}
             className={cn(
-              'flex h-12 w-12 items-center justify-center rounded-r-lg transition-colors',
+              'flex h-12 w-12 items-center justify-center rounded-r-ctl transition-colors',
               displayMode === 'visual'
                 ? 'bg-primary-600 text-white'
                 : 'text-gray-700 hover:bg-gray-100',
@@ -148,7 +148,7 @@ export function ProductGrid({
           <button
             onClick={() => setSelectedCategory(null)}
             className={cn(
-              'whitespace-nowrap rounded-full px-5 py-3 text-base font-medium transition-colors',
+              'whitespace-nowrap rounded-pill px-5 py-3 text-base font-medium transition-colors',
               'min-h-[48px]',
               selectedCategory === null
                 ? 'bg-primary-600 text-white'
@@ -162,7 +162,7 @@ export function ProductGrid({
               key={category}
               onClick={() => setSelectedCategory(category)}
               className={cn(
-                'whitespace-nowrap rounded-full px-5 py-3 text-base font-medium transition-colors',
+                'whitespace-nowrap rounded-pill px-5 py-3 text-base font-medium transition-colors',
                 'min-h-[48px]',
                 selectedCategory === category
                   ? 'bg-primary-600 text-white'
@@ -177,7 +177,7 @@ export function ProductGrid({
           <button
             onClick={() => setInStockOnly((prev) => !prev)}
             className={cn(
-              'ml-auto whitespace-nowrap rounded-full px-5 py-3 text-base font-medium transition-colors',
+              'ml-auto whitespace-nowrap rounded-pill px-5 py-3 text-base font-medium transition-colors',
               'min-h-[48px]',
               inStockOnly
                 ? 'bg-green-600 text-white'

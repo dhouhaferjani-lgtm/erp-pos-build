@@ -61,7 +61,7 @@ export function UnsyncedRiskIndicator() {
       aria-live="polite"
       data-risk-level={level}
       data-testid="unsynced-risk-indicator"
-      className={`mx-4 mt-2 border rounded-md px-3 py-2 text-sm font-medium flex items-center gap-2 ${riskClasses[level]}`}
+      className={`mx-4 mt-2 border rounded-sm px-3 py-2 text-sm font-medium flex items-center gap-2 ${riskClasses[level]}`}
     >
       <span aria-hidden="true" className="inline-block w-2 h-2 rounded-full bg-current" />
       <span>{t(`unsyncedRisk.label.${level}`)}</span>

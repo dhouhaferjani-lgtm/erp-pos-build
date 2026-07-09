@@ -47,7 +47,7 @@ export function PinPad({ value, maxLength, onChange, onSubmit, disabled }: PinPa
                   type="button"
                   onClick={handleClear}
                   disabled={disabled}
-                  className="flex h-16 items-center justify-center rounded-lg bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-300 active:bg-gray-400 disabled:opacity-50"
+                  className="flex h-16 items-center justify-center rounded-ctl bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-300 active:bg-gray-400 disabled:opacity-50"
                 >
                   {t('pin.clear')}
                 </button>
@@ -60,7 +60,7 @@ export function PinPad({ value, maxLength, onChange, onSubmit, disabled }: PinPa
                   type="button"
                   onClick={handleBackspace}
                   disabled={disabled}
-                  className="flex h-16 items-center justify-center rounded-lg bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-300 active:bg-gray-400 disabled:opacity-50"
+                  className="flex h-16 items-center justify-center rounded-ctl bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-300 active:bg-gray-400 disabled:opacity-50"
                 >
                   &#9003;
                 </button>
@@ -72,7 +72,7 @@ export function PinPad({ value, maxLength, onChange, onSubmit, disabled }: PinPa
                 type="button"
                 onClick={() => handleDigit(key)}
                 disabled={disabled}
-                className="flex h-16 items-center justify-center rounded-lg bg-white text-2xl font-semibold text-gray-900 shadow-sm border border-gray-200 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50"
+                className="flex h-16 items-center justify-center rounded-ctl bg-white text-2xl font-semibold text-gray-900 shadow-sm border border-gray-200 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50"
               >
                 {key}
               </button>
@@ -84,7 +84,7 @@ export function PinPad({ value, maxLength, onChange, onSubmit, disabled }: PinPa
         type="button"
         onClick={onSubmit}
         disabled={disabled || value.length < 4}
-        className="flex h-14 w-full items-center justify-center rounded-lg bg-blue-600 text-lg font-semibold text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50"
+        className="flex h-14 w-full items-center justify-center rounded-ctl bg-blue-600 text-lg font-semibold text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50"
       >
         {disabled ? t('pin.verifying') : t('pin.enter')}
       </button>

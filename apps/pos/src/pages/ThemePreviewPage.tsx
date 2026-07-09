@@ -880,7 +880,7 @@ export function ThemePreviewPage() {
               <div className="border-b border-border-subtle p-3">
                 <input
                   aria-label="Recherche clients"
-                  className="min-h-12 w-full rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink"
+                  className="min-h-12 w-full rounded-ctl border border-border-strong bg-surface-raised px-3 py-2 text-base text-ink"
                   defaultValue="Ben"
                 />
               </div>
@@ -890,7 +890,7 @@ export function ThemePreviewPage() {
                     key={name}
                     type="button"
                     className={cn(
-                      'flex min-h-[64px] w-full flex-col justify-center gap-1 rounded-xl px-4 py-3 text-left',
+                      'flex min-h-[64px] w-full flex-col justify-center gap-1 rounded-card px-4 py-3 text-left',
                       index === 0 ? 'bg-action text-ink-inverse' : 'bg-surface-raised text-ink',
                     )}
                   >
@@ -903,7 +903,7 @@ export function ThemePreviewPage() {
               </div>
             </aside>
             <div className="min-h-0 p-5">
-              <div className="flex h-full flex-col rounded-2xl bg-surface-raised shadow-sm">
+              <div className="flex h-full flex-col rounded-panel bg-surface-raised shadow-sm">
                 <header className="border-b border-border-subtle px-5 py-4">
                   <h3 className="text-lg font-bold text-ink">Ben Salem Amira</h3>
                 </header>
@@ -918,7 +918,7 @@ export function ThemePreviewPage() {
                       <dd className="text-ink">amira@example.test</dd>
                     </div>
                   </dl>
-                  <div className="rounded-xl bg-surface-sunken p-4">
+                  <div className="rounded-card bg-surface-sunken p-4">
                     <div className="mb-3 flex items-center justify-between">
                       <h4 className="text-sm font-semibold text-ink">Profil de peau</h4>
                       <Button variant="ghost" size="md">Modifier</Button>

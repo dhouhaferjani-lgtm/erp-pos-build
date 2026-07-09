@@ -77,7 +77,7 @@ export function ZReportListPage() {
 
         {/* Table */}
         {!isLoading && error === null && reports.length > 0 && (
-          <div className="flex-1 overflow-auto rounded-xl border border-border-subtle bg-surface-raised">
+          <div className="flex-1 overflow-auto rounded-card border border-border-subtle bg-surface-raised">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-surface-sunken">
                 <tr className="border-b border-border-subtle text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">
@@ -94,11 +94,11 @@ export function ZReportListPage() {
                     className="border-b border-border-subtle last:border-0 hover:bg-surface-sunken"
                   >
                     <td className="px-4 py-3">
-                      <span className="rounded bg-action-subtle px-2 py-0.5 font-mono font-bold text-action">
+                      <span className="rounded-sm bg-action-subtle px-2 py-0.5 font-mono font-bold text-action">
                         {report.formatted_z_number}
                       </span>
                       {report.is_reprint && (
-                        <span className="ml-2 rounded bg-warning-surface px-1.5 py-0.5 text-xs font-medium text-warning-strong">
+                        <span className="ml-2 rounded-sm bg-warning-surface px-1.5 py-0.5 text-xs font-medium text-warning-strong">
                           {t('reports.zList.duplicataBanner')}
                         </span>
                       )}

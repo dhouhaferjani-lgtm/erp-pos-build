@@ -105,7 +105,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={isDisabled}
       aria-busy={loading || undefined}
       className={cn(
-        'inline-flex select-none items-center justify-center whitespace-nowrap rounded-xl font-semibold transition-colors',
+        'inline-flex select-none items-center justify-center whitespace-nowrap rounded-ctl font-semibold transition-colors',
         // Disabled look is communicated by surface + ink + cursor — never
         // opacity alone (a faded primary reads as "is this on?").
         'disabled:cursor-not-allowed disabled:border-transparent disabled:bg-surface-sunken disabled:text-ink-faint disabled:hover:bg-surface-sunken',

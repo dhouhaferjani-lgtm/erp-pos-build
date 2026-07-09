@@ -25,21 +25,21 @@ export function CustomerBalanceBadge({
   return (
     <div className="space-y-1 text-xs">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-900">
+        <span className="rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-900">
           {t('customerBalance.due', { amount: format(receivableBalance) })}
         </span>
-        <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-900">
+        <span className="rounded-sm border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-900">
           {t('customerBalance.credit', { amount: format(creditBalance) })}
         </span>
-        <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 font-semibold text-blue-900">
+        <span className="rounded-sm border border-blue-200 bg-blue-50 px-2 py-1 font-semibold text-blue-900">
           {t('customerBalance.netDue', { amount: format(netDue) })}
         </span>
         <span
           aria-label={stale ? t('customerBalance.staleAriaLabel') : t('customerBalance.freshAriaLabel')}
           className={
             stale
-              ? 'inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 font-semibold text-red-700'
-              : 'rounded-md border border-gray-200 bg-gray-50 px-2 py-1 font-semibold text-gray-600'
+              ? 'inline-flex items-center gap-1 rounded-sm border border-red-200 bg-red-50 px-2 py-1 font-semibold text-red-700'
+              : 'rounded-sm border border-gray-200 bg-gray-50 px-2 py-1 font-semibold text-gray-600'
           }
         >
           {stale && <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />}

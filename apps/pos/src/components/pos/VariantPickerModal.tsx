@@ -91,7 +91,7 @@ export function VariantPickerModal({
             type="button"
             onClick={handleConfirm}
             disabled={selectedVariantId === null}
-            className="flex min-h-[48px] w-full items-center justify-center rounded-xl bg-action px-6 py-3 text-base font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex min-h-[48px] w-full items-center justify-center rounded-ctl bg-action px-6 py-3 text-base font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t('variants.addToCart')}
           </button>

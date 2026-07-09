@@ -102,11 +102,11 @@ export function CashDrawerModal({
     <Modal isOpen={isOpen} onClose={handleClose} title={t('cashDrawer.title')} size="md">
       <div className="space-y-4">
         {/* Tabs */}
-        <div className="flex rounded-lg bg-surface-sunken p-1">
+        <div className="flex rounded-ctl bg-surface-sunken p-1">
           <button
             onClick={() => { setTab('deposit'); setSuccess(false); }}
             className={cn(
-              'flex min-h-[48px] flex-1 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors',
+              'flex min-h-[48px] flex-1 items-center justify-center rounded-sm px-3 text-sm font-medium transition-colors',
               tab === 'deposit'
                 ? 'bg-surface-raised text-ink shadow-sm'
                 : 'text-ink-muted hover:text-ink',
@@ -117,7 +117,7 @@ export function CashDrawerModal({
           <button
             onClick={() => { setTab('payout'); setSuccess(false); }}
             className={cn(
-              'flex min-h-[48px] flex-1 items-center justify-center rounded-md px-3 text-sm font-medium transition-colors',
+              'flex min-h-[48px] flex-1 items-center justify-center rounded-sm px-3 text-sm font-medium transition-colors',
               tab === 'payout'
                 ? 'bg-surface-raised text-ink shadow-sm'
                 : 'text-ink-muted hover:text-ink',
@@ -129,12 +129,12 @@ export function CashDrawerModal({
 
         {/* Error */}
         {error && (
-          <div className="rounded-lg bg-danger-surface p-3 text-sm text-danger-strong">{error}</div>
+          <div className="rounded-tile bg-danger-surface p-3 text-sm text-danger-strong">{error}</div>
         )}
 
         {/* Success */}
         {success && (
-          <div className="rounded-lg bg-success-surface p-3 text-sm text-success-strong">
+          <div className="rounded-tile bg-success-surface p-3 text-sm text-success-strong">
             {tab === 'deposit' ? t('cashDrawer.deposit') : t('cashDrawer.payout')} OK
           </div>
         )}
@@ -149,7 +149,7 @@ export function CashDrawerModal({
             min="0"
             value={amount}
             onChange={setAmount}
-            className="w-full rounded-lg border border-border-strong px-4 py-3 text-right text-xl font-semibold focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
+            className="w-full rounded-ctl border border-border-strong px-4 py-3 text-right text-xl font-semibold focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
           />
         </div>
 
@@ -162,7 +162,7 @@ export function CashDrawerModal({
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full rounded-lg border border-border-strong px-3 py-2 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
+            className="w-full rounded-ctl border border-border-strong px-3 py-2 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
           />
         </div>
 
@@ -175,7 +175,7 @@ export function CashDrawerModal({
             inputMode="numeric"
             value={managerPin}
             onChange={(e) => setManagerPin(e.target.value)}
-            className="w-full rounded-lg border border-border-strong px-3 py-2 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
+            className="w-full rounded-ctl border border-border-strong px-3 py-2 text-sm focus:border-accent focus:ring-2 focus:ring-accent focus:outline-none"
           />
         </div>
 
@@ -184,7 +184,7 @@ export function CashDrawerModal({
           onClick={() => void handleSubmit()}
           disabled={!isValid || managerPin.length < 4 || isProcessing}
           className={cn(
-            'flex min-h-[48px] w-full items-center justify-center rounded-xl px-6 py-3 text-base font-semibold text-ink-inverse transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+            'flex min-h-[48px] w-full items-center justify-center rounded-ctl px-6 py-3 text-base font-semibold text-ink-inverse transition-colors disabled:cursor-not-allowed disabled:opacity-50',
             tab === 'deposit'
               ? 'bg-success hover:bg-success-hover'
               : 'bg-danger hover:bg-danger-strong',

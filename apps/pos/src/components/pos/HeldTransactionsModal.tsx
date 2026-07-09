@@ -36,7 +36,7 @@ export function HeldTransactionsModal({
             return (
               <div
                 key={tx.id}
-                className="flex items-center justify-between rounded-xl border border-border-subtle p-4"
+                className="flex items-center justify-between rounded-card border border-border-subtle p-4"
               >
                 <div className="flex-1 min-w-0">
                   <p className="truncate text-sm font-semibold text-ink">
@@ -54,14 +54,14 @@ export function HeldTransactionsModal({
                 <div className="ml-4 flex gap-2">
                   <button
                     onClick={() => onRecall(tx.id)}
-                    className="flex min-h-[48px] items-center gap-1.5 rounded-lg bg-action px-4 py-2 text-sm font-medium text-ink-inverse transition-colors hover:bg-action-hover"
+                    className="flex min-h-[48px] items-center gap-1.5 rounded-ctl bg-action px-4 py-2 text-sm font-medium text-ink-inverse transition-colors hover:bg-action-hover"
                   >
                     <RotateCcw className="h-4 w-4" />
                     {t('hold.recall')}
                   </button>
                   <button
                     onClick={() => onDiscard(tx.id)}
-                    className="flex min-h-[48px] items-center gap-1.5 rounded-lg bg-danger-surface px-4 py-2 text-sm font-medium text-danger-strong transition-colors hover:bg-danger-surface"
+                    className="flex min-h-[48px] items-center gap-1.5 rounded-ctl bg-danger-surface px-4 py-2 text-sm font-medium text-danger-strong transition-colors hover:bg-danger-surface"
                   >
                     <Trash2 className="h-4 w-4" />
                     {t('hold.discard')}

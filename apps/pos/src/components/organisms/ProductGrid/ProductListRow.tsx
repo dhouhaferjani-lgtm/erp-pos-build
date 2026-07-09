@@ -140,7 +140,7 @@ function ProductListRowInner({
             e.stopPropagation();
             onViewDetails(product);
           }}
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-surface-sunken text-ink-muted transition-colors hover:bg-border-subtle hover:text-ink active:bg-border-subtle"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-ctl bg-surface-sunken text-ink-muted transition-colors hover:bg-border-subtle hover:text-ink active:bg-border-subtle"
           title={viewDetailsLabel}
         >
           <Eye className="h-5 w-5" />
@@ -157,7 +157,7 @@ function ProductListRowInner({
           handleAdd();
         }}
         className={cn(
-          'flex h-12 w-16 shrink-0 items-center justify-center rounded-lg font-semibold transition-colors',
+          'flex h-12 w-16 shrink-0 items-center justify-center rounded-ctl font-semibold transition-colors',
           isActivationBlocked
             ? 'cursor-not-allowed bg-surface-sunken text-ink-faint'
             : 'cursor-pointer bg-action text-ink-inverse hover:bg-action-hover active:bg-action-strong',

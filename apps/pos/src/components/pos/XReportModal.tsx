@@ -26,7 +26,7 @@ export function XReportModal({ isOpen, onClose, report, isLoading, error }: XRep
       )}
 
       {error && !isLoading && (
-        <div className="rounded-lg bg-danger-surface p-4 text-center">
+        <div className="rounded-tile bg-danger-surface p-4 text-center">
           <p className="font-medium text-danger-strong">{t('reports.errorGenerating')}</p>
           <p className="mt-1 text-sm text-danger-strong">{error}</p>
         </div>
@@ -49,7 +49,7 @@ export function XReportModal({ isOpen, onClose, report, isLoading, error }: XRep
 
           {/* Refunds */}
           {report.refunds_count > 0 && (
-            <div className="rounded-lg bg-warning-surface px-4 py-3">
+            <div className="rounded-tile bg-warning-surface px-4 py-3">
               <span className="text-sm font-medium text-warning-strong">
                 {t('reports.refundsCount')}: {report.refunds_count}
               </span>
@@ -115,7 +115,7 @@ export function XReportModal({ isOpen, onClose, report, isLoading, error }: XRep
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-surface-sunken px-4 py-3 text-center">
+    <div className="rounded-tile bg-surface-sunken px-4 py-3 text-center">
       <p className="text-xs text-ink-muted">{label}</p>
       <p className="mt-1 text-lg font-bold text-ink">{value}</p>
     </div>

@@ -105,7 +105,7 @@ export function CashPaymentScreen({
       <div className="flex items-center justify-between border-b border-border-subtle bg-surface-raised px-4 py-3">
         <button
           onClick={onClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-muted hover:bg-surface-sunken hover:text-ink"
+          className="flex items-center gap-2 rounded-ctl px-3 py-2 text-sm text-ink-muted hover:bg-surface-sunken hover:text-ink"
         >
           <ArrowLeft className="h-4 w-4" />
           {t('cashPayment.back')}
@@ -119,7 +119,7 @@ export function CashPaymentScreen({
 
       {/* Error */}
       {error && (
-        <div className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-danger-subtle bg-danger-surface p-3">
+        <div className="mx-4 mt-3 flex items-center gap-2 rounded-tile border border-danger-subtle bg-danger-surface p-3">
           <AlertCircle className="h-4 w-4 shrink-0 text-danger" />
           <p className="text-sm text-danger-strong">{error}</p>
         </div>
@@ -157,7 +157,7 @@ export function CashPaymentScreen({
           </div>
 
           {bccomp(changeDue, '0') > 0 && (
-            <div className="mt-8 w-full max-w-xs rounded-xl border-2 border-success-subtle bg-success-surface p-4 text-center">
+            <div className="mt-8 w-full max-w-xs rounded-card border-2 border-success-subtle bg-success-surface p-4 text-center">
               <p className="text-xs font-medium uppercase tracking-widest text-success-strong">
                 {t('cashPayment.changeDue')}
               </p>
@@ -172,7 +172,7 @@ export function CashPaymentScreen({
           <div className="mb-3 flex gap-2">
             <button
               onClick={handleExact}
-              className="min-h-[56px] flex-1 rounded-lg bg-action px-3 text-sm font-semibold text-ink-inverse active:bg-action-strong"
+              className="min-h-[56px] flex-1 rounded-ctl bg-action px-3 text-sm font-semibold text-ink-inverse active:bg-action-strong"
             >
               {t('cashPayment.exact')}
             </button>
@@ -180,7 +180,7 @@ export function CashPaymentScreen({
               <button
                 key={amount}
                 onClick={() => handleDenomination(amount)}
-                className="min-h-[56px] flex-1 rounded-lg border border-border-subtle bg-surface-raised px-3 text-sm font-medium tabular-nums text-ink active:bg-surface-sunken"
+                className="min-h-[56px] flex-1 rounded-ctl border border-border-subtle bg-surface-raised px-3 text-sm font-medium tabular-nums text-ink active:bg-surface-sunken"
               >
                 {amount} {currency}
               </button>

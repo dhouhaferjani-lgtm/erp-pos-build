@@ -54,7 +54,7 @@ export function ProductVariantStockView({
               disabled={isOutOfStock}
               aria-pressed={isSelected}
               className={cn(
-                'flex w-full items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all',
+                'flex w-full items-center justify-between gap-3 rounded-card border-2 px-4 py-3 text-left transition-all',
                 isOutOfStock
                   ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-70'
                   : isSelected

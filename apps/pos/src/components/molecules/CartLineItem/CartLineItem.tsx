@@ -163,7 +163,7 @@ export function CartLineItem({
           {onRemoveDiscount && (
             <button
               onClick={() => onRemoveDiscount(item.id)}
-              className="rounded-md bg-danger-surface px-1.5 py-0.5 text-danger-strong hover:opacity-90"
+              className="rounded-sm bg-danger-surface px-1.5 py-0.5 text-danger-strong hover:opacity-90"
               aria-label={t('pos:discount.removeLineDiscount')}
             >
               <X className="h-3 w-3" />

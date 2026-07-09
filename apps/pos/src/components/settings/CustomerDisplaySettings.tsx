@@ -102,14 +102,14 @@ export function CustomerDisplaySettings() {
 
   if (!isTauri) {
     return (
-      <section className="rounded-xl bg-white p-4 shadow-sm">
+      <section className="rounded-card bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-center gap-2">
           <Monitor className="h-5 w-5 text-gray-700" />
           <h2 className="text-base font-bold text-gray-900">
             {t('settings.cfd.title')}
           </h2>
         </div>
-        <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
+        <div className="rounded-tile bg-amber-50 p-3 text-sm text-amber-700">
           {t('settings.cfd.desktopOnly')}
         </div>
       </section>
@@ -119,7 +119,7 @@ export function CustomerDisplaySettings() {
   const secondaryMonitors = availableMonitors.filter((m) => !m.is_primary);
 
   return (
-    <section className="rounded-xl bg-white p-4 shadow-sm">
+    <section className="rounded-card bg-white p-4 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
         <Monitor className="h-5 w-5 text-gray-700" />
         <h2 className="text-base font-bold text-gray-900">
@@ -129,7 +129,7 @@ export function CustomerDisplaySettings() {
 
       <div className="space-y-4">
         {/* Enable toggle */}
-        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-3">
+        <div className="flex items-center justify-between rounded-tile bg-gray-50 px-3 py-3">
           <div>
             <span className="text-sm font-medium text-gray-900">
               {t('settings.cfd.enable')}
@@ -141,7 +141,7 @@ export function CustomerDisplaySettings() {
           <button
             onClick={() => handleToggleEnabled(!enabled)}
             className={cn(
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              'relative inline-flex h-6 w-11 items-center rounded-pill transition-colors',
               enabled ? 'bg-blue-600' : 'bg-gray-300',
             )}
             role="switch"
@@ -179,7 +179,7 @@ export function CustomerDisplaySettings() {
               </div>
 
               {availableMonitors.length === 0 ? (
-                <div className="rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-500">
+                <div className="rounded-tile bg-gray-50 p-3 text-center text-sm text-gray-500">
                   {t('settings.cfd.noMonitors')}
                 </div>
               ) : (
@@ -205,7 +205,7 @@ export function CustomerDisplaySettings() {
               )}
 
               {secondaryMonitors.length === 0 && availableMonitors.length > 0 && (
-                <div className="mt-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-700">
+                <div className="mt-2 rounded-tile bg-amber-50 p-3 text-xs text-amber-700">
                   {t('settings.cfd.singleMonitor')}
                 </div>
               )}
@@ -225,7 +225,7 @@ export function CustomerDisplaySettings() {
                 value={idleImagePath}
                 onChange={(e) => setIdleImagePath(e.target.value)}
                 placeholder={t('settings.cfd.idleImagePlaceholder')}
-                className="min-h-[44px] w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="min-h-[44px] w-full rounded-ctl border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               <p className="mt-1 text-xs text-gray-400">
                 {t('settings.cfd.idleImageHint')}
@@ -238,7 +238,7 @@ export function CustomerDisplaySettings() {
                 <button
                   onClick={() => void handleOpenPreview()}
                   disabled={isOpening}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-ctl bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   {isOpening ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -250,7 +250,7 @@ export function CustomerDisplaySettings() {
               ) : (
                 <button
                   onClick={() => void handleClose()}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-ctl border border-red-300 bg-white px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
                 >
                   <Square className="h-4 w-4" />
                   {t('settings.cfd.close')}
@@ -264,7 +264,7 @@ export function CustomerDisplaySettings() {
         {status !== 'idle' && statusMessage && (
           <div
             className={cn(
-              'flex items-center gap-2 rounded-lg p-3 text-sm',
+              'flex items-center gap-2 rounded-tile p-3 text-sm',
               status === 'success'
                 ? 'bg-green-50 text-green-700'
                 : 'bg-red-50 text-red-700',
@@ -301,7 +301,7 @@ function MonitorOption({
     <button
       onClick={onClick}
       className={cn(
-        'flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left transition-colors',
+        'flex w-full items-center justify-between rounded-tile border px-3 py-3 text-left transition-colors',
         isSelected
           ? 'border-blue-300 bg-blue-50'
           : 'border-gray-200 bg-white hover:bg-gray-50',
@@ -311,7 +311,7 @@ function MonitorOption({
         <p className="text-sm font-medium text-gray-900">
           {label}
           {isPrimary && (
-            <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-600">
+            <span className="ml-2 rounded-sm bg-gray-200 px-1.5 py-0.5 text-xs text-gray-600">
               {t('settings.cfd.primaryBadge')}
             </span>
           )}

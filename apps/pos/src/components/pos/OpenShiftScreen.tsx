@@ -49,7 +49,7 @@ export function OpenShiftScreen({ terminalName, isLoading, error, onOpenShift }:
           </span>
           <div
             data-testid="opening-cash-display"
-            className="mt-1 block w-full rounded-md border border-border-strong px-3 py-2 text-center text-2xl font-semibold tabular-nums"
+            className="mt-1 block w-full rounded-ctl border border-border-strong px-3 py-2 text-center text-2xl font-semibold tabular-nums"
           >
             {displayValue}
           </div>
@@ -64,7 +64,7 @@ export function OpenShiftScreen({ terminalName, isLoading, error, onOpenShift }:
         </div>
 
         {error && (
-          <div className="mt-4 rounded-md bg-danger-surface p-3 text-sm text-danger-strong">
+          <div className="mt-4 rounded-sm bg-danger-surface p-3 text-sm text-danger-strong">
             {error}
           </div>
         )}
@@ -73,7 +73,7 @@ export function OpenShiftScreen({ terminalName, isLoading, error, onOpenShift }:
           data-testid="open-shift-submit"
           onClick={handleSubmit}
           disabled={isLoading}
-          className="flex min-h-[48px] items-center justify-center mt-4 w-full rounded-md bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover disabled:opacity-50"
+          className="flex min-h-[48px] items-center justify-center mt-4 w-full rounded-ctl bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover disabled:opacity-50"
         >
           {isLoading ? t('shift.openingLoading') : t('shift.openingButton')}
         </button>

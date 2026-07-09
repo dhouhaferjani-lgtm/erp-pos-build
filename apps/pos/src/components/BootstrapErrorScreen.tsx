@@ -61,7 +61,7 @@ export function BootstrapErrorScreen() {
       className="flex h-screen items-center justify-center bg-gray-50"
       data-testid="bootstrap-error-screen"
     >
-      <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md text-center">
+      <div className="w-full max-w-md rounded-card bg-white p-8 shadow-md text-center">
         <h2 className="text-xl font-bold text-gray-900">
           {t('auth.bootstrap.title')}
         </h2>
@@ -69,7 +69,7 @@ export function BootstrapErrorScreen() {
           {t(messageKey, { phase: phaseLabel })}
         </p>
 
-        <div className="mt-4 rounded-md bg-red-50 p-3 text-xs text-red-700">
+        <div className="mt-4 rounded-sm bg-red-50 p-3 text-xs text-red-700">
           <div className="font-mono font-medium" data-testid="bootstrap-error-label">
             {error.errorName}
           </div>
@@ -81,7 +81,7 @@ export function BootstrapErrorScreen() {
           data-testid="bootstrap-retry"
           disabled={isBusy}
           onClick={() => void handleRetry()}
-          className="mt-6 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="mt-6 w-full rounded-ctl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {isBusy ? t('auth.bootstrap.retrying') : t('auth.bootstrap.retry')}
         </button>
@@ -92,7 +92,7 @@ export function BootstrapErrorScreen() {
             data-testid="bootstrap-skip-with-cache"
             disabled={isBusy}
             onClick={() => void handleSkip()}
-            className="mt-3 w-full rounded-md border border-blue-600 bg-white px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+            className="mt-3 w-full rounded-ctl border border-blue-600 bg-white px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
           >
             {t('auth.bootstrap.useCachedData')}
           </button>
@@ -132,7 +132,7 @@ export function BootstrapErrorScreen() {
         {detailsOpen && (
           <dl
             data-testid="bootstrap-details"
-            className="mt-2 rounded bg-gray-50 p-2 text-left text-xs text-gray-600 font-mono"
+            className="mt-2 rounded-sm bg-gray-50 p-2 text-left text-xs text-gray-600 font-mono"
           >
             <div className="flex justify-between">
               {/* eslint-disable-next-line local/no-untranslated-literal -- developer debug label in technical error panel; not end-user copy */}

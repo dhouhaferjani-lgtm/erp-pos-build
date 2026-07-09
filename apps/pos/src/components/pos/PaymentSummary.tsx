@@ -71,7 +71,7 @@ export function PaymentSummary({
     // discount rows keep their own self-contained `bg-danger-surface`
     // treatment (like a Badge/StatusPill) so their red signal stays
     // legible regardless of the navy parent.
-    <div className={cn(tokens.section.footer, 'space-y-1.5 rounded-xl px-3 py-2 shadow-sm')}>
+    <div className={cn(tokens.section.footer, 'space-y-1.5 rounded-card px-3 py-2 shadow-sm')}>
       {/* Sous-total — GROSS (before any discount). Falls back to net subtotal
        * when the caller doesn't supply a gross value. */}
       <div className={cn('flex justify-between text-xs', tokens.inverseOnNavy.muted)}>
@@ -81,7 +81,7 @@ export function PaymentSummary({
 
       {/* Remises produits — total of per-line discounts (only when present). */}
       {lineDiscountAmount > 0.0005 && (
-        <div className="flex items-center justify-between rounded-md border border-danger-subtle bg-danger-surface px-2 py-1 text-xs font-medium text-danger-strong">
+        <div className="flex items-center justify-between rounded-sm border border-danger-subtle bg-danger-surface px-2 py-1 text-xs font-medium text-danger-strong">
           <span>{t('pos:cart.lineDiscountsTotal')}</span>
           <span className="font-mono tabular-nums">−{format(lineDiscountAmount)}</span>
         </div>
@@ -90,7 +90,7 @@ export function PaymentSummary({
       {/* Remise panier — cart-level transaction discount (removable). */}
       {hasDiscount && (
         <div className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-2 rounded-md border border-danger-subtle bg-danger-surface px-2 py-1">
+          <div className="flex items-center gap-2 rounded-sm border border-danger-subtle bg-danger-surface px-2 py-1">
             <span className="font-medium text-danger-strong">{t('pos:cart.cartDiscount')}</span>
             <span className="font-mono font-medium tabular-nums text-danger-strong">-{format(discountAmount)}</span>
           </div>

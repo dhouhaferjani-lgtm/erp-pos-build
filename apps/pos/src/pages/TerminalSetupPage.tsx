@@ -43,7 +43,7 @@ function PendingActivationPage({ terminalId }: { terminalId: string }) {
 
   return (
     <div className="flex h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-lg rounded-lg bg-white p-8 shadow-md">
+      <div className="w-full max-w-lg rounded-card bg-white p-8 shadow-md">
         <div className="mb-6 text-center">
           <h2 className="text-xl font-bold text-gray-900">{t('terminal.setup')}</h2>
           <p className="mt-1 text-sm text-gray-500">
@@ -52,11 +52,11 @@ function PendingActivationPage({ terminalId }: { terminalId: string }) {
         </div>
 
         {error && (
-          <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+          <div className="mb-4 rounded-sm bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
 
         <div className="space-y-4 text-center">
-          <div className="rounded-md bg-amber-50 p-4">
+          <div className="rounded-sm bg-amber-50 p-4">
             <div className="text-sm font-medium text-amber-800">{t('terminal.pendingActivation')}</div>
             <p className="mt-1 text-sm text-amber-700">
               {t('terminal.pendingMessage')}
@@ -76,7 +76,7 @@ function PendingActivationPage({ terminalId }: { terminalId: string }) {
               <button
                 onClick={() => void handleCheckStatus()}
                 disabled={checking}
-                className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                className="w-full rounded-ctl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 {checking ? t('terminal.checking') : t('terminal.checkStatus')}
               </button>
@@ -95,7 +95,7 @@ function SetupTabs() {
 
   return (
     <div className="flex h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-lg rounded-lg bg-white p-8 shadow-md">
+      <div className="w-full max-w-lg rounded-card bg-white p-8 shadow-md">
         <div className="mb-6 text-center">
           <h2 className="text-xl font-bold text-gray-900">{t('terminal.setup')}</h2>
           <p className="mt-1 text-sm text-gray-500">
@@ -103,10 +103,10 @@ function SetupTabs() {
           </p>
         </div>
 
-        <div className="mb-6 flex rounded-md border border-gray-200">
+        <div className="mb-6 flex rounded-ctl border border-gray-200">
           <button
             onClick={() => { setActiveTab('claim'); setError(null); }}
-            className={`flex-1 rounded-l-md px-4 py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 rounded-l-ctl px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === 'claim'
                 ? 'bg-blue-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-50'
@@ -116,7 +116,7 @@ function SetupTabs() {
           </button>
           <button
             onClick={() => { setActiveTab('request'); setError(null); }}
-            className={`flex-1 rounded-r-md px-4 py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 rounded-r-ctl px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === 'request'
                 ? 'bg-blue-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-50'
@@ -127,7 +127,7 @@ function SetupTabs() {
         </div>
 
         {error && (
-          <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+          <div className="mb-4 rounded-sm bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
 
         {activeTab === 'claim' ? (
@@ -177,7 +177,7 @@ function ClaimTab({ onError }: { onError: (msg: string | null) => void }) {
 
   if (terminals.length === 0) {
     return (
-      <div className="rounded-md bg-yellow-50 p-4 text-sm text-yellow-700">
+      <div className="rounded-sm bg-yellow-50 p-4 text-sm text-yellow-700">
         {t('terminal.noUnclaimed')}
       </div>
     );
@@ -188,7 +188,7 @@ function ClaimTab({ onError }: { onError: (msg: string | null) => void }) {
       {terminals.map((terminal) => (
         <div
           key={terminal.id}
-          className="flex items-center justify-between rounded-md border border-gray-200 p-4"
+          className="flex items-center justify-between rounded-sm border border-gray-200 p-4"
         >
           <div>
             <div className="font-medium text-gray-900">{terminal.name}</div>
@@ -199,7 +199,7 @@ function ClaimTab({ onError }: { onError: (msg: string | null) => void }) {
           <button
             onClick={() => void handleClaim(terminal.id)}
             disabled={isLoading}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-ctl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {isLoading ? t('terminal.claiming') : t('terminal.claim')}
           </button>
@@ -275,7 +275,7 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
   if (pendingTerminal || pendingTerminalId) {
     return (
       <div className="space-y-4 text-center">
-        <div className="rounded-md bg-amber-50 p-4">
+        <div className="rounded-sm bg-amber-50 p-4">
           <div className="text-sm font-medium text-amber-800">{t('terminal.pendingActivation')}</div>
           <p className="mt-1 text-sm text-amber-700">
             {pendingTerminal ? (
@@ -309,7 +309,7 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
             <button
               onClick={() => void handleCheckStatus()}
               disabled={checking}
-              className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="w-full rounded-ctl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {checking ? t('terminal.checking') : t('terminal.checkStatus')}
             </button>
@@ -333,7 +333,7 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
           id="location"
           value={selectedLocationId ?? ''}
           onChange={(e) => setSelectedLocationId(e.target.value || null)}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+          className="mt-1 block w-full rounded-ctl border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
         >
           <option value="">{t('terminal.selectLocation')}</option>
           {locations.map((loc) => (
@@ -354,14 +354,14 @@ function RequestTab({ onError }: { onError: (msg: string | null) => void }) {
           value={terminalName}
           onChange={(e) => setTerminalName(e.target.value)}
           placeholder={t('terminal.terminalNamePlaceholder')}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+          className="mt-1 block w-full rounded-ctl border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
         />
       </div>
 
       <button
         onClick={() => void handleRequest()}
         disabled={isLoading || !selectedLocationId || !terminalName.trim()}
-        className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        className="w-full rounded-ctl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {isLoading ? t('terminal.requesting') : t('terminal.requestTerminal')}
       </button>

@@ -96,13 +96,13 @@ export function CustomerSearchInput({
           value={query}
           onChange={(event) => handleQueryChange(event.target.value)}
           placeholder={t('customer.searchInputPlaceholder')}
-          className="w-full rounded-md border border-border-strong bg-surface-raised py-2 pl-8 pr-3 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+          className="w-full rounded-ctl border border-border-strong bg-surface-raised py-2 pl-8 pr-3 text-sm text-ink placeholder:text-ink-faint focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
         />
       </div>
       {loading && !scopeMissing && <div className="text-xs text-ink-faint">{t('customer.searching')}</div>}
       {displayError && <div className="text-xs font-medium text-danger-strong">{displayError}</div>}
       {displayResults.length > 0 && (
-        <div className="max-h-40 overflow-y-auto rounded-md border border-border-subtle bg-surface-raised">
+        <div className="max-h-40 overflow-y-auto rounded-ctl border border-border-subtle bg-surface-raised">
           {displayResults.map((customer) => (
             <button
               key={`${customer.tenant_id}:${customer.company_id}:${customer.id}`}

@@ -59,7 +59,7 @@ export function CurrencyNumpad({
   }, [value, disabled, onChange]);
 
   const buttonBase = cn(
-    'flex h-14 w-full items-center justify-center rounded-md text-xl font-medium transition-colors',
+    'flex h-14 w-full items-center justify-center rounded-ctl text-xl font-medium transition-colors',
     'bg-surface-sunken text-ink hover:bg-surface-raised active:bg-surface-raised',
     disabled && 'cursor-not-allowed opacity-50',
   );

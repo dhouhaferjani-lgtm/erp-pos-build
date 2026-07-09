@@ -36,13 +36,13 @@ export function PrinterAdvancedSettings() {
             <label className="mb-2 block text-sm font-medium text-gray-700">
               {t('settings.paperWidth')}
             </label>
-            <div className="flex rounded-lg bg-gray-100 p-1">
+            <div className="flex rounded-ctl bg-gray-100 p-1">
               {(['80mm', '58mm'] as PaperWidth[]).map((width) => (
                 <button
                   key={width}
                   onClick={() => updateSettings({ paperWidth: width })}
                   className={cn(
-                    'flex flex-1 items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    'flex flex-1 items-center justify-center rounded-sm px-3 py-2 text-sm font-medium transition-colors',
                     settings.paperWidth === width
                       ? 'bg-white text-gray-900 shadow-sm'
                       : 'text-gray-500 hover:text-gray-700',
@@ -59,13 +59,13 @@ export function PrinterAdvancedSettings() {
             <label className="mb-2 block text-sm font-medium text-gray-700">
               {t('settings.cutMode')}
             </label>
-            <div className="flex rounded-lg bg-gray-100 p-1">
+            <div className="flex rounded-ctl bg-gray-100 p-1">
               {(['partial', 'full', 'none'] as CutMode[]).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => updateSettings({ cutMode: mode })}
                   className={cn(
-                    'flex flex-1 items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    'flex flex-1 items-center justify-center rounded-sm px-3 py-2 text-sm font-medium transition-colors',
                     settings.cutMode === mode
                       ? 'bg-white text-gray-900 shadow-sm'
                       : 'text-gray-500 hover:text-gray-700',
@@ -90,7 +90,7 @@ export function PrinterAdvancedSettings() {
               onChange={(e) =>
                 updateSettings({ copies: Math.min(5, Math.max(1, Number(e.target.value))) })
               }
-              className="min-h-[44px] w-24 rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="min-h-[44px] w-24 rounded-ctl border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
@@ -104,7 +104,7 @@ export function PrinterAdvancedSettings() {
               value={settings.footerText}
               onChange={(e) => updateSettings({ footerText: e.target.value })}
               placeholder={t('settings.footerTextPlaceholder')}
-              className="min-h-[44px] w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="min-h-[44px] w-full rounded-ctl border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
@@ -119,7 +119,7 @@ export function PrinterAdvancedSettings() {
               onChange={(e) =>
                 updateSettings({ encoding: e.target.value as PrinterEncoding })
               }
-              className="min-h-[44px] w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="min-h-[44px] w-full rounded-ctl border border-gray-300 bg-white px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="cp437">{t('printer.charset.cp437')}</option>
               <option value="cp858">{t('printer.charset.cp858')}</option>

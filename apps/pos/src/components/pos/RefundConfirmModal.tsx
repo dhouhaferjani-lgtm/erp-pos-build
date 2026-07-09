@@ -233,7 +233,7 @@ export function RefundConfirmModal({
     >
       <div className="space-y-4 p-4" data-testid="refund-confirm-modal">
         {/* Refund amount summary */}
-        <div className="rounded-lg bg-surface-sunken p-3 text-center" data-testid="refund-amount-summary">
+        <div className="rounded-tile bg-surface-sunken p-3 text-center" data-testid="refund-amount-summary">
           <p className="text-sm text-ink-muted">
             {t('refundFlow.confirm.amountLabel', { defaultValue: 'Refund amount' })}
           </p>
@@ -289,7 +289,7 @@ export function RefundConfirmModal({
         {errorMessage !== null && !showManagerPin && (
           <p
             data-testid="refund-confirm-error"
-            className="rounded-md bg-danger-surface p-3 text-sm text-danger-strong"
+            className="rounded-sm bg-danger-surface p-3 text-sm text-danger-strong"
           >
             {errorMessage}
           </p>
@@ -303,7 +303,7 @@ export function RefundConfirmModal({
               onClick={handleClose}
               disabled={isSubmitting}
               data-testid="refund-confirm-cancel"
-              className="flex min-h-[48px] items-center justify-center flex-1 rounded-md border border-border-strong py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
+              className="flex min-h-[48px] items-center justify-center flex-1 rounded-ctl border border-border-strong py-2 text-sm font-medium text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
             >
               {t('refundFlow.confirm.cancel', { defaultValue: 'Cancel' })}
             </button>
@@ -312,7 +312,7 @@ export function RefundConfirmModal({
               onClick={() => void submitRefund(authorizedManagerId ?? undefined)}
               disabled={isSubmitting}
               data-testid="refund-confirm-submit"
-              className="flex min-h-[48px] items-center justify-center flex-1 rounded-md bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:opacity-50"
+              className="flex min-h-[48px] items-center justify-center flex-1 rounded-ctl bg-action py-2 text-sm font-semibold text-ink-inverse hover:bg-action-hover disabled:opacity-50"
             >
               {isSubmitting
                 ? t('refundFlow.confirm.submitting', { defaultValue: 'Processing…' })

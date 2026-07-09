@@ -91,7 +91,7 @@ export function CheckoutSuccessModal({
         <button
           onClick={() => void handlePrint()}
           disabled={isPrinting}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-strong bg-surface-raised px-6 py-3 text-base font-medium text-ink-muted transition-colors hover:bg-surface-sunken disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-ctl border border-border-strong bg-surface-raised px-6 py-3 text-base font-medium text-ink-muted transition-colors hover:bg-surface-sunken disabled:opacity-50"
         >
           {isPrinting ? (
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -105,7 +105,7 @@ export function CheckoutSuccessModal({
       {/* New sale button */}
       <button
         onClick={onClose}
-        className="w-full rounded-xl bg-action px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-action-hover"
+        className="w-full rounded-ctl bg-action px-6 py-4 text-lg font-semibold text-ink-inverse transition-colors hover:bg-action-hover"
       >
         {t('payment.newTransaction')}
       </button>
@@ -131,14 +131,14 @@ export function CheckoutSuccessModal({
         </div>
 
         {/* Total */}
-        <div className="rounded-xl bg-surface-sunken p-4">
+        <div className="rounded-card bg-surface-sunken p-4">
           <p className="text-sm text-ink-muted">{t('common:total')}</p>
           <p className="text-xl font-bold text-ink">{format(total)}</p>
         </div>
 
         {/* Change due */}
         {changeDue > 0 && (
-          <div className="rounded-xl border border-success-subtle bg-success-surface p-4">
+          <div className="rounded-card border border-success-subtle bg-success-surface p-4">
             <p className="text-sm font-medium text-success-strong">
               {t('cashTendered.changeDue')}
             </p>
@@ -148,7 +148,7 @@ export function CheckoutSuccessModal({
 
         {/* Print error */}
         {printError && (
-          <div className="rounded-md bg-danger-surface p-3 text-sm text-danger-strong">
+          <div className="rounded-sm bg-danger-surface p-3 text-sm text-danger-strong">
             {printError}
           </div>
         )}

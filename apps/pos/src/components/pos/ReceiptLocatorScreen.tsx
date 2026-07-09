@@ -44,7 +44,7 @@ function ReceiptRow({ entry, onRefund, locale, t }: ReceiptRowProps) {
   const date = useMemo(() => formatDate(entry.posted_at, locale), [entry.posted_at, locale]);
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-border-subtle bg-surface-sunken px-4 py-3">
+    <div className="flex items-center justify-between gap-4 rounded-tile border border-border-subtle bg-surface-sunken px-4 py-3">
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-ink">{entry.receipt_number}</p>
         <p className="text-xs text-ink-muted">{date}</p>
@@ -57,7 +57,7 @@ function ReceiptRow({ entry, onRefund, locale, t }: ReceiptRowProps) {
       <button
         type="button"
         onClick={() => onRefund(entry)}
-        className="flex min-h-[48px] shrink-0 items-center justify-center rounded-md bg-action px-3 text-sm font-medium text-ink-inverse hover:bg-action-hover focus:outline-none focus:ring-2 focus:ring-accent"
+        className="flex min-h-[48px] shrink-0 items-center justify-center rounded-ctl bg-action px-3 text-sm font-medium text-ink-inverse hover:bg-action-hover focus:outline-none focus:ring-2 focus:ring-accent"
       >
         {t('receiptLocator.refundThis')}
       </button>
@@ -166,14 +166,14 @@ export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenPr
               }
             }}
             placeholder={t('receiptLocator.numberPlaceholder')}
-            className="flex-1 rounded-lg border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+            className="flex-1 rounded-ctl border border-border-strong px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
             aria-label={t('receiptLocator.numberPlaceholder')}
           />
           <button
             type="button"
             onClick={() => void handleSubmit()}
             disabled={isSearching || !input.trim()}
-            className="flex min-h-[48px] items-center justify-center rounded-lg bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="flex min-h-[48px] items-center justify-center rounded-ctl bg-action px-4 py-2 text-sm font-medium text-ink-inverse hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             {isSearching ? t('receiptLocator.searching') : t('receiptLocator.search')}
           </button>
@@ -182,12 +182,12 @@ export function ReceiptLocatorScreen({ isOpen, onClose }: ReceiptLocatorScreenPr
         {hasSearched && (
           <div>
             {found === 'not-found' && (
-              <p role="alert" className="rounded-lg bg-danger-surface px-4 py-3 text-sm text-danger-strong">
+              <p role="alert" className="rounded-tile bg-danger-surface px-4 py-3 text-sm text-danger-strong">
                 {t('receiptLocator.notFound')}
               </p>
             )}
             {found === 'wrong-terminal' && (
-              <p role="alert" className="rounded-lg bg-warning-surface px-4 py-3 text-sm text-warning-strong">
+              <p role="alert" className="rounded-tile bg-warning-surface px-4 py-3 text-sm text-warning-strong">
                 {t('receiptLocator.wrongTerminal')}
               </p>
             )}
