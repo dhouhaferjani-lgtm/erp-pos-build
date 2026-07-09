@@ -22,3 +22,17 @@
 
 ## Definition of done
 All spec §8 tests green, PHPStan/eslint/tsc clean, whole-branch review READY-TO-MERGE, merged to local dev (not pushed), live-verified (PDF + photo). Then update memory + this handoff.
+
+---
+
+## ✅ COMPLETE (2026-07-10, this session)
+
+Executed end-to-end via subagent-driven development: 10 tasks + fix rounds (17 commits `e32d8f365..e3e5ecbc3`), final whole-branch review READY-TO-MERGE, **merged to LOCAL dev `da93d5f83` (NOT pushed)**. All gates green (typecheck, lint 0 errors, tenant-key audit, 101/101 tests by path). SDD ledger: `.superpowers/sdd/progress.md`.
+
+**Live-verified on demo-pharmacy tenant** (real MTS facture PDF + real iPhone photo of a French receipt): upload page w/ specific errors + duplicate detection; processing stepper + auto-advance; **PDF renders on canvas** (pdf.js); photo blob preview + lightbox; supplier created in-page from OCR prefill and auto-selected; product created from line prefill (SKU auto-gen) with VAT autofill; machine/edited cues.
+
+**2 blockers found live and fixed on the branch:**
+- `SignedMediaController` image-only gates 404'd ALL PDF scans → now accepts Document+application/pdf (`f0b22cd0e`). Backend change, security-reviewed.
+- `AddQuickProductModal` sent `sku: null` vs server `required` + swallowed 422s (pre-existing) → client-side SKU auto-gen + error display (`e3e5ecbc3`).
+
+**Follow-ups (non-blocking, ledgered):** FE-advertised 20 MB vs server `media.documents.max_file_size` 10 MB drift; quick-create can't set `requires_batch_tracking`; Space-key activation on preview; failed-card error styling; config-driven upload limit; Document+ExternalUrl serve test.
