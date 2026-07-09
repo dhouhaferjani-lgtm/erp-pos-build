@@ -194,6 +194,17 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
                 );
             }
 
+            // A movement must reference a POSTED journal entry. Task-24 fix B
+            // verification: NO converged flow records a movement against a Draft
+            // JE — every spine writer posts synchronously (postEntryNow → Posted)
+            // BEFORE recording the movement (TreasuryReceiptBridge, DepositBridge,
+            // AccountPaymentBridge, refund/expense/income services). The known
+            // "account-charge Draft-orphan" (TreasuryAccountChargeBridge posts a
+            // Draft AR entry) is an AR-only charge with NO cash leg — it records
+            // NO repository_movement, so it cannot reach this check. This guard is
+            // therefore a defensive invariant: a Draft-linked movement can only
+            // arise from corruption, and it FREEZES (proven by
+            // test_draft_linked_movement_freezes).
             if ($entry->status !== JournalEntryStatus::Posted) {
                 return sprintf(
                     'reconcile drift [check 2: unposted journal entry] repository %s movement %s: journal_entry %s status is %s (expected posted).',
@@ -278,11 +289,28 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
     }
 
     /**
-     * The movement amount reconciles against its journal entry when a line on
-     * the repository's own cash/bank GL account carries that amount on the
-     * matching side (debit for In, credit for Out), or — tolerant of bundled or
-     * reversal-convention entries — when any line in the entry carries the
-     * amount on either side.
+     * The movement amount reconciles against its journal entry.
+     *
+     * The repository's OWN cash/bank GL line is AUTHORITATIVE (Task-24 fix B,
+     * MAJOR). When the linked entry books a line on the repository's
+     * `gl_account_id` at all, the movement amount MUST be justified by those
+     * lines on the direction-correct side (In → the cash account is DEBITED;
+     * Out → CREDITED). A present-but-mismatched cash line — wrong amount OR wrong
+     * side — is a real cash/GL divergence (e.g. a cash-IN of 100 booked to the
+     * drawer for only 80 while 4111 is credited 100: the drawer is under-booked
+     * by 20). That IS drift → it must FREEZE, and must NOT be rescued by the
+     * tolerant any-line fallback below. Rescuing it there masked a false NEGATIVE
+     * — the 20-unit divergence escaped because the 4111 credit happened to carry
+     * the movement amount.
+     *
+     * The tolerant fallback runs ONLY when the entry books NO line on the repo's
+     * own gl_account_id (bundled or reversal-convention entries whose cash side
+     * lives on another account). It is kept deliberately loose — a false-positive
+     * freeze on a legitimate bundled entry would brick a live drawer — but is
+     * tightened to prefer the direction-correct side.
+     *
+     * All amount equality here is 1-ULP tolerant ({@see amountsReconcile}) so a
+     * tenant DB that missed the scale-3 widen migration does not false-freeze.
      */
     private function journalEntryAmountMatches(
         string $journalEntryId,
@@ -296,36 +324,80 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             ->get();
 
         $amount = $movement->amount;
+        $side = $movement->direction === MovementDirection::In ? 'debit' : 'credit';
 
         if ($repository->gl_account_id !== null) {
             $candidates = $lines->where('account_id', $repository->gl_account_id);
             if ($candidates->isNotEmpty()) {
-                $side = $movement->direction === MovementDirection::In ? 'debit' : 'credit';
-
+                // AUTHORITATIVE: the repo's own cash line(s) decide it — no
+                // fallthrough. A JE that splits the cash leg across several lines
+                // still reconciles via the sum; a single-line leg via the
+                // per-line match. Anything else is drift → return false (freeze).
                 $sum = '0';
                 foreach ($candidates as $line) {
                     /** @var numeric-string $sideAmount */
                     $sideAmount = $line->{$side};
-                    if (bccomp($sideAmount, $amount, $scale) === 0) {
+                    if ($this->amountsReconcile($sideAmount, $amount, $scale)) {
                         return true;
                     }
                     $sum = bcadd($sum, $sideAmount, $scale);
                 }
 
-                if (bccomp($sum, $amount, $scale) === 0) {
-                    return true;
-                }
+                return $this->amountsReconcile($sum, $amount, $scale);
             }
         }
 
-        // Fallback: the amount appears on either side of any line in the entry.
+        // Tolerant fallback (no line on the repo's own gl_account_id). Prefer the
+        // direction-correct side; accept the opposite side only as a last resort
+        // so a legitimate contra/reversal posting does not false-freeze.
+        $opposite = $side === 'debit' ? 'credit' : 'debit';
         foreach ($lines as $line) {
-            if (bccomp($line->debit, $amount, $scale) === 0 || bccomp($line->credit, $amount, $scale) === 0) {
+            /** @var numeric-string $directional */
+            $directional = $line->{$side};
+            if ($this->amountsReconcile($directional, $amount, $scale)) {
+                return true;
+            }
+        }
+        foreach ($lines as $line) {
+            /** @var numeric-string $contra */
+            $contra = $line->{$opposite};
+            if ($this->amountsReconcile($contra, $amount, $scale)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Cross-source amount equality with 1-ULP tolerance at the movement scale
+     * (Task-24 fix B, MINOR — defense-in-depth). `journal_lines.debit/credit` and
+     * `repository_movements.amount` are BOTH `decimal(15,3)` after the scale-3
+     * widen migration, so a correctly-migrated tenant compares exactly. A tenant
+     * DB that MISSED that migration keeps `journal_lines` at scale 2 and truncates
+     * every millime — a strict scale-3 compare would then false-freeze every TND
+     * drawer carrying a nonzero millime. Tolerating a single ULP (10^-scale)
+     * absorbs that scale mismatch without masking a real misbooking (those diverge
+     * by far more than one millime — see the authoritative cash-line check).
+     *
+     * Only cross-source comparisons (movement.amount vs journal_lines) route here.
+     * Check 1 (`balance == Σ movements`, same-table scale-3) and check 3
+     * (transfer group nets to 0, same-table) stay EXACT — never through here.
+     *
+     * @param  numeric-string  $a
+     * @param  numeric-string  $b
+     */
+    private function amountsReconcile(string $a, string $b, int $scale): bool
+    {
+        $diff = bcsub($a, $b, $scale);
+        $abs = bccomp($diff, '0', $scale) < 0 ? bcmul($diff, '-1', $scale) : $diff;
+
+        // |a - b| <= 1 ULP  ⟺  |a - b| * 10^scale <= 1. Scale-shifting to an
+        // integer compare keeps the ULP threshold exact without a hand-built
+        // decimal literal.
+        $factor = (string) (10 ** max($scale, 0));
+
+        return bccomp(bcmul($abs, $factor, 0), '1', 0) <= 0;
     }
 
     /**

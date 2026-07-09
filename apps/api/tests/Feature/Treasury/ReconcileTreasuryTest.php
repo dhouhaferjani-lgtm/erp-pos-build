@@ -430,6 +430,194 @@ final class ReconcileTreasuryTest extends TestCase
         self::assertSame(1, $this->driftEventCount($repoA->id));
     }
 
+    // ── (e2) authoritative cash-line amount match (Task-24 fix B) ──────────────
+    //
+    // The repository's OWN cash/bank GL line is authoritative: a movement whose
+    // linked JE mis-books that line (wrong amount, or wrong side) is a real
+    // cash/GL divergence and must FREEZE — it must NOT be rescued because some
+    // OTHER line in the entry happens to carry the movement amount.
+
+    public function test_misbooked_own_cash_line_freezes_even_when_another_line_carries_the_amount(): void
+    {
+        $repo = $this->seedRepository(); // gl_account_id = cashAccount
+
+        // A liability line that DOES carry the movement amount (the false-negative
+        // bait: the pre-fix global fallback matched this and let the drift escape).
+        $ar = Account::factory()->liability()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        // Cash-IN of 100, but the drawer's own GL line is booked for only 80
+        // (under-booked by 20) while AR carries 100. This is drift.
+        $entry = $this->postedEntryWithLines([
+            ['account_id' => $this->cashAccount->id, 'debit' => '80.000', 'credit' => '0'],
+            ['account_id' => $ar->id, 'debit' => '0', 'credit' => '100.000'],
+        ]);
+        $this->recordIn($repo, '100.000', journalEntryId: $entry->id);
+
+        $exit = $this->reconcile();
+
+        self::assertSame(1, $exit, 'A movement whose own cash line is under-booked must FREEZE.');
+        $repo->refresh();
+        self::assertNotNull($repo->frozen_at);
+        self::assertStringContainsStringIgnoringCase('amount', (string) $repo->frozen_reason);
+        self::assertSame(1, $this->driftEventCount($repo->id));
+    }
+
+    public function test_wrong_side_own_cash_line_freezes(): void
+    {
+        $repo = $this->seedRepository();
+
+        // Cash-IN of 40 but the drawer's own GL line is CREDITED (a cash-IN must
+        // DEBIT the cash account) — wrong side is drift.
+        $rev = Account::factory()->liability()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $entry = $this->postedEntryWithLines([
+            ['account_id' => $this->cashAccount->id, 'debit' => '0', 'credit' => '40.000'],
+            ['account_id' => $rev->id, 'debit' => '40.000', 'credit' => '0'],
+        ]);
+        $this->recordIn($repo, '40.000', journalEntryId: $entry->id);
+
+        $exit = $this->reconcile();
+
+        self::assertSame(1, $exit, 'A cash-IN booked on the CREDIT side of the drawer must FREEZE.');
+        $repo->refresh();
+        self::assertNotNull($repo->frozen_at);
+    }
+
+    public function test_bundled_entry_without_own_cash_line_does_not_false_freeze(): void
+    {
+        $repo = $this->seedRepository();
+
+        // A bundled/reversal entry whose cash side lives on ANOTHER account (the
+        // JE books NO line on the repo's own gl_account_id). The tolerant fallback
+        // must keep this GREEN — a false freeze here would brick a live drawer.
+        $otherCash = Account::factory()->asset()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $revenue = Account::factory()->liability()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+        $entry = $this->postedEntryWithLines([
+            ['account_id' => $otherCash->id, 'debit' => '50.000', 'credit' => '0'],
+            ['account_id' => $revenue->id, 'debit' => '0', 'credit' => '50.000'],
+        ]);
+        $this->recordIn($repo, '50.000', journalEntryId: $entry->id);
+
+        $exit = $this->reconcile();
+
+        self::assertSame(0, $exit, 'A bundled JE with no line on the repo cash account must NOT false-freeze.');
+        $repo->refresh();
+        self::assertNull($repo->frozen_at);
+        self::assertSame(0, $this->driftEventCount($repo->id));
+    }
+
+    // ── (e3) scale tolerance (Task-24 fix B, MINOR) ────────────────────────────
+
+    public function test_one_millime_scale_mismatch_is_tolerated_and_does_not_false_freeze(): void
+    {
+        // Simulates a tenant DB that missed the scale-3 widen migration: the JE
+        // cash line truncated the millime (100.000) while the scale-3 movement
+        // carries it (100.001). A strict compare would false-freeze every such
+        // TND drawer; a 1-ULP tolerance keeps it GREEN.
+        $repo = $this->seedRepository();
+        $entry = $this->postedCashEntry($this->cashAccount->id, '100.000');
+        $this->recordIn($repo, '100.001', journalEntryId: $entry->id);
+
+        $exit = $this->reconcile();
+
+        self::assertSame(0, $exit, 'A 1-millime scale mismatch must be tolerated, not frozen.');
+        $repo->refresh();
+        self::assertNull($repo->frozen_at);
+    }
+
+    // ── (e4) Draft-JE guard (Task-24 fix B, Fix 2 — synthetic corruption) ──────
+    //
+    // No converged flow records a movement against a Draft JE (every spine writer
+    // posts synchronously before recording; the account-charge Draft-orphan has
+    // no cash leg and records no movement). This proves the defensive Posted
+    // check DOES freeze a Draft-linked movement should corruption ever produce one.
+
+    public function test_draft_linked_movement_freezes(): void
+    {
+        $repo = $this->seedRepository();
+
+        // Link the movement to a DRAFT JE through the port (which does not
+        // validate JE status), so check 1 stays green on both drivers and check 2
+        // is what freezes. The port write also satisfies the pgsql balance-write
+        // trigger (a direct balance UPDATE is forbidden by forbid_direct_balance_write).
+        $draft = $this->draftCashEntry($this->cashAccount->id, '10.000');
+        $this->recordIn($repo, '10.000', sourceType: MovementSourceType::Payment, journalEntryId: $draft->id);
+
+        $exit = $this->reconcile();
+
+        self::assertSame(1, $exit, 'A movement linked to a Draft (unposted) JE must FREEZE.');
+        $repo->refresh();
+        self::assertNotNull($repo->frozen_at);
+        self::assertStringContainsStringIgnoringCase('posted', (string) $repo->frozen_reason);
+        self::assertSame(1, $this->driftEventCount($repo->id));
+    }
+
+    /**
+     * A posted journal entry with the given lines. Reconcile does not validate JE
+     * balance, so this seeds arbitrary (including deliberately misbooked) lines.
+     *
+     * @param  list<array{account_id: string, debit: numeric-string, credit: numeric-string}>  $lines
+     */
+    private function postedEntryWithLines(array $lines): JournalEntry
+    {
+        return $this->entryWithLines($lines, JournalEntryStatus::Posted);
+    }
+
+    /**
+     * A DRAFT (unposted) journal entry with a single cash-debit line.
+     *
+     * @param  numeric-string  $amount
+     */
+    private function draftCashEntry(string $accountId, string $amount): JournalEntry
+    {
+        return $this->entryWithLines(
+            [['account_id' => $accountId, 'debit' => $amount, 'credit' => '0']],
+            JournalEntryStatus::Draft,
+        );
+    }
+
+    /**
+     * @param  list<array{account_id: string, debit: numeric-string, credit: numeric-string}>  $lines
+     */
+    private function entryWithLines(array $lines, JournalEntryStatus $status): JournalEntry
+    {
+        $entry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'JE-REC-'.substr((string) Str::uuid(), 0, 8),
+            'entry_date' => now(),
+            'description' => 'Reconcile fixture',
+            'status' => $status,
+            'source_type' => 'test_cash',
+            'source_id' => (string) Str::uuid(),
+            'posted_at' => $status === JournalEntryStatus::Posted ? now() : null,
+        ]);
+
+        foreach ($lines as $order => $line) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $line['account_id'],
+                'debit' => $line['debit'],
+                'credit' => $line['credit'],
+                'description' => 'fixture line',
+                'line_order' => $order,
+            ]);
+        }
+
+        return $entry;
+    }
+
     // ── (f) REAL-BRIDGE green reconcile — the dominant FiscalEvent source type ──
     //
     // MAJOR 3: the clean cases above build movements from a hand-made Payment +
