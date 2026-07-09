@@ -36,8 +36,21 @@
   },
   "messages": {
     "committed": "تم اعتماد المستند.",
+    "readyForReview": "المسح جاهز للمراجعة.",
     "rejected": "تم رفض المسح.",
     "uploaded": "تم رفع المسح."
+  },
+  "processing": {
+    "backToList": "العودة إلى المسوحات",
+    "elapsed": "الوقت المنقضي: {{time}}",
+    "keepWorking": "يمكنك متابعة العمل — سنُعلمك عندما يصبح جاهزا.",
+    "steps": {
+      "extracting": "جارٍ الاستخراج",
+      "queued": "قيد الانتظار — سيبدأ الاستخراج قريبا",
+      "ready": "جاهز للمراجعة",
+      "uploaded": "مرفوع"
+    },
+    "title": "جارٍ معالجة المسح"
   },
   "review": {
     "batchNumber": "رقم الدفعة",
@@ -53,6 +66,7 @@
     "createSupplier": "إنشاء مورد",
     "expiryDate": "تاريخ الانتهاء",
     "extractedFields": "الحقول المستخرجة",
+    "extractionFailed": "فشل استخراج بيانات هذا المسح.",
     "lines": "السطور",
     "loading": "جاري تحميل المسح…",
     "location": "الموقع",

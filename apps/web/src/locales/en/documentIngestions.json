@@ -36,8 +36,21 @@
   },
   "messages": {
     "committed": "Document committed.",
+    "readyForReview": "Scan ready for review.",
     "rejected": "Scan rejected.",
     "uploaded": "Scan uploaded."
+  },
+  "processing": {
+    "backToList": "Back to scans",
+    "elapsed": "{{time}} elapsed",
+    "keepWorking": "You can keep working — we'll notify you when it's ready.",
+    "steps": {
+      "extracting": "Extracting",
+      "queued": "Queued — extraction starts shortly",
+      "ready": "Ready for review",
+      "uploaded": "Uploaded"
+    },
+    "title": "Processing scan"
   },
   "review": {
     "batchNumber": "Batch number",
@@ -53,6 +66,7 @@
     "createSupplier": "Create supplier",
     "expiryDate": "Expiry date",
     "extractedFields": "Extracted fields",
+    "extractionFailed": "Extraction failed for this scan.",
     "lines": "Lines",
     "loading": "Loading scan…",
     "location": "Location",

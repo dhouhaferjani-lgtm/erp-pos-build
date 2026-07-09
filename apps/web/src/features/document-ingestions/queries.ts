@@ -36,6 +36,10 @@ function shouldPoll(data: DocumentIngestionListResponse | undefined): boolean {
   return (data?.data ?? []).some((row) => row.status === 'uploaded' || row.status === 'extracting')
 }
 
+function shouldPollDetail(status: IngestionStatus | undefined): boolean {
+  return status === 'uploaded' || status === 'extracting' || status === 'committing'
+}
+
 export function useDocumentIngestions(params: ListDocumentIngestionsParams) {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -56,6 +60,7 @@ export function useDocumentIngestion(id: string | undefined) {
     queryKey: tenantScopedKey(['document-ingestions', 'detail', id]),
     queryFn: () => getDocumentIngestion(id ?? ''),
     enabled: id !== undefined && id !== '' && tenantId !== null && companyId !== null,
+    refetchInterval: (query) => (shouldPollDetail(query.state.data?.status) ? 4000 : false),
   })
 }
 

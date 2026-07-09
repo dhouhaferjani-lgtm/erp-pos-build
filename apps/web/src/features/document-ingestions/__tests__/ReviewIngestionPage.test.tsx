@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 
@@ -56,6 +57,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 import { ReviewIngestionPage } from '../ReviewIngestionPage'
+import { useDocumentIngestion } from '../queries'
 
 function renderReview(): QueryClient {
   const queryClient = new QueryClient({
@@ -320,5 +322,146 @@ describe('ReviewIngestionPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/purchases/suppliers/new', {
       state: { partnerPrefill: { name: 'Pharma Distribution' } },
     })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('shows the staged processing state (not the missing-extraction card) while a scan is extracting', async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/locations') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve(detailResponse({ status: 'extracting', extraction: null }))
+    })
+
+    renderReview()
+
+    expect(await screen.findByText('Extracting')).toBeInTheDocument()
+    expect(screen.getByText(/keep working/iu)).toBeInTheDocument()
+    expect(screen.queryByText('Extraction is not available for this scan.')).not.toBeInTheDocument()
+  })
+
+  it('shows the queued hint (not "Extracting") while a scan is only uploaded', async () => {
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/locations') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve(detailResponse({ status: 'uploaded', extraction: null }))
+    })
+
+    renderReview()
+
+    expect(await screen.findByText('Queued — extraction starts shortly')).toBeInTheDocument()
+    expect(screen.queryByText('Extraction is not available for this scan.')).not.toBeInTheDocument()
+  })
+
+  it('shows the failure message and lets the user retry a failed scan', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/locations') {
+        return Promise.resolve({ data: { data: [] } })
+      }
+      return Promise.resolve(detailResponse({
+        status: 'failed',
+        extraction: null,
+        error: { code: 'PROVIDER_TIMEOUT', message: 'Provider timeout' },
+      }))
+    })
+    mockApiPost.mockResolvedValueOnce({
+      data: { data: detailResponse({ status: 'extracting', extraction: null }).data.data },
+    })
+
+    renderReview()
+
+    expect(await screen.findByText('Provider timeout')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Re-run extraction' }))
+
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalledWith('/document-ingestions/ing-1/extract', {}))
+  })
+
+  it('polls while extracting and flips to the review layout with a ready toast once needs_review data arrives', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let detailCallCount = 0
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/locations') {
+        return Promise.resolve({ data: { data: [{ id: 'loc-1', name: 'Main Warehouse' }] } })
+      }
+      detailCallCount += 1
+      if (detailCallCount === 1) {
+        return Promise.resolve(detailResponse({ status: 'extracting', extraction: null }))
+      }
+      return Promise.resolve(detailResponse({ status: 'needs_review' }))
+    })
+
+    renderReview()
+
+    expect(await screen.findByText('Extracting')).toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000)
+    })
+
+    expect(await screen.findByText('Extracted fields')).toBeInTheDocument()
+    expect(toastSuccess).toHaveBeenCalledTimes(1)
+    expect(toastSuccess).toHaveBeenCalledWith('Scan ready for review.')
+  })
+})
+
+describe('useDocumentIngestion polling', () => {
+  function wrapper({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+
+  beforeEach(() => {
+    mockApiGet.mockReset()
+    useAuthStore.setState({
+      user: {
+        id: 'user-1',
+        name: 'Admin User',
+        email: 'admin@example.test',
+        tenant_id: 'tenant-1',
+        roles: ['admin'],
+        email_verified_at: '2026-01-01T00:00:00.000Z',
+      },
+      token: 'token',
+      isAuthenticated: true,
+      isLoading: false,
+    })
+    useCompanyStore.setState({ currentCompanyId: 'company-1', companies: [], isLoading: false })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('refetches every 4000ms while status is extracting, and stops once status is needs_review', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let callCount = 0
+    mockApiGet.mockImplementation(() => {
+      callCount += 1
+      const status = callCount < 3 ? 'extracting' : 'needs_review'
+      return Promise.resolve(detailResponse({ status, extraction: null }))
+    })
+
+    renderHook(() => useDocumentIngestion('ing-1'), { wrapper })
+
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(1))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000)
+    })
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000)
+    })
+    await waitFor(() => expect(callCount).toBeGreaterThanOrEqual(3))
+
+    const stableCount = callCount
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000)
+    })
+    expect(callCount).toBe(stableCount)
   })
 })

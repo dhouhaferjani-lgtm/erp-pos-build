@@ -36,8 +36,21 @@
   },
   "messages": {
     "committed": "Document validé.",
+    "readyForReview": "Scan prêt pour la revue.",
     "rejected": "Scan rejeté.",
     "uploaded": "Scan téléversé."
+  },
+  "processing": {
+    "backToList": "Retour aux scans",
+    "elapsed": "Temps écoulé : {{time}}",
+    "keepWorking": "Vous pouvez continuer à travailler — nous vous préviendrons dès que ce sera prêt.",
+    "steps": {
+      "extracting": "Extraction en cours",
+      "queued": "En file d'attente — l'extraction démarre bientôt",
+      "ready": "Prêt pour la revue",
+      "uploaded": "Téléversé"
+    },
+    "title": "Traitement du scan"
   },
   "review": {
     "batchNumber": "Numéro de lot",
@@ -53,6 +66,7 @@
     "createSupplier": "Créer un fournisseur",
     "expiryDate": "Date d'expiration",
     "extractedFields": "Champs extraits",
+    "extractionFailed": "L'extraction de ce scan a échoué.",
     "lines": "Lignes",
     "loading": "Chargement du scan…",
     "location": "Emplacement",

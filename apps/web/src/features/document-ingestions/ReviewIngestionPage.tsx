@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -10,9 +10,10 @@ import { buildSupplierPrefill } from './buildSupplierPrefill'
 import { CommitBar } from './components/CommitBar'
 import { ExtractedFieldsPanel } from './components/ExtractedFieldsPanel'
 import { LineMappingTable, type ReviewedLineState } from './components/LineMappingTable'
+import { ProcessingState } from './components/ProcessingState'
 import { SourceViewer } from './components/SourceViewer'
 import { SupplierPicker } from './components/SupplierPicker'
-import type { DocumentIngestionDetail, ProductCandidate, ReceiptLineCandidate, ReviewedLinePayload, ReviewedPayload } from './types'
+import type { DocumentIngestionDetail, IngestionStatus, ProductCandidate, ReceiptLineCandidate, ReviewedLinePayload, ReviewedPayload } from './types'
 
 function confidenceSummary(detail: DocumentIngestionDetail) {
   return detail.confidenceSummary ?? detail.confidence_summary ?? null
@@ -20,6 +21,10 @@ function confidenceSummary(detail: DocumentIngestionDetail) {
 
 function sourceUrl(detail: DocumentIngestionDetail): string | null {
   return detail.sourceUrl ?? detail.source_url ?? null
+}
+
+function startedAt(detail: DocumentIngestionDetail): string | undefined {
+  return detail.createdAt ?? detail.created_at ?? undefined
 }
 
 function committedType(detail: DocumentIngestionDetail): string | null {
@@ -143,6 +148,18 @@ export function ReviewIngestionPage() {
     setLineStates(initialLines(detail))
   }, [detail])
 
+  // Polling (useDocumentIngestion) makes the render flip automatically as the
+  // scan progresses server-side; surface that transition to the user instead
+  // of relying on them to notice the page changed underneath them.
+  const prevStatusRef = useRef<IngestionStatus | null>(null)
+  useEffect(() => {
+    const prev = prevStatusRef.current
+    if ((prev === 'uploaded' || prev === 'extracting') && detail?.status === 'needs_review') {
+      toast.success(t('messages.readyForReview'))
+    }
+    prevStatusRef.current = detail?.status ?? null
+  }, [detail?.status, t])
+
   const flaggedPaths = useMemo(() => detail ? buildFlaggedPaths(detail) : new Set<string>(), [detail])
   const flags = detail ? confidenceSummary(detail)?.reconciliation.flags ?? [] : []
   const currency = detail?.extraction?.header['currency']?.value ?? 'TND'
@@ -164,20 +181,35 @@ export function ReviewIngestionPage() {
     )
   }
 
+  // In-flight scans have no extraction payload yet — that is expected, not an
+  // error. Show the staged processing state regardless of `detail.extraction`
+  // so this can never fall through to the "not available" card below (the
+  // owner-reported bug).
+  if (detail.status === 'uploaded' || detail.status === 'extracting') {
+    return <ProcessingState status={detail.status} thumbnailUrl={sourceUrl(detail)} startedAt={startedAt(detail)} />
+  }
+
+  if (detail.status === 'failed') {
+    return (
+      <div className={cn(tokens.card.base, 'space-y-4')}>
+        <h1 className={tokens.heading.section}>{t('review.title')}</h1>
+        <p>{detail.error?.message ?? t('review.extractionFailed')}</p>
+        <button
+          type="button"
+          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+          onClick={() => { void reExtractMutation.mutateAsync().then(() => refetch()) }}
+        >
+          {t('actions.reExtract')}
+        </button>
+      </div>
+    )
+  }
+
   if (!detail.extraction) {
     return (
       <div className={cn(tokens.card.base, 'space-y-4')}>
         <h1 className={tokens.heading.section}>{t('review.title')}</h1>
-        <p>{detail.error?.message ?? t('review.noExtraction')}</p>
-        {detail.status === 'failed' && (
-          <button
-            type="button"
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
-            onClick={() => { void reExtractMutation.mutateAsync().then(() => refetch()) }}
-          >
-            {t('actions.reExtract')}
-          </button>
-        )}
+        <p>{t('review.noExtraction')}</p>
       </div>
     )
   }
@@ -315,7 +347,7 @@ export function ReviewIngestionPage() {
             isRejecting={rejectMutation.isPending}
             isReExtracting={reExtractMutation.isPending}
             refusalReason={blockReason}
-            canReExtract={detail.status === 'failed' || detail.status === 'needs_review'}
+            canReExtract={detail.status === 'needs_review'}
             onCommit={() => { void handleCommit() }}
             onReject={() => { void handleReject() }}
             onReExtract={() => { void handleReExtract() }}
