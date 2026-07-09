@@ -10,6 +10,7 @@ import { formatAvailableQty } from '@/lib/stock/stockGate';
 import { ProductThumb, StockBadge } from '@/components/ui';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useStockDisplay } from '@/components/organisms/ProductGrid/useStockDisplay';
+import { NearExpirySlot } from '@/components/organisms/ProductGrid/NearExpirySlot';
 import {
   CARD_NAME_MIN_H_CLASS_GRID,
   CARD_NAME_MIN_H_CLASS_VISUAL,
@@ -19,6 +20,32 @@ import type { LocationStockDisplay } from '@/lib/stock/gridStock';
 
 /** Quantity scale — ALWAYS pass explicitly (decimal.ts defaults to 3). */
 const QTY_SCALE = 4;
+
+/**
+ * Task 16 skin-type dot palette (whole-branch review fix B). Strategy A
+ * reserves `accent` for brand chrome, `success` for stock/money, and
+ * `action` for interaction/selection — none apply to a purely decorative
+ * per-product tag, so this indicator must not use any of them. There is no
+ * dedicated skin-type palette in the design system, so this reuses five of
+ * the seven `--cat-*` category-tint CSS vars (`src/index.css`) purely for
+ * VISUAL distinction between dots — the colors carry no category meaning
+ * here, only "five values that read as different from each other".
+ * `--cat-corps-fg` is excluded (it is byte-identical to `--success`) and
+ * `--cat-hygiene-fg` is excluded (byte-identical to the 'blue' `--accent`
+ * preset) — using either would reintroduce the exact collision this fix
+ * removes for those themes. The remaining five map 1:1 to the five
+ * `SkinType` values (see `smart-prompts:skin_type.*`); the mapping itself is
+ * arbitrary, not semantic.
+ */
+const SKIN_TYPE_DOT_CLASS: Record<string, string> = {
+  normal: 'bg-[var(--cat-cheveux-fg)]',
+  oily: 'bg-[var(--cat-solaire-fg)]',
+  dry: 'bg-[var(--cat-visage-fg)]',
+  combination: 'bg-[var(--cat-bebe-fg)]',
+  sensitive: 'bg-[var(--cat-complements-fg)]',
+};
+/** Any skin-type value outside the known five falls back to one neutral dot. */
+const SKIN_TYPE_DOT_FALLBACK_CLASS = 'bg-ink-faint';
 
 /**
  * i18next reserves `count` for pluralisation and types it as `number`, but
@@ -392,7 +419,10 @@ function ProductCardInner({
                   key={skinType}
                   data-testid="skin-type-dot"
                   title={skinType}
-                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                  className={cn(
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    SKIN_TYPE_DOT_CLASS[skinType] ?? SKIN_TYPE_DOT_FALLBACK_CLASS,
+                  )}
                 />
               ))}
             </div>
@@ -442,6 +472,9 @@ function ProductCardInner({
           )}
         </div>
       </div>
+
+      {/* Spec 2 reserved slot — renders nothing today, see NearExpirySlot doc. */}
+      <NearExpirySlot product={product} />
 
       {incomingTotal !== null && (
         <p

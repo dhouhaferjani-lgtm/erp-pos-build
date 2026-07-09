@@ -10,6 +10,7 @@ import { ProductThumb, StockBadge } from '@/components/ui';
 import { bccomp, bcsum } from '@/lib/decimal';
 import { formatAvailableQty } from '@/lib/stock/stockGate';
 import { useStockDisplay } from './useStockDisplay';
+import { NearExpirySlot } from './NearExpirySlot';
 import type { POSProduct } from '@/types/product';
 import type { GridLocationStockMap, LocationStockDisplay } from '@/lib/stock/gridStock';
 
@@ -241,6 +242,8 @@ const ProductTableRow = memo(function ProductTableRow({
             {incomingTotal}
           </span>
         )}
+        {/* Spec 2 reserved slot — renders nothing today, see NearExpirySlot doc. */}
+        <NearExpirySlot product={product} />
       </div>
 
       {/* Prix — data, never accent: always text-ink (designTokens.ts §1) */}

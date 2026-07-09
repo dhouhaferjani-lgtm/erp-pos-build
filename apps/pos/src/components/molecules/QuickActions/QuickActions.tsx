@@ -89,7 +89,10 @@ export function QuickActions({
                */}
               <span className="min-w-0 truncate">{action.label}</span>
               {action.count > 0 && (
-                <span className="ml-1.5 inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-pill bg-accent-tint px-1.5 text-xs font-semibold tabular-nums text-accent-strong">
+                // A count is neither selection, stock, nor money — off accent
+                // (Strategy A whole-branch review fix A): a neutral surface
+                // pill, same shape/size as before.
+                <span className="ml-1.5 inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-pill bg-surface-sunken px-1.5 text-xs font-semibold tabular-nums text-ink">
                   {action.count}
                 </span>
               )}

@@ -182,7 +182,14 @@ export function ProductDetailDrawer({
             aria-label={t('productDetail.addToCart')}
             disabled={isActivationBlocked}
             onClick={() => { void addItemGated(product); }}
-            className={cn(tokens.button.primary, 'mt-5 h-[54px] w-full text-base shadow-sm')}
+            className={cn(
+              tokens.button.primary,
+              // `shadow-sm` is a call-site addition on top of tokens.button.primary
+              // (which has no shadow) — without disabled:shadow-none the disabled
+              // state keeps looking elevated/tappable. A subtle border makes the
+              // disabled look read as inert rather than a duller primary button.
+              'mt-5 h-[54px] w-full text-base shadow-sm disabled:border disabled:border-border-subtle disabled:shadow-none',
+            )}
           >
             <ShoppingCart className="h-5 w-5" aria-hidden="true" />
             {t('productDetail.addToCart')}

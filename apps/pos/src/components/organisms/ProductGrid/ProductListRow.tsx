@@ -7,6 +7,7 @@ import { useProductImage } from '@/lib/images/useProductImage';
 import { ProductThumb, StockBadge } from '@/components/ui';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useStockDisplay } from './useStockDisplay';
+import { NearExpirySlot } from './NearExpirySlot';
 import type { POSProduct } from '@/types/product';
 import type { LocationStockDisplay } from '@/lib/stock/gridStock';
 
@@ -69,7 +70,9 @@ function ProductListRowInner({
         {product.brand_name && (
           <p
             className={cn(
-              'w-full truncate text-[10px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
+              // Task 11 parity with ProductCard — 10px read as washed-out;
+              // bumped to 11px for legibility (whole-branch review fix D).
+              'w-full truncate text-[11px] font-bold leading-[1.2] tracking-[0.05em] uppercase',
               status === 'out' ? 'text-ink-faint' : 'text-ink-muted',
             )}
           >
@@ -104,6 +107,9 @@ function ProductListRowInner({
           {stockLabel}
         </StockBadge>
       )}
+
+      {/* Spec 2 reserved slot — renders nothing today, see NearExpirySlot doc. */}
+      <NearExpirySlot product={product} />
 
       <p
         data-testid="price-row"
