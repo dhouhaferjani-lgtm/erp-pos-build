@@ -250,11 +250,31 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
     if (prefill.city !== undefined) setValue('city', prefill.city)
     if (prefill.state !== undefined) setValue('state', prefill.state)
     if (prefill.postal_code !== undefined) setValue('postal_code', prefill.postal_code)
-    if (prefill.country_code !== undefined) {
-      setValue('country_code', prefill.country_code)
-      setValue('country', prefill.country_code)
-    }
   }, [isEditing, location.state, setValue])
+
+  // Country is applied separately: it must be validated against the loaded country
+  // list so a syntactically valid but unknown scanned code (e.g. "XX") is never held
+  // in form state and submitted (the backend would reject it at save). Gated on the
+  // list resolving; applies at most once, leaving the company default when unknown.
+  const prefillCountryAppliedRef = useRef(false)
+  useEffect(() => {
+    if (isEditing || prefillCountryAppliedRef.current) {
+      return
+    }
+    const code = readPartnerPrefill(location.state)?.country_code
+    if (code === undefined) {
+      prefillCountryAppliedRef.current = true
+      return
+    }
+    if (countries.length === 0) {
+      return
+    }
+    prefillCountryAppliedRef.current = true
+    if (countries.some((country) => country.code === code)) {
+      setValue('country', code)
+      setValue('country_code', code)
+    }
+  }, [isEditing, countries, location.state, setValue])
 
   // Populate form when partner data loads
   useEffect(() => {
