@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { Modal } from '@/components/organisms/Modal'
 import { getErrorMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { textColors, tokens, typography } from '@/lib/designTokens'
@@ -141,6 +142,10 @@ export function ReviewIngestionPage() {
   const [pendingReceipt, setPendingReceipt] = useState(false)
   const [lineStates, setLineStates] = useState<ReviewedLineState[]>([])
   const [serverError, setServerError] = useState<string | null>(null)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  // The Modal primitive has no focus management of its own — remember which
+  // element opened the lightbox so closing it can hand focus back.
+  const lightboxReturnFocusRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!detail) return
@@ -267,6 +272,17 @@ export function ReviewIngestionPage() {
     await refetch()
   }
 
+  function openLightbox(): void {
+    lightboxReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setLightboxOpen(true)
+  }
+
+  function closeLightbox(): void {
+    setLightboxOpen(false)
+    lightboxReturnFocusRef.current?.focus()
+    lightboxReturnFocusRef.current = null
+  }
+
   const model = providerModel(detail)
   const locationOptions = Array.isArray(locations.data) ? locations.data : []
 
@@ -284,8 +300,13 @@ export function ReviewIngestionPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.8fr)]">
-        <SourceViewer sourceUrl={sourceUrl(detail)} />
+      <div data-testid="review-grid" className="grid gap-6 xl:grid-cols-[minmax(300px,0.7fr)_minmax(0,1.4fr)]">
+        <div data-testid="preview-pane" className="space-y-2 xl:sticky xl:top-4 xl:self-start">
+          <SourceViewer sourceUrl={sourceUrl(detail)} onActivate={openLightbox} />
+          {sourceUrl(detail) && (
+            <p className={cn(typography.fontSize.xs, textColors.tertiary)}>{t('review.zoomHint')}</p>
+          )}
+        </div>
 
         <div className="space-y-4">
           <ExtractedFieldsPanel extraction={detail.extraction} flaggedPaths={flaggedPaths} flags={flags} />
@@ -354,6 +375,14 @@ export function ReviewIngestionPage() {
           />
         </div>
       </div>
+
+      <Modal isOpen={lightboxOpen} onClose={closeLightbox} size="xl" title={t('review.source')}>
+        <Modal.Content>
+          {/* A second render of the same source — pdf.js/img re-render at
+              modal width provides the zoom. No onActivate: not interactive. */}
+          <SourceViewer sourceUrl={sourceUrl(detail)} />
+        </Modal.Content>
+      </Modal>
     </div>
   )
 }

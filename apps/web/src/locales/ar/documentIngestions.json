@@ -90,7 +90,8 @@
     "supplier": "المورد",
     "title": "مراجعة المسح",
     "unitPrice": "سعر الوحدة",
-    "vatRate": "نسبة الضريبة"
+    "vatRate": "نسبة الضريبة",
+    "zoomHint": "انقر على المعاينة للتكبير"
   },
   "statuses": {
     "committed": "معتمد",

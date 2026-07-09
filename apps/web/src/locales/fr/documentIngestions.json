@@ -91,7 +91,8 @@
     "supplier": "Fournisseur",
     "title": "Revue du scan",
     "unitPrice": "Prix unitaire",
-    "vatRate": "Taux TVA"
+    "vatRate": "Taux TVA",
+    "zoomHint": "Cliquez sur l'aperçu pour zoomer"
   },
   "statuses": {
     "committed": "Validé",

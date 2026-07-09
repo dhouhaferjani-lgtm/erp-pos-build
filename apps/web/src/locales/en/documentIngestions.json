@@ -91,7 +91,8 @@
     "supplier": "Supplier",
     "title": "Review scan",
     "unitPrice": "Unit price",
-    "vatRate": "VAT rate"
+    "vatRate": "VAT rate",
+    "zoomHint": "Click the preview to zoom"
   },
   "statuses": {
     "committed": "Committed",

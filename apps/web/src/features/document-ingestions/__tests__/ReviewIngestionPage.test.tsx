@@ -336,6 +336,53 @@ describe('ReviewIngestionPage', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('lays out review-primary: wider review track and a sticky preview pane', async () => {
+    mockApiGet.mockResolvedValue(detailResponse())
+
+    renderReview()
+
+    const grid = await screen.findByTestId('review-grid')
+    expect(grid.className).toContain('xl:grid-cols-[minmax(300px,0.7fr)_minmax(0,1.4fr)]')
+    const previewPane = screen.getByTestId('preview-pane')
+    expect(previewPane.className).toContain('xl:sticky')
+    // DOM order keeps the preview first (left in LTR).
+    expect(grid.firstElementChild).toBe(previewPane)
+  })
+
+  it('opens a lightbox with a second source render when the preview is activated, and returns focus on close', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue(detailResponse())
+    // SourceViewer fetches the signed URL and sniffs the bytes; serve PNG
+    // magic bytes so it reaches the interactive image state.
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(pngBytes.buffer),
+    }))
+    vi.stubGlobal('URL', Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:mock-url'),
+      revokeObjectURL: vi.fn(),
+    }))
+
+    renderReview()
+
+    // The in-page preview is interactive (role button via onActivate).
+    const preview = await screen.findByRole('button', { name: 'Source document' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await user.click(preview)
+
+    const dialog = await screen.findByRole('dialog')
+    // The lightbox renders a SECOND, non-interactive source render (plain img).
+    expect(await within(dialog).findByRole('img', { name: 'Source document' })).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(preview).toHaveFocus()
   })
 
   it('shows the staged processing state (not the missing-extraction card) while a scan is extracting', async () => {
