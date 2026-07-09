@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useCompany } from '../../../hooks/useCompany'
+import { formatPercent } from '../../../lib/format'
 
 export interface LineAllocation {
   lineId: string
@@ -35,10 +36,6 @@ export function LandedCostBreakdown({
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value)
-  }
-
-  const formatPercent = (value: number): string => {
-    return `${(value * 100).toFixed(1)}%`
   }
 
   const totalAllocated = lines.reduce((sum, l) => sum + l.allocatedCosts, 0)
@@ -112,7 +109,7 @@ export function LandedCostBreakdown({
                 </td>
                 {showProportion && (
                   <td className="px-4 py-3 text-end text-sm text-gray-500 dark:text-gray-400">
-                    {formatPercent(line.proportion)}
+                    {formatPercent(line.proportion * 100)}
                   </td>
                 )}
                 <td className="px-4 py-3 text-end text-sm text-blue-600 dark:text-blue-400">

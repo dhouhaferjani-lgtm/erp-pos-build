@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useCompany } from '../../../hooks/useCompany'
+import { formatPercent } from '../../../lib/format'
 import { PriceInputWithMargin } from '../../molecules/PriceInputWithMargin'
 
 export interface ProductPricingCardProps {
@@ -42,10 +43,6 @@ export function ProductPricingCard({
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value)
-  }
-
-  const formatPercent = (value: number): string => {
-    return `${value.toFixed(1)}%`
   }
 
   return (
