@@ -269,6 +269,37 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             // the advisory lock above is now purely a concurrency serializer:
             // the second waiter sees each committed leg as an idempotent hit.
 
+            // Task 20 review Fix 1 (MAJOR) — legacy null-key fallback.
+            // Payments written by the PRE-Task-20 bridge carry
+            // `origin = Pos` + `fiscal_event_id = $event->id` but NO
+            // `idempotency_key` (the per-leg key scheme did not exist yet, and
+            // Task 20 shipped no backfill). The per-leg lookup in
+            // projectPaymentLineFromCanonical() keys on
+            // `payments.idempotency_key = 'fiscal_event:{id}:payment:{i}'`, so
+            // it would MISS every legacy row → take the CREATE branch → write a
+            // duplicate Payment + a duplicate POS-revenue GL post
+            // (journal_entries(source_type, source_id) is NOT uniquely
+            // constrained) + a duplicate balance movement. Fiscal projections
+            // are redelivery-driven, so a pre-Task-20-projected event
+            // redelivered after cutover is a silent wrong-money defect that
+            // clean-DB tests never exercise.
+            //
+            // SAFE fix: recognize the legacy event at the EVENT level and treat
+            // the WHOLE event as already-settled — do NOT attempt to backfill or
+            // guess per-leg ordinals for the null-key rows. New (post-Task-20)
+            // events stamp per-leg keys on every row, so this probe finds
+            // nothing for them and they continue down the per-leg path below.
+            $legacyNullKeyPaymentExists = Payment::query()
+                ->where('company_id', $event->company_id)
+                ->where('fiscal_event_id', $event->id)
+                ->where('origin', PaymentOrigin::Pos)
+                ->whereNull('idempotency_key')
+                ->exists();
+
+            if ($legacyNullKeyPaymentExists) {
+                return;
+            }
+
             // Pass 2A.PHP.2 — read from the canonical view. The 27-key
             // payload exposes `payments[]` with `method_code`, NOT
             // `payment_method_id`. Resolve the FK via the Shared/Contracts
@@ -487,7 +518,14 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             companyId: $event->company_id,
             direction: MovementDirection::In,
             amount: $amount,
-            currency: $repository->currency,
+            // Task 20 review Fix 2 (MINOR) — pass the TENDER/RECEIPT currency
+            // (the currency `$amount` is denominated in), NOT the repository
+            // currency. The port's CurrencyMismatchException guard compares
+            // `$repo->currency !== $intent->currency`; passing the repo currency
+            // here makes that comparison trivially always-equal and silently
+            // disarms the F12 safety check. Today receipt currency == repo
+            // currency so behavior is unchanged, but the guard is restored.
+            currency: $receipt->currency,
             sourceType: MovementSourceType::FiscalEvent,
             sourceId: $event->id,
             idempotencyLeg: sprintf('payment:%d', $index),

@@ -162,7 +162,14 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                 companyId: $event->company_id,
                 direction: MovementDirection::In,
                 amount: $this->paymentAmount($event, $view),
-                currency: $repository->currency,
+                // Task 20 review Fix 2 (MINOR) — pass the TENDER currency (the
+                // currency the amount is denominated in, also stamped on the
+                // Payment row above), NOT the repository currency. Passing the
+                // repo currency makes the port's CurrencyMismatchException guard
+                // (`$repo->currency !== $intent->currency`) trivially always-
+                // equal and silently disarms it. Currencies match today so
+                // behavior is unchanged; the guard is restored.
+                currency: $view->payload->currencyCode,
                 sourceType: MovementSourceType::FiscalEvent,
                 sourceId: $event->id,
                 idempotencyLeg: 'payment:0',
