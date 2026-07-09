@@ -54,8 +54,10 @@ describe('ProductHero', () => {
     expect(screen.getByText('Avène ✦')).toBeInTheDocument()
     expect(screen.getByText('Soin solaire')).toBeInTheDocument()
     expect(screen.getByText('24')).toBeInTheDocument()
-    expect(screen.getByText('41.2%')).toBeInTheDocument()
-    expect(screen.getByText('12,000 TND')).toBeInTheDocument()
+    // sale_price 14.280 is canonical HT (R3-6): margin = (14.280 - 8.500)/8.500 = 68.0%;
+    // HT = 14,280; TTC = 14.280 × 1.19 = 16,993.
+    expect(screen.getByText('68.0%')).toBeInTheDocument()
     expect(screen.getByText('14,280 TND')).toBeInTheDocument()
+    expect(screen.getByText('16,993 TND')).toBeInTheDocument()
   })
 })
