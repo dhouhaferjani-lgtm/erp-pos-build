@@ -674,6 +674,9 @@ jobs:
       - name: Run TanStack query key audit
         run: pnpm audit:keys
 
+      - name: Run design-system audit
+        run: pnpm audit:design-system
+
       - name: Run ESLint warning ratchet
         # Supersedes a raw `pnpm lint`: errors still hard-fail immediately,
         # and the per-app warning count is ratcheted against

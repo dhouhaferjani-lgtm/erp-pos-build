@@ -292,6 +292,47 @@ function fingerprintExpression(sourceFile, expr) {
 }
 
 /**
+ * Resolve a shorthand `queryKey` property back to the nearest preceding
+ * variable declaration in the same source file. This intentionally stays
+ * syntax-only like the rest of the scanner; unresolved shorthand remains
+ * default-deny by returning null.
+ *
+ * @param {ts.SourceFile} sourceFile
+ * @param {ts.ShorthandPropertyAssignment} shorthand
+ * @returns {ts.Expression | null}
+ */
+function resolveShorthandQueryKeyInitializer(sourceFile, shorthand) {
+  const name = shorthand.name.text;
+  const shorthandStart = shorthand.getStart(sourceFile);
+  /** @type {{start: number, initializer: ts.Expression} | null} */
+  let best = null;
+
+  /**
+   * @param {ts.Node} node
+   */
+  function visit(node) {
+    const nodeStart = node.getStart(sourceFile);
+    if (nodeStart >= shorthandStart) return;
+
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === name &&
+      node.initializer
+    ) {
+      if (best === null || nodeStart > best.start) {
+        best = { start: nodeStart, initializer: node.initializer };
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return best?.initializer ?? null;
+}
+
+/**
  * @param {ts.ObjectLiteralExpression} options
  * @param {string} factoryName
  * @param {ts.SourceFile} sourceFile
@@ -306,8 +347,10 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
       ts.isIdentifier(p.name) &&
       p.name.text === 'queryKey',
   );
-  if (queryKeyProp && ts.isPropertyAssignment(queryKeyProp)) {
-    const initializer = queryKeyProp.initializer;
+  if (queryKeyProp) {
+    const initializer = ts.isPropertyAssignment(queryKeyProp)
+      ? queryKeyProp.initializer
+      : resolveShorthandQueryKeyInitializer(sourceFile, queryKeyProp) ?? queryKeyProp.name;
     if (!queryKeyExpressionIsApproved(initializer)) {
       const startPos = queryKeyProp.getStart(sourceFile);
       const { line, character } = sourceFile.getLineAndCharacterOfPosition(startPos);

@@ -6,7 +6,7 @@ import { ArrowLeft, Edit, Trash2, Car, Calendar, Gauge, Fuel, Settings } from 'l
 import { apiDelete } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
-import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
 import { OwnershipHistoryTimeline } from './components/organisms/OwnershipHistoryTimeline'
 import { MileageLogList } from './components/organisms/MileageLogList'
@@ -141,7 +141,7 @@ export function VehicleDetailPage() {
         <div className="flex items-center gap-2">
           <Link
             to={`/vehicles/${vehicleId}/edit`}
-            className={`inline-flex items-center gap-2 rounded-lg border ${borderColors.default} bg-white px-4 py-2 text-sm font-medium ${textColors.secondary} hover:bg-gray-50`}
+            className={`inline-flex items-center gap-2 rounded-lg border ${borderColors.default} bg-white px-4 py-2 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50}`}
           >
             <Edit className="h-4 w-4" />
             {t('common:actions.edit')}
@@ -177,7 +177,7 @@ export function VehicleDetailPage() {
             <div>
               <dt className={`text-sm font-medium ${textColors.tertiary}`}>{t('licensePlate')}</dt>
               <dd className="mt-1">
-                <span className={`inline-flex rounded-md bg-gray-100 px-2 py-1 text-sm font-mono font-medium ${textColors.secondary}`}>
+                <span className={`inline-flex rounded-md ${colors.neutral[100]} px-2 py-1 text-sm font-mono font-medium ${textColors.secondary}`}>
                   {vehicle.license_plate}
                 </span>
               </dd>

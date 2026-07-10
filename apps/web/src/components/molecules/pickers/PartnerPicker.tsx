@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useDebouncedValue } from '@/lib/hooks'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 
 /**
@@ -94,13 +97,15 @@ export function PartnerPicker({
   const [isOpen, setIsOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const debouncedQuery = useDebouncedValue(query, 250)
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
   const searchEnabled = isOpen && debouncedQuery.trim().length >= 2
-  const queryKey = ['pickers', 'partner', partnerType, debouncedQuery] as const
+  const queryKey = tenantScopedKey(['pickers', 'partner', partnerType, debouncedQuery] as const)
 
   const { data, isLoading, isError } = useQuery({
     queryKey,
-    enabled: searchEnabled && !disabled,
+    enabled: searchEnabled && !disabled && tenantId !== null && companyId !== null,
     queryFn: async () => {
       const params = new URLSearchParams({ per_page: '20', is_active: 'true' })
       params.set('search', debouncedQuery.trim())
