@@ -275,7 +275,7 @@ describe('inventory queryKey shapes', () => {
         <CatalogLookupProbe />
         <ProductDocumentsTab productId="prod-1" />
         <ProductMovementsTab productId="prod-1" />
-        <ProductStockLevels productId="prod-1" costPrice="10.00" />
+        <ProductStockLevels productId="prod-1" costPrice="10.00" canViewCostPrices />
         <PriceInputWithMargin productId="prod-1" value={20} onChange={() => {}} />
       </>,
       { queryClient },
@@ -292,10 +292,10 @@ describe('inventory queryKey shapes', () => {
 
     const keys = inventoryKeysFromCache(queryClient)
     expectScoped(keys.find((k) => k[0] === 'platform'), ['platform', 'catalog-lookup', '5901234123457'])
-    expectScoped(keys.find((k) => k[0] === 'product-documents'), ['product-documents', 'prod-1'])
-    expectScoped(keys.find((k) => k[0] === 'product-movements'), ['product-movements', 'prod-1', []])
+    expectScoped(keys.find((k) => k[0] === 'product-documents'), ['product-documents', 'prod-1', 1, 25])
+    expectScoped(keys.find((k) => k[0] === 'product-movements'), ['product-movements', 'prod-1', [], 1, 25])
     expectScoped(keys.find((k) => k[0] === 'product-stock'), ['product-stock', 'prod-1'])
-    expectScoped(keys.find((k) => k[0] === 'margin-check'), ['margin-check', 'prod-1', 20])
+    expectScoped(keys.find((k) => k[0] === 'margin-check'), ['margin-check', 'prod-1', '20'])
   })
 
   it('wraps loyalty earn-rate key and gates missing tenant/company', async () => {

@@ -26,13 +26,13 @@ import {
 import { ProductMovementsTab } from './components/ProductMovementsTab'
 import { ProductDocumentsTab } from './components/ProductDocumentsTab'
 import { useProductRealtime } from '../products/hooks/useProductRealtime'
-import { ProductStockLevels } from './components'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
 import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
 import { ProductHero } from '../products/editor/components/ProductHero'
 import { ProductGeneralSection } from '../products/sections/ProductGeneralSection'
 import { ProductPricingSection } from '../products/sections/ProductPricingSection'
+import { ProductInventorySection } from '../products/sections/ProductInventorySection'
 import type { DiscountPolicyVerdict, ProductSectionProduct } from '../products/sections/types'
 import {
   PRODUCT_DETAIL_SECTIONS,
@@ -222,14 +222,6 @@ export function ProductDetailPage() {
     </div>
   )
   const sectionRenderers: EditorSectionRendererRegistry<typeof sectionGateCtx> = {
-    'stock-levels': () => (
-      <ProductStockLevels
-        productId={product.id}
-        costPrice={product.cost_price}
-        currency={companyCurrency}
-        locale={companyLocale}
-      />
-    ),
     automotive: () => (
       <div className={tokens.card.base}>
         <h3 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
@@ -366,6 +358,16 @@ export function ProductDetailPage() {
                   formatPercent: (value) => value === null ? '\u2014' : formatPercent(value),
                   product: publicProduct,
                   ...(discountPolicyVerdict === undefined ? {} : { discountPolicyVerdict }),
+                }}
+              />
+              <ProductInventorySection
+                adapter={{
+                  mode: 'view',
+                  canViewCostPrices,
+                  costPrices,
+                  currency: companyCurrency,
+                  locale: companyLocale,
+                  product: publicProduct,
                 }}
               />
               {PRODUCT_DETAIL_SECTIONS

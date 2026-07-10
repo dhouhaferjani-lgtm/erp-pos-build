@@ -158,6 +158,13 @@ export interface ProductSectionsEditAdapter extends ProductSectionsBaseAdapter {
     showOpeningSection: boolean
     canEnterOpening: boolean
     isOpeningLocked: boolean
+    productStockQuantity: string | null
+    canResetOpening: boolean
+    showResetConfirm: boolean
+    isResettingOpening: boolean
+    requestOpeningReset: () => void
+    cancelOpeningReset: () => void
+    resetOpening: () => Promise<void>
   }
   media: {
     bufferedImages: File[]

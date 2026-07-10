@@ -68,7 +68,7 @@ vi.mock('./components/ProductMovementsTab', () => ({
 vi.mock('./components/ProductDocumentsTab', () => ({
   ProductDocumentsTab: () => <div data-testid="documents-tab" />,
 }))
-vi.mock('./components', () => ({
+vi.mock('@/features/inventory/components/ProductStockLevels', () => ({
   ProductStockLevels: () => <div data-testid="stock-levels" />,
 }))
 vi.mock('../products/components', () => ({

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAfterSaveNavigation } from '@/hooks/useAfterSaveNavigation'
 import { useUnsavedChangesGuard, confirmDiscard } from '@/hooks/useUnsavedChangesGuard'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm, useFieldArray, Controller } from 'react-hook-form'
+import { useForm, useFieldArray } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { Plus, X, Layers } from 'lucide-react'
 import { toast } from 'sonner'
@@ -15,10 +15,7 @@ import { useCompanyStore } from '../../stores/companyStore'
 import { colors, tokens, textColors } from '../../lib/designTokens'
 import { Button } from '../../components/atoms/Button/Button'
 import { Checkbox } from '../../components/atoms/Checkbox/Checkbox'
-import { FormField } from '../../components/atoms/FormField/FormField'
 import { Input } from '../../components/atoms/Input/Input'
-import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
-import { Toggle } from '../../components/atoms/Toggle/Toggle'
 import { CatalogBanner } from './components/CatalogBanner'
 import { EnrichmentCapturePanel, type EnrichmentAttributeRow } from './components/EnrichmentCapturePanel'
 import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
@@ -62,6 +59,7 @@ import type {
 } from '../products/sections/types'
 import { ProductGeneralSection } from '../products/sections/ProductGeneralSection'
 import { ProductPricingSection } from '../products/sections/ProductPricingSection'
+import { ProductInventorySection } from '../products/sections/ProductInventorySection'
 import { useProductPricingEditAdapter } from '../products/sections/useProductPricingEditAdapter'
 
 interface Product {
@@ -298,7 +296,6 @@ export function ProductForm() {
   }, [lookupState])
 
   const oemNumbers = watch('oem_numbers')
-  const requiresBatchTracking = watch('requires_batch_tracking')
   const watchIsPhysical = watch('is_physical')
   const openingQtyValue = watch('opening_qty')
 
@@ -675,7 +672,6 @@ export function ProductForm() {
   const nameValue = watch('name')
   const skuValue = watch('sku')
   const salePriceValue = watch('sale_price')
-  const purchasePriceValue = watch('purchase_price')
   const taxConfigValue = watch('tax_configuration_id')
   const taxRateValue = watch('tax_rate')
   const barcodeValue = watch('barcode')
@@ -929,181 +925,26 @@ export function ProductForm() {
                 pricing,
               }}
             />
-
-
-            {/* Inventory & Units */}
-            <EditorSectionCard
-              id="section-inventory"
-              title={t('catalog:editor.sectionLabels.inventory')}
-            >
-              <div className="sm:col-span-2">
-                <FormField label={t('inventory:products.openingQtyShort')} htmlFor="opening_qty">
-                  {showOpeningSection && canEnterOpening ? (
-                    <Controller
-                      name="opening_qty"
-                      control={control}
-                      render={({ field }) => (
-                        <QuantityInput
-                          id="opening_qty"
-                          data-testid="opening-qty-input"
-                          decimalPlaces={4}
-                          value={field.value ?? ''}
-                          onChange={(value) => {
-                            field.onChange(value)
-                            if (value.trim() !== '' && value.trim() !== '0' && watch('opening_unit_cost').trim() === '') {
-                              setValue('opening_unit_cost', purchasePriceValue, { shouldDirty: true })
-                            }
-                          }}
-                          onBlur={field.onBlur}
-                        />
-                      )}
-                    />
-                  ) : (
-                    <div className={cn('space-y-1 text-sm font-semibold', textColors.primary)}>
-                      <div>{t('inventory:products.onHandShort')}: {product?.stock_quantity ?? '0.0000'}</div>
-                      {isOpeningLocked && canResetOpening && !showResetConfirm && (
-                        <button
-                          type="button"
-                          data-testid="opening-reset-btn"
-                          onClick={() => { setShowResetConfirm(true) }}
-                          className={cn('text-xs font-medium', textColors.brand)}
-                        >
-                          {t('inventory:opening.reset_label')}
-                        </button>
-                      )}
-                      {isOpeningLocked && canResetOpening && showResetConfirm && (
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => { setShowResetConfirm(false) }}
-                          >
-                            {t('inventory:opening.reset_confirm_cancel')}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="danger"
-                            size="sm"
-                            disabled={isResettingOpening}
-                            onClick={() => { void handleResetOpening() }}
-                          >
-                            {isResettingOpening
-                              ? t('status.saving')
-                              : t('inventory:opening.reset_confirm_proceed')}
-                          </Button>
-                        </div>
-                      )}
-                      {isOpeningLocked && !canResetOpening && (
-                        <Link to="/inventory/stock" className={cn('text-xs font-medium', textColors.brand)}>
-                          {t('inventory:opening.view_stock_link')}
-                        </Link>
-                      )}
-                    </div>
-                  )}
-                </FormField>
-              </div>
-
-              {/* units_per_pack — plain integer count, Number() coercion is fine (not money/qty) */}
-              <FormField label={t('inventory:products.unitsPerPack')} htmlFor="units_per_pack">
-                <Input
-                  type="number"
-                  id="units_per_pack"
-                  min={1}
-                  placeholder={t('inventory:products.unitsPerPackPlaceholder')}
-                  {...register('units_per_pack', {
-                    setValueAs: (value: string): number | null =>
-                      value === '' || value === null ? null : Number(value),
-                  })}
-                />
-              </FormField>
-
-              {/* shelf_location — free-text string */}
-              <FormField label={t('inventory:products.shelfLocation')} htmlFor="shelf_location">
-                <Input
-                  type="text"
-                  id="shelf_location"
-                  placeholder={t('inventory:products.shelfLocationPlaceholder')}
-                  {...register('shelf_location')}
-                />
-              </FormField>
-
-              {/* reorder_point — decimal quantity string, precision rule 19 */}
-              <FormField label={t('inventory:products.reorderPoint')} htmlFor="reorder_point">
-                <Controller
-                  name="reorder_point"
-                  control={control}
-                  render={({ field }) => (
-                    <QuantityInput
-                      id="reorder_point"
-                      decimalPlaces={reorderDecimals}
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                    />
-                  )}
-                />
-              </FormField>
-
-              {/* reorder_quantity — decimal quantity string, precision rule 19 */}
-              <FormField label={t('inventory:products.reorderQuantity')} htmlFor="reorder_quantity">
-                <Controller
-                  name="reorder_quantity"
-                  control={control}
-                  render={({ field }) => (
-                    <QuantityInput
-                      id="reorder_quantity"
-                      decimalPlaces={reorderDecimals}
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                    />
-                  )}
-                />
-              </FormField>
-
-              {showBatchTracking && (
-                <div data-testid="batch-tracking-section">
-                  <div className="flex items-center gap-2 mt-6">
-                    <Controller
-                      name="requires_batch_tracking"
-                      control={control}
-                      render={({ field }) => (
-                        <Toggle
-                          aria-label={t('inventory:products.requiresBatchTracking')}
-                          label={t('inventory:products.requiresBatchTracking')}
-                          checked={!!field.value}
-                          onChange={(e) => { field.onChange(e.target.checked) }}
-                          ref={field.ref}
-                        />
-                      )}
-                    />
-                  </div>
-                  <p className={tokens.helperText.base}>
-                    {t('inventory:products.requiresBatchTrackingHelper')}
-                  </p>
-
-                  {requiresBatchTracking && (
-                    <FormField
-                      label={t('inventory:products.defaultShelfLifeDays')}
-                      htmlFor="default_shelf_life_days"
-                      className="mt-3"
-                    >
-                      <Input
-                        type="number"
-                        id="default_shelf_life_days"
-                        min={0}
-                        placeholder={t('inventory:products.defaultShelfLifeDaysPlaceholder')}
-                        {...register('default_shelf_life_days', {
-                          setValueAs: (value: string): number | null =>
-                            value === '' || value === null ? null : Number(value),
-                        })}
-                      />
-                    </FormField>
-                  )}
-                </div>
-              )}
-            </EditorSectionCard>
+            <ProductInventorySection
+              adapter={{
+                mode: 'edit',
+                form: { control, register, watch, setValue, errors },
+                inventory: {
+                  reorderDecimals,
+                  showBatchTracking,
+                  showOpeningSection,
+                  canEnterOpening,
+                  isOpeningLocked,
+                  productStockQuantity: product?.stock_quantity ?? null,
+                  canResetOpening,
+                  showResetConfirm,
+                  isResettingOpening,
+                  requestOpeningReset: () => { setShowResetConfirm(true) },
+                  cancelOpeningReset: () => { setShowResetConfirm(false) },
+                  resetOpening: handleResetOpening,
+                },
+              }}
+            />
 
             {/* Automotive Information - Otospex only (no section nav entry; it
                 is a vertical-exclusive block layered between inventory and the

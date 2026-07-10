@@ -12,15 +12,40 @@ import { bccomp, bcmul } from '@/lib/decimal'
 interface ProductStockLevelsProps {
   productId: string
   costPrice: string | null
+  canViewCostPrices: boolean
   currency?: string
   locale?: string
+  embedded?: boolean
+}
+
+function StockLevelsFrame({
+  children,
+  embedded,
+  title,
+}: {
+  children: React.ReactNode
+  embedded: boolean
+  title: string
+}) {
+  if (embedded) return <div>{children}</div>
+
+  return (
+    <div className={`rounded-lg border ${borderColors.light} bg-white`}>
+      <div className={`border-b ${borderColors.light} px-6 py-4`}>
+        <h2 className={`text-base font-semibold ${textColors.primary}`}>{title}</h2>
+      </div>
+      {children}
+    </div>
+  )
 }
 
 export function ProductStockLevels({
   productId,
   costPrice,
+  canViewCostPrices,
   currency = 'EUR',
   locale = 'en-US',
+  embedded = false,
 }: ProductStockLevelsProps) {
   const { t } = useTranslation('inventory')
   const { decimals } = useCurrency()
@@ -41,49 +66,39 @@ export function ProductStockLevels({
 
   if (isLoading) {
     return (
-      <div className={`rounded-lg border ${borderColors.light} bg-white`}>
-        <div className={`border-b ${borderColors.light} px-6 py-4`}>
-          <div className={`h-5 w-32 animate-pulse rounded ${colors.neutral[200]}`} />
-        </div>
+      <StockLevelsFrame embedded={embedded} title={t('stock.title')}>
         <div className="space-y-3 p-6">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className={`h-12 animate-pulse rounded ${colors.neutral[100]}`} />
           ))}
         </div>
-      </div>
+      </StockLevelsFrame>
     )
   }
 
   if (!data) {
     return (
-      <div className={`rounded-lg border ${borderColors.light} bg-white`}>
-        <div className={`border-b ${borderColors.light} px-6 py-4`}>
-          <h2 className={`text-base font-semibold ${textColors.primary}`}>{t('stock.title')}</h2>
-        </div>
+      <StockLevelsFrame embedded={embedded} title={t('stock.title')}>
         <div className="px-6 py-8 text-center">
           <p className={`text-sm ${textColors.tertiary}`}>{t('stock.noStock')}</p>
         </div>
-      </div>
+      </StockLevelsFrame>
     )
   }
 
   const { totals, locations } = data
 
   // Calculate stock value (quantity × WAC)
-  const stockValue = costPrice
+  const stockValue = canViewCostPrices && costPrice
     ? bcmul(totals.quantity, costPrice, decimals)
     : '0'
 
   return (
-    <div className={`rounded-lg border ${borderColors.light} bg-white`}>
-      <div className={`border-b ${borderColors.light} px-6 py-4`}>
-        <h2 className={`text-base font-semibold ${textColors.primary}`}>{t('stock.title')}</h2>
-      </div>
-
+    <StockLevelsFrame embedded={embedded} title={t('stock.title')}>
       {/* Summary Totals */}
       <div className={`divide-y ${borderColors.divideLight}`}>
         {/* Stock Value - Prominent Display */}
-        {costPrice && bccomp(totals.quantity, '0') > 0 && (
+        {canViewCostPrices && costPrice && bccomp(totals.quantity, '0') > 0 && (
           <div className={`${colors.primary[50]} px-6 py-4`}>
             <div className={`text-xs font-medium uppercase tracking-wide ${textColors.brand}`}>
               {t('stock.stockValue')}
@@ -179,6 +194,6 @@ export function ProductStockLevels({
           </div>
         </details>
       )}
-    </div>
+    </StockLevelsFrame>
   )
 }
