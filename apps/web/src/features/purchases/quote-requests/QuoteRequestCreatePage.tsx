@@ -4,8 +4,13 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { MoneyInput, QuantityInput } from '@/components/atoms'
-import { ProductLineSelect } from '@/components/molecules/line-items'
+import { Button } from '@/components/atoms/Button/Button'
+import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
+import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
+import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
+import { SaveSplitButton } from '@/components/molecules/SaveSplitButton/SaveSplitButton'
+import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
+import { ProductLineSelect } from '@/components/molecules/line-items/ProductLineSelect'
 import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -27,6 +32,8 @@ interface LineFormState {
   quantity: string
   unitPrice: string
 }
+
+const QUOTE_REQUEST_CREATE_FORM_ID = 'quote-request-create-form'
 
 let rowKeyCounter = 0
 
@@ -117,29 +124,33 @@ export function QuoteRequestCreatePage() {
   }
 
   return (
-    <form className="space-y-6" onSubmit={(event) => { void handleSubmit(event) }}>
-      <div>
-        <h1 className={`text-2xl font-bold ${textColors.primary}`}>
-          {t('purchases:quoteRequests.create.title')}
-        </h1>
-        <p className={`mt-1 text-sm ${textColors.tertiary}`}>
-          {t('purchases:quoteRequests.create.description')}
-        </p>
-      </div>
+    <div className="flex min-h-full flex-col gap-6">
+      <PageHeader
+        title={t('purchases:quoteRequests.create.title')}
+        subtitle={t('purchases:quoteRequests.create.description')}
+        className="mb-0"
+      />
+
+      <form
+        id={QUOTE_REQUEST_CREATE_FORM_ID}
+        className="flex flex-1 flex-col gap-6"
+        onSubmit={(event) => { void handleSubmit(event) }}
+      >
 
       <section className={`${tokens.card.base} space-y-4`}>
         <div className="flex items-center justify-between gap-4">
           <h2 className={tokens.heading.section}>{t('purchases:quoteRequests.create.suppliers')}</h2>
-          <button
+          <Button
             type="button"
             data-testid="add-supplier"
             disabled={suppliers.length >= 10}
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+            variant="secondary"
+            size="sm"
             onClick={addSupplier}
           >
             <Plus className="me-2 h-4 w-4" />
             {t('purchases:quoteRequests.actions.addSupplier')}
-          </button>
+          </Button>
         </div>
 
         <div className="space-y-3">
@@ -159,14 +170,16 @@ export function QuoteRequestCreatePage() {
                 />
               </div>
               {suppliers.length > 1 && (
-                <button
+                <Button
                   type="button"
-                  className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm} mt-7`}
+                  variant="ghost"
+                  size="sm"
+                  className="mt-7"
                   onClick={() => { removeSupplier(index) }}
                   aria-label={t('purchases:quoteRequests.actions.removeSupplier')}
                 >
                   <Trash2 className="h-4 w-4" />
-                </button>
+                </Button>
               )}
             </div>
           ))}
@@ -176,14 +189,15 @@ export function QuoteRequestCreatePage() {
       <section className={`${tokens.card.base} space-y-4`}>
         <div className="flex items-center justify-between gap-4">
           <h2 className={tokens.heading.section}>{t('purchases:quoteRequests.create.lines')}</h2>
-          <button
+          <Button
             type="button"
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+            variant="secondary"
+            size="sm"
             onClick={addLine}
           >
             <Plus className="me-2 h-4 w-4" />
             {t('purchases:quoteRequests.actions.addLine')}
-          </button>
+          </Button>
         </div>
 
         <div className={`grid grid-cols-[1fr_1.4fr_0.8fr_0.8fr_auto] gap-3 border-b ${borderColors.light} pb-2 text-xs font-medium uppercase ${textColors.tertiary}`}>
@@ -221,15 +235,16 @@ export function QuoteRequestCreatePage() {
                 onChange={(unitPrice) => { updateLine(index, { unitPrice }) }}
                 currency={activeCurrency}
               />
-              <button
+              <Button
                 type="button"
                 disabled={lines.length === 1}
-                className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
+                variant="ghost"
+                size="sm"
                 onClick={() => { removeLine(index) }}
                 aria-label={t('purchases:quoteRequests.actions.removeLine')}
               >
                 <Trash2 className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -261,16 +276,28 @@ export function QuoteRequestCreatePage() {
         </div>
       </section>
 
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          data-testid="submit-rfq-group"
-          disabled={createGroup.isPending}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
-        >
-          {t('purchases:quoteRequests.actions.create')}
-        </button>
-      </div>
-    </form>
+        <StickyFormFooter>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => { void navigate('/purchases/quote-requests') }}
+          >
+            {t('common:actions.cancel')}
+          </Button>
+          <SaveSplitButton
+            form={QUOTE_REQUEST_CREATE_FORM_ID}
+            isPending={createGroup.isPending}
+            primaryLabel={t('purchases:quoteRequests.actions.create')}
+            onPrimarySave={() => {}}
+            onSaveAndClose={() => {
+              const form = document.getElementById(QUOTE_REQUEST_CREATE_FORM_ID)
+              if (form instanceof HTMLFormElement) {
+                form.requestSubmit()
+              }
+            }}
+          />
+        </StickyFormFooter>
+      </form>
+    </div>
   )
 }

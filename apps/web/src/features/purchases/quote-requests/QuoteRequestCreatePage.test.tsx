@@ -13,7 +13,7 @@ vi.mock('./api', () => ({
   useCreateQuoteRequestGroup: () => ({ mutateAsync, isPending: false }),
 }))
 
-vi.mock('@/components/molecules/line-items', () => ({
+vi.mock('@/components/molecules/line-items/ProductLineSelect', () => ({
   ProductLineSelect: ({
     value,
     onChange,
@@ -89,7 +89,19 @@ beforeEach(() => {
   })
 })
 
+function getCreateButton(): HTMLButtonElement {
+  return screen.getByRole('button', { name: 'purchases:quoteRequests.actions.create' })
+}
+
 describe('QuoteRequestCreatePage', () => {
+  it('renders canonical footer actions for cancel and save variants', () => {
+    renderWithProviders(<QuoteRequestCreatePage />)
+
+    expect(screen.getByRole('button', { name: 'common:actions.cancel' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'purchases:quoteRequests.actions.create' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'actions.openSaveMenu' })).toBeInTheDocument()
+  })
+
   it('submits a multi-supplier fan-out payload with string quantity and money values', async () => {
     renderWithProviders(<QuoteRequestCreatePage />)
 
@@ -103,7 +115,7 @@ describe('QuoteRequestCreatePage', () => {
     fireEvent.change(screen.getByTestId('line-description-0'), { target: { value: 'Crème solaire SPF50' } })
     fireEvent.change(screen.getByTestId('line-quantity-0'), { target: { value: '50.0000' } })
     fireEvent.change(screen.getByTestId('line-unit-price-0'), { target: { value: '8.200' } })
-    fireEvent.click(screen.getByTestId('submit-rfq-group'))
+    fireEvent.click(getCreateButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
@@ -131,7 +143,7 @@ describe('QuoteRequestCreatePage', () => {
     fireEvent.change(screen.getByTestId('supplier-picker'), { target: { value: 'supplier-1' } })
     fireEvent.change(screen.getByTestId('line-product-select'), { target: { value: 'product-1' } })
     fireEvent.change(screen.getByTestId('line-quantity-0'), { target: { value: '1.0000' } })
-    fireEvent.click(screen.getByTestId('submit-rfq-group'))
+    fireEvent.click(getCreateButton())
 
     await waitFor(() => {
       expect(navigate).toHaveBeenCalledWith('/purchases/quote-requests/rfq-1')
@@ -146,7 +158,7 @@ describe('QuoteRequestCreatePage', () => {
 
     fireEvent.change(screen.getByTestId('supplier-picker'), { target: { value: 'supplier-1' } })
     fireEvent.change(screen.getByTestId('line-product-select'), { target: { value: 'product-1' } })
-    fireEvent.click(screen.getByTestId('submit-rfq-group'))
+    fireEvent.click(getCreateButton())
 
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith('partner_ids.1 has already been taken')

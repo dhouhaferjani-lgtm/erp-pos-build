@@ -56,15 +56,20 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- src/features/purchases/StandaloneReceiptPage.test.tsx` failed because receipt lines still rendered in a bespoke `divide-y` table.
   - GREEN: receipt lines now render through the shared `DataTable`, preserving the existing quantity, free-quantity, unit-price, product, and remove-line controls.
   - Baseline shrunk from 496 to 495 after removing the stale standalone receipt C5 fingerprint.
+- 4.4 `QuoteRequestCreatePage` shell/action slice:
+  - RED: `pnpm --filter @autoerp/web test -- src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx` failed on missing canonical cancel and save-variant footer actions.
+  - GREEN: the page now uses `PageHeader`, canonical `Button` controls for add/remove actions, and `StickyFormFooter` with `SaveSplitButton` for create/cancel actions.
+  - Baseline shrunk from 495 to 490 after removing stale C1/C3 quote-request create fingerprints.
 - Verification:
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` passed: 16 tests.
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceListPage.test.tsx` passed: 14 tests.
   - `pnpm --filter @autoerp/web test -- src/features/purchases/StandaloneReceiptPage.test.tsx` passed: 5 tests.
+  - `pnpm --filter @autoerp/web test -- src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx` passed: 4 tests.
   - `pnpm --filter @autoerp/web typecheck` passed.
   - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
     - TanStack query key audit: 0 violations.
-    - Design-system audit: 495 acknowledged, 0 new, 0 stale.
-  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page, list-page, and standalone receipt slices.
+    - Design-system audit: 490 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page, list-page, standalone receipt, and quote-request create slices.
 
 New shared-shape components: none.
 
