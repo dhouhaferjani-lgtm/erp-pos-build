@@ -71,6 +71,9 @@ vi.mock('./components/ProductDocumentsTab', () => ({
 vi.mock('@/features/inventory/components/ProductStockLevels', () => ({
   ProductStockLevels: () => <div data-testid="stock-levels" />,
 }))
+vi.mock('@/features/products/components/ProductImageSection', () => ({
+  ProductImageSection: () => <div data-testid="product-image-section" />,
+}))
 vi.mock('../products/components', () => ({
   ProductPrimaryImageDisplay: () => <div data-testid="primary-image" />,
 }))

@@ -34,6 +34,7 @@ import { ProductGeneralSection } from '../products/sections/ProductGeneralSectio
 import { ProductPricingSection } from '../products/sections/ProductPricingSection'
 import { ProductInventorySection } from '../products/sections/ProductInventorySection'
 import { ProductSuppliersSection } from '../products/sections/ProductSuppliersSection'
+import { ProductMediaSection } from '../products/sections/ProductMediaSection'
 import type { DiscountPolicyVerdict, ProductSectionProduct } from '../products/sections/types'
 import {
   PRODUCT_DETAIL_SECTIONS,
@@ -388,6 +389,7 @@ export function ProductDetailPage() {
                   </section>
                 ))}
               <ProductSuppliersSection adapter={{ mode: 'view' }} />
+              <ProductMediaSection adapter={{ mode: 'view', product: publicProduct }} />
               {trailingDetailSections
                 .map((section) => (
                   <section key={section.id} id={section.id}>

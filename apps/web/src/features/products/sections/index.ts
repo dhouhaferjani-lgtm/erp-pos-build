@@ -8,6 +8,7 @@ export { ProductGeneralSection, type ProductGeneralAdapter } from './ProductGene
 export { ProductPricingSection, type ProductPricingAdapter } from './ProductPricingSection'
 export { ProductInventorySection, type ProductInventoryAdapter } from './ProductInventorySection'
 export { ProductSuppliersSection, type ProductSuppliersAdapter } from './ProductSuppliersSection'
+export { ProductMediaSection, type ProductMediaAdapter } from './ProductMediaSection'
 export { useProductPricingEditAdapter } from './useProductPricingEditAdapter'
 export type {
   ParapharmacySectionFormData,

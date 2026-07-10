@@ -24,9 +24,7 @@ import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
 import type { SubmitForEnrichmentPayload } from './api/platformApi'
 import type { LookupState, SuggestedProduct } from './types/platform'
 import type { UploadedPhoto } from './api/enrichmentPhotos'
-import { CreateModeImageBuffer } from '../products/components/CreateModeImageBuffer'
 import { ParapharmacyMetadataFields } from '../products/components/ParapharmacyMetadataFields'
-import { ProductImageSection } from '../products/components/ProductImageSection'
 import { uploadProductImage } from '../products/api/productImages'
 import { ProductVariantMatrixEditor } from '../catalog/components/ProductVariantMatrixEditor'
 import { useVariantsForProduct } from '../catalog/hooks/useVariants'
@@ -61,6 +59,7 @@ import { ProductGeneralSection } from '../products/sections/ProductGeneralSectio
 import { ProductPricingSection } from '../products/sections/ProductPricingSection'
 import { ProductInventorySection } from '../products/sections/ProductInventorySection'
 import { ProductSuppliersSection } from '../products/sections/ProductSuppliersSection'
+import { ProductMediaSection } from '../products/sections/ProductMediaSection'
 import { useProductPricingEditAdapter } from '../products/sections/useProductPricingEditAdapter'
 
 interface Product {
@@ -1068,25 +1067,17 @@ export function ProductForm() {
 
             <ProductSuppliersSection adapter={{ mode: 'edit' }} />
 
-            {/* Media & Files — always rendered so the nav entry + scroll-spy
-                anchor exists in both create and edit mode. In create mode,
-                files are buffered client-side (CreateModeImageBuffer) and
-                uploaded after the product is created. In edit mode,
-                ProductImageSection takes over. */}
-            <EditorSectionCard
-              id="section-media"
-              title={t('catalog:editor.sectionLabels.media')}
-              contentClassName="sm:grid-cols-1"
-            >
-              {isEditing && id ? (
-                <ProductImageSection productId={id} />
-              ) : (
-                <CreateModeImageBuffer
-                  bufferedFiles={bufferedImages}
-                  onFilesChange={setBufferedImages}
-                />
-              )}
-            </EditorSectionCard>
+            <ProductMediaSection
+              adapter={{
+                mode: 'edit',
+                isEditing,
+                productId: id ?? null,
+                media: {
+                  bufferedImages,
+                  onBufferedImagesChange: setBufferedImages,
+                },
+              }}
+            />
 
             {/* Variants Section - Only when editing (matrix generation needs a persisted product id) */}
             {isEditing && id && (
