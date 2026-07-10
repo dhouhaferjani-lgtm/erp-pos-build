@@ -5,7 +5,7 @@
 
 ## Gate 1 Fixlist — Blockers
 
-Status: blockers complete; majors not started.
+Status: blockers complete; MJ-1 complete; MJ-2 next.
 
 - BL-1 `PartnerPicker` empty-string value:
   - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` failed because `value=""` triggered a `/partners/` fetch and hid the search input behind a blank selected chip.
@@ -18,6 +18,16 @@ Status: blockers complete; majors not started.
   - `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx src/features/documents/DocumentForm.test.tsx src/features/documents/__tests__/DocumentForm.tenantScope.test.tsx src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx src/features/crm/__tests__/tenantScope.test.tsx src/features/document-ingestions/__tests__/ReviewIngestionPage.test.tsx src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx` passed: 58 tests.
   - `pnpm --filter @autoerp/web test -- src/features/crm/pages/__tests__/ContactFormPage.test.tsx` passed: 7 tests.
   - `pnpm --filter @autoerp/web typecheck` passed.
+
+## Gate 1 Fixlist — Majors
+
+Status: in progress.
+
+- MJ-1 design-system scanner JSX tag regex:
+  - RED: `pnpm --filter @autoerp/web test -- tools/__tests__/audit-design-system.test.mjs` failed because an `<input>` with `onChange={(event) => ...}` and `tokens.input.base` produced zero C2 violations.
+  - GREEN: all JSX tag regexes now tolerate `=>` inside attributes before the real closing `>`.
+  - Honest baseline rewrite: scanner now sees 535 C1-C6 violations; `node apps/web/tools/audit-design-system.mjs --write-baseline` wrote the current baseline, and `node apps/web/tools/audit-design-system.mjs` passes with 535 acknowledged, 0 new, 0 stale.
+  - Note for MJ-2: the baseline file currently has 524 keys because duplicate fingerprints still collapse under the old key format. MJ-2 will append duplicate ordinals so the baseline file represents all 535 occurrences.
 
 ## Wave 0 — Tooling & Guardrails
 

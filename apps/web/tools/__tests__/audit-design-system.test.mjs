@@ -30,6 +30,22 @@ describe('design-system audit scanner', () => {
     expect(violations[0].category).toBe('C2')
   })
 
+  it('does not truncate JSX tags at arrow functions inside attributes', () => {
+    const violations = scanCode(`
+      export function ExampleForm() {
+        return (
+          <input
+            onChange={(event) => setValue(event.target.value)}
+            className={tokens.input.base}
+          />
+        )
+      }
+    `, 'src/features/example/ExampleForm.tsx')
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0].category).toBe('C2')
+  })
+
   it('flags feature form files without react-hook-form', () => {
     const violations = scanCode(`
       export function ExampleCreatePage() {

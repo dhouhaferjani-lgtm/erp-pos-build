@@ -23,12 +23,12 @@ const SRC_ROOT = path.join(WEB_ROOT, 'src')
 const BASELINE_PATH = path.join(__dirname, 'audit-design-system-baseline.json')
 
 const TAG_RE = {
-  h1: /<h1\b[^>]*>/gis,
-  input: /<input\b[^>]*\/?>/gis,
-  select: /<select\b[^>]*>/gis,
-  textarea: /<textarea\b[^>]*>/gis,
-  button: /<button\b[^>]*>/gis,
-  table: /<table\b[^>]*>/gis,
+  h1: /<h1\b(?:=>|[^>])*>/gis,
+  input: /<input\b(?:=>|[^>])*\/?>/gis,
+  select: /<select\b(?:=>|[^>])*>/gis,
+  textarea: /<textarea\b(?:=>|[^>])*>/gis,
+  button: /<button\b(?:=>|[^>])*>/gis,
+  table: /<table\b(?:=>|[^>])*>/gis,
 }
 
 const STATUS_RE = [
