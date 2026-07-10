@@ -90,7 +90,9 @@ Note for completeness: `tests/Architecture` currently has 4 failures on this bra
 
 Also on the branch (NOT from this wave — parallel session, owner identity): `d892f775c`+`594305d43`, FE-only Movements-tab conventions refactor; final gate sanity-checked them backend-blind (pagination contract, no parseFloat-on-money, no dangling i18n keys) — no alarms.
 
-Verification at final HEAD `2c238ce7f`: Feature+Unit Treasury 525/525 (sqlite), FE vitest 241/241, tsc clean. New follow-up tickets from the gate: split `freezeAndAlert`'s inner try (attempt audit write even when the log line throws); fix the latent `2025-01-15` literal in `PaymentAllocationServiceToleranceContractTest.php:150`; document the `forEachTenant` continue-on-throw widening. §5.2 tickets and the §5.3 deploy gate are unchanged and still owed.
+Verification at fix-wave HEAD `2c238ce7f`: Feature+Unit Treasury 525/525 (sqlite), FE vitest 241/241, tsc clean.
+
+**Gate follow-up tickets CLOSED (2026-07-10, `92020bb93`, reviewed Approved):** `freezeAndAlert` alert channels split into independent try/catch (audit row written even when the drift log line throws; `alert_failed` now carries a `channel` key); `ToleranceContractTest.php:150` latent literal → `now()` + a date-literal sweep (14 remaining literals in `PaymentAllocationServiceTest.php` verified unreachable for posting paths); `forEachTenant` continue-on-throw contract documented in its docblock. §5.2 tickets and the §5.3 deploy gate are unchanged and still owed.
 
 ## 6. Bottom line
 
