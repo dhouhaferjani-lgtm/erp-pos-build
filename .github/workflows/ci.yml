@@ -661,9 +661,14 @@ jobs:
     # Feature/Unit suites onto a real Postgres service so they execute
     # instead of skipping.
     #
-    # Trigger condition mirrors t6-phase0b-pgsql (also runs on PR/push -> dev,
-    # not just main): this gate protects the spine while it is still being
-    # merged into dev, not only the eventual dev -> main promotion.
+    # Trigger condition mirrors t6-phase0b-pgsql: runs on PR->dev, PR->main, and
+    # workflow_dispatch, so this gate protects the spine while it is still being
+    # merged into dev, not only the eventual dev -> main promotion. The
+    # `github.ref == 'refs/heads/dev'` arm of the push clause is a no-op today —
+    # this workflow's `on.push.branches` (top of file) is `[main]` only, so a
+    # push event on `dev` never actually triggers this workflow at all; it's
+    # kept only for parity with t6-phase0b-pgsql and to fail safe if the push
+    # trigger is ever widened to include `dev`.
     if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.base_ref == 'dev' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'))
     defaults:
       run:
@@ -983,8 +988,17 @@ jobs:
     name: All Checks Pass
     runs-on: ubuntu-latest
     # Only meaningful when the heavy jobs ran. Skipped on PR→dev.
+    #
+    # treasury-spine-pgsql is included below: its `if:` (workflow_dispatch ||
+    # base_ref==main || base_ref==dev || push to main/dev) is a STRICT SUPERSET
+    # of this job's own `if:` (workflow_dispatch || base_ref==main || push to
+    # main) — every event where all-checks-pass's `if` is true also makes
+    # treasury-spine-pgsql's `if` true, so it always actually RUNS (never sits
+    # `skipped`) whenever this job evaluates its `needs`. A `needs` entry whose
+    # job comes back `skipped` would otherwise fail/skip this aggregate gate
+    # spuriously — confirmed that can't happen here before wiring it in.
     if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: [backend-lint, backend-analyse, backend-architecture, backend-test, backend-test-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, types-drift]
+    needs: [backend-lint, backend-analyse, backend-architecture, backend-test, backend-test-pgsql, treasury-spine-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, types-drift]
     steps:
       - name: All checks passed
         run: echo "All CI checks have passed!"

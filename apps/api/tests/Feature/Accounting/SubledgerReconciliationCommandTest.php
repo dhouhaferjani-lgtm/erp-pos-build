@@ -20,6 +20,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class SubledgerReconciliationCommandTest extends TestCase
@@ -119,7 +120,10 @@ final class SubledgerReconciliationCommandTest extends TestCase
             'description' => 'Partnerless AR discrepancy',
             'status' => JournalEntryStatus::Posted,
             'source_type' => 'test',
-            'source_id' => 'subledger-discrepancy',
+            // Real UUID: `journal_entries.source_id` is a `uuid` column on Postgres. A
+            // literal non-UUID string is tolerated as TEXT on sqlite but throws `22P02`
+            // (invalid input syntax for type uuid) on real PG.
+            'source_id' => (string) Str::uuid(),
             'posted_at' => now(),
         ]);
 
