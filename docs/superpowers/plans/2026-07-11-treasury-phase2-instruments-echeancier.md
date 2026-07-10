@@ -3,7 +3,8 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > **Spec:** `docs/superpowers/specs/2026-07-10-treasury-phase2-instruments-echeancier-design.md` (**Rev 2** — read it first; §7 posting tables, §6 lock order, and §20 reconciliation are binding). **Spec review:** `docs/superpowers/specs/reviews/2026-07-11-treasury-phase2-adversarial-review.md`.
-> **Status:** Rev 1 — awaiting plan adversarial review, then OWNER GATE before any dispatch.
+> **Rev 2 (2026-07-11):** reconciled against the plan adversarial review — `reviews/2026-07-11-treasury-phase2-plan-adversarial-review.md` (0 BLOCKER / 3 HIGH / 7 MED / 7 LOW, all accepted; reconciliation table at the end). Load-bearing fixes: tolerance reversal is **document-scoped** (`payment_id IS NULL` — a payment-scoped query reverses nothing); the deferred cutover applies ONLY to `kind ∈ {cheque, effet}` (FR seeds LCR/BILL_EXCHANGE→effet, DIRECT_DEBIT→other = Phase-① behavior); `PaymentRefundService` lives in **Domain/Services** not Application/Services.
+> **Status:** Rev 2 — awaiting OWNER GATE before any dispatch.
 
 **Goal:** Give chèques/traites an accounting-visible lifecycle (GL at every stage per PCG/PCE), one portfolio regardless of capture point (web or POS), a remise-en-banque bordereau, impayé depth, and an échéancier that answers "what clears when" — with cash moving ONLY at clearing/dishonor through the Phase-① port.
 
@@ -23,7 +24,8 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 - **Verified line references** (from the 2026-07-10/11 survey + review) may drift a few lines — re-grep before editing, don't trust blindly.
 - **Migrations** are tenant migrations (`apps/api/database/migrations/tenant/`), re-runnable (`hasColumn`/`hasTable` guards, `DROP TRIGGER/FUNCTION IF EXISTS`), applied with `php artisan tenants:migrate`.
 - **Test helpers** referenced in examples are defined in the task that first uses them or replaced with existing factory/seeder patterns — verify a factory exists before calling `::factory()`.
-- **pgsql-only artifacts** (partial unique indexes, triggers, `balance_due` trigger assertions): tag those tests for the pgsql CI leg (`treasury-spine-pgsql` job — Task 28 extends its path list); sqlite runs skip them via `@requires` / driver checks, or maintain state imperatively as `PaymentController` does.
+- **pgsql-only artifacts** (partial unique indexes, triggers, `balance_due` trigger assertions): the `treasury-spine-pgsql` CI job already runs the WHOLE `tests/Feature/Treasury`, `tests/Feature/Accounting`, `tests/Unit/Treasury` directories (`ci.yml:766-776`) — new tests there are auto-covered (Task 26 verifies); sqlite runs skip pgsql-only assertions via driver checks, or maintain state imperatively as `PaymentController` does.
+- **Regression pins are GREEN-FIRST:** the "byte-identical to Phase ①" tests (Tasks 13(f), 14, 18) are written against pre-change behavior asserting explicit JE line accounts/amounts + movement columns — there is no snapshot mechanism in the repo, and these are regression pins, not failing-first TDD.
 - **JE builders:** new instrument entry builders go in `GeneralLedgerService` next to the POS builders (`createPOSPaymentEntry` `:2565+`) — the established pattern; every one stamps `source_type`, `source_id`, and `journal_code => JournalCode::Effets->value`, and is posted with `postEntryNow()` (never afterCommit — spine BLOCKER-1).
 
 ## Global Constraints
@@ -43,8 +45,9 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 ## File Structure
 
 **New:**
-- Migrations: `*_add_instrument_portfolio_columns_to_payment_instruments.php`, `*_add_instrument_kind_to_payment_methods.php`, `*_create_instrument_events.php`, `*_create_instrument_events_immutability.php`, `*_create_instrument_remittances.php`, `*_add_dishonored_at_to_payments.php`, `*_add_instrument_alert_days_to_country_payment_settings.php`
-- `apps/api/app/Modules/Treasury/Domain/Enums/{InstrumentDirection,InstrumentKind,InstrumentOrigin,DishonorRouting,InstrumentEventType,RemittanceType,RemittanceStatus,RemittanceLineStatus}.php`
+- Migrations: `*_add_instrument_portfolio_columns_to_payment_instruments.php`, `*_add_instrument_kind_to_payment_methods.php`, `*_create_instrument_events.php`, `*_create_instrument_events_immutability.php`, `*_create_instrument_remittances.php`, `*_add_dishonored_at_to_payments.php`, `*_add_instrument_alert_days_to_country_payment_settings.php`, `*_add_phase2_cutover_at_to_companies.php` (Task 22)
+- `apps/api/app/Modules/Treasury/Domain/Enums/{InstrumentDirection,InstrumentKind,InstrumentOrigin,DishonorRouting,InstrumentEventType,RemittanceType,RemittanceStatus,RemittanceLineStatus,InstrumentAccountPurpose,CancellationShape}.php`
+- `apps/api/app/Modules/Treasury/Domain/Exceptions/MissingInstrumentAccountException.php`
 - `apps/api/app/Modules/Treasury/Domain/{InstrumentEvent,InstrumentRemittance,InstrumentRemittanceLine}.php`
 - `apps/api/app/Modules/Treasury/Domain/Events/InstrumentReceived.php`
 - `apps/api/app/Modules/Treasury/Application/Services/{InstrumentAccountResolver,InstrumentLifecycleService,InstrumentRemittanceService}.php`
@@ -56,7 +59,7 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 **Modified:**
 - `apps/api/app/Modules/Treasury/Domain/{PaymentInstrument,PaymentMethod}.php`, `Enums/InstrumentStatus.php`
 - `apps/api/app/Modules/Treasury/Presentation/Controllers/{PaymentInstrumentController,PaymentController,MultiPaymentController,PaymentMethodController}.php`, `Presentation/routes.php`
-- `apps/api/app/Modules/Treasury/Application/Services/PaymentRefundService.php`
+- `apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php` (**Domain/Services — NOT Application/Services**; `refundPayment:78`, `partialRefund:211`, `postRefundGlAndMovement:402`, `canRefund:479`, `reversePayment:523`)
 - `apps/api/app/Modules/Treasury/Application/Projections/{TreasuryReceiptBridge,TreasuryDepositBridge,TreasuryAccountPaymentBridge}.php`
 - `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php` (instrument entry builders, POS cash-account override), `Domain/Enums/JournalCode.php`
 - `apps/api/app/Modules/Accounting/Application/Services/Reports/UpcomingPaymentsService.php`
@@ -115,7 +118,7 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 - Test: `apps/api/tests/Feature/Treasury/PaymentMethodInstrumentKindTest.php`
 
 **Interfaces:**
-- Produces (spec §5.4): nullable `instrument_kind varchar(10)` cast to `InstrumentKind`; seeder maps CHECK/CHEQUE→`cheque`, TRAITE/PDC/BILL_OF_EXCHANGE→`effet` (grep the seeder's method codes first — use the ACTUAL seeded codes); controller store/update validation: 422 when `has_maturity=true` and no `instrument_kind`; 422 when `has_maturity=true` AND `PaymentInstrumentKind::requiresInstrumentForMethodCode($code)` is true (voucher-collision guard, F7 — import from `App\Modules\POS\Domain\Enums`).
+- Produces (spec §5.4): nullable `instrument_kind varchar(10)` cast to `InstrumentKind`; seeder maps the **ACTUAL seeded `has_maturity=true` codes** (plan-review verified against `PaymentMethodSeeder.php`): TN `CHECK`→`cheque`, `TRAITE`→`effet`; FR `CHECK`→`cheque`, `LCR`→`effet` (`:276-279`), `BILL_EXCHANGE`→`effet` (`:324-327`), `DIRECT_DEBIT`→**`other`** (`:260-263` — a mandate pull, not portfolio paper). **THE KIND RULE (binding on Tasks 13/16/18):** the deferred-tender cutover and bridge instrument creation apply ONLY to `kind ∈ {Cheque, Effet}`; a `has_maturity` method with `kind=Other` keeps Phase-① behavior verbatim (movement + cash JE, no instrument) — test-pinned here with a DIRECT_DEBIT payment. Controller store/update validation: 422 when `has_maturity=true` and no `instrument_kind`; 422 when `has_maturity=true` AND `PaymentInstrumentKind::requiresInstrumentForMethodCode($code)` is true (voucher-collision guard, F7 — import from `App\Modules\POS\Domain\Enums`).
 
 - [ ] **Step 1: Failing test** — creating a maturity method without kind → 422 `{error:{errors}}` envelope; with kind → 201 and cast round-trips; a maturity method whose code is a voucher code → 422; seeder run twice → TRAITE row has `instrument_kind='effet'`, no dupes.
 - [ ] **Step 2: Run — FAIL.**
@@ -147,7 +150,8 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 
 **Interfaces:**
 - Produces (spec §5.3): `instrument_remittances` (id/tenant/company/number unique per company/`remittance_type` {collection,discount}/`instrument_kind`/bank_repository_id FK payment_repositories/status {draft,remitted,closed}/remitted_at/journal_entry_id null/created_by/notes/timestamps) + `instrument_remittance_lines` (id/remittance_id FK/instrument_id FK/amount decimal(15,3)/line_status {pending,cleared,bounced}/cleared_at/bounced_at; **unique `(remittance_id, instrument_id)`**); this migration also adds the FK `payment_instruments.remittance_id → instrument_remittances` (deferred from Task 2).
-- Numbering: `InstrumentRemittance::allocateNumber(string $companyId): string` → `REM-{YYYY}-{0001}`; allocation takes `pg_advisory_xact_lock(hashtextextended('remittance_number:'.$companyId, 0))` then `max()+1` within the year — same discipline as the spine's JE-number race fix (spec §19.1; on sqlite the advisory lock no-ops, which is fine for single-threaded tests).
+- Numbering: `InstrumentRemittance::allocateNumber(string $companyId): string` → `REM-{YYYY}-{0001}`; allocation takes `pg_advisory_xact_lock(hashtextextended('remittance_number:'.$companyId, 0))` then `max()+1` within the year — same discipline as the spine's `generateEntryNumber` (`GeneralLedgerService.php:3414-3441`; on sqlite the advisory lock no-ops, fine for single-threaded tests).
+- The migration carries a docblock stating why there is **NO partial-unique JE index for instrument source types** (one instrument legitimately produces several JEs over its life — spec §5.6, mirroring the procurement index's reasoning).
 
 - [ ] **Step 1: Failing test** — schema + relations round-trip; `allocateNumber` twice → `REM-2026-0001`, `REM-2026-0002`; two concurrent allocations (pgsql, two connections) never collide; duplicate `(remittance_id, instrument_id)` line throws.
 - [ ] **Step 2: Run — FAIL.** · **Step 3: Implement.** · **Step 4: Run — PASS.**
@@ -166,7 +170,7 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 - Test: `apps/api/tests/Feature/Treasury/InstrumentLifecycleReceiveTest.php`
 
 **Interfaces:**
-- Produces — **all entrypoints context-free (explicit ids/currency; F6), caller owns NO transaction (the service opens its own `DB::transaction`)**:
+- Produces — **all entrypoints context-free (explicit ids/currency; F6)**. Transaction contract: each entrypoint wraps its work in `DB::transaction` — when the caller already holds one (Task 13's `store()` transaction, Task 17's bridge transaction) this nests as a PG savepoint, which is the INTENDED usage; do NOT hoist calls out of the caller's transaction to "honor" a standalone contract — atomicity with the payment/projection is the point (plan-review MED-10):
   - `receive(ReceiveInstrumentData $data): PaymentInstrument` — creates the instrument (`Received`) + `Created` event. `ReceiveInstrumentData` (readonly): tenantId, companyId, paymentMethodId, kind (`InstrumentKind`), direction, origin, reference, amount (numeric-string), currency, repositoryId, partnerId?, drawerName?, maturityDate?, receivedDate, bankId?, bankName?, bankBranch?, bankAccount?, idempotencyKey?, needsDetails, createdBy?. **Creates NO JE itself** — receipt-side GL belongs to the payment flow (§7/§8); a manually registered instrument (no payment) likewise posts nothing until remise/settlement (it has no Cr-side yet — document this in the method docblock).
   - `custodyTransfer(string $instrumentId, string $toRepositoryId, ?string $userId): void` — guard `canTransfer()`, updates `repository_id`, `CustodyTransferred` event, **no GL, no movement**.
   - `cancel(string $instrumentId, ?string $userId, string $reason): void` — guards (spec §12.4): status `Received` AND (no linked payment OR payment dishonored/reversed); when a receipt JE exists for it (payment-linked), posts contre-passation via `createInstrumentCancellationEntry` (mirror image of the original receipt debit: interactive B2B → Dr 411 / Cr P-or-R; POS-origin → Dr ProductRevenue / Cr P-or-R — the caller passes which shape via an enum arg `CancellationShape {B2b, PosRevenue}`); `Cancelled` event.
@@ -219,11 +223,11 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
   - **before clear** (status Deposited): JE Dr routing-account / Cr `EffectsInCollection`-or-`ChecksToCollect` (nominal); optional fee JE lines + Dr fees + Dr VAT / Cr bank with **movement out = `bcadd(fee, feeVat)`** leg `bounce_fee:{line_id}` (T9);
   - **after clear** (status Cleared): JE Dr routing-account (nominal) + Dr fees + Dr VAT / Cr bank (nominal+fees) with **movement out = `bcadd(nominal, bcadd(fee, feeVat))`** leg `dishonor:{line_id}`.
   - Routing-account map (§12): effet `re_present`→`EffectsReceivable` (413); cheque `re_present`→411 (customer AR — resolve the SAME receivable account the payment flow credits; grep `createPaymentReceivedJournalEntry` for the AR account source); `receivable`→411; `doubtful`→`DoubtfulReceivables` (416).
-  - **Subledger reopening** (routing `receivable`/`doubtful`, linked payment exists): write **negative-amount `PaymentAllocation` rows** mirroring each of the payment's allocations (never DELETE — T4); reverse tolerance allocations tied to the payment + contre-passation of the tolerance write-off JE (`CloseInvoiceWithToleranceService.php:108-118` — grep how the tolerance allocation is marked, e.g. a type/flag column, before writing); revert each reopened document `status` `Paid` → `Posted` (T5 — first verify the document-immutability trigger `2025_12_11_054716` permits the write; if it blocks, extend its allowlist in this task's migration); set `payments.dishonored_at = now()`. On sqlite (no balance trigger) maintain `balance_due` imperatively exactly as `PaymentController` does; pgsql CI asserts the trigger path.
+  - **Subledger reopening** (routing `receivable`/`doubtful`, linked payment exists): write **negative-amount `PaymentAllocation` rows** mirroring each of the payment's allocations (never DELETE — T4). **Tolerance reversal is DOCUMENT-scoped, not payment-scoped (plan-review HIGH-1):** tolerance allocations carry **`payment_id = NULL`** (`CloseInvoiceWithToleranceService.php:110-116`; discriminator per the `2026_04_26_120000` migration docblock: `payment_id IS NULL AND tolerance_writeoff = amount AND tolerance_writeoff > 0`, linked via `document_id`) — query them per reopened document and reverse them too; the write-off JE to contre-passate is found via `source_type='payment_tolerance'`, `source_id = document id` (`GeneralLedgerService.php:1120`). A payment-scoped query matches NOTHING and reopens `balance_due` short. Revert each reopened document `status` `Paid` → `Posted` — **verified permitted:** the document-immutability trigger `2025_12_11_054716` only guards `fiscal_status='SEALED'` rows and excludes `status` from its immutable list ("Allow operational status updates"). Set `payments.dishonored_at = now()` (API exposure via `formatPayment` is Task 14's; FE badge Task 23's — spec §19.3). On sqlite (no balance trigger) maintain `balance_due` imperatively exactly as `PaymentController` does; pgsql CI asserts the trigger path.
   - Routing `re_present`: allocations untouched; instrument keeps `dishonor_routing='re_present'` enabling Task-7 re-remise.
   - `Bounced` status + `bounced_at` + `bounce_reason` + `dishonor_routing`; line `bounced`; slip auto-close check; `Bounced` event with payload (routing, fees).
 
-- [ ] **Step 1: Failing tests** — (a) effet bounce-before-clear, routing `receivable`, no fees: JE Dr 411 / Cr 5313-family, NO movement, allocations reversed (negative rows), invoice `balance_due` reopened AND status back to `Posted`, payment `dishonored_at` set; (b) cheque bounce with fees: fee movement out = fee+VAT, reconcile clean after; (c) dishonor-after-clear: movement out = nominal+fees, JE Cr bank total matches movement; (d) routing `re_present`: allocations untouched, invoice stays Paid; (e) tolerance-closed invoice: reopened `balance_due` equals the FULL original receivable (tolerance write-off reversed); (f) concurrent bounce vs payment on the same documents — no deadlock (lock-order test, pgsql, two connections); (g) GL-fail injection → nothing persists.
+- [ ] **Step 1: Failing tests** — (a) effet bounce-before-clear, routing `receivable`, no fees: JE Dr 411 / Cr 5313-family, NO movement, allocations reversed (negative rows), invoice `balance_due` reopened AND status back to `Posted`, payment `dishonored_at` set (and present in the payment API response); (b) cheque bounce with fees: fee movement out = fee+VAT, **in-test `treasury:reconcile` run → clean**; (c) dishonor-after-clear: movement out = nominal+fees, JE Cr bank total matches movement, **in-test `treasury:reconcile` run → clean** (plan-review LOW-16); (d) routing `re_present`: allocations untouched, invoice stays Paid; (e) tolerance-closed invoice: seed via `CloseInvoiceWithToleranceService`, bounce, assert the `payment_id IS NULL` tolerance allocation got a negative mirror and reopened `balance_due` equals the FULL original receivable; (f) concurrent bounce vs payment on the same documents — no deadlock (lock-order test, pgsql, two connections); (g) GL-fail injection → nothing persists.
 - [ ] **Step 2: Run — FAIL.** · **Step 3: Implement.** · **Step 4: Run — PASS.** · **Step 5: Commit** `feat(treasury): instrument dishonor — routing, fees, allocation reopening, claw-back`.
 
 ### Task 10: Audit wiring — instrument events → `audit_events`
@@ -250,6 +254,7 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 **Interfaces:**
 - Produces (spec §13): all endpoints add the **`company_id` predicate** (T16) + `Str::isUuid()` → 404 guards; `index` paginated with `meta` + filters (status, kind, direction, partner_id, repository_id, `needs_details`, maturity date window); `store` delegates to `receive()` (currency defaults to **company currency**, not 'TND' — T17; kind snapshots from the method; 422 pre-transaction on missing portfolio account for payment-linked creates); `PATCH /payment-instruments/{id}` → `updateDetails()` under new `can:instruments.update`; `deposit` → wrapper (Task 7); `clear` → `clear()` with optional `fee_amount`/`fee_vat_amount`/`value_date` (money regex `^\d+(\.\d{1,3})?$`); `bounce` → `bounce()` with required `routing` + optional fees, moved to new `can:instruments.bounce`; `transfer` → `custodyTransfer()`. New permissions `instruments.update`, `instruments.bounce`, `instruments.remit` seeded to admin/owner/manager/accountant-equivalent roles (grep the role list `RolesAndPermissionsSeeder.php:210-213` and mirror `instruments.clear`'s grants).
 - Response shape: keep `formatInstrument` (`:351`) extended with the new fields (kind, direction, origin, needs_details, dishonor_routing, remittance_id, bank_id).
+- **Delete the controller-level event dispatches** (`event(new InstrumentDeposited(...))` etc. at `:190/:232/:278/:330`) — dispatch is owned by the lifecycle service after Wave B; leaving them double-writes every audit row (plan-review MED-8).
 
 - [ ] **Step 1: Failing tests** — company-B user cannot see/transition company-A instruments (404); PATCH on Received updates + event row; PATCH on Deposited → 422; bounce without `instruments.bounce` → 403; index returns `meta.total` and respects `needs_details=true` filter; store without currency lands company currency.
 - [ ] **Step 2: FAIL.** · **Step 3: Implement.** · **Step 4: PASS.** · **Step 5: Commit** `feat(treasury): instrument endpoints — company scoping, PATCH completion, granular permissions, pagination`.
@@ -281,7 +286,7 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 
 **Interfaces:**
 - Consumes: `InstrumentLifecycleService::receive()`, `InstrumentAccountResolver`.
-- Produces (spec §8, customer direction only — `!$isSupplierPayment`, branch at `PaymentController.php:406`): when method `has_maturity`:
+- Produces (spec §8, customer direction only — `!$isSupplierPayment`, branch at `PaymentController.php:406`): when method `has_maturity` **AND `instrument_kind` ∈ {Cheque, Effet}** (Task-3 kind rule; `Other` — e.g. FR DIRECT_DEBIT — keeps Phase-① behavior verbatim, test-pinned):
   1. **Validation adds:** `repository_id` required (T12-finding); `instrument` object (reference required; maturity_date required when method kind = effet) XOR `instrument_id` (must be Received, unlinked, partner-matching); `withholding_enabled` → 422 (D-9); no `amount` change.
   2. **Order inside the existing transaction:** create/lock instrument FIRST (`receive()` inline or `lockForUpdate` the supplied one — before any GL, per lock order) → create Payment + allocations as today (documents lock at `:670-674` unchanged) → build the payment JE with the **debit line on the §7 receipt account** (P for cheque / R for effet via resolver; resolver miss → 422 BEFORE the transaction opened — hoist the resolve to validation) → excess? the advance JE debit line swaps too (T7) → `postEntryNow` → **NO `record()` call** → write `payments.instrument_id` + `payment_instruments.payment_id`.
   3. Immediate methods: **byte-identical** — pin with a test asserting JE line accounts + movement row identical to a pre-change fixture.
@@ -294,14 +299,16 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 ### Task 14: Supplier direction + side-door guards + refund guards
 
 **Files:**
-- Modify: `PaymentController.php` (supplier branch + `storeMultiple`), `MultiPaymentController.php`, `PaymentRefundService.php`
+- Modify: `PaymentController.php` (supplier branch + `storeMultiple`), `MultiPaymentController.php`, `apps/api/app/Modules/Treasury/Domain/Services/PaymentRefundService.php` (**Domain/Services — the Application/Services path does not exist**; `refundPayment:78`, `partialRefund:211`, `reversePayment:523`, `canRefund:479`)
 - Test: `apps/api/tests/Feature/Treasury/DeferredTenderGuardsTest.php`
 
 **Interfaces:**
 - Produces (spec §8 writer table):
-  - **Supplier-direction `store()` + `has_maturity`:** Phase-① behavior verbatim (movement out + Cr cash JE — test-pinned byte-identical) PLUS `receive()` an `direction=outbound` instrument (origin web, kind from method, custody = payment repository, payment linked) for échéancier visibility. No GL change (D-4).
+  - **Supplier-direction `store()` + `has_maturity` (kind Cheque/Effet):** Phase-① behavior verbatim (movement out + Cr cash JE — test-pinned byte-identical) PLUS `receive()` a `direction=outbound` instrument (origin web, kind from method, custody = payment repository, payment linked) for échéancier visibility. No GL change (D-4). Kind `Other` → no instrument either.
   - **`storeMultiple` (`PaymentController.php:995-998`), `MultiPaymentController::createSplitPayment` (`:123-125`), `recordDeposit` (`:250-252`), `recordPaymentOnAccount` (`:412`):** `has_maturity` method ⇒ 422 with translated `treasury.deferred_method_not_supported_on_this_path` (T8).
   - **`PaymentRefundService::refundPayment/partialRefund/reversePayment`:** payment linked to a non-terminal instrument (`Received/Deposited/Bounced`) ⇒ 422 domain exception "settle the instrument first (bounce/cancel)" (T3); instrument `Cleared` ⇒ refund proceeds as today. Guard sits BEFORE any write, reading via the new `payment->instrument` relation (add `instrument(): BelongsTo` on `Payment` — column exists `Payment.php:80`).
+  - **Currency-literal sweep (T17, this task owns it — plan-review MED-7):** replace the remaining `?? 'TND'` defaults with company currency at `PaymentController.php:1143`, `:1162`, and the event payload at `:623`.
+  - **`formatPayment` gains `dishonored_at`** (spec §19.3 backend half; FE badge in Task 23).
 - [ ] **Step 1: Failing tests** — supplier traite: movement out + instrument row `direction=outbound` + JE unchanged vs fixture; each of the four side doors 422s on a maturity method and still accepts cash; refund of a pending-check payment 422s; refund after clear succeeds (movement out from the CLEARED bank repo); reverse of pending-instrument payment 422s.
 - [ ] **Step 2: FAIL.** · **Step 3: Implement.** · **Step 4: PASS.** · **Step 5: Commit** `feat(treasury): outbound registration, side-door 422s, refund guards for deferred tenders`.
 
@@ -331,7 +338,7 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 - Test: `apps/api/tests/Feature/Treasury/PosBridgeInstrumentTest.php`
 
 **Interfaces:**
-- Produces (spec §9): inside `projectPaymentLineFromCanonical` (`:364`), after method resolution (`:391-405`): if `method->has_maturity` →
+- Produces (spec §9): inside `projectPaymentLineFromCanonical` (`:364`), after method resolution (`:391-405`): if `method->has_maturity` **AND `method->instrument_kind` ∈ {Cheque, Effet}** (the Task-3 kind rule — `Other`, e.g. FR DIRECT_DEBIT, keeps today's path verbatim) →
   - **instrument** via `receive()` with `idempotencyKey = "fiscal_event:{$event->id}:instrument:{$index}"`, `origin=Pos`, `reference = 'POS-'.substr($event->id,0,8).'-'.$index`, `needs_details=true`, `maturity_date=null`, custody = `resolveDefaultRepository()` (`:575-608`), partner from receipt, **explicit currency** (`$receipt->currency`); on unique-violation SELECT + semantic-validate (amount, kind, event) — mismatch throws;
   - **JE debit** swapped via the override param (portfolio account from the resolver — **resolver miss THROWS**, F4);
   - **NO `record()` call** for the leg; immediate legs unchanged;
@@ -339,7 +346,7 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
   - **Replay probe (F5/T11)** in the idempotent-hit branch (`:458-471`): existing leg Payment → read its JE debit-line account: repo `gl_account_id` ⇒ pre-cutover leg (movement completable via the existing branch, **create NO instrument**); portfolio account ⇒ post-cutover (ensure instrument exists — create if the unique key is absent — movement FORBIDDEN: assert none gets recorded); no Payment ⇒ fresh post-cutover processing.
 - `HandlesMaturityTenderLeg` exposes `handleMaturityLeg(FiscalEvent $event, PaymentDTO $leg, int $index, PaymentMethod $method, Receipt-ish $ctx): MaturityLegResult` so Task 18 reuses it single-leg.
 
-- [ ] **Step 1: Failing tests** (all clear `CompanyContext` before `apply()` — rule 20) — (a) SALE_RECEIPT with cash+check split: cash leg → movement, check leg → instrument (needs_details, POS-ref) + JE debit on P + NO movement for that leg; (b) full replay of the same event → no duplicate instrument/payment/movement (complete-set); (c) **pre-cutover simulation:** seed a leg Payment whose JE debits the repo cash account + its movement, then replay → no instrument minted, no new JE, event applied clean; (d) missing portfolio account → bridge throws (job would retry/dead-letter); (e) voucher leg (instrument_serial set, non-maturity method) → untouched behavior.
+- [ ] **Step 1: Failing tests** (all clear `CompanyContext` before `apply()` — rule 20; **harness: mirror `tests/Feature/Treasury/PosBridgeSpineTest.php`** — real canonical bytes via its `canonicalEncode` helper `:669`, pre-cutover fixture via `seedPriorLegWrite` `:441`) — (a) SALE_RECEIPT with cash+check split: cash leg → movement, check leg → instrument (needs_details, POS-ref) + JE debit on P + NO movement for that leg; (b) full replay of the same event → no duplicate instrument/payment/movement (complete-set); (c) **pre-cutover simulation** (`seedPriorLegWrite`): leg Payment whose JE debits the repo cash account + its movement, then replay → no instrument minted, no new JE, event applied clean; (d) missing portfolio account → bridge throws (job would retry/dead-letter); (e) voucher leg (instrument_serial set, non-maturity method) → untouched behavior; (f) `has_maturity` + `kind=Other` leg → today's path byte-identical (movement + cash JE, no instrument); (g) **`pos_receipt_payments` untouched by the new flow** — row count and bytes identical before/after the maturity branch (F9 pin). Implementation note: the unique-violation catch → SELECT for instrument idempotency sits OUTSIDE the nested transaction closure (the `PaymentController.php:578-586` savepoint lesson — MED-10).
 - [ ] **Step 2: FAIL.** · **Step 3: Implement.** · **Step 4: PASS.** · **Step 5: Commit** `feat(treasury): POS check/traite tenders enter the portfolio; deferred legs stop moving cash (G6)`.
 
 ### Task 17: Bridge refund/void maturity handling
@@ -356,7 +363,7 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
   4. zero/ambiguous match → same alert path, leg still posts the standard cash reversal? **NO** — zero/ambiguous means we cannot know whether cash ever entered; the SAFE default (spec §9 step 1: "never guess-cancel") is: post the standard cash reversal (mirroring what the non-instrument-aware bridge does today) + alert. Document this choice in the test.
   5. transient exceptions propagate (F3); replay after successful cancel → `Cancelled` instrument → silent no-op, no duplicate alert row.
 
-- [ ] **Step 1: Failing tests** — same-day void of a check sale: instrument Cancelled, JE Dr Revenue / Cr P, NO cash movement either direction, revenue net zero across the two events; refund after the check was remitted: standard reversal + movement out + ONE alert row (replay → still one); ambiguous (two identical-amount check legs) → no cancel + alert + standard reversal; DB error mid-cancel → exception propagates (row not marked applied).
+- [ ] **Step 1: Failing tests** (harness: mirror `PosRefundReceiptBridgeTest.php` + `PosBridgeSpineTest` fixtures) — same-day void of a check sale: instrument Cancelled, JE Dr Revenue / Cr P, NO cash movement either direction, revenue net zero across the two events; refund after the check was remitted: standard reversal + movement out + ONE alert row (replay → still one); ambiguous (two identical-amount check legs) → no cancel + alert + standard reversal; DB error mid-cancel → exception propagates (row not marked applied); `pos_receipt_payments` untouched by the refund maturity branch (F9 pin).
 - [ ] **Step 2: FAIL.** · **Step 3: Implement.** · **Step 4: PASS.** · **Step 5: Commit** `feat(treasury): POS refund/void resolves portfolio instruments (cancel or alert, never guess)`.
 
 ### Task 18: Deposit + AccountPayment bridges
@@ -417,10 +424,11 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 
 **Files:**
 - Modify: `apps/api/app/Modules/Treasury/Presentation/Console/ReconcileTreasuryCommand.php`
+- Create: `apps/api/database/migrations/tenant/2026_07_12_100700_add_phase2_cutover_at_to_companies.php`
 - Test: `apps/api/tests/Feature/Treasury/ReconcilePortfolioCheckTest.php`
 
 **Interfaces:**
-- Produces (spec §11): per company, three equalities at scale — `Σ(pending cheque nominal, status Received+Deposited) == balance(ChecksToCollect)`; `Σ(effet Received) == balance(EffectsReceivable)` **(inbound only — outbound instruments post no GL this phase and are excluded)**; `Σ(effet Deposited) == balance(EffectsInCollection)`. GL side = full account balance (§5.5 reservation makes this sound — T6), watermark-excluded: rows/JEs before `companies.phase2_cutover_at` (new nullable column in this task's migration, stamped by the migration at deploy time = `now()`) don't count, and instruments matching the §9 pre-cutover probe never exist (Task 16 suppression). Drift → `audit_events` `treasury.reconcile.portfolio_drift` + `Log::error`; **NEVER freezes** (assert freeze list untouched). Missing purpose accounts → skip + info log (charts not yet reseeded is a deploy-window state, not drift).
+- Produces (spec §11): per company, three equalities at scale — `Σ(pending cheque nominal, status Received+Deposited) == balance(ChecksToCollect)`; `Σ(effet Received) == balance(EffectsReceivable)` **(inbound only — outbound instruments post no GL this phase and are excluded)**; `Σ(effet Deposited) == balance(EffectsInCollection)`. GL side = full account balance (§5.5 reservation makes this sound — T6), watermark-excluded: rows/JEs before `companies.phase2_cutover_at` (new nullable column via **`2026_07_12_100700_add_phase2_cutover_at_to_companies.php`, created in THIS task**, stamped `now()` on `up()`) don't count, and instruments matching the §9 pre-cutover probe never exist (Task 16 suppression). Drift → `audit_events` `treasury.reconcile.portfolio_drift` + `Log::error`; **NEVER freezes** (assert freeze list untouched). Missing purpose accounts → skip + info log (charts not yet reseeded is a deploy-window state, not drift).
 
 - [ ] **Step 1: Failing tests** — clean cycle (receive→remit→clear) reconciles green incl. check #4; seeded drift both directions (orphan GL line on 5312 / instrument without receipt JE) → portfolio_drift audit row, NO freeze; pre-watermark noise excluded.
 - [ ] **Step 2: FAIL.** · **Step 3: Implement** (follow the existing per-repo check block structure `:248-303`; new check is per-company not per-repo). · **Step 4: PASS (pgsql).** · **Step 5: Commit** `feat(treasury): reconcile check #4 — portfolio vs GL transit accounts (alert-only)`.
@@ -437,7 +445,7 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 - Test: `apps/web/src/features/treasury/__tests__/{InstrumentListPage.filters,InstrumentDetailPage.lifecycle}.test.tsx`
 
 **Interfaces:**
-- Produces (spec §15): list — maturity-window/kind/direction/needs_details filters + bucket chip row (consumes Task 19 meta) + kind/direction badges + pagination (`api.get`, `{data,meta}`); detail — full 9-status typing (fix the 5-status drift, `InstrumentDetailPage.tsx:69`), timeline from `instrument_events` (replaces derived), actions: remit → navigate to slip-create preselected, clear (fee/VAT `<MoneyInput>` + value date), bounce (routing select + fees + reason), custody transfer, cancel; every action gated by its granular permission; amounts as strings + `formatCurrency` (fix the `number` typing at `:64/:186`). Design tokens; all text `t()`.
+- Produces (spec §15): list — maturity-window/kind/direction/needs_details filters + bucket chip row (consumes Task 19 meta) + kind/direction badges + pagination (`api.get`, `{data,meta}`); detail — full 9-status typing (fix the 5-status drift, `InstrumentDetailPage.tsx:69`), timeline from `instrument_events` (replaces derived), actions: remit → navigate to slip-create preselected, clear (fee/VAT `<MoneyInput>` + value date), bounce (routing select + fees + reason), custody transfer, cancel; every action gated by its granular permission; amounts as strings + `formatCurrency` (fix the `number` typing at `:64/:186`). **Payments list/detail: `dishonored` badge when `dishonored_at` set** (spec §19.3 FE half; backend field from Task 14). Design tokens; all text `t()`.
 
 - [ ] **Step 1: Failing Vitest** — filters drive query params (tenantScopedKey asserted); bounce dialog requires routing; detail renders timeline rows from a mocked events hook; action buttons hidden without permissions.
 - [ ] **Step 2: FAIL.** · **Step 3: Implement.** · **Step 4: PASS + typecheck + lint.** · **Step 5: Commit** `feat(web): instrument register filters/buckets + lifecycle detail page`.
@@ -450,7 +458,7 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 - Test: `apps/web/src/features/treasury/__tests__/Remittance.test.tsx`
 
 **Interfaces:**
-- Produces (spec §15): create flow (bank repo select → kind → filterable Received-instrument picker → draft → remit); detail (lines, per-line clear/bounce dialogs, totals, status); **printable bordereau** (§3 conventions: depositor, bank + RIB of the bank repository, slip number/date, one line per instrument — drawer, drawee bank, reference, amount, échéance for effets — count + total; `@media print` CSS; PDF export deferred). New-directory token rule applies strictly (rule 18).
+- Produces (spec §15): create flow (bank repo select → kind → filterable Received-instrument picker → draft → remit); detail (lines, per-line clear/bounce dialogs, totals, status); **printable bordereau** (§3 conventions: depositor, bank + RIB of the bank repository, slip number/date, one line per instrument — drawer, drawee bank, reference, amount, échéance for effets — count + total; `@media print` CSS; PDF export deferred). **Early-remise warning (D-7):** adding an instrument whose `maturity_date` is in the future shows a non-blocking warning banner in the picker ("post-dated — remitting before maturity"); never blocks (spec §14). New-directory token rule applies strictly (rule 18).
 
 - [ ] **Step 1: Failing Vitest** — create flow posts lines then remit; print view renders count+total rows from fixture. · **Step 2: FAIL.** · **Step 3: Implement.** · **Step 4: PASS + typecheck + lint.** · **Step 5: Commit** `feat(web): remittance pages + printable bordereau`.
 
@@ -470,15 +478,16 @@ The B2B payment flow already locks documents before GL (`PaymentController.php:6
 
 ## WAVE H — End-to-end + CI
 
-### Task 26: pgsql CI leg extension
+### Task 26: pgsql CI coverage VERIFICATION (plan-review MED-5 — there is no "path list" to extend)
 
 **Files:**
-- Modify: `.github/workflows/*` (the `treasury-spine-pgsql` job — locate by name)
-- Test: the job itself.
+- Read (modify only if a gap is proven): `.github/workflows/ci.yml` (`treasury-spine-pgsql` job at `:652`)
 
-- [ ] **Step 1:** Add the new test paths (`tests/Feature/Treasury/Instrument*`, `PosBridgeInstrument*`, `ReconcilePortfolioCheckTest`, `DeferredTender*`) to the pgsql job's path list; keep it in `all-checks-pass.needs`.
-- [ ] **Step 2:** Push to the feature branch only when the owner authorizes CI runs; otherwise verify the workflow YAML with `act`-style dry parse or lint (`yamllint`/actionlint if present).
-- [ ] **Step 3: Commit** `ci: treasury phase-2 suites on the pgsql leg`.
+The job runs WHOLE directories serially — `phpunit tests/Feature/Treasury`, `tests/Feature/Accounting`, `tests/Unit/Treasury` (`ci.yml:766-776`, "DO NOT PARALLELIZE" warning `:757-764` — do not restructure the serial steps). Every new test this plan puts in those trees is auto-covered.
+
+- [ ] **Step 1:** Verify each new test file's path lands inside a covered directory. The two that do NOT: `tests/Architecture/PortfolioAccountReservationTest` (Task 1 — static grep assertions, no pgsql needed) and `tests/Feature/Compliance/InstrumentAuditTrailTest` (Task 10 — no pgsql-only artifacts; sqlite leg suffices). Confirm neither contains pgsql-only assertions; if one does, move that assertion into a `tests/Feature/Treasury/` sibling instead of touching the workflow.
+- [ ] **Step 2:** Confirm `treasury-spine-pgsql` is still in `all-checks-pass.needs` (unchanged).
+- [ ] **Step 3: Commit** (only if anything moved) `test: keep pgsql-only assertions under the covered treasury tree`.
 
 ### Task 27: Live Playwright A→Z on the db-per-tenant stack
 
@@ -506,6 +515,30 @@ Per spec §16, drive the real UI (local stack per `docs/handoff/RESUME-2026-07-0
 1. **Spec coverage:** §5 schema → Tasks 2-5; §6 machine/lock order → 2, 6-9; §7 postings → 6-9, 13, 16; §8 cutover table → 13-14; §9 bridge → 16-18; §10 échéancier → 19-21, 25; §11 register/reconcile → 11, 22, 23; §12 impayé → 9, 11; §13 API → 11-12; §15 FE → 15, 23-25; §16 tests → distributed + 26-27; §17/§18 → 22 (watermark), 28. Escompte/outbound-GL/re-billing correctly ABSENT (deferred by D-4/5/6).
 2. **Placeholder scan:** none — every step names files, signatures, and concrete assertions; line refs marked as re-grep-before-edit.
 3. **Type consistency:** `InstrumentKind/Direction/Origin/DishonorRouting` (Task 2) consumed by 3, 6-9, 13-14, 16-19; `handleMaturityLeg` (16) consumed by 18; `CancellationShape` (6) consumed by 17; `ReceiveInstrumentData` fields match Task 13/16 call sites; bucket keys (19) consumed by 23/25.
+
+## Plan-review reconciliation (2026-07-11)
+
+Full review: `reviews/2026-07-11-treasury-phase2-plan-adversarial-review.md` (treasury-reviewer, APPROVE-WITH-FIXES, 0 BLOCKER). All 17 findings accepted:
+
+| # | Sev | Finding (short) | Resolution |
+|---|---|---|---|
+| 1 | HIGH | Tolerance reversal payment-scoped ⇒ reverses nothing (`payment_id IS NULL`) | Task 9: document-scoped query + `payment_tolerance` JE contre-passation |
+| 2 | HIGH | Seeder codes wrong; `kind=other` posting branch undefined | Task 3: actual codes (LCR/BILL_EXCHANGE→effet, DIRECT_DEBIT→other) + THE KIND RULE (cutover/bridge only for cheque/effet); Tasks 13/14/16 condition + pins |
+| 3 | HIGH | `PaymentRefundService` path phantom (Application vs Domain/Services) | Task 14 + File Structure corrected (`refundPayment:78`) |
+| 4 | MED | `phase2_cutover_at` migration listed nowhere | Task 22 Files + File Structure |
+| 5 | MED | pgsql job has no path list; "Task 28" ref wrong | Task 26 rewritten as verification; executor note fixed |
+| 6 | MED | F9 pin (`pos_receipt_payments` untouched) missing | Tasks 16(g) + 17 assertions |
+| 7 | MED | `:1143/:1162/:623` currency literals orphaned | Task 14 owns them explicitly |
+| 8 | MED | Controller event dispatches would double audit rows | Task 11 deletes them |
+| 9 | MED | Spec §19.3 `dishonored_at` surfaces untraced | Task 14 `formatPayment` + Task 23 badge |
+| 10 | MED | Task 6 transaction contract vs nested call sites | Contract reworded (savepoint-nesting intended); Task 16 SELECT-outside-closure note |
+| 11 | LOW | Byte-identical pins aren't failing-first | Executor note: green-first regression pins |
+| 12 | LOW | Bridge test harness unnamed | Tasks 16/17 name `PosBridgeSpineTest` fixtures |
+| 13 | LOW | File Structure omissions | `InstrumentAccountPurpose`, `CancellationShape`, exception added |
+| 14 | LOW | D-7 early-remise warning absent | Task 24 |
+| 15 | LOW | §5.6 no-JE-index docblock unassigned | Task 5 migration comment |
+| 16 | LOW | Dishonor-after-clear lacks in-test reconcile run | Task 9(c) |
+| 17 | LOW | Minor line-ref drift | Corrected where cited; re-grep note stands |
 
 ## Execution Handoff
 
