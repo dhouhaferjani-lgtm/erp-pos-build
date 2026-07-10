@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, FileUp, Plus, ReceiptText, Trash2, TriangleAlert } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileUp, Plus, ReceiptText, Trash2, TriangleAlert } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -25,6 +25,7 @@ import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { bcadd, bccomp, bcmul, bcsub, formatCurrency, formatQuantity } from '@/lib/decimal'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { usePermissions } from '@/hooks/usePermissions'
+import { confirmDiscard, useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 
 import {
   useCreateSupplierInvoice,
@@ -293,6 +294,29 @@ export function SupplierInvoiceCreatePage() {
     duplicateCheckReference !== '' &&
     duplicateCheckReference === supplierReference.trim() &&
     duplicateReferenceQuery.data?.exists === true
+  const selectedPurchaseOrdersDirty = selectedPurchaseOrderIds.join('\u0000') !== initialPurchaseOrderIds.join('\u0000')
+  const manualLinesDirty = manualLines.length !== 1 || manualLines.some((line) => (
+    line.productId !== '' ||
+    line.variantId !== '' ||
+    line.quantity !== '1.0000' ||
+    line.unitPrice !== '0.000' ||
+    line.vatRate !== '0.00' ||
+    line.batchNumber !== '' ||
+    line.batchExpiryDate !== '' ||
+    line.batchManufacturingDate !== ''
+  ))
+  const isDirty =
+    form.formState.isDirty ||
+    selectedSupplier !== null ||
+    selectedPurchaseOrdersDirty ||
+    Object.keys(lineEdits).length > 0 ||
+    manualLinesDirty ||
+    attachments.length > 0
+  useUnsavedChangesGuard({ isDirty })
+
+  function confirmLeave(): boolean {
+    return !isDirty || confirmDiscard(t('confirmation.unsavedChangesBody'))
+  }
 
   function updateLine(index: number, patch: Partial<InvoiceLineFormState>): void {
     const line = lines[index]
@@ -635,6 +659,20 @@ export function SupplierInvoiceCreatePage() {
       <PageHeader
         title={t('purchases:supplierInvoices.create.title')}
         subtitle={t('purchases:supplierInvoices.create.description')}
+        breadcrumb={
+          <Link
+            to="/purchases/supplier-invoices"
+            className={`inline-flex items-center gap-2 text-sm ${textColors.tertiary} ${textColors.hoverPrimary}`}
+            onClick={(event) => {
+              if (!confirmLeave()) {
+                event.preventDefault()
+              }
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('common:actions.back')}
+          </Link>
+        }
         actions={hasPermission('document-ingestions.view') ? (
           <Link
             to="/purchases/scans/new?kind=supplier_invoice"
@@ -937,7 +975,11 @@ export function SupplierInvoiceCreatePage() {
         <Button
           type="button"
           variant="secondary"
-          onClick={() => { void navigate('/purchases/supplier-invoices') }}
+          onClick={() => {
+            if (confirmLeave()) {
+              void navigate('/purchases/supplier-invoices')
+            }
+          }}
         >
           {t('common:actions.cancel')}
         </Button>

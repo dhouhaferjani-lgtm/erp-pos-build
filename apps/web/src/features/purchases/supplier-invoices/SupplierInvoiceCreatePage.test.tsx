@@ -225,9 +225,26 @@ describe('SupplierInvoiceCreatePage', () => {
       route: '/purchases/supplier-invoices/new',
     })
 
+    expect(screen.getByRole('link', { name: 'common:actions.back' })).toHaveAttribute('href', '/purchases/supplier-invoices')
     expect(screen.getByRole('button', { name: 'common:actions.cancel' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'purchases:supplierInvoices.create.saveDraft' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'actions.openSaveMenu' })).toBeInTheDocument()
+  })
+
+  it('confirms before cancelling a dirty draft', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    fireEvent.change(await screen.findByTestId('supplier-reference'), {
+      target: { value: 'Do not discard' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'common:actions.cancel' }))
+
+    expect(confirmSpy).toHaveBeenCalledWith('confirmation.unsavedChangesBody')
+    expect(navigate).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
   })
 
   it('renders a scan-instead link with the locked supplier_invoice kind when permitted', async () => {

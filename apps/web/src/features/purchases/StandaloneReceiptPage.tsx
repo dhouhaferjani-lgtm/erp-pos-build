@@ -2,18 +2,20 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ClipboardList, PackagePlus, Plus, Save, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, ClipboardList, PackagePlus, Plus, Save, Send, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
 import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
+import { PageHeader } from '../../components/molecules/PageHeader/PageHeader'
 import { api } from '../../lib/api'
 import { getDecimals } from '../../lib/currencyMeta'
 import { formatQuantity } from '../../lib/decimal'
 import { borderColors, colors, textColors, tokens, typography } from '../../lib/designTokens'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { usePermissions } from '../../hooks/usePermissions'
+import { confirmDiscard, useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 
@@ -128,6 +130,23 @@ export function StandaloneReceiptPage() {
   const canSubmit = supplierId !== '' && locationId !== '' && lines.every((line) =>
     line.productId !== '' && line.quantity !== '' && line.unitPrice !== '',
   )
+  const linesDirty = lines.length !== 1 || lines.some((line) => (
+    line.productId !== '' ||
+    line.quantity !== '1.0000' ||
+    line.freeQuantity !== '0.0000' ||
+    line.unitPrice !== '0.000'
+  ))
+  const isDirty =
+    supplierId !== '' ||
+    locationId !== '' ||
+    externalReference !== '' ||
+    externalDate !== '' ||
+    linesDirty
+  useUnsavedChangesGuard({ isDirty })
+
+  function confirmLeave(): boolean {
+    return !isDirty || confirmDiscard(t('confirmation.unsavedChangesBody'))
+  }
 
   const createMutation = useMutation({
     mutationFn: async (postImmediately: boolean) => {
@@ -273,20 +292,35 @@ export function StandaloneReceiptPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className={`${typography.fontSize['2xl']} ${typography.fontWeight.bold} ${textColors.primary}`}>{t('purchases:standaloneReceipt.title')}</h1>
-          <p className={`mt-1 ${typography.fontSize.sm} ${textColors.tertiary}`}>{t('purchases:standaloneReceipt.description')}</p>
-          {hasPermission('document-ingestions.view') && (
+      <PageHeader
+        title={t('purchases:standaloneReceipt.title')}
+        subtitle={t('purchases:standaloneReceipt.description')}
+        breadcrumb={
+          <Link
+            to="/purchases/receipts"
+            className={`inline-flex items-center gap-2 text-sm ${textColors.tertiary} ${textColors.hoverPrimary}`}
+            onClick={(event) => {
+              if (!confirmLeave()) {
+                event.preventDefault()
+              }
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('common:actions.back')}
+          </Link>
+        }
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            {hasPermission('document-ingestions.view') ? (
             <Link
               to="/purchases/scans/new?kind=supplier_delivery_note"
-              className={`mt-1 inline-block ${typography.fontSize.sm} ${textColors.brand} hover:underline`}
+              className={`${typography.fontSize.sm} ${textColors.brand} hover:underline`}
             >
               {t('documentIngestions:actions.scanInstead')}
             </Link>
-          )}
-        </div>
-        {!receiptFirstDisabled && <div className="flex items-center gap-2">
+            ) : null}
+        {!receiptFirstDisabled ? (
+          <>
           <button
             type="button"
             disabled={!canSubmit || createMutation.isPending}
@@ -305,8 +339,12 @@ export function StandaloneReceiptPage() {
             <Send className="h-4 w-4" />
             {t('purchases:standaloneReceipt.actions.postNow')}
           </button>
-        </div>}
-      </div>
+          </>
+        ) : null}
+          </div>
+        )}
+        className="mb-0"
+      />
 
       {receiptFirstDisabled ? (
         <div className={`${tokens.alert.base} ${tokens.alert.warning} flex items-center gap-2`}>

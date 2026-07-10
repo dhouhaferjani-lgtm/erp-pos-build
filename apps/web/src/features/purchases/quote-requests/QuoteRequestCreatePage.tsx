@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -18,6 +18,7 @@ import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/Sticky
 import { ProductLineSelect } from '@/components/molecules/line-items/ProductLineSelect'
 import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { confirmDiscard, useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useCompanyStore } from '@/stores/companyStore'
 
 import { useCreateQuoteRequestGroup } from './api'
@@ -94,6 +95,20 @@ export function QuoteRequestCreatePage() {
     resolver: zodResolver(quoteRequestCreateSchema),
   })
   const errors = form.formState.errors
+  const hasSupplierChanges = suppliers.some((supplier) => supplier.supplierId !== '')
+  const hasLineChanges = lines.some((line) => (
+    line.productId !== '' ||
+    line.variantId !== '' ||
+    line.description !== '' ||
+    line.quantity !== '1.0000' ||
+    line.unitPrice !== '0.000'
+  ))
+  const isDirty = form.formState.isDirty || hasSupplierChanges || hasLineChanges
+  useUnsavedChangesGuard({ isDirty })
+
+  function confirmLeave(): boolean {
+    return !isDirty || confirmDiscard(t('confirmation.unsavedChangesBody'))
+  }
 
   function updateSupplier(index: number, value: string) {
     setSuppliers((current) => current.map((supplier, i) => (i === index ? { ...supplier, supplierId: value } : supplier)))
@@ -145,6 +160,20 @@ export function QuoteRequestCreatePage() {
       <PageHeader
         title={t('purchases:quoteRequests.create.title')}
         subtitle={t('purchases:quoteRequests.create.description')}
+        breadcrumb={
+          <Link
+            to="/purchases/quote-requests"
+            className={`inline-flex items-center gap-2 text-sm ${textColors.tertiary} ${textColors.hoverPrimary}`}
+            onClick={(event) => {
+              if (!confirmLeave()) {
+                event.preventDefault()
+              }
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('common:actions.back')}
+          </Link>
+        }
         className="mb-0"
       />
 
@@ -296,7 +325,11 @@ export function QuoteRequestCreatePage() {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => { void navigate('/purchases/quote-requests') }}
+            onClick={() => {
+              if (confirmLeave()) {
+                void navigate('/purchases/quote-requests')
+              }
+            }}
           >
             {t('common:actions.cancel')}
           </Button>

@@ -97,9 +97,24 @@ describe('QuoteRequestCreatePage', () => {
   it('renders canonical footer actions for cancel and save variants', () => {
     renderWithProviders(<QuoteRequestCreatePage />)
 
+    expect(screen.getByRole('link', { name: 'common:actions.back' })).toHaveAttribute('href', '/purchases/quote-requests')
     expect(screen.getByRole('button', { name: 'common:actions.cancel' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'purchases:quoteRequests.actions.create' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'actions.openSaveMenu' })).toBeInTheDocument()
+  })
+
+  it('confirms before cancelling a dirty draft', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderWithProviders(<QuoteRequestCreatePage />)
+
+    fireEvent.change(screen.getByLabelText('purchases:quoteRequests.fields.notes'), {
+      target: { value: 'Do not discard' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'common:actions.cancel' }))
+
+    expect(confirmSpy).toHaveBeenCalledWith('confirmation.unsavedChangesBody')
+    expect(navigate).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
   })
 
   it('submits a multi-supplier fan-out payload with string quantity and money values', async () => {
