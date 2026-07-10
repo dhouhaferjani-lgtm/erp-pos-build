@@ -185,7 +185,10 @@ export function CompanyPage() {
       await api.patch('/settings/company', data)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-settings']) }),
+        queryClient.invalidateQueries({ queryKey: tenantScopedKey(['company-config']) }),
+      ])
       setIsDirty(false)
       showNotification('success', t('settings:company.messages.saved'))
     },

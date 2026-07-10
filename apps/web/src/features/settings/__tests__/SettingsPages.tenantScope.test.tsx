@@ -195,12 +195,21 @@ afterEach(() => {
 describe('settings pages tenant scope', () => {
   it('wraps CompanyPage settings key and invalidates exact settings operations (.625-.628)', async () => {
     const queryClient = createClient()
+    let companyConfigCalls = 0
     queryClient.setQueryData(['company-settings', 'tenant-B', 'company-1'], { marker: 'tenant-B-company-settings' })
+    queryClient.setQueryData(['company-config', 'tenant-B', 'company-1'], { marker: 'tenant-B-company-config' })
 
-    render(<CompanyPage />, { wrapper: wrapper(queryClient) })
+    render(
+      <>
+        <Probe queryKey={['company-config']} queryFn={async () => ({ enabled: ++companyConfigCalls })} />
+        <CompanyPage />
+      </>,
+      { wrapper: wrapper(queryClient) },
+    )
 
     await waitFor(() => {
       expect(mockApiGet.mock.calls.filter(([url]) => url === '/settings/company')).toHaveLength(1)
+      expect(companyConfigCalls).toBe(1)
       expect(queryClient.getQueryData(['company-settings', 'tenant-A', 'company-1'])).toBeDefined()
     })
 
@@ -211,6 +220,7 @@ describe('settings pages tenant scope', () => {
     })
     await waitFor(() => {
       expect(mockApiGet.mock.calls.filter(([url]) => url === '/settings/company')).toHaveLength(2)
+      expect(companyConfigCalls).toBe(2)
     })
 
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')
@@ -224,7 +234,9 @@ describe('settings pages tenant scope', () => {
     await waitFor(() => {
       expect(mockApiGet.mock.calls.filter(([url]) => url === '/settings/company')).toHaveLength(4)
     })
+    expect(companyConfigCalls).toBe(2)
     expect(queryClient.getQueryData(['company-settings', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-company-settings' })
+    expect(queryClient.getQueryData(['company-config', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-company-config' })
 
     resetTenant()
     const calls = mockApiGet.mock.calls.length

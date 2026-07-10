@@ -5,7 +5,7 @@
 
 ## Gate 1 Fixlist — Blockers
 
-Status: blockers complete; MJ-1 and MJ-2 complete.
+Status: blockers complete; MJ-1 through MJ-7 complete.
 
 - BL-1 `PartnerPicker` empty-string value:
   - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` failed because `value=""` triggered a `/partners/` fetch and hid the search input behind a blank selected chip.
@@ -48,6 +48,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentLines.test.tsx` failed because `DocumentLines` rendered backend quantity scale (`2.0000`) directly.
   - GREEN: `DocumentLines` now formats quantities with `formatQuantity(line.quantity, line.quantity_decimals ?? 4)`.
   - Verification: `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentLines.test.tsx src/features/documents/quotes/__tests__/QuoteDetailPage.tenantScope.test.tsx` passed: 5 tests; `pnpm --filter @autoerp/web typecheck` passed.
+- MJ-7 company config cache refresh:
+  - RED: `pnpm --filter @autoerp/web test -- src/features/settings/__tests__/SettingsPages.tenantScope.test.tsx` failed because saving Company settings refetched `company-settings` but left a live tenant-scoped `company-config` query untouched.
+  - GREEN: `CompanyPage` save success now invalidates both `tenantScopedKey(['company-settings'])` and `tenantScopedKey(['company-config'])`, without touching another tenant's cached config entry.
+  - Verification: `pnpm --filter @autoerp/web test -- src/features/settings/__tests__/SettingsPages.tenantScope.test.tsx` passed: 3 tests; `pnpm --filter @autoerp/web typecheck` passed.
 
 ## Wave 0 — Tooling & Guardrails
 
