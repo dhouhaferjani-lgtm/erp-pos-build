@@ -14,14 +14,21 @@ import {
   XCircle,
   AlertCircle,
   Link2,
+  type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { EntityLink } from '../../../components/molecules/EntityLink'
-import { FormField, Input, MoneyInput, Select, Textarea } from '../../../components/atoms'
+import { Button } from '../../../components/atoms/Button/Button'
+import { FormField } from '../../../components/atoms/FormField/FormField'
+import { Input } from '../../../components/atoms/Input/Input'
+import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
+import { Select } from '../../../components/atoms/Select/Select'
+import { Textarea } from '../../../components/atoms/Textarea/Textarea'
+import { DataTable, type DataTableColumn } from '../../../components/molecules/DataTable/DataTable'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { getErrorMessage } from '../../../lib/api'
 import { bccomp, formatCurrency, formatQuantity } from '../../../lib/decimal'
-import type { SupplierInvoiceMatchStatus } from './types'
+import type { PerLineMatch, SupplierInvoiceLine, SupplierInvoiceMatchStatus } from './types'
 import { useActivePaymentMethods } from '../../treasury/hooks/usePaymentMethods'
 import { useActivePaymentRepositories } from '../../treasury/hooks/usePaymentRepositories'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -40,17 +47,17 @@ import {
 
 // ── Match status icon ──────────────────────────────────────────────────────
 
+const matchIconConfig: Record<SupplierInvoiceMatchStatus, { Icon: LucideIcon; className: string }> = {
+  matched: { Icon: CheckCircle2, className: textColors.success },
+  price_variance: { Icon: AlertTriangle, className: textColors.warningDark },
+  qty_blocked: { Icon: XCircle, className: textColors.error },
+  unmatched: { Icon: AlertCircle, className: textColors.disabled },
+}
+
 function MatchIcon({ status }: { status: SupplierInvoiceMatchStatus }) {
-  switch (status) {
-    case 'matched':
-      return <CheckCircle2 className={`h-5 w-5 ${textColors.success}`} />
-    case 'price_variance':
-      return <AlertTriangle className={`h-5 w-5 ${textColors.warningDark}`} />
-    case 'qty_blocked':
-      return <XCircle className={`h-5 w-5 ${textColors.error}`} />
-    case 'unmatched':
-      return <AlertCircle className={`h-5 w-5 ${textColors.disabled}`} />
-  }
+  const { Icon, className } = matchIconConfig[status]
+
+  return <Icon className={`h-5 w-5 ${className}`} />
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────
@@ -129,6 +136,74 @@ export function SupplierInvoiceDetailPage() {
       receipt_line_id: (receiptLineLinks[line.id] ?? '').trim(),
     }))
     .filter((link) => link.receipt_line_id !== '')
+  const invoiceLineColumns: DataTableColumn<SupplierInvoiceLine>[] = [
+    {
+      key: 'quantity',
+      header: t('purchases:supplierInvoices.lines.quantity'),
+      render: (line) => formatQuantity(line.quantity),
+    },
+    {
+      key: 'unit_price',
+      header: t('purchases:supplierInvoices.lines.unitPrice'),
+      numeric: true,
+      render: (line) => formatCurrency(line.unit_price, true, invoice.currency),
+    },
+    {
+      key: 'vat_rate',
+      header: t('purchases:supplierInvoices.lines.vatRate'),
+      numeric: true,
+      render: (line) => `${line.vat_rate}%`,
+      cellClassName: textColors.tertiary,
+    },
+    {
+      key: 'subtotal',
+      header: t('purchases:supplierInvoices.lines.subtotal'),
+      numeric: true,
+      render: (line) => formatCurrency(line.line_subtotal, true, invoice.currency),
+      cellClassName: 'font-medium',
+    },
+  ]
+  const matchColumns: DataTableColumn<PerLineMatch>[] = [
+    {
+      key: 'ordered',
+      header: t('purchases:supplierInvoices.lines.ordered'),
+      numeric: true,
+      render: (row) => (
+        <span data-testid={`match-row-${row.po_line_id}`}>
+          {formatQuantity(row.ordered)}
+        </span>
+      ),
+    },
+    {
+      key: 'received',
+      header: t('purchases:supplierInvoices.lines.received'),
+      numeric: true,
+      render: (row) => formatQuantity(row.received),
+    },
+    {
+      key: 'invoiced',
+      header: t('purchases:supplierInvoices.lines.invoiced'),
+      numeric: true,
+      render: (row) => formatQuantity(row.invoiced),
+    },
+    {
+      key: 'matchable',
+      header: t('purchases:supplierInvoices.lines.matchable'),
+      numeric: true,
+      render: (row) => formatQuantity(row.matchable),
+    },
+    {
+      key: 'price_variance',
+      header: t('purchases:supplierInvoices.lines.priceVariance'),
+      numeric: true,
+      render: (row) =>
+        row.price_variance ? (
+          <AlertTriangle className={`inline h-4 w-4 ${textColors.warningDark}`} />
+        ) : (
+          <CheckCircle2 className={`inline h-4 w-4 ${textColors.success}`} />
+        ),
+    },
+  ]
 
   function handlePost() {
     postMutation.mutate(undefined, {
@@ -265,25 +340,24 @@ export function SupplierInvoiceDetailPage() {
           {/* Actions */}
           <div className="flex items-center gap-2">
             {!isPosted && (
-              <button
+              <Button
                 type="button"
                 data-testid="btn-post"
                 disabled={postDisabled || postMutation.isPending}
                 onClick={handlePost}
-                className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
               >
                 {t('purchases:supplierInvoices.actions.post')}
-              </button>
+              </Button>
             )}
 
-            <button
+            <Button
               type="button"
+              variant="secondary"
               disabled={rematchMutation.isPending}
               onClick={handleRematch}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
             >
               {t('purchases:supplierInvoices.actions.rematch')}
-            </button>
+            </Button>
 
             {isPosted && canCreatePayments && (
               <>
@@ -293,14 +367,13 @@ export function SupplierInvoiceDetailPage() {
                 >
                   {t('purchases:supplierInvoices.actions.payInTreasury')}
                 </Link>
-                <button
+                <Button
                   type="button"
                   data-testid="btn-record-payment"
                   onClick={() => { openPaymentDialog() }}
-                  className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
                 >
                   {t('purchases:supplierInvoices.actions.recordPayment')}
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -431,16 +504,15 @@ export function SupplierInvoiceDetailPage() {
                 {t('purchases:supplierInvoices.pendingReceipt.linkDescription')}
               </p>
             </div>
-            <button
+            <Button
               type="button"
               data-testid="link-receipts"
               disabled={pendingReceiptLinks.length === 0 || linkReceiptsMutation.isPending}
               onClick={handleLinkReceipts}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
             >
               <Link2 className="me-2 h-4 w-4" />
               {t('purchases:supplierInvoices.pendingReceipt.linkAction')}
-            </button>
+            </Button>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {invoice.lines.map((line) => (
@@ -450,10 +522,9 @@ export function SupplierInvoiceDetailPage() {
                     quantity: formatQuantity(line.quantity),
                   })}
                 </label>
-                <select
+                <Select
                   id={`link-receipt-line-id-${line.id}`}
                   data-testid={`link-receipt-line-selector-${line.id}`}
-                  className={tokens.select.base}
                   value={receiptLineLinks[line.id] ?? ''}
                   onChange={(event) => {
                     setReceiptLineLinks((current) => ({
@@ -473,7 +544,7 @@ export function SupplierInvoiceDetailPage() {
                         {receiptLine.receipt_number} · {formatQuantity(receiptLine.received_qty)}
                       </option>
                     ))}
-                </select>
+                </Select>
               </div>
             ))}
           </div>
@@ -485,44 +556,12 @@ export function SupplierInvoiceDetailPage() {
         <h2 className={tokens.heading.section}>
           {t('purchases:supplierInvoices.detail.lines')}
         </h2>
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className={tokens.table.header}>
-              <tr>
-                <th className={`px-4 py-3 text-start text-xs font-medium uppercase ${textColors.tertiary}`}>
-                  {t('purchases:supplierInvoices.lines.quantity')}
-                </th>
-                <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                  {t('purchases:supplierInvoices.lines.unitPrice')}
-                </th>
-                <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                  {t('purchases:supplierInvoices.lines.vatRate')}
-                </th>
-                <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                  {t('purchases:supplierInvoices.lines.subtotal')}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {invoice.lines.map((line) => (
-                <tr key={line.id} className={tokens.table.rowHover}>
-                  <td className={`px-4 py-3 text-sm ${textColors.primary}`}>
-                    {formatQuantity(line.quantity)}
-                  </td>
-                  <td className={`px-4 py-3 text-end text-sm ${textColors.primary}`}>
-                    {formatCurrency(line.unit_price, true, invoice.currency)}
-                  </td>
-                  <td className={`px-4 py-3 text-end text-sm ${textColors.tertiary}`}>
-                    {line.vat_rate}%
-                  </td>
-                  <td className={`px-4 py-3 text-end text-sm font-medium ${textColors.primary}`}>
-                    {formatCurrency(line.line_subtotal, true, invoice.currency)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={invoiceLineColumns}
+          data={invoice.lines}
+          keyExtractor={(line) => line.id}
+          className="mt-4"
+        />
       </div>
 
       {/* 3-Way Match Table */}
@@ -533,57 +572,12 @@ export function SupplierInvoiceDetailPage() {
             {t('purchases:supplierInvoices.detail.matchTable')}
           </h2>
         </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className={tokens.table.header}>
-              <tr>
-                <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                  {t('purchases:supplierInvoices.lines.ordered')}
-                </th>
-                <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                  {t('purchases:supplierInvoices.lines.received')}
-                </th>
-                <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                  {t('purchases:supplierInvoices.lines.invoiced')}
-                </th>
-                <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                  {t('purchases:supplierInvoices.lines.matchable')}
-                </th>
-                <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                  {t('purchases:supplierInvoices.lines.priceVariance')}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {invoice.match.per_line.map((row) => (
-                <tr key={row.po_line_id} data-testid={`match-row-${row.po_line_id}`} className={tokens.table.rowHover}>
-                  <td className={`px-4 py-3 text-end text-sm ${textColors.primary}`}>
-                    {formatQuantity(row.ordered)}
-                  </td>
-                  <td className={`px-4 py-3 text-end text-sm ${textColors.primary}`}>
-                    {formatQuantity(row.received)}
-                  </td>
-                  <td className={`px-4 py-3 text-end text-sm ${textColors.primary}`}>
-                    {formatQuantity(row.invoiced)}
-                  </td>
-                  <td className={`px-4 py-3 text-end text-sm ${textColors.primary}`}>
-                    {formatQuantity(row.matchable)}
-                  </td>
-                  <td
-                    className={`px-4 py-3 text-end text-sm ${
-                      row.price_variance ? `font-medium ${textColors.warning}` : textColors.primary
-                    }`}
-                  >
-                    {row.price_variance
-                      ? <AlertTriangle className={`inline h-4 w-4 ${textColors.warningDark}`} />
-                      : <CheckCircle2 className={`inline h-4 w-4 ${textColors.success}`} />
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={matchColumns}
+          data={invoice.match.per_line}
+          keyExtractor={(row) => row.po_line_id}
+          className="mt-4"
+        />
       </div>
 
       {/* Attachments */}
@@ -785,20 +779,19 @@ export function SupplierInvoiceDetailPage() {
           )}
 
           <div className={tokens.modal.footer}>
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => { closePaymentDialog() }}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
             >
               {t('common:actions.cancel')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={recordPaymentMutation.isPending}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
             >
               {t('purchases:supplierInvoices.paymentForm.submit')}
-            </button>
+            </Button>
           </div>
         </form>
       </dialog>
