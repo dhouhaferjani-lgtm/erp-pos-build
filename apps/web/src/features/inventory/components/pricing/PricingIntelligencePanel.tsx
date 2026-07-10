@@ -26,7 +26,7 @@ export interface PricingProduct {
   effective_margins?: {
     target_margin: string
     minimum_margin: string
-    source: string
+    source?: string
   } | null
 }
 

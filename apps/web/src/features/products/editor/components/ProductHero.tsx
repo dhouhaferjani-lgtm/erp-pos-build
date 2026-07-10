@@ -12,7 +12,7 @@ interface ProductHeroBrand {
 }
 
 interface ProductHeroCategory {
-  id?: string
+  id?: number | string
   name: string
 }
 

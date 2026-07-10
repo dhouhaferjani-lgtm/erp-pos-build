@@ -13,7 +13,6 @@ import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { colors, tokens, textColors } from '../../lib/designTokens'
-import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { Button } from '../../components/atoms/Button/Button'
 import { Checkbox } from '../../components/atoms/Checkbox/Checkbox'
 import { FormField } from '../../components/atoms/FormField/FormField'
@@ -22,7 +21,6 @@ import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
 import { DraftMoneyInput } from '../../components/atoms/DraftMoneyInput'
 import { DraftQuantityInput } from '../../components/atoms/DraftQuantityInput'
 import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
-import { Textarea } from '../../components/atoms/Textarea/Textarea'
 import { Toggle } from '../../components/atoms/Toggle/Toggle'
 import { CatalogBanner } from './components/CatalogBanner'
 import { EnrichmentCapturePanel, type EnrichmentAttributeRow } from './components/EnrichmentCapturePanel'
@@ -59,14 +57,14 @@ import type { ChecklistItem } from '../products/editor/components/BeforePublishC
 import { LivePosTile } from '../products/editor/components/LivePosTile'
 import { useScrollSpy } from '../products/editor/hooks/useScrollSpy'
 import { formatCurrency } from '../../lib/formatCurrency'
-import { UnitDropdown } from '../uom/components/UnitDropdown'
 import { useUnits } from '../uom/hooks/useUnits'
 import { getQuantityDecimals } from '../../lib/quantityScale'
 import type { ProductType } from '../products/types'
 import type {
   ParapharmacySectionFormData,
   ProductSectionFormData,
-} from '../products/sections'
+} from '../products/sections/types'
+import { ProductGeneralSection } from '../products/sections/ProductGeneralSection'
 import {
   marginFromCost,
   priceHtFromMargin,
@@ -320,6 +318,15 @@ export function ProductForm() {
     }
   }, [])
 
+  const clearPrefilledField = useCallback((field: 'name' | 'description') => {
+    setPrefilledFields((current) => {
+      if (!current.has(field)) return current
+      const next = new Set(current)
+      next.delete(field)
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     if (lookupState !== 'not_found') {
       setCapturePhotos([])
@@ -329,7 +336,6 @@ export function ProductForm() {
   }, [lookupState])
 
   const oemNumbers = watch('oem_numbers')
-  const categoryId = watch('category_id')
   const requiresBatchTracking = watch('requires_batch_tracking')
   const watchIsPhysical = watch('is_physical')
   const openingQtyValue = watch('opening_qty')
@@ -1116,121 +1122,16 @@ export function ProductForm() {
 
           {/* Centre: stacked section cards */}
           <div className="flex min-w-0 flex-col gap-4">
-            {/* General */}
-            <EditorSectionCard
-              id="section-general"
-              title={t('catalog:editor.sectionLabels.general')}
-            >
-              <FormField
-                label={`${t('inventory:products.name')} *`}
-                htmlFor="name"
-                error={errors.name?.message}
-              >
-                <Input
-                  type="text"
-                  id="name"
-                  error={Boolean(errors.name)}
-                  className={prefilledFields.has('name') ? colors.success[50] : ''}
-                  {...register('name', {
-                    required: t('inventory:products.nameRequired'),
-                    onChange: () => {
-                      setPrefilledFields((prev) => {
-                        if (!prev.has('name')) return prev
-                        const next = new Set(prev)
-                        next.delete('name')
-                        return next
-                      })
-                    },
-                  })}
-                />
-              </FormField>
-
-              <FormField
-                label={`${t('inventory:products.sku')} *`}
-                htmlFor="sku"
-                error={errors.sku?.message}
-              >
-                <Input
-                  type="text"
-                  id="sku"
-                  error={Boolean(errors.sku)}
-                  {...register('sku', { required: t('inventory:products.skuRequired') })}
-                />
-              </FormField>
-
-              {/* Unit of measure — reuses the UnitDropdown atom from features/uom.
-                  The legacy free-text `unit` Input in the Inventory section stays
-                  untouched (a later Inventory task removes it; the backend mirrors
-                  unit_id→unit server-side). */}
-              <FormField label={t('inventory:products.unitOfMeasure')} htmlFor="unit_id">
-                <UnitDropdown
-                  id="unit_id"
-                  value={watch('unit_id') ?? undefined}
-                  onChange={(id) => { setValue('unit_id', id || null) }}
-                />
-              </FormField>
-
-              <FormField label={t('catalog.products.category')} htmlFor="category">
-                <CategorySelect
-                  value={categoryId}
-                  onChange={(id) => { setValue('category_id', id); }}
-                  className="mt-1"
-                />
-              </FormField>
-
-              <FormField
-                className="sm:col-span-2"
-                label={t('inventory:products.description')}
-                htmlFor="description"
-              >
-                <Textarea
-                  id="description"
-                  rows={3}
-                  className={prefilledFields.has('description') ? colors.success[50] : ''}
-                  {...register('description', {
-                    onChange: () => {
-                      setPrefilledFields((prev) => {
-                        if (!prev.has('description')) return prev
-                        const next = new Set(prev)
-                        next.delete('description')
-                        return next
-                      })
-                    },
-                  })}
-                />
-              </FormField>
-
-              {/* Status toggles — grouped at the bottom of General so the section
-                  reads: identity fields → type/unit/category → description → status. */}
-              <div className="sm:col-span-2 flex flex-wrap items-center gap-6 pt-1">
-                <Controller
-                  name="is_active"
-                  control={control}
-                  render={({ field }) => (
-                    <Toggle
-                      aria-label={t('inventory:products.active')}
-                      label={t('inventory:products.active')}
-                      checked={!!field.value}
-                      onChange={(e) => { field.onChange(e.target.checked) }}
-                      ref={field.ref}
-                    />
-                  )}
-                />
-                <Controller
-                  name="is_active_for_ecommerce"
-                  control={control}
-                  render={({ field }) => (
-                    <Toggle
-                      aria-label={t('inventory:products.isActiveForEcommerce')}
-                      label={t('inventory:products.isActiveForEcommerce')}
-                      checked={!!field.value}
-                      onChange={(e) => { field.onChange(e.target.checked) }}
-                      ref={field.ref}
-                    />
-                  )}
-                />
-              </div>
-            </EditorSectionCard>
+            <ProductGeneralSection
+              adapter={{
+                mode: 'edit',
+                form: { control, errors, register, setValue, watch },
+                general: {
+                  prefilledFields,
+                  clearPrefilledField,
+                },
+              }}
+            />
 
             {/* Pricing & Tax */}
             <EditorSectionCard
