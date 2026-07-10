@@ -115,6 +115,33 @@ describe('replenishment repositories', () => {
       { request_id: 'closed-1', status: 'rejected', fetched_at: '2026-07-10T12:05:00.000Z' },
     ]);
   });
+
+  it('keeps absent cache rows when the server feed is truncated', async () => {
+    await replaceOpenRequests(
+      db,
+      'tenant-1',
+      'company-1',
+      [
+        serverRow('request-1', 'product-1', 'pending'),
+        serverRow('request-2', 'product-2', 'pending'),
+      ],
+      '2026-07-10T12:00:00.000Z',
+    );
+
+    await replaceOpenRequests(
+      db,
+      'tenant-1',
+      'company-1',
+      [serverRow('request-1', 'product-1', 'in_progress')],
+      '2026-07-10T12:05:00.000Z',
+      false,
+    );
+
+    await expect(getAllOpenRequests(db, 'tenant-1', 'company-1')).resolves.toMatchObject([
+      { request_id: 'request-1', status: 'in_progress' },
+      { request_id: 'request-2', status: 'pending' },
+    ]);
+  });
 });
 
 function request(clientRequestUuid: string, now = '2026-07-10T12:00:00.000Z') {

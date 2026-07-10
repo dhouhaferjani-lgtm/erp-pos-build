@@ -1100,7 +1100,8 @@
     "submit": "Envoyer la demande",
     "already_requested": "Demandé le {{date}}",
     "queued_offline": "Demande de réassort mise en attente hors ligne",
-    "request_recorded": "Demande de réassort enregistrée"
+    "request_recorded": "Demande de réassort enregistrée",
+    "scope_unavailable": "Le contexte de la caisse est indisponible. Rouvrez la caisse et réessayez."
   },
   "shiftClosure": {
     "serviceNumber": "Service #{{number}}",

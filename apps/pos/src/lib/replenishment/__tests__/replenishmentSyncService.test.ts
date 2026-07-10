@@ -124,6 +124,7 @@ describe('replenishment sync', () => {
     vi.mocked(fetchOpenReplenishment).mockResolvedValueOnce({
       data: rows,
       as_of: '2026-07-10T12:05:00.000Z',
+      truncated: false,
     });
 
     await pullOpenReplenishment(db, TENANT_ID, COMPANY_ID, 'terminal-1');
@@ -134,6 +135,27 @@ describe('replenishment sync', () => {
       COMPANY_ID,
       rows,
       '2026-07-10T12:05:00.000Z',
+      true,
+    );
+  });
+
+  it('upserts without deleting absent cache rows when the pull feed is truncated', async () => {
+    const rows = [serverRow()];
+    vi.mocked(fetchOpenReplenishment).mockResolvedValueOnce({
+      data: rows,
+      as_of: '2026-07-10T12:05:00.000Z',
+      truncated: true,
+    });
+
+    await pullOpenReplenishment(db, TENANT_ID, COMPANY_ID, 'terminal-1');
+
+    expect(replaceOpenRequests).toHaveBeenCalledWith(
+      db,
+      TENANT_ID,
+      COMPANY_ID,
+      rows,
+      '2026-07-10T12:05:00.000Z',
+      false,
     );
   });
 });

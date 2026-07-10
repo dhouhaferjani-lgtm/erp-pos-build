@@ -1100,7 +1100,8 @@
     "submit": "Submit request",
     "already_requested": "Requested {{date}}",
     "queued_offline": "Refill request queued offline",
-    "request_recorded": "Refill request recorded"
+    "request_recorded": "Refill request recorded",
+    "scope_unavailable": "Terminal context is unavailable. Reopen the register and try again."
   },
   "shiftClosure": {
     "serviceNumber": "Service #{{number}}",

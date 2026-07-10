@@ -41,6 +41,7 @@ export async function replaceOpenRequests(
   companyId: string,
   rows: ServerOpenReplenishmentRow[],
   fetchedAt: string,
+  deleteAbsent = true,
 ): Promise<void> {
   assertScope(tenantId, companyId);
   assertPresent('fetched_at', fetchedAt);
@@ -75,6 +76,8 @@ export async function replaceOpenRequests(
       ],
     );
   }
+
+  if (!deleteAbsent) return;
 
   if (rows.length === 0) {
     await execute(

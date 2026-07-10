@@ -101,14 +101,25 @@ export async function pullOpenReplenishment(
   terminalId: string,
 ): Promise<number> {
   const response = await fetchOpenReplenishment(terminalId);
-  if (!Array.isArray(response.data) || typeof response.as_of !== 'string') {
+  if (
+    !Array.isArray(response.data) ||
+    typeof response.as_of !== 'string' ||
+    typeof response.truncated !== 'boolean'
+  ) {
     throw new ReplenishmentSyncResponseError('Server returned an invalid pull-feed envelope.');
   }
   for (const row of response.data) {
     assertServerRow(row);
   }
 
-  await replaceOpenRequests(db, tenantId, companyId, response.data, response.as_of);
+  await replaceOpenRequests(
+    db,
+    tenantId,
+    companyId,
+    response.data,
+    response.as_of,
+    !response.truncated,
+  );
   return response.data.length;
 }
 

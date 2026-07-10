@@ -90,7 +90,10 @@ export function RequestRefillSheet({
     const tenantId = auth.user?.tenantId;
     const companyId = auth.companyId;
     const terminalId = useTerminalStore.getState().terminal?.id;
-    if (!tenantId || !companyId || !terminalId) return;
+    if (!tenantId || !companyId || !terminalId) {
+      toast.error(t('replenishment.scope_unavailable'));
+      return;
+    }
 
     setSubmitting(true);
     try {

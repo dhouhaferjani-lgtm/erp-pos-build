@@ -29,8 +29,8 @@ export async function pushReplenishmentRequest(
 export async function fetchOpenReplenishment(
   terminalId: string,
   opts?: ApiRequestOptions,
-): Promise<{ data: ServerReplenishmentRow[]; as_of: string }> {
-  return apiGetRaw<{ data: ServerReplenishmentRow[]; as_of: string }>(
+): Promise<{ data: ServerReplenishmentRow[]; as_of: string; truncated: boolean }> {
+  return apiGetRaw<{ data: ServerReplenishmentRow[]; as_of: string; truncated: boolean }>(
     '/pos/replenishment-requests',
     { terminal_id: terminalId },
     opts,

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getOpen: vi.fn(),
   recordAudit: vi.fn(),
   toastSuccess: vi.fn(),
+  toastError: vi.fn(),
   auth: {
     companyId: 'company-1',
     user: { tenantId: 'tenant-1' },
@@ -23,7 +24,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('sonner', () => ({
-  toast: { success: mocks.toastSuccess },
+  toast: { error: mocks.toastError, success: mocks.toastSuccess },
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -141,6 +142,18 @@ describe('RequestRefillSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'replenishment.submit' }));
 
     await waitFor(() => expect(quantity).toHaveAttribute('aria-invalid', 'true'));
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('surfaces feedback when terminal scope is unavailable', async () => {
+    mocks.auth.companyId = '';
+    render(<RequestRefillSheet isOpen product={product} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'replenishment.submit' }));
+
+    await waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalledWith('replenishment.scope_unavailable');
+    });
     expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 });
