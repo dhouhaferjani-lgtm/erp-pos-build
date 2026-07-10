@@ -341,6 +341,7 @@ final class ReconcileTreasuryTest extends TestCase
             ->with('treasury.reconcile.alert_failed', Mockery::on(
                 static fn (array $context): bool => ($context['repository_id'] ?? null) !== null
                     && ($context['tenant_id'] ?? null) !== null
+                    && ($context['channel'] ?? null) === 'drift_log'
                     && array_key_exists('exception_message', $context),
             ))
             ->andReturnNull();
@@ -353,11 +354,19 @@ final class ReconcileTreasuryTest extends TestCase
         self::assertNotNull($repo->frozen_at, 'The repository must end up frozen — the freeze UPDATE precedes the failing alert step.');
         self::assertNotNull($repo->frozen_reason);
 
-        // The audit_events row never gets written (the drift log line threw
-        // BEFORE auditService->record() ran) — this repository's freeze is
-        // proven via `frozen_at`/`frozen_reason` and the command's own
-        // counters/output instead, per requirement (b).
-        self::assertSame(0, $this->driftEventCount($repo->id));
+        // 2026-07-10 audit follow-up: the drift log line and the audit_events
+        // write now run in INDEPENDENT try/catch blocks (see
+        // freezeAndAlert()), so a failure in the log channel alone must NOT
+        // suppress the audit_event channel — the durable audit row IS
+        // written even though the log line above threw. This is the
+        // regression the shared-try shape had: before the split, the throw
+        // aborted the try block before auditService->record() ever ran,
+        // silently skipping a DB write that would otherwise have succeeded.
+        self::assertSame(
+            1,
+            $this->driftEventCount($repo->id),
+            'The audit_events row must still be written via its own independent try/catch even when the drift log line channel throws.',
+        );
 
         $output = Artisan::output();
         self::assertStringContainsString(

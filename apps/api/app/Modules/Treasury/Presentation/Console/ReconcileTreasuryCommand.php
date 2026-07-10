@@ -504,22 +504,32 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
      * Freeze the repository (never repair) and raise the operator alert:
      * error-level log line + an audit_events row.
      *
-     * Order: the freeze UPDATE runs FIRST and is NOT wrapped by the inner
-     * try/catch below — a failure there is a genuine pre-freeze check
-     * failure and is left to the caller's outer catch (counted as
-     * `$errored`, {@see self::ERROR_EVENT_TYPE}).
+     * Order: the freeze UPDATE runs FIRST and is NOT wrapped by either try/
+     * catch below — a failure there is a genuine pre-freeze check failure
+     * and is left to the caller's outer catch (counted as `$errored`,
+     * {@see self::ERROR_EVENT_TYPE}).
      *
-     * The alerting steps (drift log line + audit_events write) run AFTER the
-     * freeze write has already succeeded, so a `\Throwable` here must NEVER
-     * propagate (2026-07-09 audit-fix-1 Rev-2, Critical): the repository is
-     * already frozen in the DB at that point, and re-classifying it as a
-     * mere check ERROR would (a) undercount `$frozen`, (b) leave the
-     * frozen repository with no drift alert while the "check the audit
-     * trail" alert text lies, and (c) duplicate the incident under a second,
-     * contradictory log shape (`treasury.reconcile.error` for a repository
-     * that IS frozen). The inner catch logs the alerting failure loudly
-     * under its own event type instead, and this method returns normally so
-     * the caller's `$frozen++` always runs for every successful freeze.
+     * The two alerting steps (drift log line, audit_events write) run AFTER
+     * the freeze write has already succeeded, so a `\Throwable` from EITHER
+     * must NEVER propagate (2026-07-09 audit-fix-1 Rev-2, Critical): the
+     * repository is already frozen in the DB at that point, and
+     * re-classifying it as a mere check ERROR would (a) undercount
+     * `$frozen`, (b) leave the frozen repository with no drift alert while
+     * the "check the audit trail" alert text lies, and (c) duplicate the
+     * incident under a second, contradictory log shape
+     * (`treasury.reconcile.error` for a repository that IS frozen).
+     *
+     * The two channels are wrapped in INDEPENDENT try/catch blocks (audit
+     * follow-up, 2026-07-10) rather than one shared try wrapping both: they
+     * are alternate, non-exclusive alert paths, not a single all-or-nothing
+     * step, so a throw in one must never suppress the other from running.
+     * Under the previous shared-try shape, a log-line failure aborted the
+     * try block before `auditService->record()` ever executed, silently
+     * skipping the durable `treasury.reconcile.drift` audit row even though
+     * the DB write itself would have succeeded on its own. Each catch here
+     * logs its own `treasury.reconcile.alert_failed` line (never rethrows)
+     * naming which channel failed, and this method always returns normally
+     * so the caller's `$frozen++` runs for every successful freeze.
      */
     private function freezeAndAlert(PaymentRepository $repository, string $reason): void
     {
@@ -534,7 +544,11 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
                 'balance' => $repository->balance,
                 'reason' => $reason,
             ]);
+        } catch (Throwable $e) {
+            $this->logAlertFailure($repository, $reason, 'drift_log', $e);
+        }
 
+        try {
             $this->auditService->record(
                 companyId: $repository->company_id,
                 userId: null,
@@ -551,23 +565,36 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
                 ],
             );
         } catch (Throwable $e) {
-            Log::error(self::ALERT_FAILURE_EVENT_TYPE, [
-                'tenant_id' => $repository->tenant_id,
-                'company_id' => $repository->company_id,
-                'repository_id' => $repository->id,
-                'currency' => $repository->currency,
-                'reason' => $reason,
-                'exception_class' => $e::class,
-                'exception_message' => $e->getMessage(),
-            ]);
-            $this->error(sprintf(
-                'Alert delivery FAILED for frozen repository %s: %s',
-                $repository->id,
-                $e->getMessage(),
-            ));
+            $this->logAlertFailure($repository, $reason, 'audit_event', $e);
         }
 
         $this->error(sprintf('FROZEN repository %s — %s', $repository->id, $reason));
+    }
+
+    /**
+     * Logs an {@see self::ALERT_FAILURE_EVENT_TYPE} line for one failed
+     * alerting channel ('drift_log' or 'audit_event') and surfaces it on the
+     * console. Never rethrows — both call sites in {@see self::freezeAndAlert()}
+     * rely on that to keep the two channels independent.
+     */
+    private function logAlertFailure(PaymentRepository $repository, string $reason, string $channel, Throwable $e): void
+    {
+        Log::error(self::ALERT_FAILURE_EVENT_TYPE, [
+            'tenant_id' => $repository->tenant_id,
+            'company_id' => $repository->company_id,
+            'repository_id' => $repository->id,
+            'currency' => $repository->currency,
+            'reason' => $reason,
+            'channel' => $channel,
+            'exception_class' => $e::class,
+            'exception_message' => $e->getMessage(),
+        ]);
+        $this->error(sprintf(
+            'Alert delivery FAILED (%s) for frozen repository %s: %s',
+            $channel,
+            $repository->id,
+            $e->getMessage(),
+        ));
     }
 
     private function stringOption(string $name): ?string

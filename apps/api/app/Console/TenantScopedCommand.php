@@ -118,6 +118,15 @@ abstract class TenantScopedCommand extends Command
      * invariant 2, this is the canonical way to drive a per-tenant iteration
      * from a scheduler.
      *
+     * **Contract (continue-on-throw, explicit as of 2026-07-10):** a
+     * per-tenant `\Throwable` is caught, logged, and that tenant's slot is
+     * aggregated as FAILURE — the loop then CONTINUES to the remaining
+     * tenants. It never aborts the batch. A caller that requires
+     * abort-on-first-failure semantics must implement that itself inside
+     * `$fn` (e.g. by checking a flag before starting the next tenant's work
+     * and returning early) — `forEachTenant()` itself has no opt-in/opt-out
+     * for this behavior.
+     *
      * **Per-tenant failure isolation** (2026-07-09 audit finding N1): a
      * `\Throwable` escaping `$fn($tenant)` for one tenant is caught here,
      * logged with the tenant id, and recorded as a FAILURE for that tenant's
