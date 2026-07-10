@@ -1,7 +1,5 @@
 import { ImageIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { bcadd, bccomp, bcdiv, bcmul, bcsub } from '@/lib/decimal'
-import { formatCurrency, formatQuantity } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 
@@ -33,8 +31,6 @@ export interface ProductHeroProduct {
 
 interface ProductHeroProps {
   product: ProductHeroProduct
-  currency: string
-  locale: string
 }
 
 function withMdVariant(url: string | null | undefined): string | null {
@@ -43,45 +39,9 @@ function withMdVariant(url: string | null | undefined): string | null {
   return `${url}${url.includes('?') ? '&' : '?'}variant=md`
 }
 
-// `sale_price` is the canonical HT (net) price — spec Rev 3 R3-6. TTC is derived from it,
-// and margin is computed net-to-net against WAC (not off a TTC-back-solved HT).
-function salePriceIncludingTax(product: ProductHeroProduct): string | null {
-  if (product.sale_price === null) return null
-  const taxRate = product.tax_rate ?? '0'
-  const factor = bcadd('1', bcdiv(taxRate, '100', 6), 6)
-  return bcmul(product.sale_price, factor, 3)
-}
-
-function marginPercent(product: ProductHeroProduct): string | null {
-  if (product.sale_price === null || product.cost_price === null || bccomp(product.cost_price, '0') <= 0) {
-    return null
-  }
-
-  return bcmul(bcdiv(bcsub(product.sale_price, product.cost_price, 4), product.cost_price, 4), '100', 1)
-}
-
-function formatMaybeCurrency(value: string | null, currency: string, locale: string): string {
-  if (value === null) return '-'
-  return formatCurrency(value, { currency, locale })
-}
-
-export function ProductHero({ product, currency, locale }: ProductHeroProps) {
+export function ProductHero({ product }: ProductHeroProps) {
   const { t } = useTranslation(['inventory', 'common'])
   const imageUrl = withMdVariant(product.primary_image_url)
-  const priceHt = product.sale_price
-  const priceTtc = salePriceIncludingTax(product)
-  const margin = marginPercent(product)
-  const stockQuantity = product.stock_quantity !== null && product.stock_quantity !== undefined
-    ? formatQuantity(product.stock_quantity, 4, locale)
-    : '-'
-
-  const stripItems = [
-    { label: t('inventory:products.onHandShort'), value: stockQuantity },
-    { label: t('inventory:products.costWac'), value: formatMaybeCurrency(product.cost_price, currency, locale) },
-    { label: t('inventory:products.marginPercent'), value: margin !== null ? `${margin}%` : '-' },
-    { label: t('inventory:products.priceHt'), value: formatMaybeCurrency(priceHt, currency, locale) },
-    { label: t('inventory:products.priceTtc'), value: formatMaybeCurrency(priceTtc, currency, locale) },
-  ]
 
   return (
     <section className={`overflow-hidden rounded-lg border ${borderColors.light} ${colors.white}`}>
@@ -129,20 +89,6 @@ export function ProductHero({ product, currency, locale }: ProductHeroProps) {
             </div>
           </div>
         </div>
-      </div>
-
-      <div className={`${colors.neutral[50]} px-5 py-4`}>
-        <div className={cn('mb-3 text-xs font-semibold uppercase tracking-wide', textColors.tertiary)}>
-          {t('inventory:products.readyToSell')}
-        </div>
-        <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {stripItems.map((item) => (
-            <div key={item.label} className={`rounded-md border ${borderColors.light} ${colors.white} px-3 py-2`}>
-              <dt className={cn('text-xs', textColors.tertiary)}>{item.label}</dt>
-              <dd className={cn('mt-1 text-sm font-semibold tabular-nums', textColors.primary)}>{item.value}</dd>
-            </div>
-          ))}
-        </dl>
       </div>
     </section>
   )

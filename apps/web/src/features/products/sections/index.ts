@@ -5,6 +5,8 @@ export {
   type ProductSectionKey,
 } from './sectionRegistry'
 export { ProductGeneralSection, type ProductGeneralAdapter } from './ProductGeneralSection'
+export { ProductPricingSection, type ProductPricingAdapter } from './ProductPricingSection'
+export { useProductPricingEditAdapter } from './useProductPricingEditAdapter'
 export type {
   ParapharmacySectionFormData,
   DiscountPolicyVerdict,

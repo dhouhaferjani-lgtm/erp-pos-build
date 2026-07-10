@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Barcode, Camera, ImageIcon, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { colors, textColors } from '@/lib/designTokens'
+import { colors } from '@/lib/designTokens'
 import { useCatalogBarcodeLookup } from '@/features/inventory/hooks/useCatalogBarcodeLookup'
 import { CreateModeImageBuffer, ProductImageUpload } from '@/features/products/components'
 import type { LookupState, SuggestedProduct } from '@/features/inventory/types/platform'
@@ -36,7 +36,6 @@ interface ProductEditHeroProps {
   disabled?: boolean
   onProductData?: (data: SuggestedProduct) => void
   onLookupStateChange?: (state: LookupState) => void
-  strip: React.ReactNode
 }
 
 const NOOP = (): void => undefined
@@ -82,7 +81,6 @@ export function ProductEditHero({
   disabled,
   onProductData,
   onLookupStateChange,
-  strip,
 }: ProductEditHeroProps): React.JSX.Element {
   const { t } = useTranslation(['catalog', 'inventory'])
   const [isUploadOpen, setIsUploadOpen] = useState(false)
@@ -206,12 +204,6 @@ export function ProductEditHero({
         )}
       </div>
 
-      <div className="bg-gray-50 px-4 py-4 sm:px-5">
-        <div className={cn('mb-3 text-start text-xs font-semibold uppercase', textColors.tertiary)}>
-          {t('inventory:products.readyToSell')}
-        </div>
-        {strip}
-      </div>
     </section>
   )
 }

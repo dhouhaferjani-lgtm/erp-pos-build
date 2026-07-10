@@ -124,6 +124,7 @@ interface ProductSectionsBaseAdapter {
   costPrices: ProductSectionCostPrices | null
   currency: string
   locale: string
+  moneyScale: number
   formatCurrency: (value: string | null) => string
   formatPercent: (value: string | null) => string
 }

@@ -1,4 +1,8 @@
-import type { ProductSectionProduct } from '../types'
+import type {
+  ProductSectionCostPrices,
+  ProductSectionProduct,
+  ProductSectionPublicProduct,
+} from '../types'
 
 export function makeProductSectionProduct(
   overrides: Partial<ProductSectionProduct> = {},
@@ -68,6 +72,25 @@ export function makeProductSectionProduct(
     pricing_mode: 'auto',
     effective_margins: null,
     ...overrides,
+  }
+}
+
+export function makeProductSectionViewData(): {
+  product: ProductSectionPublicProduct
+  costPrices: ProductSectionCostPrices
+} {
+  const fullProduct = makeProductSectionProduct()
+  const {
+    cost_price: costPrice,
+    effective_margins: effectiveMargins,
+    last_purchase_cost: lastPurchaseCost,
+    purchase_price: purchasePrice,
+    ...product
+  } = fullProduct
+
+  return {
+    product,
+    costPrices: { costPrice, effectiveMargins, lastPurchaseCost, purchasePrice },
   }
 }
 

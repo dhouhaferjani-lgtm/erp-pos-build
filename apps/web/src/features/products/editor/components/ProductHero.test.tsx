@@ -23,7 +23,7 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('ProductHero', () => {
-  it('renders the md primary image and read-only ready-to-sell strip', () => {
+  it('renders identity and primary image without pricing or cost facts', () => {
     render(
       <ProductHero
         product={{
@@ -40,8 +40,6 @@ describe('ProductHero', () => {
           brand: { id: 'brand-1', name: 'Avène', source: 'enriched' },
           category: { id: 'category-1', name: 'Soin solaire' },
         }}
-        currency="TND"
-        locale="fr-TN"
       />,
     )
 
@@ -53,11 +51,10 @@ describe('ProductHero', () => {
     expect(screen.getByText('6194000123456')).toBeInTheDocument()
     expect(screen.getByText('Avène ✦')).toBeInTheDocument()
     expect(screen.getByText('Soin solaire')).toBeInTheDocument()
-    expect(screen.getByText('24')).toBeInTheDocument()
-    // sale_price 14.280 is canonical HT (R3-6): margin = (14.280 - 8.500)/8.500 = 68.0%;
-    // HT = 14,280; TTC = 14.280 × 1.19 = 16,993.
-    expect(screen.getByText('68.0%')).toBeInTheDocument()
-    expect(screen.getByText('14,280 TND')).toBeInTheDocument()
-    expect(screen.getByText('16,993 TND')).toBeInTheDocument()
+    expect(screen.queryByText('24')).not.toBeInTheDocument()
+    expect(screen.queryByText('68.0%')).not.toBeInTheDocument()
+    expect(screen.queryByText('14,280 TND')).not.toBeInTheDocument()
+    expect(screen.queryByText('16,993 TND')).not.toBeInTheDocument()
+    expect(screen.queryByText('WAC')).not.toBeInTheDocument()
   })
 })

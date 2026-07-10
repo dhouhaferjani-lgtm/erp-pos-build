@@ -269,7 +269,7 @@ describe('ProductForm (canonical layout)', () => {
 
   it('renders the sale price field via MoneyInput', () => {
     render(<ProductForm />)
-    const priceInput = screen.getByLabelText('inventory:products.salePrice', {
+    const priceInput = screen.getByLabelText('inventory:products.priceHt', {
       exact: false,
     })
     // MoneyInput renders type="number" + inputMode="decimal"; the original raw
@@ -660,14 +660,14 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     expect(purchasePriceInput).toHaveAttribute('id', 'purchase_price')
   })
 
-  it('renders Purchase Price BEFORE Sale Price in the Pricing section', () => {
+  it('renders Purchase Price BEFORE the canonical HT sale price in the Pricing section', () => {
     const { container } = render(<ProductForm />)
     const pricingSection = container.querySelector('#section-pricing')
     expect(pricingSection).not.toBeNull()
     const inputs = pricingSection!.querySelectorAll('input[type="number"]')
-    // purchase_price should be first, sale_price second
+    const inputIds = Array.from(inputs, input => input.id)
     expect(inputs[0]).toHaveAttribute('id', 'purchase_price')
-    expect(inputs[1]).toHaveAttribute('id', 'sale_price')
+    expect(inputIds.indexOf('purchase_price')).toBeLessThan(inputIds.indexOf('sale_price_ht'))
   })
 
   it('renders the ready-to-sell margin input EMPTY when both prices are empty (default state)', () => {
@@ -680,11 +680,13 @@ describe('ProductForm (Pricing & Tax parity)', () => {
   it('shows Margin when both purchase_price and sale_price are entered', () => {
     render(<ProductForm />)
     const purchaseInput = screen.getByLabelText(/inventory:products\.purchasePrice/i, { exact: false })
-    const saleInput = screen.getByLabelText(/inventory:products\.salePrice/i, { exact: false })
+    const saleInput = screen.getByLabelText(/inventory:products\.priceHt/i, { exact: false })
 
     // sale=100, purchase=60 → margin = (100−60)/100×100 = 40.0%
     fireEvent.change(purchaseInput, { target: { value: '60' } })
+    fireEvent.focus(saleInput)
     fireEvent.change(saleInput, { target: { value: '100' } })
+    fireEvent.blur(saleInput)
 
     // The margin field should now appear
     expect(screen.getByLabelText(/inventory:products\.margin/i, { exact: false })).toBeInTheDocument()
@@ -707,11 +709,15 @@ describe('ProductForm (Pricing & Tax parity)', () => {
   it('empties the margin value when sale_price is cleared back to empty', () => {
     render(<ProductForm />)
     const purchaseInput = screen.getByLabelText(/inventory:products\.purchasePrice/i, { exact: false })
-    const saleInput = screen.getByLabelText(/inventory:products\.salePrice/i, { exact: false })
+    const saleInput = screen.getByLabelText(/inventory:products\.priceHt/i, { exact: false })
 
     fireEvent.change(purchaseInput, { target: { value: '60' } })
+    fireEvent.focus(saleInput)
     fireEvent.change(saleInput, { target: { value: '100' } })
+    fireEvent.blur(saleInput)
+    fireEvent.focus(saleInput)
     fireEvent.change(saleInput, { target: { value: '' } })
+    fireEvent.blur(saleInput)
     expect((screen.getByLabelText('inventory:products.marginPercent') as HTMLInputElement).value).toBe('')
   })
 

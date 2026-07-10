@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 
 export type EditorSectionKey =
-  | 'pricing'
   | 'stock-levels'
   | 'automotive'
   | 'metadata'
@@ -17,11 +16,6 @@ export interface EditorSectionDef<TContext> {
 export type EditorSectionRendererRegistry<TContext> = Record<EditorSectionKey, (ctx: TContext) => ReactNode>
 
 export const PRODUCT_DETAIL_SECTIONS: EditorSectionDef<{ isOtospex: boolean; hasAutomotiveData: boolean }>[] = [
-  {
-    id: 'section-pricing',
-    labelKey: 'products.sections.pricing',
-    component: 'pricing',
-  },
   {
     id: 'section-stock-levels',
     labelKey: 'products.stockLevels.title',

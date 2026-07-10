@@ -10,6 +10,8 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
 import { usePermissions } from '../../hooks/usePermissions'
 import { cn } from '../../lib/utils'
+import { formatCurrency, formatPercent } from '../../lib/format'
+import { getDecimals } from '../../lib/currencyMeta'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { Button } from '../../components/atoms/Button'
 import { StatusBadge, statusTone } from '../../components/atoms/StatusBadge'
@@ -30,15 +32,12 @@ import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
 import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
 import { ProductHero } from '../products/editor/components/ProductHero'
 import { ProductGeneralSection } from '../products/sections/ProductGeneralSection'
-import type { ProductSectionProduct } from '../products/sections/types'
+import { ProductPricingSection } from '../products/sections/ProductPricingSection'
+import type { DiscountPolicyVerdict, ProductSectionProduct } from '../products/sections/types'
 import {
   PRODUCT_DETAIL_SECTIONS,
   type EditorSectionRendererRegistry,
 } from '../products/editor/viewSections'
-import {
-  PricingIntelligencePanel,
-  type DiscountPolicyVerdict,
-} from './components/pricing/PricingIntelligencePanel'
 
 type Product = Omit<ProductSectionProduct, 'cross_references' | 'oem_numbers'> & {
   cross_references: { brand: string; reference: string }[] | null
@@ -68,6 +67,7 @@ export function ProductDetailPage() {
   // Get company currency with fallback
   const companyCurrency = currentCompany?.currency ?? 'EUR'
   const companyLocale = currentCompany?.locale.replace('_', '-') ?? 'en-US'
+  const companyMoneyScale = getDecimals(companyCurrency)
 
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -184,6 +184,16 @@ export function ProductDetailPage() {
   }
 
   const product = data
+  const {
+    cost_price: costPrice,
+    effective_margins: effectiveMargins,
+    last_purchase_cost: lastPurchaseCost,
+    purchase_price: purchasePrice,
+    ...publicProduct
+  } = product
+  const costPrices = canViewCostPrices
+    ? { costPrice, effectiveMargins, lastPurchaseCost, purchasePrice }
+    : null
   const hasAutomotiveData = (product.oem_numbers?.length ?? 0) > 0 || (product.cross_references?.length ?? 0) > 0
   const sectionGateCtx = { isOtospex, hasAutomotiveData }
   const metadataSection = (
@@ -212,14 +222,6 @@ export function ProductDetailPage() {
     </div>
   )
   const sectionRenderers: EditorSectionRendererRegistry<typeof sectionGateCtx> = {
-    pricing: () => (
-      <PricingIntelligencePanel
-        product={product}
-        currency={companyCurrency}
-        locale={companyLocale}
-        verdict={discountPolicyVerdict}
-      />
-    ),
     'stock-levels': () => (
       <ProductStockLevels
         productId={product.id}
@@ -347,13 +349,25 @@ export function ProductDetailPage() {
         {/* Details Tab */}
         <TabsContent value="details" className="mt-6">
           <div className="space-y-6">
-            <ProductHero
-              product={product}
-              currency={companyCurrency}
-              locale={companyLocale}
-            />
+            <ProductHero product={product} />
             <div className="space-y-6">
               <ProductGeneralSection adapter={{ mode: 'view', product }} />
+              <ProductPricingSection
+                adapter={{
+                  mode: 'view',
+                  canViewCostPrices,
+                  costPrices,
+                  currency: companyCurrency,
+                  locale: companyLocale,
+                  moneyScale: companyMoneyScale,
+                  formatCurrency: (value) => value === null
+                    ? '\u2014'
+                    : formatCurrency(value, { currency: companyCurrency, locale: companyLocale }),
+                  formatPercent: (value) => value === null ? '\u2014' : formatPercent(value),
+                  product: publicProduct,
+                  ...(discountPolicyVerdict === undefined ? {} : { discountPolicyVerdict }),
+                }}
+              />
               {PRODUCT_DETAIL_SECTIONS
                 .filter((section) => section.when?.(sectionGateCtx) ?? true)
                 .map((section) => (
