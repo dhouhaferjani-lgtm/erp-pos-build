@@ -1,5 +1,5 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle2, FileUp, Plus, ReceiptText, Save, Trash2, TriangleAlert } from 'lucide-react'
@@ -101,7 +101,7 @@ function newIdempotencyKey(): string {
 }
 
 export function SupplierInvoiceCreatePage() {
-  const { t } = useTranslation(['common', 'purchases'])
+  const { t } = useTranslation(['common', 'purchases', 'documentIngestions'])
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { hasPermission } = usePermissions()
@@ -399,6 +399,14 @@ export function SupplierInvoiceCreatePage() {
           <p className={`mt-1 text-sm ${textColors.tertiary}`}>
             {t('purchases:supplierInvoices.create.description')}
           </p>
+          {hasPermission('document-ingestions.view') && (
+            <Link
+              to="/purchases/scans/new?kind=supplier_invoice"
+              className={`mt-1 inline-block text-sm ${textColors.brand} hover:underline`}
+            >
+              {t('documentIngestions:actions.scanInstead')}
+            </Link>
+          )}
         </div>
         <button
           type="submit"

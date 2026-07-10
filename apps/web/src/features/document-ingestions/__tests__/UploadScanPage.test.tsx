@@ -43,7 +43,7 @@ function ReviewStub() {
   return <div data-testid="review-stub">Reviewing {id}</div>
 }
 
-function renderPage(): QueryClient {
+function renderPage(initialEntry = '/purchases/scans/new'): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -53,7 +53,7 @@ function renderPage(): QueryClient {
 
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/purchases/scans/new']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/purchases/scans/new" element={<UploadScanPage />} />
           <Route path="/purchases/scans/:id" element={<ReviewStub />} />
@@ -215,5 +215,36 @@ describe('UploadScanPage', () => {
     const browseButton = screen.getByRole('button', { name: /browse/i })
     expect(browseButton.tagName).toBe('BUTTON')
     expect(browseButton).toHaveAttribute('type', 'button')
+  })
+
+  describe('context-locked kind', () => {
+    it('hides the document-type select and shows the locked kind as static text, then submits with the locked kind', async () => {
+      const user = userEvent.setup()
+      renderPage('/purchases/scans/new?kind=supplier_invoice')
+
+      expect(screen.queryByLabelText('Document type')).not.toBeInTheDocument()
+      expect(screen.getByText('Supplier invoice')).toBeInTheDocument()
+
+      const input = screen.getByLabelText('Source file')
+      const file = new File(['invoice'], 'invoice.pdf', { type: 'application/pdf' })
+      fireEvent.change(input, { target: { files: [file] } })
+
+      mockApiPost.mockResolvedValueOnce({
+        data: { data: { id: 'ing-locked', kind: 'supplier_invoice', status: 'uploaded' } },
+      })
+
+      await user.click(screen.getByRole('button', { name: 'Start scan' }))
+
+      await waitFor(() => { expect(mockApiPost).toHaveBeenCalled() })
+      const [, body] = mockApiPost.mock.calls[0] as [string, FormData]
+      expect(body.get('kind')).toBe('supplier_invoice')
+      expect(await screen.findByTestId('review-stub')).toHaveTextContent('Reviewing ing-locked')
+    })
+
+    it('falls back to the open select for an invalid kind query param', () => {
+      renderPage('/purchases/scans/new?kind=bogus')
+
+      expect(screen.getByLabelText('Document type')).toBeInTheDocument()
+    })
   })
 })

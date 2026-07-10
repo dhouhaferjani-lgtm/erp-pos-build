@@ -142,6 +142,22 @@ describe('LineMappingTable product mapping', () => {
     resetTenant()
   })
 
+  it('renders the extracted description as a full-width header with the supplier ref alongside it, and a fields grid below', () => {
+    renderWithProviders(<Harness />)
+
+    const line = screen.getByTestId('review-line-0')
+    expect(within(line).getByText('Doliprane 1g')).toBeInTheDocument()
+    expect(within(line).getByText('SKU-DOLI')).toBeInTheDocument()
+    // The product picker, quantity, and unit price fields all render inside
+    // the fields grid below the header — this only checks presence/order,
+    // not exact class names (layout is free to change without breaking this).
+    const picker = within(line).getByTestId('line-product-picker-0')
+    expect(picker.compareDocumentPosition(within(line).getByText('Doliprane 1g')))
+      .toBe(Node.DOCUMENT_POSITION_PRECEDING)
+    expect(within(line).getByRole('spinbutton', { name: 'Quantity' })).toBeInTheDocument()
+    expect(within(line).getByRole('spinbutton', { name: 'Unit price' })).toBeInTheDocument()
+  })
+
   it('renders candidate chips and selecting one sets onChange with the candidate id and autofilled vatRate', async () => {
     const user = userEvent.setup()
     const onChangeSpy = vi.fn()

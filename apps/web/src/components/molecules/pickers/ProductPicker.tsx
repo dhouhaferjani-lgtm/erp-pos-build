@@ -224,14 +224,14 @@ export function ProductPicker({
       <div ref={containerRef} className="relative" data-testid={testIdAttr}>
         {labelNode}
         <div
-          className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
+          className={`flex min-w-0 items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
         >
-            <div className="min-w-0 flex-1">
-            <ProductCell product={value} size="sm" />
+          <div className="min-w-0 flex-1">
+            <ProductCell product={value} size="xs" />
           </div>
           <button
             type="button"
-            className={`${textColors.tertiary} ${textColors.hoverPrimary}`}
+            className={`${textColors.tertiary} ${textColors.hoverPrimary} shrink-0`}
             aria-label={t('common.clear')}
             disabled={disabled}
             onClick={() => {

@@ -206,6 +206,18 @@ beforeEach(async () => {
 })
 
 describe('SupplierInvoiceCreatePage', () => {
+  it('renders a scan-instead link with the locked supplier_invoice kind when permitted', async () => {
+    mockHasPermission.mockReturnValue(true)
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    expect(screen.getByRole('link', { name: 'documentIngestions:actions.scanInstead' })).toHaveAttribute(
+      'href',
+      '/purchases/scans/new?kind=supplier_invoice',
+    )
+  })
+
   it('submits a pending receipt invoice without source documents', async () => {
     renderWithProviders(<SupplierInvoiceCreatePage />, {
       route: '/purchases/supplier-invoices/new',

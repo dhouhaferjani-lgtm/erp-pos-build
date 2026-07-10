@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, FileText, Upload, X } from 'lucide-react'
 import { getErrorMessage } from '@/lib/api'
@@ -36,6 +36,14 @@ function isAcceptedType(file: File): boolean {
   return file.type.startsWith('image/') || file.type === 'application/pdf'
 }
 
+const LOCKABLE_KINDS: readonly DocumentKind[] = ['supplier_invoice', 'supplier_delivery_note']
+
+function lockedKindFromParam(value: string | null): DocumentKind | null {
+  return value !== null && (LOCKABLE_KINDS as readonly string[]).includes(value)
+    ? (value as DocumentKind)
+    : null
+}
+
 export function UploadScanPage() {
   const { t } = useTranslation(['documentIngestions'])
 
@@ -45,8 +53,10 @@ export function UploadScanPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} ${t('upload.units.mb')}`
   }
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const lockedKind = lockedKindFromParam(searchParams.get('kind'))
   const uploadMutation = useUploadDocumentIngestion()
-  const [kind, setKind] = useState<DocumentKind | ''>('')
+  const [kind, setKind] = useState<DocumentKind | ''>(lockedKind ?? '')
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -132,20 +142,29 @@ export function UploadScanPage() {
       </div>
 
       <form className={cn(tokens.card.base, 'space-y-4 max-w-xl')} onSubmit={(event) => { void handleSubmit(event) }}>
-        <div>
-          <label htmlFor="ingestion-kind" className={tokens.label.base}>{t('fields.kind')}</label>
-          <select
-            id="ingestion-kind"
-            aria-label={t('fields.kind')}
-            className={tokens.select.base}
-            value={kind}
-            onChange={(event) => { setKind(event.target.value as DocumentKind | '') }}
-          >
-            <option value="">{t('upload.placeholders.kind')}</option>
-            <option value="supplier_delivery_note">{t('kinds.supplier_delivery_note')}</option>
-            <option value="supplier_invoice">{t('kinds.supplier_invoice')}</option>
-          </select>
-        </div>
+        {lockedKind !== null ? (
+          <div>
+            <p className={tokens.label.base}>{t('fields.kind')}</p>
+            <p className={cn(typography.fontSize.sm, textColors.tertiary, 'mt-1')}>
+              {t(`kinds.${lockedKind}`)}
+            </p>
+          </div>
+        ) : (
+          <div>
+            <label htmlFor="ingestion-kind" className={tokens.label.base}>{t('fields.kind')}</label>
+            <select
+              id="ingestion-kind"
+              aria-label={t('fields.kind')}
+              className={tokens.select.base}
+              value={kind}
+              onChange={(event) => { setKind(event.target.value as DocumentKind | '') }}
+            >
+              <option value="">{t('upload.placeholders.kind')}</option>
+              <option value="supplier_delivery_note">{t('kinds.supplier_delivery_note')}</option>
+              <option value="supplier_invoice">{t('kinds.supplier_invoice')}</option>
+            </select>
+          </div>
+        )}
 
         <div>
           <label className={tokens.label.base}>{t('fields.file')}</label>

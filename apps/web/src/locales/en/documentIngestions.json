@@ -6,6 +6,9 @@
     "reExtract": "Re-run extraction",
     "reject": "Reject",
     "review": "Review",
+    "scanDeliveryNote": "Scan delivery note",
+    "scanInstead": "or scan a document instead",
+    "scanInvoice": "Scan invoice",
     "startScan": "Start scan",
     "upload": "Upload scan"
   },

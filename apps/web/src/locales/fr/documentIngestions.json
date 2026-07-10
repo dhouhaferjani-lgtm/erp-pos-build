@@ -6,6 +6,9 @@
     "reExtract": "Relancer l'extraction",
     "reject": "Rejeter",
     "review": "Revoir",
+    "scanDeliveryNote": "Scanner un bon de livraison",
+    "scanInstead": "ou scanner un document à la place",
+    "scanInvoice": "Scanner une facture",
     "startScan": "Démarrer le scan",
     "upload": "Téléverser un scan"
   },
