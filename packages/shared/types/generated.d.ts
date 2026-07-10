@@ -1860,6 +1860,33 @@ export type DiscountType = 'percentage' | 'fixed' | 'free_item';
 export type PromotionStatus = 'draft' | 'active' | 'paused' | 'expired' | 'archived';
 export type PromotionType = 'happy_hour' | 'buy_x_get_y' | 'volume_discount' | 'category_discount' | 'combo_discount';
 }
+declare namespace App.Modules.Replenishment.Application.DTOs {
+export type ReplenishmentRequestData = {
+id: string;
+locationId: string;
+locationName: string;
+productId: string;
+productName: string;
+variantId: string | null;
+variantName: string | null;
+requestedQty: string | null;
+note: string | null;
+requestCount: number;
+status: string;
+sourceChannel: string;
+firstRequestedAt: string;
+lastRequestedAt: string;
+sourcingDocumentId: string | null;
+fulfillmentType: string | null;
+fulfillmentId: string | null;
+rejectionReason: string | null;
+};
+}
+declare namespace App.Modules.Replenishment.Domain.Enums {
+export type ReplenishmentChannel = 'pos' | 'web';
+export type ReplenishmentFulfillmentType = 'transfer' | 'purchase_order';
+export type ReplenishmentStatus = 'pending' | 'in_progress' | 'fulfilled' | 'rejected' | 'cancelled';
+}
 declare namespace App.Modules.Scheduling.Domain.Enums {
 export type AppointmentSource = 'manual' | 'phone' | 'online' | 'walkin';
 export type AppointmentStatus = 'scheduled' | 'confirmed' | 'checked_in' | 'in_progress' | 'completed' | 'closed' | 'no_show' | 'cancelled';
