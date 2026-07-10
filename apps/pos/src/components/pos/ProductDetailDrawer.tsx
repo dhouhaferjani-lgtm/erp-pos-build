@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, MapPin, Plus, ShoppingCart, X } from 'lucide-react';
 import { useCurrency } from '@/lib/currency';
@@ -15,22 +15,6 @@ import { useStockDisplay } from '@/components/organisms/ProductGrid/useStockDisp
 import type { POSProduct } from '@/types/product';
 import type { LocationStockDisplay } from '@/lib/stock/gridStock';
 
-interface ProductDetailDrawerProps {
-  isOpen: boolean;
-  onClose: () => void;
-  product: POSProduct | null;
-  /** Same slice semantics as ProductCard: object -> location-aware; null -> exempt (no chrome); undefined -> legacy fallback. */
-  locationStock?: LocationStockDisplay | null;
-  /**
-   * Task 18 — OOS-policy alignment with ProductCard/useStockDisplay: under
-   * 'warn'/'off' the tap must reach the stock gate (which allows the add and
-   * surfaces the warning toast), only 'block' pre-disables here. Defaults to
-   * `true` (fail-safe) — HomePage threads `posStockPolicy === 'block'`, the
-   * same value it passes to the grid.
-   */
-  hardBlockOutOfStock?: boolean;
-}
-
 export type DetailTab = 'details' | 'routine' | 'equivalents' | 'complements' | 'stock_lots' | 'other_branches';
 
 interface RoutineStep {
@@ -40,46 +24,18 @@ interface RoutineStep {
   routine_id: string;
 }
 
-const DETAILS_TAB: DetailTab = 'details';
-
-export function ProductDetailDrawer({
-  isOpen,
-  onClose,
-  product,
-  locationStock,
-  hardBlockOutOfStock = true,
-}: ProductDetailDrawerProps) {
-  // Tab state lives HERE (not in the sheet) so it survives the sheet
-  // unmounting while closed. Note it resets whenever product?.id changes —
-  // including on close, since HomePage nulls the product (product → null) —
-  // so in practice reopening always starts on Details.
-  const [activeTab, setActiveTab] = useState<DetailTab>(DETAILS_TAB);
-  const [prevProductId, setPrevProductId] = useState<string | undefined>(product?.id);
-  if (product?.id !== prevProductId) {
-    setPrevProductId(product?.id);
-    setActiveTab(DETAILS_TAB);
-  }
-
-  if (!isOpen || !product) return null;
-
-  return (
-    <div className="fixed inset-0 z-[52] flex items-center justify-center bg-black/50 p-3 ez-fade-in" onClick={onClose}>
-      <ProductDetailSheet
-        product={product}
-        onClose={onClose}
-        locationStock={locationStock}
-        hardBlockOutOfStock={hardBlockOutOfStock}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-      />
-    </div>
-  );
-}
-
 interface ProductDetailSheetProps {
   product: POSProduct;
   onClose: () => void;
+  /** Same slice semantics as ProductCard: object -> location-aware; null -> exempt (no chrome); undefined -> legacy fallback. */
   locationStock?: LocationStockDisplay | null;
+  /**
+   * Task 18 — OOS-policy alignment with ProductCard/useStockDisplay: under
+   * 'warn'/'off' the tap must reach the stock gate (which allows the add and
+   * surfaces the warning toast), only 'block' pre-disables here. Defaults to
+   * `true` (fail-safe) — HomePage threads `posStockPolicy === 'block'`, the
+   * same value it passes to the grid.
+   */
   hardBlockOutOfStock?: boolean;
   activeTab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
