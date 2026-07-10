@@ -23,4 +23,3 @@ export const PRODUCT_SECTION_DEFINITIONS = [
   { key: 'suppliers', id: 'section-suppliers', labelKey: 'catalog:editor.sectionLabels.suppliers' },
   { key: 'media', id: 'section-media', labelKey: 'catalog:editor.sectionLabels.media' },
 ] as const satisfies readonly ProductSectionDefinition[]
-

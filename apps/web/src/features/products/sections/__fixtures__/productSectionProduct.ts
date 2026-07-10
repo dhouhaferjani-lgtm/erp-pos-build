@@ -93,4 +93,3 @@ export function makeProductSectionViewData(): {
     costPrices: { costPrice, effectiveMargins, lastPurchaseCost, purchasePrice },
   }
 }
-

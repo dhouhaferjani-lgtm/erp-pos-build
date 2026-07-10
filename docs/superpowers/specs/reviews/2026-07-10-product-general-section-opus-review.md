@@ -1,7 +1,7 @@
 # Adversarial Review — Shared General Section
 
-**Date:** 2026-07-10  
-**Reviewer:** `claude -p --model claude-opus-4-8`  
+**Date:** 2026-07-10
+**Reviewer:** `claude -p --model claude-opus-4-8`
 **Scope:** General-section diff since M1 commit `b034c2f91`.
 
 ## Verdict: PASS WITH FIXES

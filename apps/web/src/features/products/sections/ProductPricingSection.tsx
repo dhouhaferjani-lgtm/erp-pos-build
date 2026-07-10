@@ -77,32 +77,32 @@ export function ProductPricingSection({ adapter }: ProductPricingSectionProps) {
         id="section-pricing"
         title={t('catalog:editor.sectionLabels.pricing')}
       >
-        <PricingMetric label={t('pricing.salePriceHt')} value={adapter.formatCurrency(salePriceHt)} />
-        <PricingMetric label={t('pricing.salePriceTtc')} value={adapter.formatCurrency(salePriceTtc)} />
+        <PricingMetric label={t('inventory:pricing.salePriceHt')} value={adapter.formatCurrency(salePriceHt)} />
+        <PricingMetric label={t('inventory:pricing.salePriceTtc')} value={adapter.formatCurrency(salePriceTtc)} />
         <PricingMetric
-          label={t('products.fields.taxRate')}
+          label={t('inventory:products.fields.taxRate')}
           value={adapter.formatPercent(adapter.product.tax_rate)}
         />
         <PricingMetric
-          label={t('pricing.maxDiscount')}
+          label={t('inventory:pricing.maxDiscount')}
           value={adapter.formatPercent(adapter.product.max_discount_percent)}
         />
 
         {adapter.canViewCostPrices && adapter.costPrices !== null && (
           <>
-            <PricingMetric label={t('pricing.wac')} value={adapter.formatCurrency(adapter.costPrices.costPrice)} />
+            <PricingMetric label={t('inventory:pricing.wac')} value={adapter.formatCurrency(adapter.costPrices.costPrice)} />
             <PricingMetric
-              label={t('pricing.lastPurchasePrice')}
+              label={t('inventory:pricing.lastPurchasePrice')}
               value={adapter.formatCurrency(adapter.costPrices.lastPurchaseCost)}
             />
             <PricingMetric
-              label={t('pricing.margin')}
+              label={t('inventory:pricing.margin')}
               value={adapter.formatPercent(marginState.marginPercent === '' ? null : marginState.marginPercent)}
               tone={marginTone}
             />
             {adapter.discountPolicyVerdict?.floorPriceNet !== null && adapter.discountPolicyVerdict?.floorPriceNet !== undefined && (
               <PricingMetric
-                label={t('pricing.floorPrice')}
+                label={t('inventory:pricing.floorPrice')}
                 value={adapter.formatCurrency(adapter.discountPolicyVerdict.floorPriceNet)}
               />
             )}

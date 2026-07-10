@@ -1,7 +1,7 @@
 # Adversarial Review — M1 Shared Section Scaffolding + Mode-Adapter Contract
 
-**Date:** 2026-07-10  
-**Reviewer:** `claude -p --model claude-opus-4-8`  
+**Date:** 2026-07-10
+**Reviewer:** `claude -p --model claude-opus-4-8`
 **Scope:** Uncommitted M1 diff only: `apps/web/src/features/products/sections/{sectionRegistry.ts, types.ts, index.ts, sectionRegistry.test.ts}`. Checked against `ProductForm.tsx`, `PricingIntelligencePanel.tsx`, generated DTOs, and the governing spec/plan/review.
 
 ## Verdict: APPROVE WITH CHANGES

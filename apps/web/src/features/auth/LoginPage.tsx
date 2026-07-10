@@ -20,6 +20,7 @@ interface LoginResponseUser {
   email: string
   tenantId: string
   roles: string[]
+  permissions: string[]
   emailVerifiedAt: string | null
 }
 
@@ -83,6 +84,7 @@ export function LoginPage() {
         email: data.user.email,
         tenant_id: data.user.tenantId,
         roles: data.user.roles,
+        permissions: data.user.permissions,
         email_verified_at: data.user.emailVerifiedAt,
       }
       setAuth(user, data.token)

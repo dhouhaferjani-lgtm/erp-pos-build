@@ -80,17 +80,17 @@ describe('ProductPricingSection', () => {
     const { container } = render(<ViewHarness canViewCostPrices={false} />)
 
     expect(container.querySelectorAll('#section-pricing')).toHaveLength(1)
-    expect(screen.getByText('pricing.salePriceHt')).toBeInTheDocument()
-    expect(screen.getByText('pricing.salePriceTtc')).toBeInTheDocument()
-    expect(screen.queryByText('pricing.wac')).not.toBeInTheDocument()
-    expect(screen.queryByText('pricing.margin')).not.toBeInTheDocument()
+    expect(screen.getByText('inventory:pricing.salePriceHt')).toBeInTheDocument()
+    expect(screen.getByText('inventory:pricing.salePriceTtc')).toBeInTheDocument()
+    expect(screen.queryByText('inventory:pricing.wac')).not.toBeInTheDocument()
+    expect(screen.queryByText('inventory:pricing.margin')).not.toBeInTheDocument()
   })
 
   it('shows guarded WAC and margin facts in view mode with permission', () => {
     render(<ViewHarness canViewCostPrices />)
 
-    expect(screen.getByText('pricing.wac')).toBeInTheDocument()
-    expect(screen.getByText('pricing.margin')).toBeInTheDocument()
+    expect(screen.getByText('inventory:pricing.wac')).toBeInTheDocument()
+    expect(screen.getByText('inventory:pricing.margin')).toBeInTheDocument()
   })
 
   it('hides cost and margin controls in edit mode without permission', () => {

@@ -13,6 +13,7 @@ interface MeResponseUser {
   email: string
   tenantId: string
   roles: string[]
+  permissions: string[]
   emailVerifiedAt: string | null
 }
 
@@ -72,6 +73,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         email: data.email,
         tenant_id: data.tenantId,
         roles: data.roles,
+        permissions: data.permissions,
         email_verified_at: data.emailVerifiedAt,
       }
       setUser(userData)

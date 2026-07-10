@@ -7,4 +7,3 @@ export interface EnrichmentAttributeRow {
   key: string
   value: string
 }
-

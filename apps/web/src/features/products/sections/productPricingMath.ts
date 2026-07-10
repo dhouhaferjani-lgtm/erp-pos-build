@@ -86,4 +86,3 @@ export function resolveMarginState(
 
   return { level: 'success', marginPercent }
 }
-
