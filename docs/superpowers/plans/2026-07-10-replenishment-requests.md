@@ -379,6 +379,7 @@ abort_unless($row->requested_by_user_id === $request->user()->id || $request->us
 
 **Files:**
 - Create: `apps/api/app/Modules/POS/Presentation/Controllers/PosReplenishmentController.php`
+- Create: `apps/api/app/Modules/Replenishment/Application/Services/ReplenishmentQueryService.php` — public module seam for the POS pull feed; `feedForLocation(tenantId, companyId, locationId, closedWithinDays: 14, cap: 200)` returns `{rows, truncated}` without exposing the Eloquent model to POS code.
 - Modify: `apps/api/app/Modules/POS/routes.php` — add:
 ```php
 Route::post('/pos/replenishment-requests', [PosReplenishmentController::class, 'store'])->name('pos.replenishment.store');
@@ -391,7 +392,7 @@ Route::get('/pos/replenishment-requests', [PosReplenishmentController::class, 'i
 - `index()` query: `{ terminal_id: uuid (required) }` → open lines + lines closed within the last 14 days for the terminal's location, ordered `last_requested_at desc`, capped 200 with a `truncated: bool` flag in the response (`{ data: [...], as_of: ISO, truncated }`) so the device chip stays honest for busy shops. Gate: `Gate::authorize('pos.operate_terminal')` on both.
 
 - [ ] **Step 1: Failing tests:** create+replay+bump trio (assert bump returns **200 and never 409**); `test_payload_location_id_is_ignored()` (send a bogus `location_id`, assert row uses terminal's location); `test_unknown_terminal_404()`; `test_terminal_of_other_company_404()`; `test_pull_feed_scoped_to_terminal_location()`; `test_cross_company_uuid_replay_conflict_409()` (client_request_uuid exists under another company → 409 permanent, mirroring alias conflict).
-- [ ] **Step 2:** FAIL → **Step 3:** implement (constructor: `CompanyContext` + `ReplenishmentCaptureService`; `requested_by_user_id` = `$request->user()->id`; channel `Pos`). → **Step 4:** PASS, PHPStan, commit: `feat(replenishment): POS capture + pull endpoints`
+- [ ] **Step 2:** FAIL → **Step 3:** implement (constructor: `CompanyContext` + `ReplenishmentCaptureService` + public `ReplenishmentQueryService`; `requested_by_user_id` = `$request->user()->id`; channel `Pos`; POS never imports the Replenishment Eloquent model). → **Step 4:** PASS, PHPStan, commit: `feat(replenishment): POS capture + pull endpoints`
 
 ### Task 5: TransferLineReader contract + Inventory implementation
 

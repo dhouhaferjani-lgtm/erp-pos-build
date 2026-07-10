@@ -16,6 +16,7 @@ use App\Modules\POS\Presentation\Controllers\ManagerPinController;
 use App\Modules\POS\Presentation\Controllers\PosAuthController;
 use App\Modules\POS\Presentation\Controllers\PosCustomerSyncController;
 use App\Modules\POS\Presentation\Controllers\PosPendingCustomerController;
+use App\Modules\POS\Presentation\Controllers\PosReplenishmentController;
 use App\Modules\POS\Presentation\Controllers\PosStockLevelController;
 use App\Modules\POS\Presentation\Controllers\PosVariantController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
@@ -121,6 +122,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('pos.customers.sync');
     Route::post('/pos/customers/pending', [PosPendingCustomerController::class, 'store'])
         ->name('pos.customers.pending.store');
+    Route::post('/pos/replenishment-requests', [PosReplenishmentController::class, 'store'])
+        ->name('pos.replenishment.store');
+    Route::get('/pos/replenishment-requests', [PosReplenishmentController::class, 'index'])
+        ->name('pos.replenishment.index');
 
     // Receipts (collection routes BEFORE parameterized)
     Route::get('/pos/receipts', [ReceiptController::class, 'index']);
