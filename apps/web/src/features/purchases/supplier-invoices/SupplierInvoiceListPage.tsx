@@ -13,6 +13,9 @@ import {
   ScanLine,
 } from 'lucide-react'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
+import { Button } from '../../../components/atoms/Button/Button'
+import { Input } from '../../../components/atoms/Input/Input'
+import { Select } from '../../../components/atoms/Select/Select'
 import { StatusBadge, type StatusTone } from '../../../components/atoms/StatusBadge/StatusBadge'
 import { DataTable, type DataTableColumn } from '../../../components/molecules/DataTable/DataTable'
 import { PageHeader } from '../../../components/molecules/PageHeader/PageHeader'
@@ -180,22 +183,22 @@ export function SupplierInvoiceListPage() {
         subtitle={t('purchases:supplierInvoices.description')}
         actions={
           <>
-          {hasPermission('document-ingestions.view') && (
+            {hasPermission('document-ingestions.view') && (
+              <Link
+                to="/purchases/scans/new?kind=supplier_invoice"
+                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+              >
+                <ScanLine className="me-2 h-4 w-4" />
+                {t('documentIngestions:actions.scanInvoice')}
+              </Link>
+            )}
             <Link
-              to="/purchases/scans/new?kind=supplier_invoice"
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+              to="/purchases/supplier-invoices/new"
+              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
             >
-              <ScanLine className="me-2 h-4 w-4" />
-              {t('documentIngestions:actions.scanInvoice')}
+              <Plus className="me-2 h-4 w-4" />
+              {t('purchases:supplierInvoices.new')}
             </Link>
-          )}
-          <Link
-            to="/purchases/supplier-invoices/new"
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
-          >
-            <Plus className="me-2 h-4 w-4" />
-            {t('purchases:supplierInvoices.new')}
-          </Link>
           </>
         }
         className="mb-0"
@@ -217,10 +220,10 @@ export function SupplierInvoiceListPage() {
             <label className={tokens.label.base} htmlFor="filter-status">
               {t('purchases:supplierInvoices.filters.status')}
             </label>
-            <select
+            <Select
               id="filter-status"
               data-testid="filter-status"
-              className={`${tokens.select.base} mt-1`}
+              className="mt-1"
               value={params.status ?? ''}
               onChange={(e) =>
                 { handleFilterChange('status', e.target.value); }
@@ -232,7 +235,7 @@ export function SupplierInvoiceListPage() {
               <option value="draft">{t('purchases:supplierInvoices.status.draft')}</option>
               <option value="posted">{t('purchases:supplierInvoices.status.posted')}</option>
               <option value="paid">{t('purchases:supplierInvoices.status.paid')}</option>
-            </select>
+            </Select>
           </div>
 
           {/* Match status filter */}
@@ -240,10 +243,10 @@ export function SupplierInvoiceListPage() {
             <label className={tokens.label.base} htmlFor="filter-match-status">
               {t('purchases:supplierInvoices.filters.matchStatus')}
             </label>
-            <select
+            <Select
               id="filter-match-status"
               data-testid="filter-match-status"
-              className={`${tokens.select.base} mt-1`}
+              className="mt-1"
               value={params.match_status ?? ''}
               onChange={(e) =>
                 { handleFilterChange('match_status', e.target.value); }
@@ -264,7 +267,7 @@ export function SupplierInvoiceListPage() {
               <option value="unmatched">
                 {t('purchases:supplierInvoices.matchStatus.unmatched')}
               </option>
-            </select>
+            </Select>
           </div>
 
           {/* Date from */}
@@ -272,11 +275,11 @@ export function SupplierInvoiceListPage() {
             <label className={tokens.label.base} htmlFor="filter-date-from">
               {t('purchases:supplierInvoices.filters.dateFrom')}
             </label>
-            <input
+            <Input
               id="filter-date-from"
               data-testid="filter-date-from"
               type="date"
-              className={`${tokens.input.base} mt-1`}
+              className="mt-1"
               value={params.date_from ?? ''}
               onChange={(e) => { handleFilterChange('date_from', e.target.value); }}
             />
@@ -286,10 +289,10 @@ export function SupplierInvoiceListPage() {
             <label className={tokens.label.base} htmlFor="filter-pending-receipt">
               {t('purchases:supplierInvoices.filters.pendingReceipt')}
             </label>
-            <select
+            <Select
               id="filter-pending-receipt"
               data-testid="filter-pending-receipt"
-              className={`${tokens.select.base} mt-1`}
+              className="mt-1"
               value={params.pending_receipt ?? ''}
               onChange={(e) => { handleFilterChange('pending_receipt', e.target.value); }}
             >
@@ -299,7 +302,7 @@ export function SupplierInvoiceListPage() {
               <option value="1">
                 {t('purchases:supplierInvoices.pendingReceipt.badge')}
               </option>
-            </select>
+            </Select>
           </div>
 
           {/* Date to */}
@@ -307,11 +310,11 @@ export function SupplierInvoiceListPage() {
             <label className={tokens.label.base} htmlFor="filter-date-to">
               {t('purchases:supplierInvoices.filters.dateTo')}
             </label>
-            <input
+            <Input
               id="filter-date-to"
               data-testid="filter-date-to"
               type="date"
-              className={`${tokens.input.base} mt-1`}
+              className="mt-1"
               value={params.date_to ?? ''}
               onChange={(e) => { handleFilterChange('date_to', e.target.value); }}
             />
@@ -345,22 +348,24 @@ export function SupplierInvoiceListPage() {
           {/* Cursor-based pagination — backend returns links.next/prev cursor tokens */}
           {(data?.links?.prev ?? data?.links?.next) && (
             <div className={`flex items-center justify-end gap-2 border-t ${borderColors.light} bg-white px-6 py-3`}>
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 disabled={!data?.links?.prev}
                 onClick={() => { handleFilterChange('cursor', data?.links?.prev ?? undefined); }}
-                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
               >
                 {t('common:actions.previous')}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 disabled={!data?.meta?.has_more}
                 onClick={() => { handleFilterChange('cursor', data?.links?.next ?? undefined); }}
-                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
               >
                 {t('common:actions.next')}
-              </button>
+              </Button>
             </div>
           )}
         </div>
