@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { DocumentForm, buildLinePayload, computeLinesDirty } from './DocumentForm'
 
 const draftAutoSaveState = vi.hoisted(() => ({
@@ -19,6 +20,14 @@ const routerState = vi.hoisted(() => ({
 const reactQueryState = vi.hoisted(() => ({
   document: undefined as unknown,
   mutationPayloads: [] as unknown[],
+}))
+
+const partnerA = vi.hoisted(() => ({
+  id: 'partner-1',
+  name: 'Partner A',
+  type: 'customer' as const,
+  email: 'partner-a@example.test',
+  city: 'Tunis',
 }))
 
 // i18n → return the key so assertions are deterministic
@@ -42,7 +51,16 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
   return {
     ...actual,
-    useQuery: () => ({ data: reactQueryState.document, isLoading: false }),
+    useQuery: (options: { queryKey?: readonly unknown[] }) => {
+      const queryKey = options.queryKey ?? []
+      if (queryKey[0] === 'pickers' && queryKey[1] === 'partner') {
+        return { data: [partnerA], isLoading: false, isError: false }
+      }
+      if (queryKey[0] === 'partner') {
+        return { data: partnerA, isLoading: false, isError: false }
+      }
+      return { data: reactQueryState.document, isLoading: false, isError: false }
+    },
     useMutation: () => ({
       mutate: vi.fn((payload: unknown) => {
         reactQueryState.mutationPayloads.push(payload)
@@ -139,31 +157,6 @@ vi.mock('./components/PurchaseOrderAdditionalCosts', () => ({
     </section>
   ),
 }))
-vi.mock('../../components/molecules/pickers/PartnerPicker', () => ({
-  PartnerPicker: ({
-    value,
-    onChange,
-  }: {
-    value: string | null
-    onChange: (next: { id: string; name: string; type: 'customer' } | null) => void
-  }) => (
-    <select
-      data-testid="partner-select"
-      value={value ?? ''}
-      onChange={(event) => {
-        onChange(event.target.value === '' ? null : {
-          id: event.target.value,
-          name: 'Partner A',
-          type: 'customer',
-        })
-      }}
-    >
-      <option value="">Select partner</option>
-      <option value="partner-1">Partner A</option>
-    </select>
-  ),
-}))
-
 // ---------------------------------------------------------------------------
 // Bug 3 — unit tests for the pure linesDirty helper
 // ---------------------------------------------------------------------------
@@ -279,9 +272,11 @@ describe('DocumentForm (canonical layout)', () => {
   })
 
   it('submits service lines with service_id and without product_id', async () => {
+    const user = userEvent.setup()
     render(<DocumentForm documentType="invoice" />)
 
-    fireEvent.change(screen.getByTestId('partner-select'), { target: { value: 'partner-1' } })
+    await user.click(screen.getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /Partner A/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Add mocked service line' }))
     fireEvent.click(screen.getByRole('button', { name: 'actions.save' }))
 

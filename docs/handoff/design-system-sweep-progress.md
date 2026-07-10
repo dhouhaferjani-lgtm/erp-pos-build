@@ -5,7 +5,7 @@
 
 ## Gate 1 Fixlist — Blockers
 
-Status: blockers complete; MJ-1 through MJ-8 complete.
+Status: blockers complete; MJ-1 through MJ-9 complete.
 
 - BL-1 `PartnerPicker` empty-string value:
   - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` failed because `value=""` triggered a `/partners/` fetch and hid the search input behind a blank selected chip.
@@ -56,6 +56,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` failed because a supplier-filtered `PartnerPicker` still rendered the inline create button as "Add new customer".
   - GREEN: `PartnerPicker` now resolves the inline-create label from `partnerType`, with `partner.addNew.customer`, `partner.addNew.supplier`, and `partner.addNew.generic` keys in EN/FR/AR.
   - Verification: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` passed: 11 tests; `pnpm --filter @autoerp/web typecheck` passed.
+- MJ-9 DocumentForm PartnerPicker test integrity:
+  - RED: `DocumentForm.test.tsx` and `DocumentForm.tenantScope.test.tsx` still replaced `PartnerPicker` with local stubs, including one tenant-scope assertion implemented inside the stub.
+  - GREEN: both files now render the production `PartnerPicker`; edit-mode rehydration and inline-create affordance coverage exercise the real picker while `AddPartnerModal.test.tsx` remains the owner of partner creation invalidation behavior.
+  - Verification: `pnpm --filter @autoerp/web test -- src/features/documents/DocumentForm.test.tsx src/features/documents/__tests__/DocumentForm.tenantScope.test.tsx src/components/organisms/AddPartnerModal/AddPartnerModal.test.tsx` passed: 23 tests; `pnpm --filter @autoerp/web typecheck` passed.
 
 ## Wave 0 — Tooling & Guardrails
 
