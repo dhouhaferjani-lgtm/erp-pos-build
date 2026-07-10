@@ -45,6 +45,7 @@ const STATUS_RE = [
  *   column: number,
  *   reason: string,
  *   statement_fingerprint: string,
+ *   duplicate_ordinal: number,
  * }} DesignSystemViolation
  */
 
@@ -105,6 +106,7 @@ export function violationBaselineKey(violation) {
     violation.category,
     violation.file,
     violation.statement_fingerprint,
+    `#${violation.duplicate_ordinal}`,
   ].join('|')
 }
 
@@ -150,6 +152,22 @@ function pushViolation(out, category, file, code, index, reason, fingerprintSour
     column,
     reason,
     statement_fingerprint: normalize(fingerprintSource),
+    duplicate_ordinal: 1,
+  })
+}
+
+/**
+ * @param {DesignSystemViolation[]} violations
+ * @returns {DesignSystemViolation[]}
+ */
+function withDuplicateOrdinals(violations) {
+  /** @type {Map<string, number>} */
+  const counts = new Map()
+  return violations.map((violation) => {
+    const key = [violation.category, violation.file, violation.statement_fingerprint].join('|')
+    const ordinal = (counts.get(key) ?? 0) + 1
+    counts.set(key, ordinal)
+    return { ...violation, duplicate_ordinal: ordinal }
   })
 }
 
@@ -272,7 +290,7 @@ export function scanCode(code, filename) {
     }
   }
 
-  return violations
+  return withDuplicateOrdinals(violations)
 }
 
 /**

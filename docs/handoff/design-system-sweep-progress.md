@@ -5,7 +5,7 @@
 
 ## Gate 1 Fixlist — Blockers
 
-Status: blockers complete; MJ-1 complete; MJ-2 next.
+Status: blockers complete; MJ-1 and MJ-2 complete.
 
 - BL-1 `PartnerPicker` empty-string value:
   - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` failed because `value=""` triggered a `/partners/` fetch and hid the search input behind a blank selected chip.
@@ -27,7 +27,11 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- tools/__tests__/audit-design-system.test.mjs` failed because an `<input>` with `onChange={(event) => ...}` and `tokens.input.base` produced zero C2 violations.
   - GREEN: all JSX tag regexes now tolerate `=>` inside attributes before the real closing `>`.
   - Honest baseline rewrite: scanner now sees 535 C1-C6 violations; `node apps/web/tools/audit-design-system.mjs --write-baseline` wrote the current baseline, and `node apps/web/tools/audit-design-system.mjs` passes with 535 acknowledged, 0 new, 0 stale.
-  - Note for MJ-2: the baseline file currently has 524 keys because duplicate fingerprints still collapse under the old key format. MJ-2 will append duplicate ordinals so the baseline file represents all 535 occurrences.
+- MJ-2 design-system baseline duplicate disambiguation:
+  - RED: `pnpm --filter @autoerp/web test -- tools/__tests__/audit-design-system.test.mjs` failed because two identical raw-token `<input>` violations in the same file produced the same baseline key.
+  - GREEN: `violationBaselineKey` now appends a per-file duplicate ordinal (`#1`, `#2`, etc.) assigned during `scanCode`, so copy-pasted identical violations cannot ride one baseline entry.
+  - Baseline rewrite: `node apps/web/tools/audit-design-system.mjs --write-baseline` now produces 535 baseline entries for the 535 current C1-C6 occurrences.
+  - Verification: `pnpm --filter @autoerp/web test -- tools/__tests__/audit-design-system.test.mjs` passed: 6 tests; `node apps/web/tools/audit-design-system.mjs` passed with 535 acknowledged, 0 new, 0 stale.
 
 ## Wave 0 — Tooling & Guardrails
 

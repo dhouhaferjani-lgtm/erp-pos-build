@@ -77,4 +77,22 @@ describe('design-system audit scanner', () => {
     expect(result.newViolations).toHaveLength(1)
     expect(result.staleBaselineEntries).toEqual([])
   })
+
+  it('disambiguates duplicate violations with per-file ordinals', () => {
+    const violations = scanCode(`
+      export function ExampleForm() {
+        return (
+          <>
+            <input className={tokens.input.base} />
+            <input className={tokens.input.base} />
+          </>
+        )
+      }
+    `, 'src/features/example/ExampleForm.tsx')
+
+    expect(violations).toHaveLength(2)
+    expect(violationBaselineKey(violations[0])).toContain('|#1')
+    expect(violationBaselineKey(violations[1])).toContain('|#2')
+    expect(violationBaselineKey(violations[0])).not.toBe(violationBaselineKey(violations[1]))
+  })
 })
