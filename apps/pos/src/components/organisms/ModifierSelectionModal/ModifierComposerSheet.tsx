@@ -1,18 +1,25 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Check, X } from 'lucide-react';
 import { useCurrency } from '@/lib/currency';
-import { Modal } from '@/components/pos/Modal';
+import { bcadd, bccomp, bcsum } from '@/lib/decimal';
 import { cn } from '@/lib/utils';
-import { Check } from 'lucide-react';
 import type { POSProduct } from '@/types/product';
 import type { ModifierGroup, Modifier } from '@/types/modifier';
 import type { SelectedModifier } from '@/types/cart';
 
-export interface ModifierSelectionModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  product: POSProduct | null;
+/**
+ * Cart-always-foreground v1 (spec §2.3) — the modifier composition UI as a
+ * pure pane-hosted content component, extracted from the retired
+ * ModifierSelectionModal (same pattern as ProductDetailSheet). Gating,
+ * pricing, and selection semantics are unchanged; the <Modal> shell is gone.
+ * Confirm → onConfirm (host adds + closes); the header X / footer → onClose.
+ * NO Esc handling here: composing is a task, closed only explicitly (spec §4).
+ */
+export interface ModifierComposerSheetProps {
+  product: POSProduct;
   onConfirm: (selectedModifiers: SelectedModifier[]) => void;
+  onClose: () => void;
 }
 
 type SelectionMap = Record<string, Set<string>>;
@@ -35,24 +42,21 @@ function isGroupSatisfied(group: ModifierGroup, selected: Set<string>): boolean 
   return selected.size >= group.min_selections;
 }
 
-export function ModifierSelectionModal({
-  isOpen,
-  onClose,
-  product,
-  onConfirm,
-}: ModifierSelectionModalProps) {
+export function ModifierComposerSheet({ product, onConfirm, onClose }: ModifierComposerSheetProps) {
   const { t } = useTranslation('pos');
-  const { format } = useCurrency();
-  const groups = product?.modifier_groups ?? [];
+  const { format, decimals } = useCurrency();
+  const groups = product.modifier_groups ?? [];
 
-  const [selections, setSelections] = useState<SelectionMap>({});
+  const [selections, setSelections] = useState<SelectionMap>(() => getDefaultSelections(groups));
 
-  // Reset selections when product changes or modal opens
-  useEffect(() => {
-    if (isOpen && groups.length > 0) {
-      setSelections(getDefaultSelections(groups));
-    }
-  }, [isOpen, product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Reset to defaults when the product swaps in place (pane host keeps this
+  // component mounted across a product change). Render-time reset — the same
+  // prev-id pattern the detail sheet's old host used.
+  const [prevProductId, setPrevProductId] = useState(product.id);
+  if (product.id !== prevProductId) {
+    setPrevProductId(product.id);
+    setSelections(getDefaultSelections(groups));
+  }
 
   const handleToggleModifier = useCallback(
     (group: ModifierGroup, modifier: Modifier) => {
@@ -84,22 +88,23 @@ export function ModifierSelectionModal({
     return groups.every((g) => isGroupSatisfied(g, selections[g.id] ?? new Set()));
   }, [groups, selections]);
 
+  // Decimal-string total (rule 19: never parseFloat money). Same displayed
+  // value as the old float math for every currency-scale input.
   const totalPrice = useMemo(() => {
-    const basePrice = parseFloat(product?.sale_price ?? '0');
-    let adjustment = 0;
+    const adjustments: string[] = [];
     for (const group of groups) {
-      const selected = selections[group.id] ?? new Set();
+      const selected = selections[group.id] ?? new Set<string>();
       for (const mod of group.modifiers) {
         if (selected.has(mod.id)) {
-          adjustment += parseFloat(mod.price_adjustment);
+          adjustments.push(mod.price_adjustment);
         }
       }
     }
-    return basePrice + adjustment;
-  }, [product?.sale_price, groups, selections]);
+    return bcadd(product.sale_price ?? '0', bcsum(adjustments, decimals), decimals);
+  }, [product.sale_price, groups, selections, decimals]);
 
   const handleConfirm = useCallback(() => {
-    if (!allValid || !product) return;
+    if (!allValid) return;
 
     const selectedModifiers: SelectedModifier[] = [];
     for (const group of groups) {
@@ -118,15 +123,31 @@ export function ModifierSelectionModal({
     }
 
     onConfirm(selectedModifiers);
-  }, [allValid, product, groups, selections, onConfirm]);
-
-  if (!product) return null;
+  }, [allValid, groups, selections, onConfirm]);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('modifiers.customize')} size="full">
-      <div className="flex flex-col">
+    <section
+      role="region"
+      aria-label={t('modifiers.customize')}
+      data-testid="modifier-composer-sheet"
+      className="relative flex h-full w-full min-w-[680px] flex-col overflow-hidden rounded-panel bg-surface-overlay shadow-sm"
+    >
+      {/* Own header — the Modal shell used to provide title + close. */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-6 py-4">
+        <h2 className="text-xl font-bold text-ink">{t('modifiers.customize')}</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t('modifiers.cancel')}
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-ctl border border-border-subtle bg-surface-raised text-ink-muted active:bg-surface-sunken"
+        >
+          <X className="h-5 w-5" aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col px-6 py-4">
         {/* Product header */}
-        <div className="mb-4 rounded-card bg-surface-sunken px-4 py-3">
+        <div className="mb-4 shrink-0 rounded-card bg-surface-sunken px-4 py-3">
           <h3 className="text-lg font-bold text-ink">{product.name}</h3>
           <p className="text-sm text-ink-muted">
             {t('modifiers.basePrice')}: {format(product.sale_price ?? '0')}
@@ -134,14 +155,13 @@ export function ModifierSelectionModal({
         </div>
 
         {/* All groups visible */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {groups.map((group) => {
             const selected = selections[group.id] ?? new Set();
             const satisfied = isGroupSatisfied(group, selected);
 
             return (
               <div key={group.id} className="mb-4">
-                {/* Group header */}
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm font-semibold text-ink">
                     {group.name}
@@ -157,21 +177,20 @@ export function ModifierSelectionModal({
                   )}
                 </div>
 
-                {/* Chip grid */}
                 <div className="flex flex-wrap gap-2">
                   {group.modifiers
                     .filter((m) => m.is_active)
                     .sort((a, b) => a.position - b.position)
                     .map((modifier) => {
                       const isSelected = selected.has(modifier.id);
-                      const priceAdj = parseFloat(modifier.price_adjustment);
+                      const priceAdjSign = bccomp(modifier.price_adjustment, '0');
 
                       return (
                         <button
                           key={modifier.id}
                           onClick={() => handleToggleModifier(group, modifier)}
                           className={cn(
-                            'flex items-center gap-2 rounded-pill border-2 px-4 py-2 text-sm font-medium transition-all',
+                            'flex min-h-12 items-center gap-2 rounded-pill border-2 px-4 py-2 text-sm font-medium transition-all',
                             isSelected
                               ? 'border-accent bg-accent-tint text-accent-strong'
                               : 'border-border-subtle bg-surface-raised text-ink-muted hover:border-border-strong',
@@ -181,12 +200,12 @@ export function ModifierSelectionModal({
                             <Check className="h-3.5 w-3.5 text-accent-strong" />
                           )}
                           {modifier.name}
-                          {priceAdj !== 0 && (
+                          {priceAdjSign !== 0 && (
                             <span className={cn(
                               'text-xs',
-                              priceAdj > 0 ? 'text-ink-muted' : 'text-success-strong',
+                              priceAdjSign > 0 ? 'text-ink-muted' : 'text-success-strong',
                             )}>
-                              {priceAdj > 0 ? '+' : ''}{format(modifier.price_adjustment)}
+                              {priceAdjSign > 0 ? '+' : ''}{format(modifier.price_adjustment)}
                             </span>
                           )}
                         </button>
@@ -199,7 +218,7 @@ export function ModifierSelectionModal({
         </div>
 
         {/* Footer: total + add to cart */}
-        <div className="mt-2 border-t border-border-subtle pt-2">
+        <div className="mt-2 shrink-0 border-t border-border-subtle pt-2">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-sm text-ink-muted">
               {t('modifiers.selected')}: {Object.values(selections).reduce((sum, s) => sum + s.size, 0)}
@@ -220,6 +239,6 @@ export function ModifierSelectionModal({
           )}
         </div>
       </div>
-    </Modal>
+    </section>
   );
 }

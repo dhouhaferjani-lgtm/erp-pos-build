@@ -8,8 +8,9 @@
  *   (d) Tabs hidden when Merchandising module is NOT enabled
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { ProductDetailDrawer } from '@/components/pos/ProductDetailDrawer';
+import { ProductDetailSheet, type DetailTab } from '@/components/pos/ProductDetailDrawer';
 import type { POSProduct } from '@/types/product';
 import type { CompanyConfig } from '@/types/companyConfig';
 
@@ -157,17 +158,40 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
+// SheetHarness — the overlay host owned tab state; post-deletion HomePage
+// owns it. This harness reproduces that ownership for the suites that click
+// tabs.
+// ---------------------------------------------------------------------------
+function SheetHarness({
+  product: harnessProduct,
+  locationStock,
+  hardBlockOutOfStock,
+  onClose = () => {},
+}: {
+  product: POSProduct | null;
+  locationStock?: Parameters<typeof ProductDetailSheet>[0]['locationStock'];
+  hardBlockOutOfStock?: boolean;
+  onClose?: () => void;
+}) {
+  const [tab, setTab] = useState<DetailTab>('details');
+  if (!harnessProduct) return null;
+  return (
+    <ProductDetailSheet
+      product={harnessProduct}
+      onClose={onClose}
+      locationStock={locationStock}
+      hardBlockOutOfStock={hardBlockOutOfStock}
+      activeTab={tab}
+      onTabChange={setTab}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Render helper
 // ---------------------------------------------------------------------------
 function renderDrawer(product: POSProduct | null = currentProduct) {
-  return render(
-    <ProductDetailDrawer
-      isOpen
-      product={product}
-      onClose={() => {}}
-      locationStock={null}
-    />,
-  );
+  return render(<SheetHarness product={product} locationStock={null} />);
 }
 
 // ---------------------------------------------------------------------------

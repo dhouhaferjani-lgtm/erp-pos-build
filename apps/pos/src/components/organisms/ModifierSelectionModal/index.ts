@@ -1,2 +1,2 @@
-export { ModifierSelectionModal } from './ModifierSelectionModal';
-export type { ModifierSelectionModalProps } from './ModifierSelectionModal';
+export { ModifierComposerSheet } from './ModifierComposerSheet';
+export type { ModifierComposerSheetProps } from './ModifierComposerSheet';

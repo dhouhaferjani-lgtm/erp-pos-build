@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ShoppingCart, Trash2, RotateCcw } from 'lucide-react';
 import { CartLineItem } from '@/components/molecules/CartLineItem';
@@ -10,6 +10,7 @@ import { bcabs } from '@/lib/decimal';
 import { tokens } from '@/lib/designTokens';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useCartStore } from '@/stores/cartStore';
 import type { CartItem } from '@/types/cart';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 
@@ -95,6 +96,25 @@ export function TransactionCart({
   const { format } = useCurrency();
   const confirmLineDelete = useSettingsStore((s) => s.confirmLineDelete);
   const cartPosition = useSettingsStore((s) => s.cartPosition);
+
+  // Added-line pulse: the store stamps the last-added line + a nonce; only the
+  // matching line receives a nonzero token (cart-always-foreground v1).
+  const lastAddedLineId = useCartStore((s) => s.lastAddedLineId);
+  const lastAddedNonce = useCartStore((s) => s.lastAddedNonce);
+
+  // Rev 2 (U2): scroll the just-added line into view. The list is
+  // overflow-y-auto and new lines append at the bottom — on 8+ line tickets
+  // they land below the fold, and a pulse that fires off-screen is the exact
+  // "did it work?" failure this story fixes.
+  const lineListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (lastAddedNonce === 0 || lastAddedLineId === null) return;
+    const line = lineListRef.current?.querySelector(
+      `[data-cart-line-id="${lastAddedLineId}"]`,
+    );
+    // Optional call — jsdom does not implement scrollIntoView.
+    line?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [lastAddedNonce, lastAddedLineId]);
 
   // Cart-panel seam border must face the CANVAS, mirroring NavRail's
   // seamSide handling (Task 5): the cart flips side with `cartPosition`
@@ -215,7 +235,7 @@ export function TransactionCart({
       </div>
 
       {/* Cart items */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-0.5">
+      <div ref={lineListRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-0.5">
         {items.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center text-ink-muted">
             <ShoppingCart className="mb-3 h-12 w-12 text-ink-faint" />
@@ -258,19 +278,21 @@ export function TransactionCart({
                 </div>
                 <div className="divide-y divide-border-subtle">
                   {saleItems.map((item) => (
-                    <CartLineItem
-                      key={item.id}
-                      item={item}
-                      onUpdateQuantity={onUpdateQuantity}
-                      onRemove={onRemoveItem}
-                      onQuantityTap={onQuantityTap}
-                      onDiscount={onLineDiscount}
-                      onEditModifiers={onEditModifiers}
-                      onRemoveDiscount={onRemoveLineDiscount}
-                      expanded={expandedLineId === item.id}
-                      onToggleExpand={toggleLine}
-                      confirmDelete={confirmLineDelete}
-                    />
+                    <div key={item.id} data-cart-line-id={item.id}>
+                      <CartLineItem
+                        item={item}
+                        onUpdateQuantity={onUpdateQuantity}
+                        onRemove={onRemoveItem}
+                        onQuantityTap={onQuantityTap}
+                        onDiscount={onLineDiscount}
+                        onEditModifiers={onEditModifiers}
+                        onRemoveDiscount={onRemoveLineDiscount}
+                        expanded={expandedLineId === item.id}
+                        onToggleExpand={toggleLine}
+                        confirmDelete={confirmLineDelete}
+                        pulseToken={item.id === lastAddedLineId ? lastAddedNonce : 0}
+                      />
+                    </div>
                   ))}
                 </div>
               </>
@@ -280,19 +302,21 @@ export function TransactionCart({
           // ── Normal sale mode ───────────────────────────────────────────────
           <div className="divide-y divide-border-subtle">
             {items.map((item) => (
-              <CartLineItem
-                key={item.id}
-                item={item}
-                onUpdateQuantity={onUpdateQuantity}
-                onRemove={onRemoveItem}
-                onQuantityTap={onQuantityTap}
-                onDiscount={onLineDiscount}
-                onEditModifiers={onEditModifiers}
-                onRemoveDiscount={onRemoveLineDiscount}
-                expanded={expandedLineId === item.id}
-                onToggleExpand={toggleLine}
-                confirmDelete={confirmLineDelete}
-              />
+              <div key={item.id} data-cart-line-id={item.id}>
+                <CartLineItem
+                  item={item}
+                  onUpdateQuantity={onUpdateQuantity}
+                  onRemove={onRemoveItem}
+                  onQuantityTap={onQuantityTap}
+                  onDiscount={onLineDiscount}
+                  onEditModifiers={onEditModifiers}
+                  onRemoveDiscount={onRemoveLineDiscount}
+                  expanded={expandedLineId === item.id}
+                  onToggleExpand={toggleLine}
+                  confirmDelete={confirmLineDelete}
+                  pulseToken={item.id === lastAddedLineId ? lastAddedNonce : 0}
+                />
+              </div>
             ))}
           </div>
         )}

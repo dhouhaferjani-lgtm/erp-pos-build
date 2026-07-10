@@ -451,12 +451,24 @@ body,
 .ez-tap {
   animation: ez-tap 420ms ease-out;
 }
+/* Added-line pulse — fires on the cart line that just received an add while
+ * the operator's eye is in the product pane (cart-always-foreground v1).
+ * Blue = interaction (Strategy A): --action at low alpha, mirroring the
+ * ez-tap ring recipe. Ends transparent; the overlay clears on animationend. */
+@keyframes ez-line-pulse {
+  0%   { background-color: color-mix(in srgb, var(--action) 24%, transparent); }
+  100% { background-color: transparent; }
+}
+.ez-line-pulse {
+  animation: ez-line-pulse 650ms ease-out both;
+}
 @media (prefers-reduced-motion: reduce) {
   .ez-fade-in,
   .ez-sheet-rise,
   .ez-slide-in-end,
   .ez-slide-in-start,
-  .ez-tap {
+  .ez-tap,
+  .ez-line-pulse {
     animation: none;
   }
 }

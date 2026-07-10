@@ -1,16 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TransactionCart, type TransactionCartProps } from '../TransactionCart';
+import { useCartStore } from '@/stores/cartStore';
 import { makeCartItem, makePaymentMethod, makePaymentRepository } from '@/test/helpers';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) => {
-      if (opts) return `${key}:${JSON.stringify(opts)}`;
-      return key;
-    },
-  }),
-}));
+// Keep the real module surface (initReactI18next etc. are pulled in via the
+// cartStore → api → i18n import chain) and only stub the hook to echo keys.
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: (key: string, opts?: Record<string, unknown>) => {
+        if (opts) return `${key}:${JSON.stringify(opts)}`;
+        return key;
+      },
+    }),
+  };
+});
 
 vi.mock('@/stores/settingsStore', () => ({
   useSettingsStore: (selector: (s: { confirmLineDelete: boolean }) => unknown) =>
@@ -18,8 +25,16 @@ vi.mock('@/stores/settingsStore', () => ({
 }));
 
 vi.mock('@/components/molecules/CartLineItem', () => ({
-  CartLineItem: ({ item }: { item: { id: string; product: { name: string } } }) => (
-    <div data-testid={`cart-line-${item.id}`}>{item.product.name}</div>
+  CartLineItem: ({
+    item,
+    pulseToken,
+  }: {
+    item: { id: string; product: { name: string } };
+    pulseToken?: number;
+  }) => (
+    <div data-testid={`cart-line-${item.id}`} data-pulse-token={pulseToken ?? 0}>
+      {item.product.name}
+    </div>
   ),
 }));
 
@@ -391,5 +406,39 @@ describe('TransactionCart — Task 52 refund/exchange sections', () => {
 
     fireEvent.click(button);
     expect(onPayCash).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TransactionCart — added-line pulse routing', () => {
+  beforeEach(() => {
+    useCartStore.setState({ lastAddedLineId: null, lastAddedNonce: 0 });
+  });
+
+  it('passes the nonce as pulseToken ONLY to the last-added line', () => {
+    useCartStore.setState({ lastAddedLineId: 'item-1', lastAddedNonce: 3 });
+    renderCart({
+      items: [makeCartItem({ id: 'item-1' }), makeCartItem({ id: 'item-2' })],
+      itemCount: 2,
+    });
+    expect(screen.getByTestId('cart-line-item-1')).toHaveAttribute('data-pulse-token', '3');
+    expect(screen.getByTestId('cart-line-item-2')).toHaveAttribute('data-pulse-token', '0');
+  });
+
+  it('scrolls the just-added line into view on nonce change (Rev 2, U2)', () => {
+    // jsdom stubs scrollIntoView as not-implemented — install a spy.
+    const scrollSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollSpy;
+
+    useCartStore.setState({ lastAddedLineId: 'item-2', lastAddedNonce: 1 });
+    renderCart({
+      items: [makeCartItem({ id: 'item-1' }), makeCartItem({ id: 'item-2' })],
+      itemCount: 2,
+    });
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest', behavior: 'smooth' });
+    // The call target (`this` of the method call) is item-2's line wrapper.
+    expect(
+      (scrollSpy.mock.contexts[0] as Element).getAttribute('data-cart-line-id'),
+    ).toBe('item-2');
   });
 });
