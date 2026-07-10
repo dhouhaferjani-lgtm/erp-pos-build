@@ -30,7 +30,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $account_number
  * @property string|null $iban
  * @property string|null $bic
- * @property numeric-string $balance
+ * @property numeric-string $balance Cached repository balance; port-managed (Task 22), NOT fillable — only TreasuryMovementService may write it (a pgsql trigger forbids direct writes).
  * @property Carbon|null $last_reconciled_at
  * @property numeric-string|null $last_reconciled_balance
  * @property string|null $location_id
@@ -38,6 +38,10 @@ use Illuminate\Support\Carbon;
  * @property string|null $account_id
  * @property string|null $gl_account_id
  * @property bool $is_active
+ * @property string $currency ISO 4217 currency code (char(3)); port-managed, not fillable.
+ * @property Carbon|null $frozen_at
+ * @property string|null $frozen_reason
+ * @property int $next_movement_ordinal Monotonic per-repository ordinal for spine movements; port-managed, not fillable.
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
@@ -54,9 +58,44 @@ class PaymentRepository extends Model
 
     protected $table = 'payment_repositories';
 
+    /**
+     * A new repository always opens at a zero balance — money enters ONLY via
+     * the movement port thereafter. `balance` is port-managed and NOT fillable
+     * (Task 22), so a plain create() cannot set it; this model-level default
+     * gives every fresh instance an in-memory '0' (and persists 0 on the INSERT,
+     * which the direct-balance-write trigger permits — it guards UPDATEs only).
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'balance' => 0,
+    ];
+
     protected static function newFactory(): PaymentRepositoryFactory
     {
         return PaymentRepositoryFactory::new();
+    }
+
+    protected static function booted(): void
+    {
+        // `currency` is port-managed (not fillable) and NOT NULL (spine columns
+        // migration, MED-11), so a plain create() — e.g. PaymentRepositoryController
+        // ::store() — never sets it and would insert null. Default it here from the
+        // owning company (single-currency today) so EVERY repository satisfies the
+        // movement port's currency invariant, mirroring the factory and the
+        // migration backfill. `next_movement_ordinal` already defaults to 0 at the
+        // DB level. This is set only on creation; the port owns it thereafter.
+        static::creating(function (PaymentRepository $repository): void {
+            // Read via getAttribute (mixed) — the @property PHPDoc types these as
+            // always-string (their post-creation truth), but at creation currency is
+            // not yet set and may be null.
+            $currency = $repository->getAttribute('currency');
+            $companyId = $repository->getAttribute('company_id');
+            if ($currency === null && is_string($companyId)) {
+                $company = Company::query()->find($companyId);
+                $repository->currency = $company instanceof Company ? $company->currency : 'TND';
+            }
+        });
     }
 
     protected $fillable = [
@@ -69,7 +108,6 @@ class PaymentRepository extends Model
         'account_number',
         'iban',
         'bic',
-        'balance',
         'last_reconciled_at',
         'last_reconciled_balance',
         'location_id',
@@ -90,6 +128,8 @@ class PaymentRepository extends Model
             'last_reconciled_balance' => 'decimal:3',
             'last_reconciled_at' => 'datetime',
             'is_active' => 'boolean',
+            'frozen_at' => 'immutable_datetime',
+            'next_movement_ordinal' => 'integer',
         ];
     }
 

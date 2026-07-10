@@ -330,7 +330,10 @@ class PaymentRepositoryTest extends TestCase
 
     public function test_can_get_repository_balance(): void
     {
-        $repository = PaymentRepository::create([
+        // `balance` is port-managed and not fillable (Task 22); the factory is
+        // unguarded, so it seeds the opening balance on INSERT (which the
+        // direct-balance-write trigger permits — it guards UPDATEs only).
+        $repository = PaymentRepository::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'CASH_REG_01',

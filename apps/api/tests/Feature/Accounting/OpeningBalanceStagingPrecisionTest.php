@@ -104,6 +104,29 @@ class OpeningBalanceStagingPrecisionTest extends TestCase
         return is_string($value) ? $value : (string) json_encode($value);
     }
 
+    /**
+     * Decode raw_data into its associative array for exact value assertions.
+     *
+     * Assert on the DECODED values (assertSame), never on a raw substring of the
+     * JSON text: Postgres's jsonb->text cast always inserts a space after `:` and
+     * `,` in its canonical output (`"debit": "10000.100"`), while sqlite's JSON1
+     * extension / PHP's json_encode() emit compact JSON (`"debit":"10000.100"`).
+     * A raw `assertStringContainsString` on the compact form is driver-specific
+     * and fails on real PG even when the underlying value is correct. Decoding
+     * first and asserting on the value keeps the precision assertion exact
+     * (the monetary/quantity strings themselves are asserted verbatim) while
+     * being agnostic to the driver's JSON serialization whitespace.
+     *
+     * @return array<string, string>
+     */
+    private function rawDataForBatch(string $batchId): array
+    {
+        /** @var array<string, string> $decoded */
+        $decoded = json_decode($this->rawJsonForBatch($batchId), true, flags: JSON_THROW_ON_ERROR);
+
+        return $decoded;
+    }
+
     public function test_accounting_money_field_trailing_zero_preserved_in_jsonb(): void
     {
         $batch = $this->makeBatch(OpeningBatchType::Accounting);
@@ -117,12 +140,12 @@ class OpeningBalanceStagingPrecisionTest extends TestCase
             ],
         ]);
 
-        $json = $this->rawJsonForBatch($batch->id);
+        $row = $this->rawDataForBatch($batch->id);
 
         // Money fields canonicalize at the fixed storage scale 3 (NOT EUR display scale 2).
         // The literal stored value must keep its precision (not "10000.1").
-        $this->assertStringContainsString('"debit":"10000.100"', $json);
-        $this->assertStringContainsString('"credit":"0.000"', $json);
+        $this->assertSame('10000.100', $row['debit']);
+        $this->assertSame('0.000', $row['credit']);
     }
 
     public function test_eur_money_field_preserves_third_decimal_not_truncated_to_currency_scale(): void
@@ -142,11 +165,11 @@ class OpeningBalanceStagingPrecisionTest extends TestCase
             ],
         ]);
 
-        $json = $this->rawJsonForBatch($batch->id);
+        $row = $this->rawDataForBatch($batch->id);
 
         // The 3rd decimal survives — NOT silently truncated to "10000.10".
-        $this->assertStringContainsString('"debit":"10000.105"', $json);
-        $this->assertStringNotContainsString('"debit":"10000.10"', $json);
+        $this->assertSame('10000.105', $row['debit']);
+        $this->assertNotSame('10000.10', $row['debit']);
     }
 
     public function test_inventory_quantity_trailing_zeros_preserved_at_scale_four(): void
@@ -162,11 +185,11 @@ class OpeningBalanceStagingPrecisionTest extends TestCase
             ],
         ]);
 
-        $json = $this->rawJsonForBatch($batch->id);
+        $row = $this->rawDataForBatch($batch->id);
 
         // Quantity always scale 4; unit_cost money at fixed storage scale 3.
-        $this->assertStringContainsString('"quantity":"2.5000"', $json);
-        $this->assertStringContainsString('"unit_cost":"25.500"', $json);
+        $this->assertSame('2.5000', $row['quantity']);
+        $this->assertSame('25.500', $row['unit_cost']);
     }
 
     public function test_non_numeric_fields_are_left_untouched(): void
@@ -182,10 +205,10 @@ class OpeningBalanceStagingPrecisionTest extends TestCase
             ],
         ]);
 
-        $json = $this->rawJsonForBatch($batch->id);
+        $row = $this->rawDataForBatch($batch->id);
 
-        $this->assertStringContainsString('"account_code":"1200"', $json);
-        $this->assertStringContainsString('"description":"Keep me as text"', $json);
-        $this->assertStringContainsString('"debit":"5.000"', $json);
+        $this->assertSame('1200', $row['account_code']);
+        $this->assertSame('Keep me as text', $row['description']);
+        $this->assertSame('5.000', $row['debit']);
     }
 }

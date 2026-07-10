@@ -217,4 +217,23 @@ describe('OffsetPagination', () => {
     rerender(<OffsetPagination {...defaultProps} perPage={100} />)
     expect(select.value).toBe('100')
   })
+
+  it('renders the per-page selector by default (hidePerPage omitted — non-breaking for existing consumers)', () => {
+    render(<OffsetPagination {...defaultProps} />)
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(screen.getByText('Rows per page:')).toBeInTheDocument()
+  })
+
+  it('hides the per-page selector when hidePerPage is true', () => {
+    render(<OffsetPagination {...defaultProps} hidePerPage />)
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByText('Rows per page:')).not.toBeInTheDocument()
+  })
+
+  it('still renders navigation and showing info when hidePerPage is true', () => {
+    render(<OffsetPagination {...defaultProps} hidePerPage from={null} to={null} />)
+    expect(screen.getByText('247 items')).toBeInTheDocument()
+    expect(screen.getByText(/Page 1 of 10/)).toBeInTheDocument()
+    expect(screen.getAllByRole('button')).toHaveLength(2)
+  })
 })

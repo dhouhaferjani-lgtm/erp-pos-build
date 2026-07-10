@@ -8,8 +8,10 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 /**
  * Abstract base for Artisan commands that touch multi-tenant resources.
@@ -116,6 +118,33 @@ abstract class TenantScopedCommand extends Command
      * invariant 2, this is the canonical way to drive a per-tenant iteration
      * from a scheduler.
      *
+     * **Contract (continue-on-throw, explicit as of 2026-07-10):** a
+     * per-tenant `\Throwable` is caught, logged, and that tenant's slot is
+     * aggregated as FAILURE — the loop then CONTINUES to the remaining
+     * tenants. It never aborts the batch. A caller that requires
+     * abort-on-first-failure semantics must implement that itself inside
+     * `$fn` (e.g. by checking a flag before starting the next tenant's work
+     * and returning early) — `forEachTenant()` itself has no opt-in/opt-out
+     * for this behavior.
+     *
+     * **Per-tenant failure isolation** (2026-07-09 audit finding N1): a
+     * `\Throwable` escaping `$fn($tenant)` for one tenant is caught here,
+     * logged with the tenant id, and recorded as a FAILURE for that tenant's
+     * slot in the aggregate — it does NOT abort iteration for the remaining
+     * tenants. Every current caller — treasury:reconcile
+     * (ReconcileTreasuryCommand), accounting:check-subledger-reconciliation
+     * (CheckSubledgerReconciliationCommand), workshop:check-expiring-
+     * certifications (CheckExpiringCertifications), scheduling:schedule-
+     * appointment-reminders (ScheduleAppointmentReminders),
+     * fiscal:retry-projections (RetryFiscalProjectionsCommand), and
+     * pos:expire-held-orders (ExpireHeldOrdersCommand) — is a
+     * scheduled/operator-invoked batch or maintenance job where partial
+     * per-tenant progress is strictly more valuable than an all-or-nothing
+     * abort. None of them require (nor did any existing test assert)
+     * abort-on-first-tenant-failure, so this widens to unconditional
+     * continue-on-throw rather than an opt-in flag (surveyed 2026-07-09,
+     * audit-fix-1).
+     *
      * @param  callable(Tenant): int  $fn
      */
     protected function forEachTenant(callable $fn): int
@@ -126,6 +155,7 @@ abstract class TenantScopedCommand extends Command
         foreach (Tenant::all() as $tenant) {
             /** @var Tenant $tenant */
             $initialized = false;
+            $exit = self::SUCCESS;
 
             try {
                 if ($dbPerTenant) {
@@ -134,6 +164,14 @@ abstract class TenantScopedCommand extends Command
                 }
 
                 $exit = $fn($tenant);
+            } catch (Throwable $e) {
+                Log::error('TenantScopedCommand::forEachTenant tenant iteration failed; continuing with remaining tenants.', [
+                    'tenant_id' => $tenant->id,
+                    'command' => static::class,
+                    'exception_class' => $e::class,
+                    'exception_message' => $e->getMessage(),
+                ]);
+                $exit = self::FAILURE;
             } finally {
                 if ($initialized && tenancy()->initialized) {
                     tenancy()->end();

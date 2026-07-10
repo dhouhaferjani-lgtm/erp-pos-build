@@ -11,6 +11,7 @@ use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -115,7 +116,24 @@ final class EloquentPaymentMethodResolverTest extends TestCase
 
         // Now drop the table — the schema is rebuilt at teardown via
         // RefreshDatabase, so this does not leak into sibling tests.
-        Schema::drop('payment_methods');
+        //
+        // Driver-gated: `payment_methods` has 6 dependent FKs (payment_instruments,
+        // expense_metadata, pos_receipt_payments, payments, pos_z_report_counts,
+        // income_metadata). On real Postgres a plain `DROP TABLE` throws `2BP01`
+        // ("cannot drop table because other objects depend on it") BEFORE the
+        // test's own `expectException(QueryException::class)` is registered,
+        // so PHPUnit reports an unhandled error instead of exercising the
+        // resolver's propagation behaviour. `CASCADE` drops the dependent FKs
+        // along with the table so the *next* query (the resolver's own SELECT)
+        // is what surfaces the QueryException this test is pinning. SQLite has
+        // no `CASCADE` keyword on `DROP TABLE` and tolerates FK-less drops via
+        // the framework helper, so keep the pre-existing `Schema::drop()` path
+        // there.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('DROP TABLE payment_methods CASCADE');
+        } else {
+            Schema::drop('payment_methods');
+        }
 
         $this->expectException(QueryException::class);
 

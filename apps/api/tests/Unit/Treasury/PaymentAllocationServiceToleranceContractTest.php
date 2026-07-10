@@ -147,7 +147,15 @@ final class PaymentAllocationServiceToleranceContractTest extends TestCase
             'payment_method_id' => $this->paymentMethod->id,
             'amount' => '99.9500',
             'currency' => 'TND',
-            'payment_date' => '2025-01-15',
+            // Latent backdated literal (audit follow-up, 2026-07-10): this
+            // test is currently green only because it never calls actingAs()
+            // (null actor → the tolerance JE stays Draft → the closed-period
+            // guard in sealAndPersistEntry is never reached). A future edit
+            // adding actingAs() would hit the same branch-caused red as the
+            // sibling PaymentAllocationServiceTolerancePersistenceTest (audit
+            // N2, commit a45f9363a) — use the current date so the payment
+            // always falls in the open fiscal period regardless.
+            'payment_date' => now()->toDateString(),
             'status' => 'completed',
             'payment_type' => 'document_payment',
         ]);

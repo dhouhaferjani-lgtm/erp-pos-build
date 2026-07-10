@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain\Services;
 
+use App\Modules\Accounting\Application\Services\FiscalPeriodResolverService;
 use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\DTOs\CreatePOSChargeJournalEntryCommand;
+use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
+use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
@@ -20,6 +24,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -44,6 +49,7 @@ final class GeneralLedgerService
         private readonly PartnerBalanceService $partnerBalanceService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly GeneralLedgerHashService $hashService,
+        private readonly FiscalPeriodResolverService $fiscalPeriodResolver,
     ) {}
 
     private function scale(): int
@@ -139,6 +145,7 @@ final class GeneralLedgerService
                 'description' => "Invoice {$invoice->document_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'invoice',
+                'journal_code' => JournalCode::fromSourceType('invoice')->value,
                 'source_id' => $invoice->id,
             ]);
 
@@ -211,6 +218,7 @@ final class GeneralLedgerService
                 'description' => "Credit Note {$creditNote->document_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'credit_note',
+                'journal_code' => JournalCode::fromSourceType('credit_note')->value,
                 'source_id' => $creditNote->id,
             ]);
 
@@ -281,6 +289,7 @@ final class GeneralLedgerService
                 'description' => $description,
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'payment',
+                'journal_code' => JournalCode::fromSourceType('payment')->value,
             ]);
 
             // Debit: Cash/Bank (no partner - asset account)
@@ -325,26 +334,43 @@ final class GeneralLedgerService
         string $amount,
         string $paymentMethodAccountId,
         \DateTimeInterface $date,
-        User $user,
+        ?User $user,
         ?string $description = null,
-        ?string $currencyCode = null
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        // Mirror createPaymentReceivedJournalEntry: synchronous in-transaction posting
+        // (Task 19 — cash-moving deposit flow) must sit inside the caller's transaction
+        // so the returned entry is already POSTED and can be linked to the movement leg
+        // recorded through the write port. Refuse to create a Draft that postEntryNow
+        // would then orphan outside a transaction.
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createCustomerAdvanceJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
 
         $entry = DB::transaction(function () use (
             $companyId, $partnerId, $advanceId, $amount, $paymentMethodAccountId,
-            $date, $description, $advanceAccount, $user
+            $date, $description, $advanceAccount
         ): JournalEntry {
             $entryNumber = $this->generateEntryNumber($companyId);
 
+            // Derive tenant_id from the company (not the actor): the actor is
+            // nullable now — an offline-authored ACCOUNT_PAYMENT whose cashier is
+            // not a resolvable company member still moves cash and must post its
+            // customer-advance GL consequence (Task 24 Fix A).
+            $company = Company::findOrFail($companyId);
+
             $entry = JournalEntry::create([
-                'tenant_id' => $user->tenant_id,
+                'tenant_id' => $company->tenant_id,
                 'company_id' => $companyId,
                 'entry_number' => $entryNumber,
                 'entry_date' => $date,
                 'description' => $description ?? 'Customer advance received',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'advance',
+                'journal_code' => JournalCode::fromSourceType('advance')->value,
                 'source_id' => $advanceId,
             ]);
 
@@ -373,7 +399,29 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        // Synchronous in-transaction posting is only used by atomic money-movement
+        // flows that always carry a resolved actor — refuse a null actor there
+        // (mirrors createPaymentReceivedJournalEntry).
+        if ($mode === PostingMode::SynchronousInTransaction && $user === null) {
+            throw new \LogicException('createCustomerAdvanceJournalEntry: synchronous in-transaction GL posting requires an actor ($user); refusing to return an unposted Draft into an atomic money-movement flow.');
+        }
+
+        if ($user !== null) {
+            if ($mode === PostingMode::SynchronousInTransaction) {
+                $this->postEntryNow($entry, $user, $currencyCode);
+            } else {
+                $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+            }
+        } else {
+            // Actor could not be resolved (e.g. an offline-authored ACCOUNT_PAYMENT
+            // whose cashier is not a resolvable company member). The GL consequence
+            // (Dr Bank / Cr Customer-Advance) is deterministic and independent of who
+            // posted it, so seal it as a SYSTEM-generated POSTED entry rather than
+            // leaving an unposted Draft that the treasury reconcile would freeze on
+            // (Task 24 Fix A). AfterCommit only (the Synchronous + null-actor
+            // combination is refused above).
+            $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $companyId, $currencyCode);
+        }
 
         return $entry;
     }
@@ -395,7 +443,17 @@ final class GeneralLedgerService
         ?string $description = null,
         ?string $postedByUserId = null,
         ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        // Treasury spine (Task 18): SynchronousInTransaction posts the reversal
+        // via postEntryNow so the GL post is atomic with — and its company
+        // advisory lock is taken BEFORE — the movement port's repository row lock
+        // (global lock order, BLOCKER-1). It therefore requires an enclosing
+        // transaction; refuse to mint a Draft that postEntryNow would orphan.
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('reverseSupplierAdvanceJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierAdvance);
         $user = null;
         if ($postedByUserId !== null) {
@@ -419,6 +477,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Supplier advance refund',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'supplier_advance_refund',
+                'journal_code' => JournalCode::fromSourceType('supplier_advance_refund')->value,
                 'source_id' => $refundId,
             ]);
 
@@ -447,7 +506,109 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        if ($user !== null) {
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            // postEntryNow tolerates a null actor (posted_by stays null); the
+            // supplier-refund flow always supplies one in practice.
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } elseif ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
+
+        return $entry;
+    }
+
+    /**
+     * Create the GL reversal for a REFUND of a customer payment received
+     * (Treasury spine, Task 18). Mirrors {@see createPaymentReceivedJournalEntry}
+     * with the legs flipped:
+     *   Debit:  Accounts Receivable (partner-tagged) — the receivable re-opens
+     *   Credit: Bank/Cash — money leaves the till, back to the customer
+     *
+     * source_type is 'customer_payment_refund' and source_id is the REFUND
+     * payment row id (not the original), so multiple partial refunds of one
+     * original payment each get their own entry without colliding on
+     * (source_type, source_id).
+     */
+    public function createPaymentRefundJournalEntry(
+        string $companyId,
+        string $partnerId,
+        string $refundPaymentId,
+        string $amount,
+        string $paymentMethodAccountId,
+        \DateTimeInterface $date,
+        ?string $description = null,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
+    ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createPaymentRefundJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
+        $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+
+        // Actor-nullable (reconciliation-readiness Fix 3): mirror
+        // reverseSupplierAdvanceJournalEntry — resolve the poster when supplied,
+        // tolerate its absence. A refund whose actor can't be resolved (automated
+        // refund, unresolvable posted_by) STILL posts the reversal via
+        // postEntryNow (which tolerates a null poster), so the cash movement it
+        // backs always carries a linked, POSTED journal entry (spine §9.2).
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
+
+        $entry = DB::transaction(function () use (
+            $companyId, $partnerId, $refundPaymentId, $amount, $paymentMethodAccountId,
+            $date, $description, $receivableAccount
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $company = Company::findOrFail($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description ?? 'Customer payment refund',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'customer_payment_refund',
+                'journal_code' => JournalCode::fromSourceType('customer_payment_refund')->value,
+                'source_id' => $refundPaymentId,
+            ]);
+
+            // Debit: Accounts Receivable (with partner for subledger) — re-open it
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $receivableAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Receivable reinstated (refund)',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Bank/Cash — money returned to the customer
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentMethodAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Payment refunded',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            // postEntryNow tolerates a null actor (posted_by stays null); this is
+            // what guarantees the reversal is POSTED even for an unresolvable actor.
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } elseif ($user !== null) {
             $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         }
 
@@ -491,6 +652,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Supplier invoice',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'supplier_invoice',
+                'journal_code' => JournalCode::fromSourceType('supplier_invoice')->value,
                 'source_id' => $invoiceId,
             ]);
 
@@ -555,8 +717,13 @@ final class GeneralLedgerService
         \DateTimeInterface $date,
         User $user,
         ?string $description = null,
-        ?string $currencyCode = null
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createSupplierPaymentJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $payableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
 
         $entry = DB::transaction(function () use (
@@ -573,6 +740,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Supplier payment',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'supplier_payment',
+                'journal_code' => JournalCode::fromSourceType('supplier_payment')->value,
                 'source_id' => $paymentId,
             ]);
 
@@ -601,7 +769,204 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
+
+        return $entry;
+    }
+
+    /**
+     * Create the settlement journal entry that pays down the accounts-payable
+     * liability booked by {@see createFromExpense()} for an UNPAID expense.
+     *
+     * Mirrors that AP booking EXACTLY — same SupplierPayable account, same
+     * (nullable) partner tag — so the two entries net to zero on the AP
+     * subledger. Unlike {@see createSupplierPaymentJournalEntry()} this accepts
+     * a NULL partner, because `documents.partner_id` is nullable and a
+     * petty-cash / anonymous-vendor expense books its AP line with no partner.
+     *
+     *   Dr SupplierPayable (401, partner = nullable) = amount
+     *   Cr Cash/Bank                                 = amount
+     */
+    public function createExpenseSettlementJournalEntry(
+        string $companyId,
+        ?string $partnerId,
+        string $expenseId,
+        string $amount,
+        string $paymentMethodAccountId,
+        \DateTimeInterface $date,
+        User $user,
+        ?string $description = null,
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
+    ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createExpenseSettlementJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
+        $payableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
+
+        $entry = DB::transaction(function () use (
+            $companyId, $partnerId, $expenseId, $amount, $paymentMethodAccountId,
+            $date, $description, $payableAccount, $user
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $user->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description ?? 'Expense settlement',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'expense_settlement',
+                'journal_code' => JournalCode::fromSourceType('expense_settlement')->value,
+                'source_id' => $expenseId,
+            ]);
+
+            // Debit: Accounts Payable — partner nullable, mirroring the AP booking.
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $payableAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Payable cleared',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Bank/Cash — money left the treasury repository.
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentMethodAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Expense settlement payment',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
+
+        return $entry;
+    }
+
+    /**
+     * Create + post the GL entry for a manual repository (cash) adjustment —
+     * count-variance / correction / theft-loss (Treasury spine Task 23).
+     *
+     * The 658/758 "payment tolerance" purposes ({@see SystemAccountPurpose::PaymentToleranceExpense}
+     * / {@see SystemAccountPurpose::PaymentToleranceIncome}) are reused as the
+     * cash-variance account rather than minting a new SystemAccountPurpose — a
+     * manual cash-count discrepancy is the same class of "small unexplained
+     * monetary gap" those tolerance accounts already model, and they are
+     * literally the 658/758-family purposes (see the enum's own inline
+     * comments). A company must have these purposes assigned in its chart of
+     * accounts (findByPurposeOrFail throws otherwise).
+     *
+     *   direction OUT (cash short — a loss): Dr PaymentToleranceExpense (658) / Cr Cash
+     *   direction IN  (cash over — a gain):   Dr Cash / Cr PaymentToleranceIncome (758)
+     *
+     * Always posts SYNCHRONOUSLY in the caller's transaction (never
+     * AfterCommit) — the spine's recon-readiness invariant requires every
+     * cash movement to carry a non-null journal_entry_id at the instant the
+     * movement row is written, so the caller can pass $entry->id into
+     * MovementIntent immediately after this returns.
+     */
+    public function createRepositoryAdjustmentJournalEntry(
+        string $companyId,
+        string $tenantId,
+        string $adjustmentId,
+        string $repositoryGlAccountId,
+        MovementDirection $direction,
+        string $amount,
+        \DateTimeInterface $date,
+        User $user,
+        string $description,
+        ?string $currencyCode = null,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('createRepositoryAdjustmentJournalEntry: requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
+        $varianceAccount = $direction === MovementDirection::Out
+            ? $this->getAccountByPurpose($companyId, SystemAccountPurpose::PaymentToleranceExpense)
+            : $this->getAccountByPurpose($companyId, SystemAccountPurpose::PaymentToleranceIncome);
+
+        $entry = DB::transaction(function () use (
+            $companyId, $tenantId, $adjustmentId, $repositoryGlAccountId, $direction, $amount, $date, $description, $varianceAccount
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description,
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'repository_adjustment',
+                'journal_code' => JournalCode::fromSourceType('repository_adjustment')->value,
+                'source_id' => $adjustmentId,
+            ]);
+
+            if ($direction === MovementDirection::Out) {
+                // Dr variance expense (cash short) / Cr cash — money "left"
+                // the repository to cover the shortfall.
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $varianceAccount->id,
+                    'partner_id' => null,
+                    'debit' => $amount,
+                    'credit' => '0',
+                    'description' => 'Cash count variance (short)',
+                    'line_order' => 0,
+                ]);
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $repositoryGlAccountId,
+                    'partner_id' => null,
+                    'debit' => '0',
+                    'credit' => $amount,
+                    'description' => 'Repository adjustment',
+                    'line_order' => 1,
+                ]);
+            } else {
+                // Dr cash / Cr variance income (cash over).
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $repositoryGlAccountId,
+                    'partner_id' => null,
+                    'debit' => $amount,
+                    'credit' => '0',
+                    'description' => 'Repository adjustment',
+                    'line_order' => 0,
+                ]);
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $varianceAccount->id,
+                    'partner_id' => null,
+                    'debit' => '0',
+                    'credit' => $amount,
+                    'description' => 'Cash count variance (over)',
+                    'line_order' => 1,
+                ]);
+            }
+
+            return $entry->load('lines');
+        });
+
+        $this->postEntryNow($entry, $user, $currencyCode);
 
         return $entry;
     }
@@ -622,8 +987,13 @@ final class GeneralLedgerService
         \DateTimeInterface $date,
         ?string $description = null,
         ?User $user = null,
-        ?string $currencyCode = null
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createPaymentReceivedJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $receivableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
 
         $entry = DB::transaction(function () use (
@@ -643,6 +1013,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Customer payment received',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'customer_payment',
+                'journal_code' => JournalCode::fromSourceType('customer_payment')->value,
                 'source_id' => $paymentId,
             ]);
 
@@ -671,8 +1042,26 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
+        if ($mode === PostingMode::SynchronousInTransaction && $user === null) {
+            throw new \LogicException('createPaymentReceivedJournalEntry: synchronous in-transaction GL posting requires an actor ($user); refusing to return an unposted Draft into an atomic money-movement flow.');
+        }
+
         if ($user !== null) {
-            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+            if ($mode === PostingMode::SynchronousInTransaction) {
+                $this->postEntryNow($entry, $user, $currencyCode);
+            } else {
+                $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+            }
+        } else {
+            // Actor could not be resolved (e.g. an offline-authored ACCOUNT_PAYMENT
+            // whose cashier is not a resolvable company member). The GL consequence
+            // (Dr Bank / Cr Accounts-Receivable) is deterministic and independent of
+            // who posted it, so seal it as a SYSTEM-generated POSTED entry rather
+            // than leaving an unposted Draft that the caller would then link to a
+            // cash movement — which the treasury reconcile freezes on (Task 24 Fix
+            // A). AfterCommit only (the Synchronous + null-actor combination is
+            // refused above).
+            $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $companyId, $currencyCode);
         }
 
         return $entry;
@@ -729,6 +1118,7 @@ final class GeneralLedgerService
                 'description' => $description ?? "Payment tolerance write-off ({$type})",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'payment_tolerance',
+                'journal_code' => JournalCode::fromSourceType('payment_tolerance')->value,
                 'source_id' => $documentId,
             ]);
 
@@ -852,6 +1242,7 @@ final class GeneralLedgerService
                 'description' => $description ?? 'Apply prepayment to invoice',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'prepayment_application',
+                'journal_code' => JournalCode::fromSourceType('prepayment_application')->value,
                 'source_id' => $invoiceId,
             ]);
 
@@ -991,6 +1382,7 @@ final class GeneralLedgerService
                 'description' => $description ?? "COGS for Invoice {$documentNumber}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'cogs',
+                'journal_code' => JournalCode::fromSourceType('cogs')->value,
                 'source_id' => $invoiceId,
             ]);
 
@@ -1106,6 +1498,7 @@ final class GeneralLedgerService
                 'description' => 'Goods Receipt GR-IR accrual',
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'goods_receipt',
+                'journal_code' => JournalCode::fromSourceType('goods_receipt')->value,
                 'source_id' => $movementId,
             ]);
 
@@ -1250,6 +1643,7 @@ final class GeneralLedgerService
             'description' => "Supplier invoice {$supplierInvoice->document_number} — GR-IR clearing",
             'status' => JournalEntryStatus::Draft,
             'source_type' => 'supplier_invoice',
+            'journal_code' => JournalCode::fromSourceType('supplier_invoice')->value,
             'source_id' => $supplierInvoice->id,
         ]);
 
@@ -1466,6 +1860,7 @@ final class GeneralLedgerService
             'description' => "Supplier credit note {$creditNote->document_number} — reversal",
             'status' => JournalEntryStatus::Draft,
             'source_type' => 'supplier_credit_note',
+            'journal_code' => JournalCode::fromSourceType('supplier_credit_note')->value,
             'source_id' => $creditNote->id,
         ]);
 
@@ -1629,6 +2024,7 @@ final class GeneralLedgerService
             'description' => "Supplier credit note {$creditNote->document_number} — reversal",
             'status' => JournalEntryStatus::Draft,
             'source_type' => 'supplier_credit_note',
+            'journal_code' => JournalCode::fromSourceType('supplier_credit_note')->value,
             'source_id' => $creditNote->id,
         ]);
 
@@ -1805,6 +2201,7 @@ final class GeneralLedgerService
                 'description' => $this->describeVoucherEvent($ledgerRow, $voucher),
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'voucher_ledger',
+                'journal_code' => JournalCode::fromSourceType('voucher_ledger')->value,
                 'source_id' => $ledgerRow->id,
             ]);
 
@@ -1956,6 +2353,63 @@ final class GeneralLedgerService
 
     private function postEntryWithOptionalActor(JournalEntry $entry, ?User $user, ?string $currencyCode = null): void
     {
+        // Preserve historical semantics for every existing (non-spine) caller:
+        // seal + persist, then fire the event inline (synchronously).
+        $posted = $this->sealAndPersistEntry($entry, $user, $currencyCode);
+
+        event($posted);
+    }
+
+    /**
+     * Post a journal entry SYNCHRONOUSLY inside the current transaction.
+     *
+     * Unlike {@see postEntryAndDispatchPostedEventAfterCommit}, which defers the
+     * ENTIRE post (status seal + hash + event) to DB::afterCommit when inside a
+     * transaction, this seals + persists (status -> Posted, chain_sequence,
+     * fiscal_hash) durably-in-transaction and defers ONLY the JournalEntryPosted
+     * event to afterCommit. This makes a money movement and its GL posting atomic:
+     * they commit or roll back together.
+     *
+     * Used by the Treasury money-movement spine (PostingMode::SynchronousInTransaction).
+     *
+     * @param  string|null  $currencyCode  Pass the entity currency when calling
+     *                                     from a queued job, console command, or
+     *                                     projection — there is no CompanyContext
+     *                                     bound there, so no-arg scale resolution
+     *                                     throws (precision contract, F-RES-1).
+     */
+    public function postEntryNow(JournalEntry $entry, ?User $user, ?string $currencyCode = null): void
+    {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('postEntryNow must be called inside a database transaction — synchronous in-transaction posting is only atomic with the caller\'s work (spine BLOCKER-1 / MED-9).');
+        }
+
+        $posted = $this->sealAndPersistEntry($entry, $user, $currencyCode);
+
+        // The DB state change above is already durable within the caller
+        // transaction. Only the event is a side effect — defer it to afterCommit
+        // so listeners never observe an uncommitted (or rolled-back) post.
+        DB::afterCommit(function () use ($posted): void {
+            event($posted);
+        });
+    }
+
+    /**
+     * Seal + persist a draft journal entry into the fiscal hash chain and RETURN
+     * the JournalEntryPosted event (the caller decides when/how to dispatch it).
+     *
+     * This is the single source of truth for the hash-chain sealing sequence:
+     * Draft check -> balance assertion -> getLastChainHash / getNextChainSequence /
+     * calculateHash -> $entry->update([...]). The hash inputs, ordering and
+     * chain-sequence derivation MUST NOT change here — every posting path funnels
+     * through this method so the chain stays byte-identical.
+     *
+     * NOTE (Task 7): the getLastChainHash + getNextChainSequence reads are
+     * serialized per company by a transaction-scoped advisory lock taken just
+     * before them (below), closing the concurrent-post chain_sequence race.
+     */
+    private function sealAndPersistEntry(JournalEntry $entry, ?User $user, ?string $currencyCode = null): JournalEntryPosted
+    {
         if ($entry->status !== JournalEntryStatus::Draft) {
             throw new \InvalidArgumentException('Only draft entries can be posted');
         }
@@ -1987,6 +2441,28 @@ final class GeneralLedgerService
             );
         }
 
+        // Serialize chain-sequence + hash reads per company via a transaction-scoped
+        // advisory lock (released at commit). Concurrent posts to one company would
+        // otherwise race on these unlocked max() reads and allocate duplicate
+        // chain_sequence — an FEC-sequentiality break (Task 7). This is step 1 of
+        // every converged flow: taken BEFORE any payment_repositories row lock, so
+        // the global order is always advisory -> repo. The lock is only effective
+        // inside an explicit transaction; postEntryNow enforces one, and the legacy
+        // autocommit path degrades to a harmless per-statement no-op.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$entry->company_id]);
+        }
+
+        // Reject posting into a fiscal period that EXISTS and is CLOSED for the
+        // entry date (spine BLOCKER-2). Absence of any period for the date is
+        // allowed — period configuration may not be set up yet, and this guard
+        // must never brick posting for an unconfigured company. Checked after
+        // the advisory lock so the reject is consistent with the same
+        // transaction-serialized view used for the chain-sequence allocation.
+        if ($this->fiscalPeriodResolver->isDateInClosedPeriod($entry->company_id, $entry->entry_date)) {
+            throw new ClosedFiscalPeriodException($entry->company_id, $entry->entry_date->toDateString());
+        }
+
         $previousHash = JournalEntry::getLastChainHash($entry->company_id);
         $chainSequence = JournalEntry::getNextChainSequence($entry->company_id);
         $hash = $this->hashService->calculateHash($entry, $previousHash, $companyCurrencyCode);
@@ -2002,7 +2478,7 @@ final class GeneralLedgerService
             'posted_by' => $user?->id,
         ]);
 
-        event(new JournalEntryPosted(
+        return new JournalEntryPosted(
             entryId: $entry->id,
             tenantId: $entry->tenant_id,
             companyId: $entry->company_id,
@@ -2010,7 +2486,7 @@ final class GeneralLedgerService
             totalDebit: $eventTotalDebit,
             totalCredit: $eventTotalCredit,
             postedAt: $postedAt->toIso8601String(),
-        ));
+        );
     }
 
     /**
@@ -2055,6 +2531,7 @@ final class GeneralLedgerService
                 'description' => "POS tolerance write-off / Receipt {$receiptId}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'pos_payment_tolerance',
+                'journal_code' => JournalCode::fromSourceType('pos_payment_tolerance')->value,
                 'source_id' => $receiptId,
             ]);
 
@@ -2119,6 +2596,7 @@ final class GeneralLedgerService
                 'description' => "POS Receipt {$receipt->receipt_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'pos_receipt',
+                'journal_code' => JournalCode::fromSourceType('pos_receipt')->value,
                 'source_id' => $receipt->id,
             ]);
 
@@ -2141,6 +2619,89 @@ final class GeneralLedgerService
                 'debit' => '0',
                 'credit' => $payment->amount,
                 'description' => 'POS sales revenue',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        return $entry;
+    }
+
+    /**
+     * Create the GL REVERSAL for a POS refund/void receipt (Treasury spine,
+     * Task 21). A refund rides a SALE_RECEIPT fiscal event carrying
+     * `invoice_type_code='REFUND'` (or 'VOID') — there is NO separate refund
+     * event type. It pays cash OUT of the drawer, so the sale entry a normal
+     * receipt of the same tender would post ({@see createPOSPaymentEntry},
+     * Dr Cash / Cr Revenue) is REVERSED here — legs flipped:
+     *   Debit:  Revenue (ProductRevenue) — revenue is reversed
+     *   Credit: Cash/Bank (from payment repository's GL account) — money out
+     *
+     * This is the pure inverse of the sale entry, so it reuses the EXACT same
+     * accounts (guaranteed to exist wherever the sale entry can post) and
+     * always balances. A dedicated contra-revenue Sales-Return (709) account
+     * exists as a SystemAccountPurpose but has no posting helper yet; routing
+     * the debit through it is a Phase-1.5 accounting refinement — until then
+     * the symmetric reversal is the correct, unambiguous treatment.
+     *
+     * `source_type='pos_receipt_refund'` (distinct from the sale entry's
+     * `pos_receipt`) so refund reversals are filterable in FEC/reporting;
+     * `source_id=$receipt->id` (the refund/Return receipt row). Returned in
+     * Draft — the caller posts it via `postEntryNow` inside its transaction,
+     * exactly as with the sale entry.
+     */
+    public function createPOSRefundReversalEntry(
+        Payment $payment,
+        Receipt $receipt,
+        PaymentRepository $repository
+    ): JournalEntry {
+        if ($repository->gl_account_id === null) {
+            throw new \InvalidArgumentException(
+                "Cannot create GL entry: payment repository '{$repository->name}' ({$repository->code}) "
+                .'is not linked to a General Ledger account. '
+                .'Go to Settings → Treasury → Payment Repositories and assign a GL account to this repository.'
+            );
+        }
+
+        $entry = DB::transaction(function () use ($payment, $receipt, $repository): JournalEntry {
+            $companyId = $payment->company_id;
+
+            $revenueAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue);
+
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $payment->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $receipt->posted_at,
+                'description' => "POS Refund Receipt {$receipt->receipt_number}",
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'pos_receipt_refund',
+                'journal_code' => JournalCode::fromSourceType('pos_receipt_refund')->value,
+                'source_id' => $receipt->id,
+            ]);
+
+            // Debit: Revenue Account — the sale revenue is reversed.
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $revenueAccount->id,
+                'partner_id' => null,
+                'debit' => $payment->amount,
+                'credit' => '0',
+                'description' => 'POS sales revenue reversed (refund)',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Cash/Bank Account (from payment repository) — money out.
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $repository->gl_account_id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $payment->amount,
+                'description' => "POS refund via {$repository->name}",
                 'line_order' => 1,
             ]);
 
@@ -2193,6 +2754,7 @@ final class GeneralLedgerService
                 'description' => "POS Account Charge {$command->accountChargeUuid}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'pos_account_charge',
+                'journal_code' => JournalCode::fromSourceType('pos_account_charge')->value,
                 'source_id' => $command->fiscalEventId,
             ]);
 
@@ -2254,11 +2816,19 @@ final class GeneralLedgerService
      * Create journal entry from a posted expense.
      *
      * Expenses are typically non-fiscal operational documents.
-     * Debit: Expense Account (from category or default to GeneralExpense)
-     * Credit: Cash/Bank Account (based on payment repository)
+     * Debit: Expense Account (from category or default to GeneralExpense).
+     * Credit depends on whether the expense is paid:
+     *   - paid   → Cash/Bank Account (based on payment repository type) — money left treasury.
+     *   - unpaid → Accounts-Payable liability (SupplierPayable), tracked against the
+     *              vendor partner for the AP subledger. NO cash is credited: an unpaid
+     *              expense has not moved any money yet (Wave D bug fix).
      */
-    public function createFromExpense(Document $expense, User $user): JournalEntry
+    public function createFromExpense(Document $expense, User $user, PostingMode $mode = PostingMode::AfterCommit): JournalEntry
     {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createFromExpense: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $entry = DB::transaction(function () use ($expense): JournalEntry {
             $companyId = $expense->company_id;
             $metadata = $expense->expenseMetadata;
@@ -2281,12 +2851,25 @@ final class GeneralLedgerService
                 $expenseAccount = $this->getAccountByPurpose($companyId, $expenseAccountPurpose);
             }
 
-            // Determine payment account (Cash or Bank based on repository type)
-            $repositoryType = $metadata !== null && $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : RepositoryType::CashRegister;
-            $paymentAccount = match ($repositoryType) {
-                RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
-                default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
-            };
+            // Determine the credit account. A PAID expense credits the Cash/Bank
+            // account the money left from; an UNPAID expense has not moved any
+            // money yet, so it credits the Accounts-Payable liability instead
+            // (Wave D bug fix — previously it credited Cash unconditionally).
+            $isPaid = $metadata?->is_paid === true;
+            if ($isPaid) {
+                // $isPaid === true implies $metadata is non-null (is_paid was read off it).
+                $repositoryType = $metadata->paymentRepository !== null ? $metadata->paymentRepository->type : RepositoryType::CashRegister;
+                $creditAccount = match ($repositoryType) {
+                    RepositoryType::BankAccount => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Bank),
+                    default => $this->getAccountByPurpose($companyId, SystemAccountPurpose::Cash),
+                };
+                $creditPartnerId = null;
+                $creditDescription = 'Expense payment';
+            } else {
+                $creditAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SupplierPayable);
+                $creditPartnerId = $expense->partner_id;
+                $creditDescription = 'Expense payable';
+            }
 
             $entryNumber = $this->generateEntryNumber($companyId);
             $vendorName = $metadata->vendor_name ?? 'General Expense';
@@ -2299,6 +2882,7 @@ final class GeneralLedgerService
                 'description' => "Expense: {$expense->document_number} - {$vendorName}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'expense',
+                'journal_code' => JournalCode::fromSourceType('expense')->value,
                 'source_id' => $expense->id,
             ]);
 
@@ -2315,21 +2899,25 @@ final class GeneralLedgerService
                 'line_order' => $lineOrder++,
             ]);
 
-            // Credit: Cash/Bank Account
+            // Credit: Cash/Bank (paid) or Accounts-Payable liability (unpaid)
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
-                'account_id' => $paymentAccount->id,
-                'partner_id' => null,
+                'account_id' => $creditAccount->id,
+                'partner_id' => $creditPartnerId,
                 'debit' => '0',
                 'credit' => $expense->total ?? '0',
-                'description' => 'Expense payment',
+                'description' => $creditDescription,
                 'line_order' => $lineOrder,
             ]);
 
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, (string) $expense->currency);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        }
 
         return $entry;
     }
@@ -2346,8 +2934,12 @@ final class GeneralLedgerService
      * Credit: Income Account — the selected class-7 account
      *        (metadata->income_account_id) or ProductRevenue by default.
      */
-    public function createFromIncome(Document $income, User $user): JournalEntry
+    public function createFromIncome(Document $income, User $user, PostingMode $mode = PostingMode::AfterCommit): JournalEntry
     {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createFromIncome: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $entry = DB::transaction(function () use ($income): JournalEntry {
             $companyId = $income->company_id;
             $metadata = $income->incomeMetadata;
@@ -2396,6 +2988,7 @@ final class GeneralLedgerService
                 'description' => "Income: {$income->document_number} - {$sourceName}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'income',
+                'journal_code' => JournalCode::fromSourceType('income')->value,
                 'source_id' => $income->id,
             ]);
 
@@ -2426,7 +3019,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $income->company_id, (string) $income->currency);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, (string) $income->currency);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $income->company_id, (string) $income->currency);
+        }
 
         return $entry;
     }
@@ -2439,7 +3036,12 @@ final class GeneralLedgerService
         DocumentAdditionalCost $cost,
         array $application,
         User $user,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createLinkedCostCapitalizationEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $existing = JournalEntry::query()
             ->where('source_type', 'linked_cost_capitalization')
             ->where('source_id', $cost->id)
@@ -2466,6 +3068,7 @@ final class GeneralLedgerService
                 'description' => "Linked cost capitalization: {$expense->document_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'linked_cost_capitalization',
+                'journal_code' => JournalCode::fromSourceType('linked_cost_capitalization')->value,
                 'source_id' => $cost->id,
             ]);
 
@@ -2504,7 +3107,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, (string) $expense->currency);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        }
 
         return $entry;
     }
@@ -2517,7 +3124,12 @@ final class GeneralLedgerService
         DocumentAdditionalCost $reversalCost,
         array $application,
         User $user,
+        PostingMode $mode = PostingMode::AfterCommit,
     ): JournalEntry {
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('createLinkedCostCapitalizationReversalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
         $existing = JournalEntry::query()
             ->where('source_type', 'linked_cost_capitalization_reversal')
             ->where('source_id', $reversalCost->id)
@@ -2544,6 +3156,7 @@ final class GeneralLedgerService
                 'description' => "Linked cost reversal: {$expense->document_number}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'linked_cost_capitalization_reversal',
+                'journal_code' => JournalCode::fromSourceType('linked_cost_capitalization_reversal')->value,
                 'source_id' => $reversalCost->id,
             ]);
 
@@ -2582,7 +3195,11 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            $this->postEntryNow($entry, $user, (string) $expense->currency);
+        } else {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $expense->company_id, (string) $expense->currency);
+        }
 
         return $entry;
     }
@@ -2642,6 +3259,7 @@ final class GeneralLedgerService
                 'description' => "Batch write-off ({$reason->label()}): {$batchNumber}",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'batch_write_off',
+                'journal_code' => JournalCode::fromSourceType('batch_write_off')->value,
                 'source_id' => $movementId,
             ]);
 
@@ -2737,6 +3355,7 @@ final class GeneralLedgerService
                 'description' => "Reversal of batch write-off (orig {$original->entry_number})",
                 'status' => JournalEntryStatus::Draft,
                 'source_type' => 'batch_write_off_reversal',
+                'journal_code' => JournalCode::fromSourceType('batch_write_off_reversal')->value,
                 'source_id' => $reversalMovementId,
             ]);
 
@@ -2778,8 +3397,32 @@ final class GeneralLedgerService
         return Account::findByPurposeOrFail($companyId, $purpose);
     }
 
+    /**
+     * Non-throwing existence check for a system-purpose account, exposed so
+     * callers outside this module (Treasury's RepositoryAdjustmentController —
+     * Audit fix 4 / K2) can validate a chart of accounts BEFORE attempting a
+     * GL post and return a graceful 422 instead of letting
+     * {@see Account::findByPurposeOrFail}'s bare RuntimeException escape as a
+     * 500. Does not change findByPurposeOrFail's own throwing semantics for
+     * any other caller.
+     */
+    public function hasAccountForPurpose(string $companyId, SystemAccountPurpose $purpose): bool
+    {
+        return Account::findByPurpose($companyId, $purpose) !== null;
+    }
+
     private function generateEntryNumber(string $companyId): string
     {
+        // Same per-company advisory lock as sealAndPersistEntry so entry-number and
+        // chain-sequence allocation share serialization: concurrent creates would
+        // otherwise race on this unlocked max()+1 read and allocate a duplicate
+        // entry_number (Task 7). Transaction-scoped, released at commit; when
+        // running outside a transaction it degrades to a harmless per-statement
+        // no-op — every GL create path wraps this in DB::transaction.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$companyId]);
+        }
+
         $year = date('Y');
         $lastEntry = JournalEntry::query()
             ->where('company_id', $companyId)

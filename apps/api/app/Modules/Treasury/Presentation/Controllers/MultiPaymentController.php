@@ -13,6 +13,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
 use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -24,12 +25,89 @@ class MultiPaymentController extends Controller
     ) {}
 
     /**
+     * Task 19 (spine Wave D): resolve the client-supplied request-level idempotency
+     * key — mirrors PaymentController. Prefers the `Idempotency-Key` header; falls back
+     * to an `idempotency_key` body field. Returns null when no key was supplied at all
+     * (dedup disabled — fully backward compatible). Now that this controller's creation
+     * flows move cash through the write port, a lost-response retry with the same key
+     * must NOT double-pay.
+     */
+    private function resolveIdempotencyKey(Request $request): ?string
+    {
+        $key = $request->header('Idempotency-Key');
+
+        if (! is_string($key) || trim($key) === '') {
+            $bodyKey = $request->input('idempotency_key');
+            $key = is_string($bodyKey) ? $bodyKey : null;
+        }
+
+        if ($key === null) {
+            return null;
+        }
+
+        $key = trim($key);
+
+        return $key !== '' ? $key : null;
+    }
+
+    /**
+     * Task 19: look up a previously created deposit (single payment) by its idempotency
+     * key, scoped to tenant+company (the unique index is per-company).
+     */
+    private function findPaymentByIdempotencyKey(string $tenantId, string $companyId, string $idempotencyKey): ?Payment
+    {
+        return Payment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('idempotency_key', $idempotencyKey)
+            ->with(['partner', 'paymentMethod'])
+            ->first();
+    }
+
+    /**
+     * Task 19: look up a previously created split-payment batch by its idempotency key.
+     * createSplitPayment() writes several Payment rows per request (one per split line);
+     * each is keyed "{idempotencyKey}:multi:{zero-padded index}" so every row is unique
+     * (satisfying the partial unique index) while sharing a discoverable prefix. Mirrors
+     * PaymentController::findMultiPaymentBatchByIdempotencyKey. Returns null on a miss.
+     *
+     * @return array<int, Payment>|null
+     */
+    private function findSplitPaymentBatchByIdempotencyKey(string $tenantId, string $companyId, string $idempotencyKey): ?array
+    {
+        $prefix = $idempotencyKey.':multi:';
+
+        $payments = Payment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('idempotency_key', 'like', $prefix.'%')
+            ->with(['partner', 'paymentMethod', 'allocations.document'])
+            ->orderBy('idempotency_key')
+            ->get();
+
+        return $payments->isEmpty() ? null : $payments->values()->all();
+    }
+
+    /**
      * Create split payment for a document
      */
     public function createSplitPayment(Request $request, string $documentId): JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        // Task 19 idempotency short-circuit — checked BEFORE validation and BEFORE the
+        // write transaction. A retry (lost response) that resends the same key must
+        // return the ORIGINAL batch untouched: no re-validation (the document balance is
+        // now 0, which would otherwise fail the split-total check), no new payments, no
+        // second set of treasury movements.
+        $idempotencyKey = $this->resolveIdempotencyKey($request);
+        if ($idempotencyKey !== null) {
+            $existingBatch = $this->findSplitPaymentBatchByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
+            if ($existingBatch !== null) {
+                return $this->formatSplitPaymentBatch($existingBatch, $tenantId, $companyId, $documentId, 200);
+            }
+        }
 
         $request->validate([
             'splits' => ['required', 'array', 'min:2'],
@@ -70,7 +148,8 @@ class MultiPaymentController extends Controller
             $payments = $this->multiPaymentService->createSplitPayment(
                 $document,
                 $request->input('splits'),
-                $userId !== null ? (string) $userId : null
+                $userId !== null ? (string) $userId : null,
+                $idempotencyKey
             );
 
             return response()->json([
@@ -80,11 +159,45 @@ class MultiPaymentController extends Controller
                 ],
                 'message' => 'Split payment created successfully',
             ], 201);
+        } catch (UniqueConstraintViolationException $e) {
+            // A concurrent retry with the same Idempotency-Key committed first. The
+            // service's DB::transaction has fully rolled back; read back the batch it
+            // created and return it rather than surfacing the DB constraint error.
+            if ($idempotencyKey !== null) {
+                $existingBatch = $this->findSplitPaymentBatchByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
+                if ($existingBatch !== null) {
+                    return $this->formatSplitPaymentBatch($existingBatch, $tenantId, $companyId, $documentId, 200);
+                }
+            }
+
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),
             ], 422);
         }
+    }
+
+    /**
+     * Task 19: build the split-payment success response from an already-persisted batch
+     * (an idempotency replay hit). Same shape as the original 201 response.
+     *
+     * @param  array<int, Payment>  $payments
+     */
+    private function formatSplitPaymentBatch(array $payments, string $tenantId, string $companyId, string $documentId, int $status): JsonResponse
+    {
+        $document = Document::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($documentId);
+
+        return response()->json([
+            'data' => [
+                'payments' => $payments,
+                'document' => $document?->fresh(['partner']),
+            ],
+            'message' => 'Split payment created successfully',
+        ], $status);
     }
 
     private function rejectSupplierInvoice(): JsonResponse
@@ -104,6 +217,20 @@ class MultiPaymentController extends Controller
     {
         $companyId = $this->companyContext->requireCompanyId();
         $tenantId = $this->companyContext->requireCompany()->tenant_id;
+
+        // Task 19 idempotency short-circuit — a ledgered deposit now moves cash through
+        // the write port, so a lost-response retry must return the ORIGINAL deposit, not
+        // record a second payment + movement. Checked before validation and the write.
+        $idempotencyKey = $this->resolveIdempotencyKey($request);
+        if ($idempotencyKey !== null) {
+            $existing = $this->findPaymentByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
+            if ($existing instanceof Payment) {
+                return response()->json([
+                    'data' => $existing->load(['partner', 'paymentMethod']),
+                    'message' => 'Deposit recorded successfully',
+                ], 200);
+            }
+        }
 
         $request->validate([
             'partner_id' => [
@@ -144,13 +271,28 @@ class MultiPaymentController extends Controller
                 $request->input('instrument_id'),
                 $request->input('reference'),
                 $request->input('notes'),
-                (string) $user->id
+                (string) $user->id,
+                $idempotencyKey
             );
 
             return response()->json([
                 'data' => $deposit->load(['partner', 'paymentMethod']),
                 'message' => 'Deposit recorded successfully',
             ], 201);
+        } catch (UniqueConstraintViolationException $e) {
+            // A concurrent retry with the same Idempotency-Key committed first — read it
+            // back rather than surfacing the DB constraint error.
+            if ($idempotencyKey !== null) {
+                $existing = $this->findPaymentByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
+                if ($existing instanceof Payment) {
+                    return response()->json([
+                        'data' => $existing->load(['partner', 'paymentMethod']),
+                        'message' => 'Deposit recorded successfully',
+                    ], 200);
+                }
+            }
+
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),

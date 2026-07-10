@@ -60,18 +60,26 @@ class PaymentRefundController extends Controller
      */
     public function refundPayment(Request $request, string $id): JsonResponse
     {
+        // Resolve (and company-scope) the payment BEFORE validation so a
+        // cross-company id 404s rather than surfacing a 422 (api.treasury.071 /
+        // TreasuryCompanyIsolationTest).
+        $payment = $this->findPaymentOrFail($id);
+
         $request->validate([
             'reason' => 'required|string|max:500',
+            // Task 18 (HIGH-6): a client-supplied UUID makes the full refund
+            // idempotent — a retry with the same id returns the same refund
+            // instead of double-refunding.
+            'refund_request_id' => 'required|uuid',
         ]);
-
-        $payment = $this->findPaymentOrFail($id);
 
         try {
             $userId = $request->user()?->id !== null ? (string) $request->user()->id : null;
             $refund = $this->refundService->refundPayment(
                 $payment,
                 (string) $request->input('reason'),
-                $userId
+                $userId,
+                (string) $request->input('refund_request_id'),
             );
 
             return response()->json([
@@ -90,14 +98,18 @@ class PaymentRefundController extends Controller
      */
     public function partialRefund(Request $request, string $id): JsonResponse
     {
+        // Resolve + company-scope before validation (see refundPayment note).
+        $payment = $this->findPaymentOrFail($id);
+
         $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'reason' => 'required|string|max:500',
+            // Task 18 (HIGH-6): required idempotency key — a retry with the same
+            // id must not create a second partial refund / movement.
+            'refund_request_id' => ['required', 'uuid'],
         ], [
             'amount.regex' => 'Amount must have at most 3 decimal places.',
         ]);
-
-        $payment = $this->findPaymentOrFail($id);
 
         try {
             $userId = $request->user()?->id !== null ? (string) $request->user()->id : null;
@@ -105,7 +117,8 @@ class PaymentRefundController extends Controller
                 $payment,
                 (string) $request->input('amount'),
                 (string) $request->input('reason'),
-                $userId
+                $userId,
+                (string) $request->input('refund_request_id'),
             );
 
             return response()->json([
