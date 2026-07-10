@@ -53,6 +53,7 @@ import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle'
 import { TableSelector } from '@/components/atoms/TableSelector';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
 import { ProductDetailDrawer } from '@/components/organisms/ProductDetailDrawer';
+import { RequestRefillSheet } from '@/components/organisms/RequestRefillSheet';
 import { TransactionCart } from '@/components/organisms/TransactionCart';
 import { CashPaymentScreen } from '@/components/organisms/CashPaymentScreen';
 import { CheckoutSuccessModal } from '@/components/organisms/CheckoutSuccessModal';
@@ -239,6 +240,7 @@ export function HomePage() {
   // Modifier selection state
   const [modifierProduct, setModifierProduct] = useState<POSProduct | null>(null);
   const [detailProduct, setDetailProduct] = useState<POSProduct | null>(null);
+  const [refillProduct, setRefillProduct] = useState<POSProduct | null>(null);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
 
   // T2 — variant picker state: the product whose variants the cashier is
@@ -993,6 +995,10 @@ export function HomePage() {
     setDetailProduct(product);
   }, []);
 
+  const handleRequestRefill = useCallback((product: POSProduct) => {
+    setRefillProduct(product);
+  }, []);
+
   const handleEditModifiers = useCallback(
     (itemId: string) => {
       const cartItem = cartItems.find((i) => i.id === itemId);
@@ -1514,6 +1520,7 @@ export function HomePage() {
           onAddToCart={handleAddToCart}
           onCustomize={handleCustomize}
           onViewDetails={handleViewDetails}
+          onRequestRefill={handleRequestRefill}
           cartProductIds={cartProductIds}
           cartQuantities={cartQuantities}
           isLoading={productsLoading}
@@ -1642,6 +1649,14 @@ export function HomePage() {
         locationStock={detailProduct ? locationStock[detailProduct.id] : undefined}
         hardBlockOutOfStock={posStockPolicy === 'block'}
       />
+
+      {refillProduct && (
+        <RequestRefillSheet
+          isOpen
+          product={refillProduct}
+          onClose={() => setRefillProduct(null)}
+        />
+      )}
 
       {/* T2.1 Step B — barcode collision chooser. Mounts when the scan
           resolver finds >1 product matching the scanned code (UPC overlap,

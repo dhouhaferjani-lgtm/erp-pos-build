@@ -1093,6 +1093,15 @@
     "phone_label": "Téléphone : {{value}}",
     "email_label": "E-mail : {{value}}"
   },
+  "replenishment": {
+    "request_refill": "Demander un réassort",
+    "quantity_optional": "Quantité (facultative)",
+    "note": "Note",
+    "submit": "Envoyer la demande",
+    "already_requested": "Demandé le {{date}}",
+    "queued_offline": "Demande de réassort mise en attente hors ligne",
+    "request_recorded": "Demande de réassort enregistrée"
+  },
   "shiftClosure": {
     "serviceNumber": "Service #{{number}}",
     "openedMeta": "Ouvert à 08:00 · Caisse 1 · Yasmine B.",

@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, MapPin, Plus, ShoppingCart, X } from 'lucide-react';
+import { Check, MapPin, PackagePlus, Plus, ShoppingCart, X } from 'lucide-react';
 import { useCurrency } from '@/lib/currency';
 import { addItemGated } from '@/lib/stock/cartIngress';
 import { cn } from '@/lib/utils';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { StockBadge } from '@/components/ui/StockBadge';
+import { Button } from '@/components/ui';
+import { RequestRefillSheet } from '@/components/organisms/RequestRefillSheet';
 import { tokens } from '@/lib/designTokens';
 import { useProductStore, hasModule } from '@/stores/productStore';
 import { useOperatorStore } from '@/stores/operatorStore';
@@ -102,6 +104,7 @@ export function ProductDetailSheet({
   const { t } = useTranslation('pos');
   const { t: tSmart } = useTranslation('smart-prompts');
   const { format } = useCurrency();
+  const [refillOpen, setRefillOpen] = useState(false);
   const allowCrossLocation = useProductStore(
     (s) => s.companyConfig?.allow_cross_location_stock_view === true,
   );
@@ -220,7 +223,22 @@ export function ProductDetailSheet({
           <ShoppingCart className="h-5 w-5" aria-hidden="true" />
           {t('productDetail.addToCart')}
         </button>
+        <Button
+          className="mt-2"
+          variant="secondary"
+          fullWidth
+          leftIcon={<PackagePlus className="h-5 w-5" aria-hidden="true" />}
+          onClick={() => setRefillOpen(true)}
+        >
+          {t('replenishment.request_refill')}
+        </Button>
       </aside>
+
+      <RequestRefillSheet
+        isOpen={refillOpen}
+        onClose={() => setRefillOpen(false)}
+        product={product}
+      />
 
       {/* Owner review defect 4 — one coherent sheet: the pane separator is an
           INSET internal divider (not an edge-to-edge pane border), so the two

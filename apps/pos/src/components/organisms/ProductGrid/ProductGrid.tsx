@@ -82,6 +82,7 @@ export interface ProductGridProps {
   /** Threads to every ProductCard — see its prop doc. Default true. */
   hardBlockOutOfStock?: boolean;
   onViewDetails?: (product: POSProduct) => void;
+  onRequestRefill?: (product: POSProduct) => void;
   /**
    * Task 26 — Drawer-style active filters (brands, categories, skinTypes).
    * Owned by HomePage so the skin-advice bar (Task 27+) can also read/set
@@ -112,6 +113,7 @@ export function ProductGrid({
   locationStock = EMPTY_LOCATION_STOCK,
   hardBlockOutOfStock = true,
   onViewDetails,
+  onRequestRefill,
   filters,
   onFiltersChange,
   customerSkinType,
@@ -761,6 +763,7 @@ export function ProductGrid({
                       onAddToCart={onAddToCart}
                       onCustomize={onCustomize}
                       onViewDetails={onViewDetails}
+                      onRequestRefill={onRequestRefill}
                       isInCart={cartProductIds.includes(product.id)}
                       cartQuantity={cartQuantities?.[product.id]}
                       displayMode={cardLayoutFor(displayMode)}

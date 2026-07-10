@@ -2,7 +2,7 @@ import { memo, useCallback, useRef, type KeyboardEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { tokens } from '@/lib/designTokens';
 import { useCurrency } from '@/lib/currency';
-import { ArrowUpRight, Check, Eye, SlidersHorizontal } from 'lucide-react';
+import { ArrowUpRight, Check, Eye, PackagePlus, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useProductImage } from '@/lib/images/useProductImage';
 import { bccomp, bcsum } from '@/lib/decimal';
@@ -62,6 +62,7 @@ export interface ProductCardProps {
   onAddToCart: (product: POSProduct) => void;
   onCustomize?: (product: POSProduct) => void;
   onViewDetails?: (product: POSProduct) => void;
+  onRequestRefill?: (product: POSProduct) => void;
   isInCart?: boolean;
   displayMode?: 'grid' | 'visual';
   /**
@@ -199,6 +200,7 @@ function ProductCardInner({
   onAddToCart,
   onCustomize,
   onViewDetails,
+  onRequestRefill,
   isInCart = false,
   displayMode = 'grid',
   locationStock,
@@ -543,6 +545,20 @@ function ProductCardInner({
             >
               {stockLabel}
             </StockBadge>
+          )}
+          {isOutOfStock && onRequestRefill && (
+            <button
+              type="button"
+              aria-label={t('replenishment.request_refill')}
+              title={t('replenishment.request_refill')}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRequestRefill(product);
+              }}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-action-subtle text-action transition-colors hover:bg-action-subtle/70 active:bg-action-subtle"
+            >
+              <PackagePlus className="h-4 w-4" aria-hidden="true" />
+            </button>
           )}
         </div>
       </div>

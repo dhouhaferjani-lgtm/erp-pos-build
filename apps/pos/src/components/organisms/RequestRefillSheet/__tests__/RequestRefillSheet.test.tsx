@@ -1,0 +1,146 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeProduct } from '@/test/helpers';
+
+const mocks = vi.hoisted(() => ({
+  db: {},
+  enqueue: vi.fn(),
+  getOpen: vi.fn(),
+  recordAudit: vi.fn(),
+  toastSuccess: vi.fn(),
+  auth: {
+    companyId: 'company-1',
+    user: { tenantId: 'tenant-1' },
+  },
+  terminal: { id: 'terminal-1' },
+  connectivity: { isOnline: true },
+}));
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+  }),
+}));
+
+vi.mock('sonner', () => ({
+  toast: { success: mocks.toastSuccess },
+}));
+
+vi.mock('@/lib/db', () => ({
+  getDatabase: vi.fn().mockResolvedValue(mocks.db),
+}));
+
+vi.mock('@/lib/db/repositories/replenishmentOutboxRepository', () => ({
+  enqueueReplenishmentRequest: mocks.enqueue,
+}));
+
+vi.mock('@/lib/db/repositories/openReplenishmentRepository', () => ({
+  getOpenRequestForProduct: mocks.getOpen,
+}));
+
+vi.mock('@/lib/audit/recordAuditEvent', () => ({
+  recordAuditEvent: mocks.recordAudit,
+}));
+
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: { getState: () => mocks.auth },
+}));
+
+vi.mock('@/stores/terminalStore', () => ({
+  useTerminalStore: { getState: () => ({ terminal: mocks.terminal }) },
+}));
+
+vi.mock('@/stores/connectivityStore', () => ({
+  useConnectivityStore: { getState: () => mocks.connectivity },
+}));
+
+import { RequestRefillSheet } from '../RequestRefillSheet';
+
+const product = makeProduct({ id: 'product-1', name: 'Empty Product', stock_quantity: 0 });
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.getOpen.mockResolvedValue(null);
+  mocks.enqueue.mockResolvedValue(undefined);
+  mocks.recordAudit.mockResolvedValue(undefined);
+  mocks.auth.companyId = 'company-1';
+  mocks.auth.user.tenantId = 'tenant-1';
+  mocks.terminal.id = 'terminal-1';
+  mocks.connectivity.isOnline = true;
+  vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue(
+    '00000000-0000-4000-8000-000000000001',
+  );
+});
+
+describe('RequestRefillSheet', () => {
+  it('renders without a permission gate', async () => {
+    render(
+      <RequestRefillSheet isOpen product={product} onClose={vi.fn()} />,
+    );
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('replenishment.request_refill')).toBeInTheDocument();
+    await waitFor(() => expect(mocks.getOpen).toHaveBeenCalled());
+  });
+
+  it('queues a terminal-scoped request and records its audit event', async () => {
+    const onClose = vi.fn();
+    render(<RequestRefillSheet isOpen product={product} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('replenishment.quantity_optional'), {
+      target: { value: '2.5000' },
+    });
+    fireEvent.change(screen.getByLabelText('replenishment.note'), {
+      target: { value: 'Front shelf empty' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'replenishment.submit' }));
+
+    await waitFor(() => {
+      expect(mocks.enqueue).toHaveBeenCalledWith(mocks.db, {
+        client_request_uuid: '00000000-0000-4000-8000-000000000001',
+        tenant_id: 'tenant-1',
+        company_id: 'company-1',
+        terminal_id: 'terminal-1',
+        product_id: 'product-1',
+        variant_id: null,
+        requested_qty: '2.5000',
+        note: 'Front shelf empty',
+      });
+    });
+    expect(mocks.recordAudit).toHaveBeenCalledWith({
+      type: 'pos.replenishment_requested',
+      aggregateType: 'ReplenishmentRequest',
+      aggregateId: '00000000-0000-4000-8000-000000000001',
+      payload: {
+        product_id: 'product-1',
+        variant_id: null,
+        requested_qty: '2.5000',
+      },
+    });
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('replenishment.request_recorded');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('shows the already-requested status from the open cache', async () => {
+    mocks.getOpen.mockResolvedValueOnce({
+      request_id: 'server-request-1',
+      status: 'pending',
+      last_requested_at: '2026-07-10T12:00:00.000Z',
+    });
+
+    render(<RequestRefillSheet isOpen product={product} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('replenishment.already_requested')).toBeInTheDocument();
+  });
+
+  it('rejects quantities with more than four decimal places', async () => {
+    render(<RequestRefillSheet isOpen product={product} onClose={vi.fn()} />);
+    const quantity = screen.getByLabelText('replenishment.quantity_optional');
+    fireEvent.change(quantity, { target: { value: '1.00001' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'replenishment.submit' }));
+
+    await waitFor(() => expect(quantity).toHaveAttribute('aria-invalid', 'true'));
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+});

@@ -1093,6 +1093,15 @@
     "phone_label": "Phone: {{value}}",
     "email_label": "Email: {{value}}"
   },
+  "replenishment": {
+    "request_refill": "Request refill",
+    "quantity_optional": "Quantity (optional)",
+    "note": "Note",
+    "submit": "Submit request",
+    "already_requested": "Requested {{date}}",
+    "queued_offline": "Refill request queued offline",
+    "request_recorded": "Refill request recorded"
+  },
   "shiftClosure": {
     "serviceNumber": "Service #{{number}}",
     "openedMeta": "Opened at 08:00 · Register 1 · Yasmine B.",

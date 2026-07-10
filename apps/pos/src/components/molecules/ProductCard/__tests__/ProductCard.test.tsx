@@ -94,6 +94,44 @@ describe('ProductCard', () => {
     expect(onAddToCart).not.toHaveBeenCalled();
   });
 
+  it('renders the refill affordance only for out-of-stock products with a handler', () => {
+    const onRequestRefill = vi.fn();
+    const { rerender } = render(
+      <ProductCard
+        product={makeProduct({ stock_quantity: 5 })}
+        onAddToCart={vi.fn()}
+        onRequestRefill={onRequestRefill}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'replenishment.request_refill' })).toBeNull();
+
+    rerender(
+      <ProductCard product={makeProduct({ stock_quantity: 0 })} onAddToCart={vi.fn()} />,
+    );
+    expect(screen.queryByRole('button', { name: 'replenishment.request_refill' })).toBeNull();
+
+    rerender(
+      <ProductCard
+        product={makeProduct({ stock_quantity: 0 })}
+        onAddToCart={vi.fn()}
+        onRequestRefill={onRequestRefill}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'replenishment.request_refill' })).toBeInTheDocument();
+  });
+
+  it('requests a refill without activating the out-of-stock card', () => {
+    const product = makeProduct({ id: 'empty-product', stock_quantity: 0 });
+    const onAddToCart = vi.fn();
+    const onRequestRefill = vi.fn();
+    renderCard({ product, onAddToCart, onRequestRefill });
+
+    fireEvent.click(screen.getByRole('button', { name: 'replenishment.request_refill' }));
+
+    expect(onRequestRefill).toHaveBeenCalledWith(product);
+    expect(onAddToCart).not.toHaveBeenCalled();
+  });
+
   it('renders consistently on rerender', () => {
     const product = makeProduct({ id: 'p2', name: 'Stable Product', sale_price: '15.00', stock_quantity: 5 });
     const onAddToCart = vi.fn();

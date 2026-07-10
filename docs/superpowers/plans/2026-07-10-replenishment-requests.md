@@ -602,7 +602,9 @@ export async function fetchOpenReplenishment(terminalId: string, opts?: ApiReque
 **Files:**
 - Create: `apps/pos/src/components/organisms/RequestRefillSheet/RequestRefillSheet.tsx` + `index.ts` + `__tests__/RequestRefillSheet.test.tsx`
 - Modify: `apps/pos/src/components/pos/ProductDetailDrawer.tsx` — mount a "Request refill" `Button` (variant `secondary`, `lucide-react` `PackagePlus` icon) in the left `<aside>` under the add-to-cart controls, and render the sheet.
-- Modify: `apps/pos/src/components/pos/ProductCard.tsx` + `ProductGrid.tsx` — the out-of-stock entry point (spec §4): `ProductCard` already computes `isOutOfStock` (`ProductCard.tsx:22`); when out of stock, render a small `PackagePlus` icon button in the stock-label area that calls a new optional prop `onRequestRefill?: (product: POSProduct) => void` (stopPropagation so it doesn't trigger the tile's add-to-cart tap). `ProductGrid` (renders `ProductCard` at `ProductGrid.tsx:~213`) threads the prop; the page owning the grid opens `RequestRefillSheet` with that product.
+- Modify: `apps/pos/src/components/molecules/ProductCard/ProductCard.tsx` — when `isOutOfStock` from the existing `useStockDisplay` result, render a small `PackagePlus` affordance using the existing POS tokens when the optional `onRequestRefill?: (product: POSProduct) => void` prop is provided; stop propagation so it never triggers the tile's add-to-cart tap.
+- Modify: `apps/pos/src/components/organisms/ProductGrid/ProductGrid.tsx` — thread `onRequestRefill` through to `ProductCard`.
+- Modify: `apps/pos/src/pages/HomePage.tsx` — own the `RequestRefillSheet` open state and pass the handler to `ProductGrid`. Leave the legacy `components/pos/ProductCard.tsx` and `components/pos/ProductGrid.tsx` untouched.
 - Modify: POS i18n `pos` namespace files — keys `replenishment.request_refill`, `replenishment.quantity_optional`, `replenishment.note`, `replenishment.submit`, `replenishment.already_requested` (`"Requested {{date}}"`), `replenishment.queued_offline`, `replenishment.request_recorded`.
 
 **Interfaces:**
@@ -615,7 +617,7 @@ export interface RequestRefillSheetProps {
 }
 ```
 Behavior: uses `Modal` from `@/components/pos/Modal` (size `sm`, title = t('replenishment.request_refill')); optional quantity (numeric string input accepting ≤4dp — reuse the POS quantity input atom if present, else a text input with the same regex guard), optional note; submit → `enqueueReplenishmentRequest` (uuid via `crypto.randomUUID()`, tenant/company from `useAuthStore.getState()`, terminal from `useTerminalStore`) → fire-and-forget `void recordAuditEvent({ type: 'pos.replenishment_requested', aggregateType: 'ReplenishmentRequest', aggregateId: clientUuid, payload: { product_id, variant_id, requested_qty } }).catch(() => {})` → toast t('replenishment.queued_offline') when offline / t('replenishment.request_recorded') otherwise → close. "Already requested" chip: `getOpenRequestForProduct` on open; when found render `StatusPill` (from `@/components/ui`) with `t('replenishment.already_requested', { date: formatted })` — submitting anyway is allowed (server bumps).
-- Tests: renders gate-free (no permission gate — capture rides the terminal), submits enqueue with terminal scope, shows already-requested chip when cache row exists, qty regex rejects `1.00001`.
+- Tests: `RequestRefillSheet` renders gate-free (no permission gate — capture rides the terminal), submits enqueue with terminal scope, shows already-requested chip when cache row exists, and rejects quantity `1.00001`; active `ProductCard` renders the affordance only when out of stock and `onRequestRefill` is provided, and tapping it calls the handler without adding to cart.
 
 - [ ] Steps: failing component tests → implement → targeted vitest → PASS → commit: `feat(pos): request-refill sheet in product drawer`
 
