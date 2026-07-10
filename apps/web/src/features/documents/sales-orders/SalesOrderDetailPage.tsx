@@ -13,8 +13,8 @@ import { DocumentAttachments } from '../components/DocumentAttachments'
 import { DocumentTotals } from '../components/DocumentTotals'
 import { DocumentHeader } from '../components/DocumentHeader'
 import { DocumentOutstandingCallout } from '../components/DocumentOutstandingCallout'
-import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
 import { PaymentHistorySection, OutstandingAmountSection } from '../components'
+import { isPaymentStatus, paymentStatusFallbackLabel, paymentStatusIcon, paymentStatusTone } from '../components/paymentStatus'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useRevertDocument, useSendDocumentEmail } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
@@ -26,7 +26,6 @@ import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
-import type { PaymentStatus } from '../components/PaymentStatusBadge'
 
 type ConfirmAction = 'confirm' | 'convertToInvoice' | 'convertToDelivery' | 'revert' | null
 type ActiveTab = 'related' | 'attachments' | 'payments'
@@ -256,6 +255,8 @@ export function SalesOrderDetailPage() {
   const isPaid = order.payment_status === 'paid' || outstandingAmount === 0
   const canRecordPayment = order.status === 'confirmed' && !isPaid && outstandingAmount > 0
   const creditNotesApplied = Math.max(0, total - outstandingAmount - amountPaid)
+  const paymentStatus = isPaymentStatus(order.payment_status) ? order.payment_status : null
+  const PaymentStatusIcon = paymentStatus === null ? null : paymentStatusIcon(paymentStatus)
 
   return (
     <div className="py-6">
@@ -298,8 +299,13 @@ export function SalesOrderDetailPage() {
               {t(`orders.deliveryStatus.${deliveryStatus}`)}
             </StatusBadge>
           )}
-          {order.status === 'confirmed' && order.payment_status && (
-            <PaymentStatusBadge status={order.payment_status as 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' | 'overpaid'} />
+          {order.status === 'confirmed' && paymentStatus !== null && PaymentStatusIcon !== null && (
+            <StatusBadge tone={paymentStatusTone(paymentStatus)} className="gap-1.5">
+              <PaymentStatusIcon className="h-3 w-3" />
+              {t(`sales:invoices.paymentStatus.${paymentStatus}`, {
+                defaultValue: paymentStatusFallbackLabel(paymentStatus),
+              })}
+            </StatusBadge>
           )}
         </DocumentHeader>
       </div>
@@ -490,7 +496,7 @@ export function SalesOrderDetailPage() {
                   amountPaid={amountPaid}
                   creditNotesApplied={creditNotesApplied}
                   outstandingAmount={outstandingAmount}
-                  paymentStatus={order.payment_status as PaymentStatus}
+                  paymentStatus={paymentStatus ?? 'unpaid'}
                   currency={currentCompany?.currency ?? 'EUR'}
                   onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
                 />

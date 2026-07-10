@@ -12,10 +12,10 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
 import { PurchaseOrderLandedCostBreakdown } from '../components/PurchaseOrderLandedCostBreakdown'
-import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
 import { DocumentHeader } from '../components/DocumentHeader'
 import { DocumentOutstandingCallout } from '../components/DocumentOutstandingCallout'
 import { PaymentHistorySection, OutstandingAmountSection } from '../components'
+import { isPaymentStatus, paymentStatusFallbackLabel, paymentStatusIcon, paymentStatusTone } from '../components/paymentStatus'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useRevertDocument, useSendDocumentEmail } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
@@ -314,6 +314,8 @@ export function PurchaseOrderDetailPage() {
   const isPaid = purchaseOrder.payment_status === 'paid' || outstandingAmount === 0
   const canRecordPayment = ['confirmed', 'received'].includes(purchaseOrder.status) && !isPaid && outstandingAmount > 0
   const creditNotesApplied = Math.max(0, total - outstandingAmount - amountPaid)
+  const paymentStatus = isPaymentStatus(purchaseOrder.payment_status) ? purchaseOrder.payment_status : null
+  const PaymentStatusIcon = paymentStatus === null ? null : paymentStatusIcon(paymentStatus)
 
   return (
     <div className="py-6">
@@ -358,8 +360,13 @@ export function PurchaseOrderDetailPage() {
               {t(`purchaseOrders.receiptStatus.${receiptStatus}`)}
             </StatusBadge>
           )}
-          {['confirmed', 'received'].includes(purchaseOrder.status) && purchaseOrder.payment_status && (
-            <PaymentStatusBadge status={purchaseOrder.payment_status as any} />
+          {['confirmed', 'received'].includes(purchaseOrder.status) && paymentStatus !== null && PaymentStatusIcon !== null && (
+            <StatusBadge tone={paymentStatusTone(paymentStatus)} className="gap-1.5">
+              <PaymentStatusIcon className="h-3 w-3" />
+              {t(`sales:invoices.paymentStatus.${paymentStatus}`, {
+                defaultValue: paymentStatusFallbackLabel(paymentStatus),
+              })}
+            </StatusBadge>
           )}
         </DocumentHeader>
       </div>
@@ -641,7 +648,7 @@ export function PurchaseOrderDetailPage() {
                   amountPaid={amountPaid}
                   creditNotesApplied={creditNotesApplied}
                   outstandingAmount={outstandingAmount}
-                  paymentStatus={purchaseOrder.payment_status as any}
+                  paymentStatus={paymentStatus ?? 'unpaid'}
                   currency={currentCompany?.currency ?? 'EUR'}
                   onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
                 />

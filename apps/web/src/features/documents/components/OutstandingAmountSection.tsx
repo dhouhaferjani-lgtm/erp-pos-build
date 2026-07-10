@@ -3,7 +3,7 @@ import { AlertCircle, MinusCircle, Receipt, DollarSign } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '../../../lib/format'
 import { Button } from '../../../components/atoms/Button'
-import type { PaymentStatus } from './PaymentStatusBadge'
+import type { PaymentStatus } from './paymentStatus'
 
 export interface OutstandingAmountSectionProps {
   total: number

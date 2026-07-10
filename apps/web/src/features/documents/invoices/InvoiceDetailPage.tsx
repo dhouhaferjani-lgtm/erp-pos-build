@@ -16,8 +16,8 @@ import { DocumentHeader } from '../components/DocumentHeader'
 import { DocumentOutstandingCallout } from '../components/DocumentOutstandingCallout'
 import { CreateCreditNoteForm, CreditNoteList } from '../components'
 import { DeliveryConfirmationModal } from '../components/DeliveryConfirmationModal'
-import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
 import { PaymentHistorySection, OutstandingAmountSection } from '../components'
+import { isPaymentStatus, paymentStatusFallbackLabel, paymentStatusIcon, paymentStatusTone } from '../components/paymentStatus'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf, useSendDocumentEmail, useCreditNotes } from '../hooks'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
@@ -30,7 +30,6 @@ import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
-import type { PaymentStatus } from '../components/PaymentStatusBadge'
 import type { InvoiceForCreditNote } from '../../../types/creditNote'
 
 type ConfirmAction = 'confirm' | 'post' | null
@@ -269,6 +268,8 @@ export function InvoiceDetailPage() {
 
   const isConfirmedOrPosted = invoice.status === 'confirmed' || isPosted
   const canRecordPayment = isConfirmedOrPosted && !isPaid && outstandingAmount > 0
+  const paymentStatus = isPaymentStatus(invoice.payment_status) ? invoice.payment_status : null
+  const PaymentStatusIcon = paymentStatus === null ? null : paymentStatusIcon(paymentStatus)
 
   // Calculate amounts for OutstandingAmountSection
   const total = parseFloat(invoice.total || '0')
@@ -311,8 +312,13 @@ export function InvoiceDetailPage() {
             ) : undefined
           }
         >
-          {isConfirmedOrPosted && invoice.payment_status && (
-            <PaymentStatusBadge status={invoice.payment_status as 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' | 'overpaid'} />
+          {isConfirmedOrPosted && paymentStatus !== null && PaymentStatusIcon !== null && (
+            <StatusBadge tone={paymentStatusTone(paymentStatus)} className="gap-1.5">
+              <PaymentStatusIcon className="h-3 w-3" />
+              {t(`sales:invoices.paymentStatus.${paymentStatus}`, {
+                defaultValue: paymentStatusFallbackLabel(paymentStatus),
+              })}
+            </StatusBadge>
           )}
           {isPosted && (
             <StatusBadge tone="info" className="gap-1.5">
@@ -535,7 +541,7 @@ export function InvoiceDetailPage() {
                   amountPaid={amountPaid}
                   creditNotesApplied={creditNotesApplied}
                   outstandingAmount={outstandingAmount}
-                  paymentStatus={invoice.payment_status as PaymentStatus}
+                  paymentStatus={paymentStatus ?? 'unpaid'}
                   currency={currentCompany?.currency ?? 'EUR'}
                   onRecordPayment={canRecordPayment ? () => { setShowPaymentModal(true); } : undefined}
                 />

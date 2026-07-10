@@ -117,6 +117,25 @@ Status: in progress.
 
 New shared-shape components: none.
 
+## Wave 5 — Global Mechanical Sweep
+
+Status: in progress.
+
+- 5.1 `documents/` payment-status badge consolidation:
+  - RED: `pnpm --filter @autoerp/web audit:design-system` reported a stale C6 fingerprint after removing the feature-local `PaymentStatusBadge` wrapper.
+  - GREEN: invoice, sales-order, and purchase-order detail pages now render canonical `StatusBadge` directly with shared payment-status tone/icon metadata; `OutstandingAmountSection` imports the shared payment-status type.
+  - Deleted `documents/components/PaymentStatusBadge.tsx` and its wrapper-only test.
+  - Baseline shrunk from 437 to 436 after removing the stale documents C6 fingerprint.
+- Verification:
+  - `pnpm --filter @autoerp/web test -- src/features/documents/invoices/__tests__/InvoiceDetailPage.tenantScope.test.tsx src/features/documents/sales-orders/__tests__/SalesOrderDetailPage.tenantScope.test.tsx src/features/documents/purchase-orders/__tests__/PurchaseOrderDetailPage.tenantScope.test.tsx` passed: 18 tests. Existing act-warning noise remains in those suites.
+  - `pnpm --filter @autoerp/web typecheck` passed.
+  - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
+    - TanStack query key audit: 0 violations.
+    - Design-system audit: 436 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base 744934164` passed with no issues for the documents payment-status slice.
+
+New shared-shape components: none.
+
 ## Wave 3 — Partner Picker Consolidation
 
 Status: complete.

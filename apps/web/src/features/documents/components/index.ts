@@ -33,6 +33,4 @@ export { RelatedDocumentsTab } from './RelatedDocumentsTab'
 // Financial Components
 export { DocumentOutstandingCallout, type DocumentOutstandingCalloutProps } from './DocumentOutstandingCallout'
 
-// Status Badge Components
-export { PaymentStatusBadge } from './PaymentStatusBadge'
 export { FulfillmentStatusBadge } from './FulfillmentStatusBadge'

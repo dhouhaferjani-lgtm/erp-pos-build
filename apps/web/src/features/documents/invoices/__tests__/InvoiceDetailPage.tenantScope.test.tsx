@@ -93,7 +93,6 @@ vi.mock('../../components/DocumentTotals', () => ({ DocumentTotals: () => null }
 vi.mock('../../components/RelatedDocumentsTab', () => ({ RelatedDocumentsTab: () => null }))
 vi.mock('../../components/DocumentAttachments', () => ({ DocumentAttachments: () => null }))
 vi.mock('../components/CloseWithWriteoffSection', () => ({ CloseWithWriteoffSection: () => null }))
-vi.mock('../../components/PaymentStatusBadge', () => ({ PaymentStatusBadge: () => null }))
 
 vi.mock('../../components/DeliveryConfirmationModal', () => ({
   DeliveryConfirmationModal: ({ onConfirmAndPost }: { onConfirmAndPost: () => void }) => (
@@ -120,6 +119,10 @@ vi.mock('@/components/organisms/RecordPaymentModal', () => ({
     isOpen: boolean
     onSuccess: () => void | Promise<void>
   }) => (isOpen ? <button type="button" onClick={() => { void onSuccess(); }}>payment-success</button> : null),
+}))
+
+vi.mock('@/components/molecules/EntityLink', () => ({
+  EntityLink: ({ label }: { label: ReactNode }) => <span>{label}</span>,
 }))
 
 vi.mock('@/components/ui/ConfirmDialog', () => ({

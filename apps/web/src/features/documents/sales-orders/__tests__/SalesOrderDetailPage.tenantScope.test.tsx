@@ -93,7 +93,6 @@ vi.mock('../../components/DocumentOutstandingCallout', () => ({
 vi.mock('../../components/DocumentTotals', () => ({ DocumentTotals: () => null }))
 vi.mock('../../components/RelatedDocumentsTab', () => ({ RelatedDocumentsTab: () => null }))
 vi.mock('../../components/DocumentAttachments', () => ({ DocumentAttachments: () => null }))
-vi.mock('../../components/PaymentStatusBadge', () => ({ PaymentStatusBadge: () => null }))
 
 vi.mock('../../components', () => ({
   OutstandingAmountSection: ({ onRecordPayment }: { onRecordPayment?: () => void }) => (
