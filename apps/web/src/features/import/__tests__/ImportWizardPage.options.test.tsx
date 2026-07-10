@@ -58,7 +58,7 @@ vi.mock('../api/queries', () => ({
   }),
 }))
 
-vi.mock('../components', () => ({
+vi.mock('../components/FileUpload', () => ({
   FileUpload: ({ onFileSelect }: { onFileSelect: (file: File) => Promise<void> }) => (
     <button
       type="button"
@@ -67,13 +67,25 @@ vi.mock('../components', () => ({
       choose-file
     </button>
   ),
+}))
+
+vi.mock('../components/ColumnMapper', () => ({
   ColumnMapper: ({ onMappingChange }: { onMappingChange: (mapping: Record<string, string>) => void }) => (
     <button type="button" onClick={() => onMappingChange(nextMapping)}>
       apply-mapping
     </button>
   ),
+}))
+
+vi.mock('../components/ValidationGrid', () => ({
   ValidationGrid: () => null,
+}))
+
+vi.mock('../components/ImportProgress', () => ({
   ImportProgress: () => null,
+}))
+
+vi.mock('../components/ImportPreviewTable', () => ({
   ImportPreviewTable: () => null,
 }))
 

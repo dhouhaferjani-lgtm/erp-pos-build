@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Upload, FileText, X, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface FileUploadProps {
   onFileSelect: (file: File) => void
@@ -115,10 +116,10 @@ export function FileUpload({
         onDrop={handleDrop}
         className={cn(
           'relative rounded-lg border-2 border-dashed p-8 text-center transition-colors',
-          isDragOver && !disabled && 'border-blue-400 bg-blue-50',
-          !isDragOver && !disabled && 'border-gray-300 hover:border-gray-400',
-          disabled && 'cursor-not-allowed border-gray-200 bg-gray-50',
-          error && 'border-red-300 bg-red-50'
+          isDragOver && !disabled && `${colorTokens.intent.primary.borderMid} ${colorTokens.intent.primary.bgSubtle}`,
+          !isDragOver && !disabled && `${colorTokens.border.default} ${colorTokens.border.hoverStrong}`,
+          disabled && `cursor-not-allowed ${colorTokens.border.subtle} ${colorTokens.surface.page}`,
+          error && `${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle}`
         )}
       >
         <input
@@ -131,10 +132,10 @@ export function FileUpload({
 
         {selectedFile ? (
           <div className="flex items-center justify-center gap-3">
-            <FileText className="h-10 w-10 text-blue-500" />
+            <FileText className={`h-10 w-10 ${colorTokens.intent.primary.textSubtle}`} />
             <div className="text-start">
-              <p className="font-medium text-gray-900">{selectedFile.name}</p>
-              <p className="text-sm text-gray-500">
+              <p className={`font-medium ${colorTokens.text.primary}`}>{selectedFile.name}</p>
+              <p className={`text-sm ${colorTokens.text.subtle}`}>
                 {formatFileSize(selectedFile.size)}
               </p>
             </div>
@@ -144,7 +145,7 @@ export function FileUpload({
                 e.stopPropagation()
                 clearFile()
               }}
-              className="ms-4 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              className={`ms-4 rounded-full p-1 ${colorTokens.text.disabled} ${colorTokens.intent.neutral.bgHoverSoft} ${colorTokens.intent.neutral.textHover}`}
             >
               <X className="h-5 w-5" />
             </button>
@@ -154,17 +155,17 @@ export function FileUpload({
             <Upload
               className={cn(
                 'mx-auto h-12 w-12',
-                error ? 'text-red-400' : 'text-gray-400'
+                error ? `${colorTokens.intent.danger.textMuted}` : `${colorTokens.text.disabled}`
               )}
             />
-            <p className="mt-2 text-sm font-medium text-gray-900">
+            <p className={`mt-2 text-sm font-medium ${colorTokens.text.primary}`}>
               {t('upload.dragDrop')}
             </p>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
               {t('upload.or')}{' '}
-              <span className="text-blue-600 underline">{t('upload.browse')}</span>
+              <span className={`${colorTokens.intent.primary.text} underline`}>{t('upload.browse')}</span>
             </p>
-            <p className="mt-2 text-xs text-gray-400">
+            <p className={`mt-2 text-xs ${colorTokens.text.disabled}`}>
               {t('upload.formats', { formats: accept })} -{' '}
               {t('upload.maxSize', { size: `${String(Math.round(maxSize / (1024 * 1024)))}MB` })}
             </p>
@@ -174,7 +175,7 @@ export function FileUpload({
 
       {/* Error Message */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+        <div className={`flex items-center gap-2 rounded-lg ${colorTokens.intent.danger.bgSubtle} p-3 text-sm ${colorTokens.intent.danger.textStrong}`}>
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           {error}
         </div>

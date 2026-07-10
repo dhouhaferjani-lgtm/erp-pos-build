@@ -15,6 +15,7 @@ import type {
   Vehicle,
   PartsCatalogPanelProps,
 } from '../../types/catalog'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 const PANEL_MODES: SearchMode[] = ['vehicle', 'partNumber', 'category']
 
@@ -68,22 +69,22 @@ export function PartsCatalogPanel({
     <div className="fixed inset-0 z-50 flex justify-end">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/30"
+        className={`absolute inset-0 ${colorTokens.surface.overlaySubtle}`}
         onClick={onClose}
         role="presentation"
       />
 
       {/* Panel */}
-      <div className="relative w-full max-w-lg bg-white shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300">
+      <div className={`relative w-full max-w-lg ${colorTokens.surface.base} shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300`}>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+        <div className={`flex items-center justify-between border-b ${colorTokens.border.subtle} px-5 py-4`}>
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('parts-catalog:panel.title')}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className={`p-1.5 rounded-lg ${colorTokens.text.disabled} ${colorTokens.intent.neutral.textHover} ${colorTokens.intent.neutral.bgHoverSoft} transition-colors`}
           >
             <X className="h-5 w-5" />
           </button>
@@ -101,24 +102,24 @@ export function PartsCatalogPanel({
               />
 
               {/* Add to document footer */}
-              <div className="sticky bottom-0 bg-white border-t border-gray-200 pt-4 mt-4">
+              <div className={`sticky bottom-0 ${colorTokens.surface.base} border-t ${colorTokens.border.subtle} pt-4 mt-4`}>
                 <div className="flex items-center gap-3">
                   {/* Quantity selector */}
-                  <div className="flex items-center rounded-lg border border-gray-200">
+                  <div className={`flex items-center rounded-lg border ${colorTokens.border.subtle}`}>
                     <button
                       type="button"
                       onClick={() => { setAddQuantity((q) => Math.max(1, q - 1)) }}
-                      className="p-2 text-gray-500 hover:bg-gray-50"
+                      className={`p-2 ${colorTokens.text.subtle} ${colorTokens.intent.neutral.bgHover}`}
                     >
                       <Minus className="h-4 w-4" />
                     </button>
-                    <span className="px-3 text-sm font-medium text-gray-900 tabular-nums min-w-[2rem] text-center">
+                    <span className={`px-3 text-sm font-medium ${colorTokens.text.primary} tabular-nums min-w-[2rem] text-center`}>
                       {addQuantity}
                     </span>
                     <button
                       type="button"
                       onClick={() => { setAddQuantity((q) => q + 1) }}
-                      className="p-2 text-gray-500 hover:bg-gray-50"
+                      className={`p-2 ${colorTokens.text.subtle} ${colorTokens.intent.neutral.bgHover}`}
                     >
                       <Plus className="h-4 w-4" />
                     </button>
@@ -128,7 +129,7 @@ export function PartsCatalogPanel({
                   <button
                     type="button"
                     onClick={handleAddToDocument}
-                    className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                    className={`flex-1 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2.5 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} transition-colors`}
                   >
                     {addLabel}
                   </button>

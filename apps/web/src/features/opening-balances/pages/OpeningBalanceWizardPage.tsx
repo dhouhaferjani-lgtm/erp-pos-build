@@ -26,6 +26,8 @@ import { BatchPreview } from '../components/BatchPreview'
 import { LockConfirmation } from '../components/LockConfirmation'
 import { openingBatchTypeKey } from '../i18nKeys'
 import type { OpeningBatchType } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type WizardStep = 'setup' | 'upload' | 'validate' | 'preview' | 'post' | 'lock' | 'complete'
 
@@ -62,18 +64,18 @@ function StepIndicator({
               <div
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors ${
                   isCompleted
-                    ? 'bg-green-500 text-white'
+                    ? `${colorTokens.intent.success.bg} ${colorTokens.text.inverse}`
                     : isCurrent
-                      ? 'bg-blue-500 text-white'
+                      ? `${colorTokens.intent.primary.bg} ${colorTokens.text.inverse}`
                       : isPast
-                        ? 'bg-blue-200 text-blue-700'
-                        : 'bg-gray-200 text-gray-500'
+                        ? `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStrong}`
+                        : `${colorTokens.surface.subdued} ${colorTokens.text.subtle}`
                 }`}
               >
                 {isCompleted ? <CheckCircle className="h-4 w-4" /> : index + 1}
               </div>
               <span
-                className={`mt-1 text-xs ${isCurrent ? 'font-medium text-blue-600' : 'text-gray-500'}`}
+                className={`mt-1 text-xs ${isCurrent ? `font-medium ${colorTokens.intent.primary.text}` : `${colorTokens.text.subtle}`}`}
               >
                 {t(step.labelKey)}
               </span>
@@ -81,7 +83,7 @@ function StepIndicator({
             {index < steps.length - 1 && (
               <div
                 className={`mx-2 h-0.5 w-12 ${
-                  isPast || isCompleted ? 'bg-blue-300' : 'bg-gray-200'
+                  isPast || isCompleted ? `${colorTokens.intent.primary.bg}` : `${colorTokens.surface.subdued}`
                 }`}
               />
             )}
@@ -257,17 +259,17 @@ export function OpeningBalanceWizardPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('openingBalances.wizard.setup.title')}
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t('openingBalances.wizard.setup.description')}
               </p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label htmlFor="batchName" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="batchName" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('openingBalances.wizard.setup.nameLabel')}
                 </label>
                 <input
@@ -276,12 +278,12 @@ export function OpeningBalanceWizardPage() {
                   value={batchName}
                   onChange={(e) => { setBatchName(e.target.value); }}
                   placeholder={t('openingBalances.wizard.setup.namePlaceholder')}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={`mt-1 block w-full rounded-md border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
                 />
               </div>
 
               <div>
-                <label htmlFor="cutoverDate" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="cutoverDate" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('openingBalances.wizard.setup.cutoverDateLabel')}
                 </label>
                 <input
@@ -289,20 +291,20 @@ export function OpeningBalanceWizardPage() {
                   id="cutoverDate"
                   value={cutoverDate}
                   onChange={(e) => { setCutoverDate(e.target.value); }}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={`mt-1 block w-full rounded-md border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className={`mt-1 text-xs ${colorTokens.text.subtle}`}>
                   {t('openingBalances.wizard.setup.cutoverDateHelp')}
                 </p>
               </div>
             </div>
 
-            <div className="flex justify-end border-t border-gray-200 pt-4">
+            <div className={`flex justify-end border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
                 onClick={handleSetupComplete}
                 disabled={!batchName.trim() || !cutoverDate || createBatch.isPending}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} disabled:cursor-not-allowed ${colorTokens.surface.disabledWhenDisabled}`}
               >
                 {createBatch.isPending ? (
                   <>
@@ -324,10 +326,10 @@ export function OpeningBalanceWizardPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('openingBalances.wizard.upload.title')}
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t(`openingBalances.types.${typeKey}.uploadHelp`)}
               </p>
             </div>
@@ -338,12 +340,12 @@ export function OpeningBalanceWizardPage() {
               isUploading={importRows.isPending}
             />
 
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
                 onClick={() => { setCurrentStep('setup'); }}
                 disabled={importRows.isPending}
-                className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
               >
                 <ArrowLeft className="h-4 w-4" />
                 {t('actions.back')}
@@ -355,7 +357,7 @@ export function OpeningBalanceWizardPage() {
                     setCompletedSteps((prev) => new Set([...prev, 'upload']))
                     setCurrentStep('validate')
                   }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
                 >
                   {t('actions.next')}
                   <ArrowRight className="h-4 w-4" />
@@ -369,10 +371,10 @@ export function OpeningBalanceWizardPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('openingBalances.wizard.validate.title')}
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t('openingBalances.wizard.validate.description')}
               </p>
             </div>
@@ -382,11 +384,11 @@ export function OpeningBalanceWizardPage() {
               validationResult={validationResult}
             />
 
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
                 onClick={() => { setCurrentStep('upload'); }}
-                className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
               >
                 <ArrowLeft className="h-4 w-4" />
                 {t('actions.back')}
@@ -395,7 +397,7 @@ export function OpeningBalanceWizardPage() {
                 type="button"
                 onClick={handleValidate}
                 disabled={validateBatch.isPending}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} disabled:cursor-not-allowed ${colorTokens.surface.disabledWhenDisabled}`}
               >
                 {validateBatch.isPending ? (
                   <>
@@ -417,27 +419,27 @@ export function OpeningBalanceWizardPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('openingBalances.wizard.preview.title')}
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t('openingBalances.wizard.preview.description')}
               </p>
             </div>
 
             {previewLoading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.textSubtle}`} />
               </div>
             ) : previewData ? (
               <BatchPreview preview={previewData} batchType={batchType} />
             ) : null}
 
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
                 onClick={() => { setCurrentStep('validate'); }}
-                className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
               >
                 <ArrowLeft className="h-4 w-4" />
                 {t('actions.back')}
@@ -445,7 +447,7 @@ export function OpeningBalanceWizardPage() {
               <button
                 type="button"
                 onClick={handlePreviewContinue}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 {t('openingBalances.wizard.preview.continueButton')}
                 <ArrowRight className="h-4 w-4" />
@@ -458,22 +460,22 @@ export function OpeningBalanceWizardPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('openingBalances.wizard.post.title')}
               </h2>
-              <p className="mt-1 text-sm text-gray-600">
+              <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
                 {t('openingBalances.wizard.post.description')}
               </p>
             </div>
 
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className={`rounded-lg border ${colorTokens.intent.caution.borderSubtle} ${colorTokens.intent.caution.bgSubtle} p-4`}>
               <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
+                <AlertCircle className={`h-5 w-5 ${colorTokens.intent.caution.text} mt-0.5`} />
                 <div>
-                  <h3 className="font-medium text-amber-800">
+                  <h3 className={`font-medium ${colorTokens.intent.caution.textStronger}`}>
                     {t('openingBalances.wizard.post.warningTitle')}
                   </h3>
-                  <p className="mt-1 text-sm text-amber-700">
+                  <p className={`mt-1 text-sm ${colorTokens.intent.caution.textStrong}`}>
                     {t('openingBalances.wizard.post.warningMessage')}
                   </p>
                 </div>
@@ -481,39 +483,39 @@ export function OpeningBalanceWizardPage() {
             </div>
 
             {previewData && (
-              <div className="rounded-lg border border-gray-200 bg-white p-4">
-                <h3 className="font-medium text-gray-900 mb-3">
+              <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`}>
+                <h3 className={`font-medium ${colorTokens.text.primary} mb-3`}>
                   {t('openingBalances.wizard.post.summary')}
                 </h3>
                 <dl className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">{t('openingBalances.wizard.post.totalRows')}</dt>
-                    <dd className="font-medium text-gray-900">
+                    <dt className={`${colorTokens.text.subtle}`}>{t('openingBalances.wizard.post.totalRows')}</dt>
+                    <dd className={`font-medium ${colorTokens.text.primary}`}>
                       {previewData.totals.total_lines ?? previewData.totals.total_documents ?? 0}
                     </dd>
                   </div>
                   {previewData.totals.total_value && (
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">{t('openingBalances.wizard.post.totalValue')}</dt>
-                      <dd className="font-medium text-gray-900">{previewData.totals.total_value}</dd>
+                      <dt className={`${colorTokens.text.subtle}`}>{t('openingBalances.wizard.post.totalValue')}</dt>
+                      <dd className={`font-medium ${colorTokens.text.primary}`}>{previewData.totals.total_value}</dd>
                     </div>
                   )}
                   {previewData.totals.total_debit && (
                     <div className="flex justify-between">
-                      <dt className="text-gray-500">{t('openingBalances.wizard.post.totalDebit')}</dt>
-                      <dd className="font-medium text-gray-900">{previewData.totals.total_debit}</dd>
+                      <dt className={`${colorTokens.text.subtle}`}>{t('openingBalances.wizard.post.totalDebit')}</dt>
+                      <dd className={`font-medium ${colorTokens.text.primary}`}>{previewData.totals.total_debit}</dd>
                     </div>
                   )}
                 </dl>
               </div>
             )}
 
-            <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+            <div className={`flex items-center justify-between border-t ${colorTokens.border.subtle} pt-4`}>
               <button
                 type="button"
                 onClick={() => { setCurrentStep('preview'); }}
                 disabled={postBatch.isPending}
-                className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
               >
                 <ArrowLeft className="h-4 w-4" />
                 {t('actions.back')}
@@ -522,7 +524,7 @@ export function OpeningBalanceWizardPage() {
                 type="button"
                 onClick={handlePost}
                 disabled={postBatch.isPending}
-                className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.success.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.success.bgStrongHover} disabled:cursor-not-allowed ${colorTokens.surface.disabledWhenDisabled}`}
               >
                 {postBatch.isPending ? (
                   <>
@@ -552,18 +554,18 @@ export function OpeningBalanceWizardPage() {
       case 'complete':
         return (
           <div className="space-y-6 text-center py-8">
-            <CheckCircle className="mx-auto h-16 w-16 text-green-500" />
-            <h2 className="text-2xl font-bold text-gray-900">
+            <CheckCircle className={`mx-auto h-16 w-16 ${colorTokens.intent.success.textSubtle}`} />
+            <h2 className={`text-2xl font-bold ${colorTokens.text.primary}`}>
               {t('openingBalances.wizard.complete.title')}
             </h2>
-            <p className="text-gray-600">
+            <p className={`${colorTokens.text.muted}`}>
               {t('openingBalances.wizard.complete.description')}
             </p>
 
             <div className="flex items-center justify-center gap-4 pt-6">
               <Link
                 to="/settings/opening-balances"
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover}`}
               >
                 {t('openingBalances.wizard.complete.backToDashboard')}
               </Link>
@@ -582,22 +584,22 @@ export function OpeningBalanceWizardPage() {
       <div className="flex items-center gap-4">
         <Link
           to="/settings/opening-balances"
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('actions.back')}
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
             {t(`openingBalances.types.${typeKey}.title`)}
-          </h1>
-          <p className="text-gray-500">{t(`openingBalances.types.${typeKey}.description`)}</p>
+          </PageHeaderTitle>
+          <p className={`${colorTokens.text.subtle}`}>{t(`openingBalances.types.${typeKey}.description`)}</p>
         </div>
       </div>
 
       {/* Step indicator */}
       {currentStep !== 'complete' && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
           <StepIndicator
             steps={STEPS}
             currentIndex={stepIndex}
@@ -607,7 +609,7 @@ export function OpeningBalanceWizardPage() {
       )}
 
       {/* Step content */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
         {renderStepContent()}
       </div>
     </div>

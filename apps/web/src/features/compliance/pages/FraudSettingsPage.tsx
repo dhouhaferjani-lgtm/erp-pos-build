@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Save, RotateCcw, Mail, Shield } from 'lucide-react'
 import { toast } from 'sonner'
 import { tokens, textColors } from '@/lib/designTokens'
-import { Checkbox } from '@/components/atoms'
+import { Button, Checkbox, Input } from '@/components/atoms'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -15,6 +15,8 @@ import { fraudSettingsInvalidationPredicate } from '../_invalidation'
 import type { FraudSettings } from '../types/fraudSettings'
 import { CashDrawerControlsSection } from '../components/CashDrawerControlsSection'
 import type { CashDrawerControlsValue } from '../components/CashDrawerControlsSection'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type EmailSeverity = CashDrawerControlsValue['cash_variance_email_severity']
 
@@ -182,36 +184,37 @@ export function FraudSettingsPage() {
       <div>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className={`text-2xl font-bold ${textColors.primary} flex items-center gap-2`}>
+            <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary} flex items-center gap-2`}>
               <Shield className={`h-6 w-6 ${textColors.disabled}`} />
               {t('compliance:fraudSettings.title')}
-            </h1>
+            </PageHeaderTitle>
             <p className={`${textColors.tertiary} mt-1`}>
               {t('compliance:fraudSettings.description')}
             </p>
           </div>
 
           {isConfigured && (
-            <button
+            <Button
               type="button"
               onClick={handleResetClick}
               disabled={resetMutation.isPending}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 ${tokens.button.secondary}`}
+              variant="secondary"
+              className="gap-2"
             >
               <RotateCcw className="h-4 w-4" />
               {t('compliance:fraudSettings.actions.reset')}
-            </button>
+            </Button>
           )}
         </div>
 
         {!isConfigured && (
-          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className={`mt-4 ${colorTokens.intent.caution.bgSubtle} border ${colorTokens.intent.caution.borderSubtle} rounded-lg p-4 flex items-start gap-3`}>
+            <AlertTriangle className={`h-5 w-5 ${colorTokens.intent.caution.text} flex-shrink-0 mt-0.5`} />
             <div>
-              <h3 className="font-medium text-amber-900">
+              <h3 className={`font-medium ${colorTokens.intent.caution.textStrongest}`}>
                 {t('compliance:fraudSettings.notConfigured.title')}
               </h3>
-              <p className="text-sm text-amber-800 mt-1">
+              <p className={`text-sm ${colorTokens.intent.caution.textStronger} mt-1`}>
                 {t('compliance:fraudSettings.notConfigured.description')}
               </p>
             </div>
@@ -232,14 +235,13 @@ export function FraudSettingsPage() {
               <label htmlFor="threshold" className={`${tokens.label.base} mb-1`}>
                 {t('compliance:fraudSettings.fields.threshold.label')}
               </label>
-              <input
+              <Input
                 type="number"
                 id="threshold"
                 min="1"
                 max="100"
                 value={formData.abandoned_draft_threshold || 5}
                 onChange={(e) => { setFormData({ ...formData, abandoned_draft_threshold: parseInt(e.target.value) }); }}
-                className={tokens.input.base}
               />
               <p className={`${tokens.helperText.base}`}>
                 {t('compliance:fraudSettings.fields.threshold.hint')}
@@ -253,14 +255,13 @@ export function FraudSettingsPage() {
               <label htmlFor="timeWindow" className={`${tokens.label.base} mb-1`}>
                 {t('compliance:fraudSettings.fields.timeWindow.label')}
               </label>
-              <input
+              <Input
                 type="number"
                 id="timeWindow"
                 min="1"
                 max="365"
                 value={formData.time_window_days || 30}
                 onChange={(e) => { setFormData({ ...formData, time_window_days: parseInt(e.target.value) }); }}
-                className={tokens.input.base}
               />
               <p className={tokens.helperText.base}>
                 {t('compliance:fraudSettings.fields.timeWindow.hint')}
@@ -296,22 +297,21 @@ export function FraudSettingsPage() {
                 {t('compliance:fraudSettings.fields.emails.label')}
               </label>
               <div className="flex gap-2">
-                <input
+                <Input
                   type="email"
                   id="emailInput"
                   value={emailInput}
                   onChange={(e) => { setEmailInput(e.target.value); }}
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddEmail())}
                   placeholder={t('compliance:fraudSettings.fields.emails.placeholder')}
-                  className={`flex-1 ${tokens.input.base}`}
+                  className="flex-1"
                 />
-                <button
+                <Button
                   type="button"
                   onClick={handleAddEmail}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg ${tokens.button.primary}`}
                 >
                   {t('common:actions.add')}
-                </button>
+                </Button>
               </div>
               <p className={tokens.helperText.base}>
                 {t('compliance:fraudSettings.fields.emails.hint')}
@@ -332,7 +332,7 @@ export function FraudSettingsPage() {
                     <button
                       type="button"
                       onClick={() => { handleRemoveEmail(email); }}
-                      className="hover:text-blue-900"
+                      className={`${colorTokens.intent.primary.textHoverStrongest}`}
                     >
                       ×
                     </button>
@@ -406,14 +406,15 @@ export function FraudSettingsPage() {
 
         {/* Actions */}
         <div className="flex justify-end gap-3">
-          <button
+          <Button
             type="submit"
             disabled={updateMutation.isPending}
-            className={`flex items-center gap-2 px-6 py-2 text-sm font-medium rounded-lg disabled:opacity-50 ${tokens.button.primary}`}
+            size="lg"
+            className="gap-2"
           >
             <Save className="h-4 w-4" />
             {updateMutation.isPending ? t('common:actions.saving') : t('common:actions.save')}
-          </button>
+          </Button>
         </div>
       </form>
 

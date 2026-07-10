@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils'
 import { formatQuantity, formatCurrency } from '@/lib/decimal'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
 import { useCurrency } from '@/hooks/useCurrency'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 // Post-finalize backstop reasons: a line the replay skipped at apply time
 // (basket-window ambiguity or negative-at-apply) that was therefore NOT posted.
@@ -45,8 +47,8 @@ function FlagChips({ item }: { item: ReconciliationItem }) {
             className={cn(
               'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
               blocking
-                ? 'bg-amber-100 text-amber-800'
-                : 'bg-gray-100 text-gray-600'
+                ? `${colorTokens.intent.caution.bgSoft} ${colorTokens.intent.caution.textStronger}`
+                : `${colorTokens.surface.muted} ${colorTokens.text.muted}`
             )}
           >
             {blocking && <AlertTriangle className="w-3 h-3 me-1" />}
@@ -57,7 +59,7 @@ function FlagChips({ item }: { item: ReconciliationItem }) {
       {showRecountHint && (
         <span
           data-testid="flag-hint-not-posted"
-          className="w-full text-xs text-gray-500 italic"
+          className={`w-full text-xs ${colorTokens.text.subtle} italic`}
         >
           {t('counting.flags.notPostedRecount')}
         </span>
@@ -81,13 +83,13 @@ function SummaryCard({ label, value, variant = 'default' }: SummaryCardProps) {
     <div
       className={cn(
         'p-4 rounded-lg border',
-        variant === 'success' && 'bg-green-50 border-green-200',
-        variant === 'warning' && 'bg-yellow-50 border-yellow-200',
-        variant === 'default' && 'bg-white border-gray-200'
+        variant === 'success' && `${colorTokens.intent.success.bgSubtle} ${colorTokens.intent.success.borderSubtle}`,
+        variant === 'warning' && `${colorTokens.intent.warning.bgSubtle} ${colorTokens.intent.warning.borderSubtle}`,
+        variant === 'default' && `${colorTokens.surface.base} ${colorTokens.border.subtle}`
       )}
     >
       <div className="text-2xl font-bold">{value}</div>
-      <div className="text-sm text-gray-500">{label}</div>
+      <div className={`text-sm ${colorTokens.text.subtle}`}>{label}</div>
     </div>
   )
 }
@@ -99,18 +101,18 @@ interface CountCellProps {
 
 function CountCell({ count, matchesTheoretical }: CountCellProps) {
   if (!count) {
-    return <span className="text-gray-400">-</span>
+    return <span className={`${colorTokens.text.disabled}`}>-</span>
   }
 
   return (
     <div className="group relative">
       <span
-        className={cn('font-mono', matchesTheoretical && 'text-green-600')}
+        className={cn('font-mono', matchesTheoretical && `${colorTokens.intent.success.text}`)}
       >
         {formatQuantity(count.qty)}
       </span>
       {/* Tooltip */}
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+      <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 ${colorTokens.surface.inverseStrong} ${colorTokens.text.inverse} text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10`}>
         <div>{format(new Date(count.at), 'MMM d, h:mm a')}</div>
         {count.notes && <div className="mt-1 italic">{count.notes}</div>}
       </div>
@@ -163,7 +165,7 @@ function OpeningCostCell({
           }
         }}
         disabled={isSaving || cost.trim() === ''}
-        className="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        className={`px-2 py-1 text-xs font-medium ${colorTokens.intent.primary.bgStrong} ${colorTokens.text.inverse} rounded ${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50 disabled:cursor-not-allowed`}
       >
         {t('counting.reconciliation.saveCost')}
       </button>
@@ -189,7 +191,7 @@ export function ReconciliationTable({ countingId }: Props) {
 
   if (isLoading) {
     return (
-      <div className="p-8 text-center text-gray-500">
+      <div className={`p-8 text-center ${colorTokens.text.subtle}`}>
         {t('loading')}...
       </div>
     )
@@ -197,7 +199,7 @@ export function ReconciliationTable({ countingId }: Props) {
 
   if (!data) {
     return (
-      <div className="p-8 text-center text-gray-500">
+      <div className={`p-8 text-center ${colorTokens.text.subtle}`}>
         {t('noData')}
       </div>
     )
@@ -249,41 +251,41 @@ export function ReconciliationTable({ countingId }: Props) {
     switch (item.resolution_method) {
       case 'auto_all_match':
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`}>
             <Check className="w-3 h-3 me-1" />
             {t('counting.reconciliation.allMatch')}
           </span>
         )
       case 'auto_counters_agree':
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colorTokens.intent.warning.bgSoft} ${colorTokens.intent.warning.textStronger}`}>
             <AlertTriangle className="w-3 h-3 me-1" />
             {t('counting.reconciliation.variance')}
           </span>
         )
       case 'third_count_decisive':
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`}>
             {t('counting.reconciliation.thirdDecisive')}
           </span>
         )
       case 'manual_override':
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colorTokens.intent.accent.bgSoft} ${colorTokens.intent.accent.textStronger}`}>
             {t('counting.reconciliation.override')}
           </span>
         )
       case 'pending':
         if (item.is_flagged) {
           return (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger}`}>
               <X className="w-3 h-3 me-1" />
               {t('counting.reconciliation.needsAction')}
             </span>
           )
         }
         return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colorTokens.surface.muted} ${colorTokens.text.secondary}`}>
             {t('counting.reconciliation.pending')}
           </span>
         )
@@ -292,13 +294,13 @@ export function ReconciliationTable({ countingId }: Props) {
 
   const getRowClassName = (item: ReconciliationItem) => {
     if (item.resolution_method === 'auto_all_match') {
-      return 'bg-green-50/50'
+      return colorTokens.intent.success.bgSubtleAlpha
     }
     if (item.resolution_method === 'auto_counters_agree') {
-      return 'bg-yellow-50/50'
+      return colorTokens.intent.warning.bgSubtleAlpha
     }
     if (item.is_flagged && item.final_qty === null) {
-      return 'bg-red-50/50'
+      return `${colorTokens.intent.danger.bgSubtleAlpha}`
     }
     return ''
   }
@@ -326,7 +328,7 @@ export function ReconciliationTable({ countingId }: Props) {
 
       {/* Bulk Actions */}
       {selectedItems.length > 0 && (
-        <div className="flex items-center gap-4 p-3 bg-blue-50 rounded-lg">
+        <div className={`flex items-center gap-4 p-3 ${colorTokens.intent.primary.bgSubtle} rounded-lg`}>
           <span className="text-sm font-medium">
             {t('counting.reconciliation.itemsSelected', {
               count: selectedItems.length,
@@ -336,14 +338,14 @@ export function ReconciliationTable({ countingId }: Props) {
             type="button"
             onClick={handleBulkThirdCount}
             disabled={triggerThirdCount.isPending}
-            className="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            className={`px-3 py-1.5 text-sm font-medium ${colorTokens.intent.primary.bgStrong} ${colorTokens.text.inverse} rounded-md ${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50`}
           >
             {t('counting.reconciliation.addToThirdCount')}
           </button>
           <button
             type="button"
             onClick={() => { setSelectedItems([]); }}
-            className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:text-gray-900"
+            className={`px-3 py-1.5 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.textHoverStrongest}`}
           >
             {t('clear')}
           </button>
@@ -352,8 +354,8 @@ export function ReconciliationTable({ countingId }: Props) {
 
       {/* Table */}
       <div className="border rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+          <thead className={`${colorTokens.surface.page}`}>
             <tr>
               <th className="w-12 px-4 py-3">
                 <input
@@ -363,51 +365,51 @@ export function ReconciliationTable({ countingId }: Props) {
                     selectedItems.length === flaggedPendingItems.length
                   }
                   onChange={(e) => { handleSelectAll(e.target.checked); }}
-                  className="rounded border-gray-300"
+                  className={`rounded ${colorTokens.border.default}`}
                 />
               </th>
-              <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.reconciliation.status')}
               </th>
-              <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.reconciliation.product')}
               </th>
-              <th className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.reconciliation.location')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.reconciliation.theoretical')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.count1')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.count2')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.count3')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.reconciliation.final')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.reconciliation.expectedNow')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.reconciliation.movementsSinceCount')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.reconciliation.openingCost')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-center text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('counting.reconciliation.varianceShort')}
               </th>
-              <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className={`px-4 py-3 text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                 {t('actionsLabel')}
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
             {items.map((item) => (
               <tr key={item.id} className={getRowClassName(item)}>
                 <td className="px-4 py-3">
@@ -416,7 +418,7 @@ export function ReconciliationTable({ countingId }: Props) {
                       type="checkbox"
                       checked={selectedItems.includes(item.id)}
                       onChange={(e) => { handleSelect(item.id, e.target.checked); }}
-                      className="rounded border-gray-300"
+                      className={`rounded ${colorTokens.border.default}`}
                     />
                   )}
                 </td>
@@ -426,15 +428,15 @@ export function ReconciliationTable({ countingId }: Props) {
                 </td>
                 <td className="px-4 py-3">
                   <div>
-                    <div className="font-medium text-gray-900">
+                    <div className={`font-medium ${colorTokens.text.primary}`}>
                       {item.product.name}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className={`text-sm ${colorTokens.text.subtle}`}>
                       {item.product.sku}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-500">
+                <td className={`px-4 py-3 text-sm ${colorTokens.text.subtle}`}>
                   {item.location.code}
                 </td>
                 <td className="px-4 py-3 text-center font-mono">
@@ -489,8 +491,8 @@ export function ReconciliationTable({ countingId }: Props) {
                     <span
                       className={cn(
                         'font-mono',
-                        item.variance > 0 && 'text-green-600',
-                        item.variance < 0 && 'text-red-600'
+                        item.variance > 0 && `${colorTokens.intent.success.text}`,
+                        item.variance < 0 && `${colorTokens.intent.danger.text}`
                       )}
                     >
                       {item.variance > 0 ? '+' : ''}
@@ -509,14 +511,14 @@ export function ReconciliationTable({ countingId }: Props) {
                             itemIds: [item.id],
                           }); }
                         }
-                        className="px-2 py-1 text-xs font-medium border border-gray-300 rounded hover:bg-gray-50"
+                        className={`px-2 py-1 text-xs font-medium border ${colorTokens.border.default} rounded ${colorTokens.intent.neutral.bgHover}`}
                       >
                         {t('counting.reconciliation.thirdCount')}
                       </button>
                       <button
                         type="button"
                         onClick={() => { setOverrideItem(item); }}
-                        className="px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-900"
+                        className={`px-2 py-1 text-xs font-medium ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
                       >
                         {t('counting.reconciliation.override')}
                       </button>
@@ -526,7 +528,7 @@ export function ReconciliationTable({ countingId }: Props) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {/* Manual Override Dialog */}

@@ -3,6 +3,7 @@ import { Filter, RotateCcw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCatalogStore, type CatalogFilters } from '../../stores/useCatalogStore'
 import { useSupplierBrands } from '../../hooks/useSupplierBrands'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface FilterSidebarProps {
   variant?: 'inline' | 'drawer'
@@ -44,15 +45,15 @@ function FilterContent({ className }: { className?: string | undefined }) {
     <div className={cn('flex flex-col gap-5', className)}>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-          <Filter className="h-4 w-4 text-gray-400" />
+        <h3 className={`text-sm font-medium ${colorTokens.text.secondary} flex items-center gap-2`}>
+          <Filter className={`h-4 w-4 ${colorTokens.text.disabled}`} />
           {t('parts-catalog:filters.title')}
         </h3>
         {hasActiveFilters && (
           <button
             type="button"
             onClick={resetFilters}
-            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 transition-colors"
+            className={`inline-flex items-center gap-1 text-xs ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrong} transition-colors`}
           >
             <RotateCcw className="h-3 w-3" />
             {t('parts-catalog:filters.reset')}
@@ -62,13 +63,13 @@ function FilterContent({ className }: { className?: string | undefined }) {
 
       {/* Sort */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">
+        <label className={`block text-xs font-medium ${colorTokens.text.subtle} mb-1.5`}>
           {t('parts-catalog:filters.sortBy')}
         </label>
         <select
           value={filters.sortBy}
           onChange={(e) => { updateFilters({ sortBy: e.target.value as SortOption }) }}
-          className="w-full rounded-md border border-gray-200 bg-white py-1.5 px-2.5 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className={`w-full rounded-md border ${colorTokens.border.subtle} ${colorTokens.surface.base} py-1.5 px-2.5 text-sm ${colorTokens.text.secondary} ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
         >
           {SORT_OPTIONS.map((option) => (
             <option key={option} value={option}>
@@ -84,30 +85,30 @@ function FilterContent({ className }: { className?: string | undefined }) {
           type="checkbox"
           checked={filters.inStockOnly}
           onChange={(e) => { updateFilters({ inStockOnly: e.target.checked }) }}
-          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          className={`rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
         />
-        <span className="text-sm text-gray-700">{t('parts-catalog:filters.inStockOnly')}</span>
+        <span className={`text-sm ${colorTokens.text.secondary}`}>{t('parts-catalog:filters.inStockOnly')}</span>
       </label>
 
       {/* Supplier brand multi-select */}
       {suppliers && suppliers.length > 0 && (
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">
+          <label className={`block text-xs font-medium ${colorTokens.text.subtle} mb-1.5`}>
             {t('parts-catalog:filters.supplierBrand')}
           </label>
-          <div className="space-y-1 max-h-48 overflow-y-auto rounded-md border border-gray-100 p-2">
+          <div className={`space-y-1 max-h-48 overflow-y-auto rounded-md border ${colorTokens.border.hairline} p-2`}>
             {suppliers.map((supplier) => (
               <label
                 key={supplier.id}
-                className="flex items-center gap-2 cursor-pointer py-1 px-1 rounded hover:bg-gray-50 transition-colors"
+                className={`flex items-center gap-2 cursor-pointer py-1 px-1 rounded ${colorTokens.intent.neutral.bgHover} transition-colors`}
               >
                 <input
                   type="checkbox"
                   checked={filters.supplierIds.includes(supplier.id)}
                   onChange={() => { handleSupplierToggle(supplier.id) }}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className={`rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                 />
-                <span className="text-sm text-gray-700">{supplier.brand}</span>
+                <span className={`text-sm ${colorTokens.text.secondary}`}>{supplier.brand}</span>
               </label>
             ))}
           </div>
@@ -116,7 +117,7 @@ function FilterContent({ className }: { className?: string | undefined }) {
 
       {/* Confidence minimum slider */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">
+        <label className={`block text-xs font-medium ${colorTokens.text.subtle} mb-1.5`}>
           {t('parts-catalog:filters.confidenceMin')}: {filters.confidenceMin}%
         </label>
         <input
@@ -126,7 +127,7 @@ function FilterContent({ className }: { className?: string | undefined }) {
           step={10}
           value={filters.confidenceMin}
           onChange={(e) => { updateFilters({ confidenceMin: Number(e.target.value) }) }}
-          className="w-full accent-blue-600"
+          className={`w-full ${colorTokens.intent.primary.accent}`}
         />
       </div>
     </div>
@@ -143,21 +144,21 @@ export function FilterSidebar({ variant = 'inline', open = false, onClose, class
         {/* Backdrop */}
         <button
           type="button"
-          className="fixed inset-0 bg-black/30"
+          className={`fixed inset-0 ${colorTokens.surface.overlaySubtle}`}
           onClick={onClose}
           aria-label={t('parts-catalog:stickyBar.cancel')}
         />
         {/* Panel */}
-        <div className="relative ms-auto w-80 max-w-[85vw] bg-white shadow-xl flex flex-col h-full">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-            <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-              <Filter className="h-4 w-4 text-gray-400" />
+        <div className={`relative ms-auto w-80 max-w-[85vw] ${colorTokens.surface.base} shadow-xl flex flex-col h-full`}>
+          <div className={`flex items-center justify-between px-4 py-3 border-b ${colorTokens.border.subtle}`}>
+            <h2 className={`text-base font-semibold ${colorTokens.text.primary} flex items-center gap-2`}>
+              <Filter className={`h-4 w-4 ${colorTokens.text.disabled}`} />
               {t('parts-catalog:filters.title')}
             </h2>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className={`rounded-md p-1.5 ${colorTokens.text.disabled} ${colorTokens.intent.neutral.textHover} ${colorTokens.intent.neutral.bgHoverSoft} transition-colors`}
             >
               <X className="h-5 w-5" />
             </button>

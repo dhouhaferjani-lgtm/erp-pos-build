@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { exportJetXml } from '../api/complianceApi'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export function JetExportForm() {
   const { t } = useTranslation('compliance')
@@ -31,46 +32,46 @@ export function JetExportForm() {
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+    <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+      <h3 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
         {t('jetExport.title')}
       </h3>
-      <p className="text-sm text-gray-600 mb-4">
+      <p className={`text-sm ${colorTokens.text.muted} mb-4`}>
         {t('jetExport.description')}
       </p>
       <div className="flex gap-4 items-end flex-wrap">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
             {t('jetExport.from')}
           </label>
           <input
             type="date"
             value={from}
             onChange={(e) => { setFrom(e.target.value) }}
-            className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            className={`rounded-md ${colorTokens.border.default} shadow-sm ${colorTokens.focus.primaryBorder} ${colorTokens.focus.primaryRing} sm:text-sm`}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}>
             {t('jetExport.to')}
           </label>
           <input
             type="date"
             value={to}
             onChange={(e) => { setTo(e.target.value) }}
-            className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            className={`rounded-md ${colorTokens.border.default} shadow-sm ${colorTokens.focus.primaryBorder} ${colorTokens.focus.primaryRing} sm:text-sm`}
           />
         </div>
         <button
           type="button"
           onClick={() => { void handleExport() }}
           disabled={loading || !from || !to}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} ${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {loading ? t('jetExport.exporting') : t('jetExport.export')}
         </button>
       </div>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className={`mt-2 text-sm ${colorTokens.intent.danger.text}`}>{error}</p>}
     </div>
   )
 }

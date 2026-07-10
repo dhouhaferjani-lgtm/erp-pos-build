@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Clock, Car } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useVehicleStore } from '../../stores/useVehicleStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface RecentVehiclesListProps {
   className?: string
@@ -30,18 +31,18 @@ export function RecentVehiclesList({ className }: RecentVehiclesListProps) {
 
   return (
     <div className={cn('flex flex-col', className)}>
-      <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-        <Clock className="h-4 w-4 text-gray-400" />
+      <h3 className={`text-sm font-medium ${colorTokens.text.secondary} mb-3 flex items-center gap-2`}>
+        <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />
         {t('parts-catalog:recentVehicles.title')}
       </h3>
 
       {vehicleHistory.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8">
-          <Clock className="h-12 w-12 text-gray-200 mb-3" />
-          <p className="text-sm font-medium text-gray-500">
+          <Clock className={`h-12 w-12 ${colorTokens.text.faint} mb-3`} />
+          <p className={`text-sm font-medium ${colorTokens.text.subtle}`}>
             {t('parts-catalog:recentVehicles.empty')}
           </p>
-          <p className="mt-1 text-xs text-gray-400 text-center">
+          <p className={`mt-1 text-xs ${colorTokens.text.disabled} text-center`}>
             {t('parts-catalog:recentVehicles.emptyHint')}
           </p>
         </div>
@@ -52,25 +53,25 @@ export function RecentVehiclesList({ className }: RecentVehiclesListProps) {
               key={vehicle.id}
               type="button"
               onClick={() => { selectFromHistory(vehicle.id) }}
-              className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-50 transition-colors group"
+              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start ${colorTokens.intent.neutral.bgHover} transition-colors group`}
             >
-              <div className="flex items-center justify-center h-8 w-8 rounded-md bg-gray-100 group-hover:bg-blue-100 transition-colors shrink-0">
-                <Car className="h-4 w-4 text-gray-400 group-hover:text-blue-600 transition-colors" />
+              <div className={`flex items-center justify-center h-8 w-8 rounded-md ${colorTokens.surface.muted} ${colorTokens.intent.primary.groupBgSoftHover} transition-colors shrink-0`}>
+                <Car className={`h-4 w-4 ${colorTokens.text.disabled} ${colorTokens.intent.primary.groupTextHover} transition-colors`} />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-semibold text-gray-800">
+                  <span className={`text-sm font-semibold ${colorTokens.text.strong}`}>
                     {vehicle.manufacturerBrand}
                   </span>
-                  <span className="text-sm text-gray-600 truncate">
+                  <span className={`text-sm ${colorTokens.text.muted} truncate`}>
                     {vehicle.modelSeriesName}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-gray-500 truncate">
+                  <span className={`text-xs ${colorTokens.text.subtle} truncate`}>
                     {vehicle.display}
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className={`text-xs ${colorTokens.text.disabled}`}>
                     {t('parts-catalog:recentVehicles.lastSearched')}{' '}
                     {formatRelativeTime(vehicle.selectedAt)}
                   </span>

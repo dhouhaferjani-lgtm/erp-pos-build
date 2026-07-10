@@ -7,6 +7,7 @@ import { useModelSeries } from '../../hooks/useModelSeries'
 import { useVehicles } from '../../hooks/useVehicles'
 import { useVehicleStore } from '../../stores/useVehicleStore'
 import type { Manufacturer, ModelSeries, Vehicle, VehicleType, SelectedVehicle } from '../../types/catalog'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface VehicleNavigatorProps {
   vehicleType?: VehicleType
@@ -89,7 +90,7 @@ export function VehicleNavigator({
 
   return (
     <div className={cn('flex flex-col', className)}>
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">
+      <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
         {t('parts-catalog:vehicle.title')}
       </h2>
 
@@ -101,23 +102,23 @@ export function VehicleNavigator({
           className={cn(
             'rounded px-1.5 py-0.5 transition-colors',
             selectedManufacturer
-              ? 'text-blue-600 hover:bg-blue-50 cursor-pointer'
-              : 'text-gray-900 font-medium'
+              ? `${colorTokens.intent.primary.text} ${colorTokens.intent.primary.bgHover} cursor-pointer`
+              : `${colorTokens.text.primary} font-medium`
           )}
         >
           {t('parts-catalog:vehicle.allManufacturers')}
         </button>
         {selectedManufacturer && (
           <>
-            <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
+            <ChevronRight className={`h-3.5 w-3.5 ${colorTokens.text.faint}`} />
             <button
               type="button"
               onClick={handleBack}
               className={cn(
                 'rounded px-1.5 py-0.5 transition-colors',
                 selectedModel
-                  ? 'text-blue-600 hover:bg-blue-50 cursor-pointer'
-                  : 'text-gray-900 font-medium'
+                  ? `${colorTokens.intent.primary.text} ${colorTokens.intent.primary.bgHover} cursor-pointer`
+                  : `${colorTokens.text.primary} font-medium`
               )}
             >
               {selectedManufacturer.brand}
@@ -126,8 +127,8 @@ export function VehicleNavigator({
         )}
         {selectedModel && (
           <>
-            <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
-            <span className="text-gray-900 font-medium px-1.5 py-0.5">
+            <ChevronRight className={`h-3.5 w-3.5 ${colorTokens.text.faint}`} />
+            <span className={`${colorTokens.text.primary} font-medium px-1.5 py-0.5`}>
               {selectedModel.name}
             </span>
           </>
@@ -137,7 +138,7 @@ export function VehicleNavigator({
       {/* Search input (for manufacturer and model steps) */}
       {currentStep !== 'vehicle' && (
         <div className="relative mb-3">
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className={`absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 ${colorTokens.text.disabled}`} />
           <input
             type="text"
             value={searchQuery}
@@ -147,17 +148,17 @@ export function VehicleNavigator({
                 ? t('parts-catalog:vehicle.searchManufacturer')
                 : t('parts-catalog:vehicle.searchModel')
             }
-            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 ps-9 pe-3 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+            className={`w-full rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} py-2.5 ps-9 pe-3 text-sm ${colorTokens.placeholder.textMuted} ${colorTokens.focus.primaryBorder} ${colorTokens.surface.baseOnFocus} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} transition-colors`}
           />
         </div>
       )}
 
       {/* Manufacturer list */}
       {currentStep === 'manufacturer' && (
-        <div className="space-y-0.5 max-h-[480px] overflow-y-auto rounded-lg border border-gray-100">
+        <div className={`space-y-0.5 max-h-[480px] overflow-y-auto rounded-lg border ${colorTokens.border.hairline}`}>
           {loadingMfr && (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
             </div>
           )}
           {filteredManufacturers.map((mfr) => (
@@ -165,14 +166,14 @@ export function VehicleNavigator({
               key={mfr.id}
               type="button"
               onClick={() => { handleSelectManufacturer(mfr) }}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-start"
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 text-sm ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors text-start`}
             >
               <span className="font-medium">{mfr.brand}</span>
-              <ChevronRight className="h-4 w-4 text-gray-300" />
+              <ChevronRight className={`h-4 w-4 ${colorTokens.text.faint}`} />
             </button>
           ))}
           {!loadingMfr && filteredManufacturers.length === 0 && (
-            <p className="py-8 text-center text-sm text-gray-400">
+            <p className={`py-8 text-center text-sm ${colorTokens.text.disabled}`}>
               {t('parts-catalog:results.noResults')}
             </p>
           )}
@@ -181,10 +182,10 @@ export function VehicleNavigator({
 
       {/* Model series list */}
       {currentStep === 'model' && (
-        <div className="space-y-0.5 max-h-[480px] overflow-y-auto rounded-lg border border-gray-100">
+        <div className={`space-y-0.5 max-h-[480px] overflow-y-auto rounded-lg border ${colorTokens.border.hairline}`}>
           {loadingModels && (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
             </div>
           )}
           {filteredModels.map((model) => (
@@ -192,12 +193,12 @@ export function VehicleNavigator({
               key={model.id}
               type="button"
               onClick={() => { handleSelectModel(model) }}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-start"
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 text-sm ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors text-start`}
             >
               <div>
                 <span className="font-medium">{model.name}</span>
                 {(model.production_from ?? model.production_to) && (
-                  <span className="ms-2 text-xs text-gray-400">
+                  <span className={`ms-2 text-xs ${colorTokens.text.disabled}`}>
                     {t('parts-catalog:vehicle.productionYears', {
                       from: model.production_from ?? '...',
                       to: model.production_to ?? '...',
@@ -205,11 +206,11 @@ export function VehicleNavigator({
                   </span>
                 )}
               </div>
-              <ChevronRight className="h-4 w-4 text-gray-300" />
+              <ChevronRight className={`h-4 w-4 ${colorTokens.text.faint}`} />
             </button>
           ))}
           {!loadingModels && filteredModels.length === 0 && (
-            <p className="py-8 text-center text-sm text-gray-400">
+            <p className={`py-8 text-center text-sm ${colorTokens.text.disabled}`}>
               {t('parts-catalog:vehicle.noModels')}
             </p>
           )}
@@ -221,7 +222,7 @@ export function VehicleNavigator({
         <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
           {loadingVehicles && (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
             </div>
           )}
           {vehicles?.map((vehicle) => (
@@ -229,10 +230,10 @@ export function VehicleNavigator({
               key={vehicle.id}
               type="button"
               onClick={() => { handleSelectVehicle(vehicle) }}
-              className="w-full rounded-lg border border-gray-200 px-4 py-3 text-start transition-all hover:border-blue-200 hover:bg-blue-50/50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full rounded-lg border ${colorTokens.border.subtle} px-4 py-3 text-start transition-all ${colorTokens.intent.primary.hoverBorderSoft} hover:${colorTokens.intent.primary.bgSubtleAlpha} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing}`}
             >
-              <p className="text-sm font-medium text-gray-900">{vehicle.display}</p>
-              <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+              <p className={`text-sm font-medium ${colorTokens.text.primary}`}>{vehicle.display}</p>
+              <div className={`mt-1 flex flex-wrap items-center gap-3 text-xs ${colorTokens.text.subtle}`}>
                 {vehicle.power_kw && vehicle.power_hp && (
                   <span>
                     {t('parts-catalog:vehicle.power', {
@@ -258,7 +259,7 @@ export function VehicleNavigator({
             </button>
           ))}
           {!loadingVehicles && vehicles?.length === 0 && (
-            <p className="py-8 text-center text-sm text-gray-400">
+            <p className={`py-8 text-center text-sm ${colorTokens.text.disabled}`}>
               {t('parts-catalog:vehicle.noVehicles')}
             </p>
           )}

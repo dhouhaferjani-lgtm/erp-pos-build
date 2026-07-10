@@ -15,11 +15,14 @@ import { LineItemEntryBar, ProductCell, type ProductLineProduct } from '@/compon
 import { LocationSelectorMulti } from '@/features/locations/components/LocationSelectorMulti'
 import { CategorySelector } from '@/features/categories/components/CategorySelector'
 import { useUsers } from '@/features/users/hooks/useUsers'
-import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
+import { borderColors, colors, textColors } from '@/lib/designTokens'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { listZones } from '@/features/settings/zones/api'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Button } from '@/components/atoms/Button'
 
 const STEPS = ['scope', 'selection', 'configuration', 'assignment', 'review'] as const
 type Step = (typeof STEPS)[number]
@@ -125,7 +128,7 @@ export function CreateCountingPage() {
     }
   }
 
-  const handleSubmit = () => {
+  const createCountingSession = () => {
     if (!formData.count_1_user_id) return
 
     // Zone-scoped countings cannot block sales (backend rejects
@@ -149,13 +152,13 @@ export function CreateCountingPage() {
       <div className="mb-8">
         <Link
           to="/inventory/counting"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
+          className={`inline-flex items-center text-sm ${colorTokens.text.subtle} ${colorTokens.intent.neutral.textHoverStrong} mb-4`}
         >
           <ArrowLeft className="w-4 h-4 me-1" />
           {t('back')}
         </Link>
-        <h1 className="text-2xl font-bold">{t('counting.create.title')}</h1>
-        <p className="text-gray-500">{t('counting.create.description')}</p>
+        <PageHeaderTitle className="text-2xl font-bold">{t('counting.create.title')}</PageHeaderTitle>
+        <p className={`${colorTokens.text.subtle}`}>{t('counting.create.description')}</p>
       </div>
 
       {/* Progress Steps */}
@@ -169,9 +172,9 @@ export function CreateCountingPage() {
                 <div
                   className={cn(
                     'w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium',
-                    isActive && 'bg-blue-600 text-white',
-                    isCompleted && 'bg-green-600 text-white',
-                    !isActive && !isCompleted && 'bg-gray-200 text-gray-600'
+                    isActive && `${colorTokens.intent.primary.bgStrong} ${colorTokens.text.inverse}`,
+                    isCompleted && `${colorTokens.intent.success.bgStrong} ${colorTokens.text.inverse}`,
+                    !isActive && !isCompleted && `${colorTokens.surface.subdued} ${colorTokens.text.muted}`
                   )}
                 >
                   {isCompleted ? <Check className="w-4 h-4" /> : index + 1}
@@ -179,9 +182,9 @@ export function CreateCountingPage() {
                 <span
                   className={cn(
                     'ms-2 text-sm font-medium',
-                    isActive && 'text-blue-600',
-                    isCompleted && 'text-green-600',
-                    !isActive && !isCompleted && 'text-gray-500'
+                    isActive && `${colorTokens.intent.primary.text}`,
+                    isCompleted && `${colorTokens.intent.success.text}`,
+                    !isActive && !isCompleted && `${colorTokens.text.subtle}`
                   )}
                 >
                   {t(`counting.create.steps.${step}`)}
@@ -190,7 +193,7 @@ export function CreateCountingPage() {
                   <div
                     className={cn(
                       'flex-1 h-0.5 mx-4',
-                      isCompleted ? 'bg-green-600' : 'bg-gray-200'
+                      isCompleted ? `${colorTokens.intent.success.bgStrong}` : `${colorTokens.surface.subdued}`
                     )}
                   />
                 )}
@@ -201,7 +204,7 @@ export function CreateCountingPage() {
       </div>
 
       {/* Step Content */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
+      <div className={`${colorTokens.surface.base} rounded-lg border p-6 mb-6`}>
         {currentStep === 'scope' && (
           <ScopeStep
             scopeType={formData.scope_type || 'full_inventory'}
@@ -240,7 +243,7 @@ export function CreateCountingPage() {
           type="button"
           onClick={prevStep}
           disabled={stepIndex === 0}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`inline-flex items-center px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.surface.base} border ${colorTokens.border.default} rounded-md ${colorTokens.intent.neutral.bgHover} disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           <ArrowLeft className="w-4 h-4 me-2" />
           {t('previous')}
@@ -249,9 +252,9 @@ export function CreateCountingPage() {
         {currentStep === 'review' ? (
           <button
             type="button"
-            onClick={handleSubmit}
+            onClick={createCountingSession}
             disabled={!canProceed() || createCounting.isPending}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`inline-flex items-center px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} rounded-md ${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {createCounting.isPending
               ? t('creating')
@@ -262,7 +265,7 @@ export function CreateCountingPage() {
             type="button"
             onClick={nextStep}
             disabled={!canProceed()}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`inline-flex items-center px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} rounded-md ${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {t('next')}
             <ArrowRight className="w-4 h-4 ms-2" />
@@ -287,7 +290,7 @@ function ScopeStep({ scopeType, onChange }: ScopeStepProps) {
       <h2 className="text-lg font-semibold mb-4">
         {t('counting.create.scopeTitle')}
       </h2>
-      <p className="text-gray-500 mb-6">{t('counting.create.scopeDescription')}</p>
+      <p className={`${colorTokens.text.subtle} mb-6`}>{t('counting.create.scopeDescription')}</p>
 
       <div className="grid grid-cols-2 gap-4">
         {SCOPE_TYPES.map((type) => (
@@ -298,12 +301,12 @@ function ScopeStep({ scopeType, onChange }: ScopeStepProps) {
             className={cn(
               'p-4 rounded-lg border-2 text-start transition-colors',
               scopeType === type
-                ? 'border-blue-600 bg-blue-50'
-                : 'border-gray-200 hover:border-gray-300'
+                ? `${colorTokens.intent.primary.borderStrong} ${colorTokens.intent.primary.bgSubtle}`
+                : `${colorTokens.border.subtle} ${colorTokens.border.hover}`
             )}
           >
             <div className="font-medium">{t(`counting.scopeTypes.${type}`)}</div>
-            <div className="text-sm text-gray-500">
+            <div className={`text-sm ${colorTokens.text.subtle}`}>
               {t(`counting.scopeDescriptions.${type}`)}
             </div>
           </button>
@@ -392,7 +395,7 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
   return (
     <div>
       <h2 className="text-lg font-semibold mb-4">{getTitle()}</h2>
-      <p className="text-gray-500 mb-6">{getDescription()}</p>
+      <p className={`${colorTokens.text.subtle} mb-6`}>{getDescription()}</p>
 
       {/* Product Selection */}
       {(scopeType === 'product' || scopeType === 'product_location') && (
@@ -417,14 +420,16 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
                     <div className="min-w-0 flex-1">
                       <ProductCell product={product} size="sm" />
                     </div>
-                    <button
+                    <Button
                       type="button"
                       onClick={() => { handleRemoveProduct(product.id); }}
-                      className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm} ${textColors.error}`}
+                      variant="ghost"
+                      size="sm"
+                      className={textColors.error}
                       aria-label={t('common:remove')}
                     >
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -537,7 +542,7 @@ function ZoneScopeSelection({ data, onChange }: ZoneScopeSelectionProps) {
                     key={zone.id}
                     className={cn(
                       'flex cursor-pointer items-center gap-2 rounded-md border-2 p-3 transition-colors',
-                      selected ? 'border-blue-600 bg-blue-50' : cn(borderColors.default, 'hover:border-gray-300'),
+                      selected ? `${colorTokens.intent.primary.borderStrong} ${colorTokens.intent.primary.bgSubtle}` : cn(borderColors.default, `${colorTokens.border.hover}`),
                     )}
                   >
                     <input
@@ -578,14 +583,14 @@ function ConfigurationStep({ data, onChange }: ConfigurationStepProps) {
       <h2 className="text-lg font-semibold mb-4">
         {t('counting.create.configTitle')}
       </h2>
-      <p className="text-gray-500 mb-6">
+      <p className={`${colorTokens.text.subtle} mb-6`}>
         {t('counting.create.configDescription')}
       </p>
 
       <div className="space-y-6">
         {/* Execution Mode */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-2`}>
             {t('counting.create.executionMode')}
           </label>
           <div className="flex gap-4">
@@ -624,7 +629,7 @@ function ConfigurationStep({ data, onChange }: ConfigurationStepProps) {
 
         {/* Count Requirements */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-2`}>
             {t('counting.create.countRequirements')}
           </label>
           <div className="space-y-2">
@@ -666,7 +671,7 @@ function ConfigurationStep({ data, onChange }: ConfigurationStepProps) {
             />
             <span>{t('counting.create.allowUnexpectedItems')}</span>
           </label>
-          <p className="text-sm text-gray-500 ms-6">
+          <p className={`text-sm ${colorTokens.text.subtle} ms-6`}>
             {t('counting.create.allowUnexpectedItemsHelp')}
           </p>
         </div>
@@ -709,9 +714,9 @@ function ConfigurationStep({ data, onChange }: ConfigurationStepProps) {
               onChange({ ambiguity_window_minutes: Number.isNaN(parsed) ? 0 : parsed })
             }}
             className={cn(
-              'w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500',
+              `w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing}`,
               borderColors.default,
-              'focus:border-blue-500',
+              `${colorTokens.focus.primaryBorder}`,
             )}
           />
           <p className={cn('mt-1 text-sm', textColors.tertiary)}>
@@ -721,14 +726,14 @@ function ConfigurationStep({ data, onChange }: ConfigurationStepProps) {
 
         {/* Instructions */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-2`}>
             {t('counting.create.instructions')}
           </label>
           <textarea
             value={data.instructions || ''}
             onChange={(e) => { onChange({ instructions: e.target.value }); }}
             rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className={`w-full px-3 py-2 border ${colorTokens.border.default} rounded-md focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${colorTokens.focus.primaryBorder}`}
             placeholder={t('counting.create.instructionsPlaceholder')}
           />
         </div>
@@ -750,7 +755,7 @@ function AssignmentStep({ data, onChange }: AssignmentStepProps) {
       <h2 className="text-lg font-semibold mb-4">
         {t('counting.create.assignmentTitle')}
       </h2>
-      <p className="text-gray-500 mb-6">
+      <p className={`${colorTokens.text.subtle} mb-6`}>
         {t('counting.create.assignmentDescription')}
       </p>
 
@@ -808,25 +813,25 @@ function AssignmentStep({ data, onChange }: AssignmentStepProps) {
         {/* Schedule */}
         <div className="grid grid-cols-2 gap-4 pt-4 border-t">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-2`}>
               {t('counting.create.scheduledStart')}
             </label>
             <input
               type="datetime-local"
               value={data.scheduled_start || ''}
               onChange={(e) => { onChange({ scheduled_start: e.target.value }); }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className={`w-full px-3 py-2 border ${colorTokens.border.default} rounded-md focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${colorTokens.focus.primaryBorder}`}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-2`}>
               {t('counting.create.scheduledEnd')}
             </label>
             <input
               type="datetime-local"
               value={data.scheduled_end || ''}
               onChange={(e) => { onChange({ scheduled_end: e.target.value }); }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className={`w-full px-3 py-2 border ${colorTokens.border.default} rounded-md focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${colorTokens.focus.primaryBorder}`}
             />
           </div>
         </div>
@@ -854,53 +859,53 @@ function ReviewStep({ data }: ReviewStepProps) {
       <h2 className="text-lg font-semibold mb-4">
         {t('counting.create.reviewTitle')}
       </h2>
-      <p className="text-gray-500 mb-6">
+      <p className={`${colorTokens.text.subtle} mb-6`}>
         {t('counting.create.reviewDescription')}
       </p>
 
       <div className="space-y-4">
-        <div className="bg-gray-50 rounded-lg p-4">
+        <div className={`${colorTokens.surface.page} rounded-lg p-4`}>
           <h3 className="font-medium mb-3">{t('counting.create.steps.scope')}</h3>
           <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className="text-gray-500">{t('counting.create.scopeType')}</dt>
+            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.scopeType')}</dt>
             <dd>{t(`counting.scopeTypes.${data.scope_type ?? 'full_inventory'}`)}</dd>
           </dl>
         </div>
 
-        <div className="bg-gray-50 rounded-lg p-4">
+        <div className={`${colorTokens.surface.page} rounded-lg p-4`}>
           <h3 className="font-medium mb-3">
             {t('counting.create.steps.configuration')}
           </h3>
           <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className="text-gray-500">{t('counting.create.executionMode')}</dt>
+            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.executionMode')}</dt>
             <dd>{t(`counting.executionModes.${data.execution_mode ?? 'parallel'}`)}</dd>
-            <dt className="text-gray-500">{t('counting.create.requiresCount2')}</dt>
+            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.requiresCount2')}</dt>
             <dd>{data.requires_count_2 ? t('yes') : t('no')}</dd>
-            <dt className="text-gray-500">{t('counting.create.requiresCount3')}</dt>
+            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.requiresCount3')}</dt>
             <dd>{data.requires_count_3 ? t('yes') : t('no')}</dd>
-            <dt className="text-gray-500">{t('counting.create.allowUnexpectedItems')}</dt>
+            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.allowUnexpectedItems')}</dt>
             <dd>
               {data.allow_unexpected_items ? t('yes') : t('no')}
             </dd>
           </dl>
         </div>
 
-        <div className="bg-gray-50 rounded-lg p-4">
+        <div className={`${colorTokens.surface.page} rounded-lg p-4`}>
           <h3 className="font-medium mb-3">
             {t('counting.create.steps.assignment')}
           </h3>
           <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className="text-gray-500">{t('counting.create.counter1')}</dt>
+            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.counter1')}</dt>
             <dd>{getUserName(data.count_1_user_id)}</dd>
             {data.requires_count_2 && (
               <>
-                <dt className="text-gray-500">{t('counting.create.counter2')}</dt>
+                <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.counter2')}</dt>
                 <dd>{getUserName(data.count_2_user_id)}</dd>
               </>
             )}
             {data.requires_count_3 && (
               <>
-                <dt className="text-gray-500">{t('counting.create.counter3')}</dt>
+                <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.counter3')}</dt>
                 <dd>{getUserName(data.count_3_user_id)}</dd>
               </>
             )}

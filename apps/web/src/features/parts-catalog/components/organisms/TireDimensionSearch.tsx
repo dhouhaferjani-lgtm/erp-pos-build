@@ -11,6 +11,7 @@ import {
   TIRE_RIM_DIAMETERS,
 } from '../../types/catalog'
 import type { CriteriaFilter, EnrichedArticle } from '../../types/catalog'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface TireDimensionSearchProps {
   onArticleSelected: (article: EnrichedArticle) => void
@@ -77,14 +78,14 @@ export function TireDimensionSearch({ onArticleSelected, className }: TireDimens
         <div className="flex items-end gap-2">
           {/* Width */}
           <div className="flex-1">
-            <label htmlFor="tire-width" className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
+            <label htmlFor="tire-width" className={`block text-xs font-medium ${colorTokens.text.subtle} mb-1.5 uppercase tracking-wide`}>
               {t('parts-catalog:tireSize.width')}
             </label>
             <select
               id="tire-width"
               value={width}
               onChange={(e) => { setWidth(e.target.value) }}
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+              className={`w-full rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} px-3 py-2.5 text-sm ${colorTokens.focus.primaryBorder} ${colorTokens.surface.baseOnFocus} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} transition-colors`}
             >
               <option value="">{t('parts-catalog:tireSize.selectWidth')}</option>
               {TIRE_WIDTHS.map((w) => (
@@ -93,18 +94,18 @@ export function TireDimensionSearch({ onArticleSelected, className }: TireDimens
             </select>
           </div>
 
-          <span className="pb-3 text-lg text-gray-300 font-light">/</span>
+          <span className={`pb-3 text-lg ${colorTokens.text.faint} font-light`}>/</span>
 
           {/* Aspect Ratio */}
           <div className="flex-1">
-            <label htmlFor="tire-aspect" className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
+            <label htmlFor="tire-aspect" className={`block text-xs font-medium ${colorTokens.text.subtle} mb-1.5 uppercase tracking-wide`}>
               {t('parts-catalog:tireSize.aspectRatio')}
             </label>
             <select
               id="tire-aspect"
               value={aspect}
               onChange={(e) => { setAspect(e.target.value) }}
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+              className={`w-full rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} px-3 py-2.5 text-sm ${colorTokens.focus.primaryBorder} ${colorTokens.surface.baseOnFocus} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} transition-colors`}
             >
               <option value="">{t('parts-catalog:tireSize.selectAspect')}</option>
               {TIRE_ASPECT_RATIOS.map((a) => (
@@ -113,18 +114,18 @@ export function TireDimensionSearch({ onArticleSelected, className }: TireDimens
             </select>
           </div>
 
-          <span className="pb-3 text-lg text-gray-300 font-light">R</span>
+          <span className={`pb-3 text-lg ${colorTokens.text.faint} font-light`}>R</span>
 
           {/* Rim Diameter */}
           <div className="flex-1">
-            <label htmlFor="tire-rim" className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
+            <label htmlFor="tire-rim" className={`block text-xs font-medium ${colorTokens.text.subtle} mb-1.5 uppercase tracking-wide`}>
               {t('parts-catalog:tireSize.rimDiameter')}
             </label>
             <select
               id="tire-rim"
               value={rim}
               onChange={(e) => { setRim(e.target.value) }}
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+              className={`w-full rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} px-3 py-2.5 text-sm ${colorTokens.focus.primaryBorder} ${colorTokens.surface.baseOnFocus} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing} transition-colors`}
             >
               <option value="">{t('parts-catalog:tireSize.selectRim')}</option>
               {TIRE_RIM_DIAMETERS.map((r) => (
@@ -138,7 +139,7 @@ export function TireDimensionSearch({ onArticleSelected, className }: TireDimens
         <button
           type="submit"
           disabled={!width || !aspect || !rim || isLoading}
-          className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className={`w-full flex items-center justify-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2.5 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
         >
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -164,7 +165,7 @@ export function TireDimensionSearch({ onArticleSelected, className }: TireDimens
               type="button"
               onClick={() => { void fetchNextPage() }}
               disabled={isFetchingNextPage}
-              className="w-full rounded-lg border border-gray-200 py-2.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              className={`w-full rounded-lg border ${colorTokens.border.subtle} py-2.5 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.bgHover} disabled:opacity-50 transition-colors`}
             >
               {isFetchingNextPage
                 ? t('parts-catalog:results.loadingMore')
@@ -176,8 +177,8 @@ export function TireDimensionSearch({ onArticleSelected, className }: TireDimens
 
       {activeFilters.length > 0 && !isLoading && allArticles.length === 0 && (
         <div className="mt-8 text-center">
-          <p className="text-sm text-gray-500">{t('parts-catalog:results.noResults')}</p>
-          <p className="mt-1 text-xs text-gray-400">{t('parts-catalog:results.noResultsHint')}</p>
+          <p className={`text-sm ${colorTokens.text.subtle}`}>{t('parts-catalog:results.noResults')}</p>
+          <p className={`mt-1 text-xs ${colorTokens.text.disabled}`}>{t('parts-catalog:results.noResultsHint')}</p>
         </div>
       )}
     </div>

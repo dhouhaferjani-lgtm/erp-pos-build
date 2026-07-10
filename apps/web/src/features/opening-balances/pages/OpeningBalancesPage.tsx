@@ -15,6 +15,8 @@ import {
 import { useOpeningBatchStatus } from '../api/queries'
 import { openingBatchTypeKey } from '../i18nKeys'
 import type { OpeningBatchType, OpeningBatchStatusInfo, OpeningBatchStatus } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 interface BatchTypeConfig {
   type: OpeningBatchType
@@ -27,26 +29,26 @@ const BATCH_TYPE_CONFIG: BatchTypeConfig[] = [
   {
     type: 'ACCOUNTING',
     icon: <Calculator className="h-6 w-6" />,
-    colorClass: 'text-blue-600',
-    bgClass: 'bg-blue-100',
+    colorClass: `${colorTokens.intent.primary.text}`,
+    bgClass: `${colorTokens.intent.primary.bgSoft}`,
   },
   {
     type: 'INVENTORY',
     icon: <Package className="h-6 w-6" />,
-    colorClass: 'text-green-600',
-    bgClass: 'bg-green-100',
+    colorClass: `${colorTokens.intent.success.text}`,
+    bgClass: `${colorTokens.intent.success.bgSoft}`,
   },
   {
     type: 'AR_OPEN_ITEMS',
     icon: <Users className="h-6 w-6" />,
-    colorClass: 'text-amber-600',
-    bgClass: 'bg-amber-100',
+    colorClass: `${colorTokens.intent.caution.text}`,
+    bgClass: `${colorTokens.intent.caution.bgSoft}`,
   },
   {
     type: 'AP_OPEN_ITEMS',
     icon: <Truck className="h-6 w-6" />,
-    colorClass: 'text-purple-600',
-    bgClass: 'bg-purple-100',
+    colorClass: `${colorTokens.intent.accent.text}`,
+    bgClass: `${colorTokens.intent.accent.bgSoft}`,
   },
 ]
 
@@ -55,7 +57,7 @@ function StatusBadge({ status }: { status: OpeningBatchStatusInfo }) {
 
   if (!status.has_batch) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+      <span className={`inline-flex items-center gap-1 rounded-full ${colorTokens.surface.muted} px-2.5 py-0.5 text-xs font-medium ${colorTokens.text.muted}`}>
         <Clock className="h-3 w-3" />
         {t('openingBalances.status.notStarted')}
       </span>
@@ -66,7 +68,7 @@ function StatusBadge({ status }: { status: OpeningBatchStatusInfo }) {
 
   if (batchStatus === 'LOCKED') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+      <span className={`inline-flex items-center gap-1 rounded-full ${colorTokens.intent.success.bgSoft} px-2.5 py-0.5 text-xs font-medium ${colorTokens.intent.success.textStrong}`}>
         <Lock className="h-3 w-3" />
         {t('openingBalances.status.locked')}
       </span>
@@ -75,7 +77,7 @@ function StatusBadge({ status }: { status: OpeningBatchStatusInfo }) {
 
   if (batchStatus === 'VALIDATED') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+      <span className={`inline-flex items-center gap-1 rounded-full ${colorTokens.intent.primary.bgSoft} px-2.5 py-0.5 text-xs font-medium ${colorTokens.intent.primary.textStrong}`}>
         <CheckCircle className="h-3 w-3" />
         {t('openingBalances.status.validated')}
       </span>
@@ -83,7 +85,7 @@ function StatusBadge({ status }: { status: OpeningBatchStatusInfo }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+    <span className={`inline-flex items-center gap-1 rounded-full ${colorTokens.intent.caution.bgSoft} px-2.5 py-0.5 text-xs font-medium ${colorTokens.intent.caution.textStrong}`}>
       <AlertCircle className="h-3 w-3" />
       {t('openingBalances.status.draft')}
     </span>
@@ -104,7 +106,7 @@ function BatchTypeCard({
   return (
     <Link
       to={`/settings/opening-balances/${config.type.toLowerCase()}`}
-      className="group block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
+      className={`group block rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 shadow-sm transition-all ${colorTokens.intent.primary.hoverBorderSubtle} hover:shadow-md`}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
@@ -112,17 +114,17 @@ function BatchTypeCard({
             {config.icon}
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900 group-hover:text-blue-600">
+            <h3 className={`font-semibold ${colorTokens.text.primary} ${colorTokens.intent.primary.groupTextHover}`}>
               {t(`openingBalances.types.${typeKey}.title`)}
             </h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
               {t(`openingBalances.types.${typeKey}.description`)}
             </p>
             {status && (
               <div className="mt-3 flex items-center gap-3">
                 <StatusBadge status={status} />
                 {status.batch?.rows_count != null && status.batch.rows_count > 0 && (
-                  <span className="text-xs text-gray-500">
+                  <span className={`text-xs ${colorTokens.text.subtle}`}>
                     {t('openingBalances.rowsCount', { count: status.batch.rows_count })}
                   </span>
                 )}
@@ -130,7 +132,7 @@ function BatchTypeCard({
             )}
           </div>
         </div>
-        <ChevronRight className="h-5 w-5 text-gray-400 transition-transform group-hover:translate-x-1 group-hover:text-blue-500" />
+        <ChevronRight className={`h-5 w-5 ${colorTokens.text.disabled} transition-transform group-hover:translate-x-1 ${colorTokens.intent.primary.groupTextHoverSubtle}`} />
       </div>
     </Link>
   )
@@ -140,10 +142,10 @@ export function OpeningBalancesPage() {
   const { t } = useTranslation()
   const { data: statusData, isLoading } = useOpeningBatchStatus()
 
-  // Create a map for easy lookup from the types object
-  const statusMap = new Map<OpeningBatchType, OpeningBatchStatusInfo>()
+  // Create a lookup for easy access from the types object.
+  const batchLookup = new Map<OpeningBatchType, OpeningBatchStatusInfo>()
   if (statusData?.types) {
-    Object.values(statusData.types).forEach((s) => statusMap.set(s.type, s))
+    Object.values(statusData.types).forEach((s) => batchLookup.set(s.type, s))
   }
 
   // Calculate overall progress
@@ -159,39 +161,39 @@ export function OpeningBalancesPage() {
         <div className="flex items-center gap-4">
           <Link
             to="/settings"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('actions.back')}
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Calculator className="h-6 w-6 text-blue-500" />
+            <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary} flex items-center gap-2`}>
+              <Calculator className={`h-6 w-6 ${colorTokens.intent.primary.textSubtle}`} />
               {t('openingBalances.title')}
-            </h1>
-            <p className="text-gray-500">{t('openingBalances.description')}</p>
+            </PageHeaderTitle>
+            <p className={`${colorTokens.text.subtle}`}>{t('openingBalances.description')}</p>
           </div>
         </div>
       </div>
 
       {/* Progress Overview */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('openingBalances.progress.title')}
           </h2>
-          <span className="text-sm text-gray-500">
+          <span className={`text-sm ${colorTokens.text.subtle}`}>
             {t('openingBalances.progress.completed', { locked: lockedCount, total: totalTypes })}
           </span>
         </div>
-        <div className="h-3 w-full rounded-full bg-gray-100">
+        <div className={`h-3 w-full rounded-full ${colorTokens.surface.muted}`}>
           <div
-            className="h-3 rounded-full bg-green-500 transition-all duration-500"
+            className={`h-3 rounded-full ${colorTokens.intent.success.bg} transition-all duration-500`}
             style={{ width: `${progressPercent}%` }}
           />
         </div>
         {progressPercent === 100 && (
-          <div className="mt-3 flex items-center gap-2 text-green-600">
+          <div className={`mt-3 flex items-center gap-2 ${colorTokens.intent.success.text}`}>
             <CheckCircle className="h-5 w-5" />
             <span className="font-medium">{t('openingBalances.progress.allComplete')}</span>
           </div>
@@ -200,7 +202,7 @@ export function OpeningBalancesPage() {
 
       {/* Batch Types Grid */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">
+        <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
           {t('openingBalances.batchTypes')}
         </h2>
         {isLoading ? (
@@ -208,13 +210,13 @@ export function OpeningBalancesPage() {
             {BATCH_TYPE_CONFIG.map((config) => (
               <div
                 key={config.type}
-                className="animate-pulse rounded-lg border border-gray-200 bg-white p-6"
+                className={`animate-pulse rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}
               >
                 <div className="flex items-start gap-4">
-                  <div className="h-12 w-12 rounded-lg bg-gray-200" />
+                  <div className={`h-12 w-12 rounded-lg ${colorTokens.surface.subdued}`} />
                   <div className="flex-1 space-y-2">
-                    <div className="h-5 w-32 rounded bg-gray-200" />
-                    <div className="h-4 w-48 rounded bg-gray-200" />
+                    <div className={`h-5 w-32 rounded ${colorTokens.surface.subdued}`} />
+                    <div className={`h-4 w-48 rounded ${colorTokens.surface.subdued}`} />
                   </div>
                 </div>
               </div>
@@ -226,7 +228,7 @@ export function OpeningBalancesPage() {
               <BatchTypeCard
                 key={config.type}
                 config={config}
-                status={statusMap.get(config.type)}
+                status={batchLookup.get(config.type)}
               />
             ))}
           </div>
@@ -234,14 +236,14 @@ export function OpeningBalancesPage() {
       </div>
 
       {/* How It Works */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+        <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-2`}>
           {t('openingBalances.howItWorks.title')}
         </h2>
-        <p className="text-sm text-gray-600 mb-4">
+        <p className={`text-sm ${colorTokens.text.muted} mb-4`}>
           {t('openingBalances.howItWorks.description')}
         </p>
-        <ol className="list-decimal list-inside space-y-2 text-sm text-gray-600">
+        <ol className={`list-decimal list-inside space-y-2 text-sm ${colorTokens.text.muted}`}>
           <li>{t('openingBalances.howItWorks.step1')}</li>
           <li>{t('openingBalances.howItWorks.step2')}</li>
           <li>{t('openingBalances.howItWorks.step3')}</li>
@@ -251,12 +253,12 @@ export function OpeningBalancesPage() {
       </div>
 
       {/* Important Notes */}
-      <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-        <h3 className="font-medium text-amber-800 mb-2 flex items-center gap-2">
+      <div className={`rounded-lg ${colorTokens.intent.caution.bgSubtle} border ${colorTokens.intent.caution.borderSubtle} p-4`}>
+        <h3 className={`font-medium ${colorTokens.intent.caution.textStronger} mb-2 flex items-center gap-2`}>
           <AlertCircle className="h-5 w-5" />
           {t('openingBalances.notes.title')}
         </h3>
-        <ul className="list-disc list-inside space-y-1 text-sm text-amber-700">
+        <ul className={`list-disc list-inside space-y-1 text-sm ${colorTokens.intent.caution.textStrong}`}>
           <li>{t('openingBalances.notes.note1')}</li>
           <li>{t('openingBalances.notes.note2')}</li>
           <li>{t('openingBalances.notes.note3')}</li>

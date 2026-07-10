@@ -5,6 +5,8 @@ import { AlertTriangle, CheckCircle2, FileSearch, Loader2, Save } from 'lucide-r
 import { getErrorMessage } from '@/lib/api'
 import { tokens, textColors, borderColors, focusRing, colors } from '@/lib/designTokens'
 import { bestEffortParseQuarantine, resolveParseFailure, type BestEffortParseResponse } from '../api/quarantineResolutionApi'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Button } from '@/components/atoms/Button'
 
 export function QuarantineResolveAssistPage() {
   const { t } = useTranslation(['compliance'])
@@ -54,10 +56,10 @@ export function QuarantineResolveAssistPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className={`flex items-center gap-2 text-2xl font-bold ${textColors.primary}`}>
+        <PageHeaderTitle className={`flex items-center gap-2 text-2xl font-bold ${textColors.primary}`}>
           <FileSearch className={`h-6 w-6 ${textColors.tertiary}`} />
           {t('compliance:quarantine.pageTitle')}
-        </h1>
+        </PageHeaderTitle>
         <p className={`mt-1 text-sm ${textColors.tertiary}`}>
           {t('compliance:quarantine.pageSubtitle')}
         </p>
@@ -77,14 +79,14 @@ export function QuarantineResolveAssistPage() {
             placeholder="00000000-0000-4000-8000-000000000000"
             className={`min-w-0 flex-1 rounded-md border ${borderColors.default} px-3 py-2 text-sm shadow-sm ${focusRing.default} ${focusRing.primary}`}
           />
-          <button
+          <Button
             type="submit"
             disabled={parseMutation.isPending || quarantineId.trim().length === 0}
-            className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium ${tokens.button.primary} disabled:cursor-not-allowed disabled:opacity-50`}
+            className="gap-2"
           >
             {parseMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSearch className="h-4 w-4" />}
             {t('compliance:quarantine.parseButton')}
-          </button>
+          </Button>
         </div>
       </form>
 
@@ -186,7 +188,7 @@ export function QuarantineResolveAssistPage() {
                 </p>
               )}
 
-              <button
+              <Button
                 type="button"
                 onClick={handleResolve}
                 disabled={
@@ -194,11 +196,11 @@ export function QuarantineResolveAssistPage() {
                   || result.source !== 'fiscal_events'
                   || result.fiscal_event_id === null
                 }
-                className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium ${tokens.button.primary} disabled:cursor-not-allowed disabled:opacity-50`}
+                className="mt-4 w-full gap-2"
               >
                 {resolveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {t('compliance:quarantine.submitCorrectionButton')}
-              </button>
+              </Button>
             </div>
           </section>
         </div>

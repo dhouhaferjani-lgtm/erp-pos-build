@@ -13,6 +13,7 @@ import {
   fraudAlertsInvalidationPredicate,
 } from '../_invalidation'
 import type { FraudAlert } from '../types/fraudAlerts'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface AssignModalProps {
   alert: FraudAlert
@@ -63,12 +64,12 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
 
   return (
     <Modal isOpen onClose={onClose} size="md">
-      <ModalHeader onClose={onClose} className="border-b border-gray-200 pb-4">
+      <ModalHeader onClose={onClose} className={`border-b ${colorTokens.border.subtle} pb-4`}>
         <div className="flex items-center gap-3">
-          <div className="rounded-lg p-2 bg-blue-100 border border-blue-200">
-            <UserPlus className="h-5 w-5 text-blue-600" />
+          <div className={`rounded-lg p-2 ${colorTokens.intent.primary.bgSoft} border ${colorTokens.intent.primary.borderSubtleSoft}`}>
+            <UserPlus className={`h-5 w-5 ${colorTokens.intent.primary.text}`} />
           </div>
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('compliance:fraudAlerts.modals.assign.title')}
           </h2>
         </div>
@@ -76,16 +77,16 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
 
       <form onSubmit={handleSubmit}>
         <ModalContent className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className={`text-sm ${colorTokens.text.muted}`}>
             {t('compliance:fraudAlerts.modals.assign.selectUser')}
           </p>
 
           <div>
-            <label htmlFor="assignee" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="assignee" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-2`}>
               {t('compliance:fraudAlerts.detail.assignedTo')}
             </label>
             {loadingUsers ? (
-              <div className="text-center text-sm text-gray-500 py-2">
+              <div className={`text-center text-sm ${colorTokens.text.subtle} py-2`}>
                 {t('common:loading')}
               </div>
             ) : (
@@ -93,7 +94,7 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
                 id="assignee"
                 value={selectedUserId}
                 onChange={(e) => { setSelectedUserId(e.target.value); }}
-                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className={`block w-full rounded-lg ${colorTokens.border.default} shadow-sm ${colorTokens.focus.primaryBorder} ${colorTokens.focus.primaryRing}`}
                 required
               >
                 <option value="">{t('common:actions.select')}</option>
@@ -111,14 +112,14 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            className={`px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.surface.base} border ${colorTokens.border.default} rounded-lg ${colorTokens.intent.neutral.bgHover}`}
           >
             {t('common:actions.cancel')}
           </button>
           <button
             type="submit"
             disabled={assignMutation.isPending || !selectedUserId}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className={`px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} rounded-lg ${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50`}
           >
             {assignMutation.isPending ? t('common:actions.saving') : t('compliance:fraudAlerts.actions.assign')}
           </button>
@@ -167,12 +168,12 @@ export function DismissAlertModal({ alert, onClose }: DismissModalProps) {
 
   return (
     <Modal isOpen onClose={onClose} size="md">
-      <ModalHeader onClose={onClose} className="border-b border-gray-200 pb-4">
+      <ModalHeader onClose={onClose} className={`border-b ${colorTokens.border.subtle} pb-4`}>
         <div className="flex items-center gap-3">
-          <div className="rounded-lg p-2 bg-gray-100 border border-gray-200">
-            <XCircle className="h-5 w-5 text-gray-600" />
+          <div className={`rounded-lg p-2 ${colorTokens.surface.muted} border ${colorTokens.border.subtle}`}>
+            <XCircle className={`h-5 w-5 ${colorTokens.text.muted}`} />
           </div>
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('compliance:fraudAlerts.modals.dismiss.title')}
           </h2>
         </div>
@@ -181,7 +182,7 @@ export function DismissAlertModal({ alert, onClose }: DismissModalProps) {
       <form onSubmit={handleSubmit}>
         <ModalContent className="space-y-4">
           <div>
-            <label htmlFor="dismissNotes" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="dismissNotes" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-2`}>
               {t('compliance:fraudAlerts.modals.dismiss.notesLabel')}
             </label>
             <textarea
@@ -190,7 +191,7 @@ export function DismissAlertModal({ alert, onClose }: DismissModalProps) {
               onChange={(e) => { setNotes(e.target.value); }}
               placeholder={t('compliance:fraudAlerts.modals.dismiss.notesPlaceholder')}
               rows={4}
-              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className={`block w-full rounded-lg ${colorTokens.border.default} shadow-sm ${colorTokens.focus.primaryBorder} ${colorTokens.focus.primaryRing}`}
               required
             />
           </div>
@@ -200,14 +201,14 @@ export function DismissAlertModal({ alert, onClose }: DismissModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            className={`px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.surface.base} border ${colorTokens.border.default} rounded-lg ${colorTokens.intent.neutral.bgHover}`}
           >
             {t('common:actions.cancel')}
           </button>
           <button
             type="submit"
             disabled={dismissMutation.isPending || !notes.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-gray-600 rounded-lg hover:bg-gray-700 disabled:opacity-50"
+            className={`px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.neutral.bgStrong} rounded-lg ${colorTokens.intent.neutral.bgStrongHover} disabled:opacity-50`}
           >
             {dismissMutation.isPending ? t('common:actions.saving') : t('compliance:fraudAlerts.actions.dismiss')}
           </button>
@@ -256,12 +257,12 @@ export function ResolveAlertModal({ alert, onClose }: ResolveModalProps) {
 
   return (
     <Modal isOpen onClose={onClose} size="md">
-      <ModalHeader onClose={onClose} className="border-b border-gray-200 pb-4">
+      <ModalHeader onClose={onClose} className={`border-b ${colorTokens.border.subtle} pb-4`}>
         <div className="flex items-center gap-3">
-          <div className="rounded-lg p-2 bg-green-100 border border-green-200">
-            <CheckCircle className="h-5 w-5 text-green-600" />
+          <div className={`rounded-lg p-2 ${colorTokens.intent.success.bgSoft} border ${colorTokens.intent.success.borderSubtle}`}>
+            <CheckCircle className={`h-5 w-5 ${colorTokens.intent.success.text}`} />
           </div>
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('compliance:fraudAlerts.modals.resolve.title')}
           </h2>
         </div>
@@ -270,7 +271,7 @@ export function ResolveAlertModal({ alert, onClose }: ResolveModalProps) {
       <form onSubmit={handleSubmit}>
         <ModalContent className="space-y-4">
           <div>
-            <label htmlFor="resolveNotes" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="resolveNotes" className={`block text-sm font-medium ${colorTokens.text.secondary} mb-2`}>
               {t('compliance:fraudAlerts.modals.resolve.notesLabel')}
             </label>
             <textarea
@@ -279,7 +280,7 @@ export function ResolveAlertModal({ alert, onClose }: ResolveModalProps) {
               onChange={(e) => { setNotes(e.target.value); }}
               placeholder={t('compliance:fraudAlerts.modals.resolve.notesPlaceholder')}
               rows={4}
-              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className={`block w-full rounded-lg ${colorTokens.border.default} shadow-sm ${colorTokens.focus.primaryBorder} ${colorTokens.focus.primaryRing}`}
               required
             />
           </div>
@@ -289,14 +290,14 @@ export function ResolveAlertModal({ alert, onClose }: ResolveModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            className={`px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.surface.base} border ${colorTokens.border.default} rounded-lg ${colorTokens.intent.neutral.bgHover}`}
           >
             {t('common:actions.cancel')}
           </button>
           <button
             type="submit"
             disabled={resolveMutation.isPending || !notes.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
+            className={`px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.success.bgStrong} rounded-lg ${colorTokens.intent.success.bgStrongHover} disabled:opacity-50`}
           >
             {resolveMutation.isPending ? t('common:actions.saving') : t('compliance:fraudAlerts.actions.resolve')}
           </button>

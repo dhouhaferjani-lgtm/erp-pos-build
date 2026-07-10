@@ -12,12 +12,15 @@ import {
   Users,
   Settings,
 } from 'lucide-react'
-import { CountingStatusBadge, CancelCountingDialog } from '../components'
+import { CountingStatusBadge } from '../components/CountingStatusBadge'
+import { CancelCountingDialog } from '../components/CancelCountingDialog'
 import {
   useCountingDetail,
   useActivateCounting,
   useCancelCounting,
 } from '../api/queries'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 export function CountingDetailPage() {
   const { t } = useTranslation('inventory')
@@ -32,7 +35,7 @@ export function CountingDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8 text-center text-gray-500">
+      <div className={`p-8 text-center ${colorTokens.text.subtle}`}>
         {t('loading')}...
       </div>
     )
@@ -41,10 +44,10 @@ export function CountingDetailPage() {
   if (error || !counting) {
     return (
       <div className="p-8 text-center">
-        <p className="text-red-600 mb-4">{t('error')}</p>
+        <p className={`${colorTokens.intent.danger.text} mb-4`}>{t('error')}</p>
         <Link
           to="/inventory/counting"
-          className="text-blue-600 hover:text-blue-700"
+          className={`${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrong}`}
         >
           {t('back')}
         </Link>
@@ -81,18 +84,18 @@ export function CountingDetailPage() {
         <div>
           <Link
             to="/inventory/counting"
-            className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-2"
+            className={`inline-flex items-center text-sm ${colorTokens.text.subtle} ${colorTokens.intent.neutral.textHoverStrong} mb-2`}
           >
             <ArrowLeft className="w-4 h-4 me-1" />
             {t('back')}
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">
+            <PageHeaderTitle className="text-2xl font-bold">
               {t(`counting.scopeTypes.${counting.scope_type}`)} {t('counting.count')}{' '}
-              <span className="text-gray-500 font-mono text-lg">
+              <span className={`${colorTokens.text.subtle} font-mono text-lg`}>
                 #{counting.id.slice(0, 8)}
               </span>
-            </h1>
+            </PageHeaderTitle>
             <CountingStatusBadge status={counting.status} />
           </div>
         </div>
@@ -104,7 +107,7 @@ export function CountingDetailPage() {
               type="button"
               onClick={handleActivate}
               disabled={activateCounting.isPending}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50"
+              className={`inline-flex items-center px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.success.bgStrong} rounded-md ${colorTokens.intent.success.bgStrongHover} disabled:opacity-50`}
             >
               <Play className="w-4 h-4 me-2" />
               {t('counting.actions.activate')}
@@ -113,7 +116,7 @@ export function CountingDetailPage() {
           {canReview && (
             <Link
               to={`/inventory/counting/${String(countingId)}/review`}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+              className={`inline-flex items-center px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} rounded-md ${colorTokens.intent.primary.bgStrongHover}`}
             >
               <ClipboardList className="w-4 h-4 me-2" />
               {t('counting.actions.review')}
@@ -121,7 +124,7 @@ export function CountingDetailPage() {
           )}
           <Link
             to={`/inventory/counting/${String(countingId)}/report`}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium border border-gray-300 rounded-md hover:bg-gray-50"
+            className={`inline-flex items-center px-4 py-2 text-sm font-medium border ${colorTokens.border.default} rounded-md ${colorTokens.intent.neutral.bgHover}`}
           >
             <FileText className="w-4 h-4 me-2" />
             {t('counting.actions.viewReport')}
@@ -130,7 +133,7 @@ export function CountingDetailPage() {
             <button
               type="button"
               onClick={() => { setShowCancelDialog(true); }}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium text-red-600 border border-red-300 rounded-md hover:bg-red-50"
+              className={`inline-flex items-center px-4 py-2 text-sm font-medium ${colorTokens.intent.danger.text} border ${colorTokens.intent.danger.borderSubtle} rounded-md ${colorTokens.intent.danger.bgHover}`}
             >
               <XCircle className="w-4 h-4 me-2" />
               {t('counting.actions.cancel')}
@@ -144,7 +147,7 @@ export function CountingDetailPage() {
         {/* Main Info */}
         <div className="lg:col-span-2 space-y-6">
           {/* Progress */}
-          <div className="bg-white rounded-lg border p-6">
+          <div className={`${colorTokens.surface.base} rounded-lg border p-6`}>
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Clock className="w-5 h-5" />
               {t('counting.detail.progress')}
@@ -156,9 +159,9 @@ export function CountingDetailPage() {
                 <span>{t('counting.overallProgress')}</span>
                 <span className="font-medium">{counting.progress.overall}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
+              <div className={`w-full ${colorTokens.surface.subdued} rounded-full h-3`}>
                 <div
-                  className="bg-blue-600 h-3 rounded-full transition-all"
+                  className={`${colorTokens.intent.primary.bgStrong} h-3 rounded-full transition-all`}
                   style={{ width: `${String(counting.progress.overall)}%` }}
                 />
               </div>
@@ -192,39 +195,39 @@ export function CountingDetailPage() {
 
           {/* Instructions */}
           {counting.instructions && (
-            <div className="bg-white rounded-lg border p-6">
+            <div className={`${colorTokens.surface.base} rounded-lg border p-6`}>
               <h2 className="text-lg font-semibold mb-4">
                 {t('counting.detail.instructions')}
               </h2>
-              <p className="text-gray-600 whitespace-pre-wrap">
+              <p className={`${colorTokens.text.muted} whitespace-pre-wrap`}>
                 {counting.instructions}
               </p>
             </div>
           )}
 
           {/* Assignments */}
-          <div className="bg-white rounded-lg border p-6">
+          <div className={`${colorTokens.surface.base} rounded-lg border p-6`}>
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Users className="w-5 h-5" />
               {t('counting.detail.assignments')}
             </h2>
 
             {(counting.assignments ?? []).length === 0 ? (
-              <p className="text-gray-500">{t('counting.detail.noAssignments')}</p>
+              <p className={`${colorTokens.text.subtle}`}>{t('counting.detail.noAssignments')}</p>
             ) : (
               <div className="space-y-3">
                 {(counting.assignments ?? []).map((assignment) => (
                   <div
                     key={assignment.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    className={`flex items-center justify-between p-3 ${colorTokens.surface.page} rounded-lg`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center font-medium">
+                      <div className={`w-10 h-10 rounded-full ${colorTokens.surface.disabled} flex items-center justify-center font-medium`}>
                         {assignment.user.name.charAt(0)}
                       </div>
                       <div>
                         <div className="font-medium">{assignment.user.name}</div>
-                        <div className="text-sm text-gray-500">
+                        <div className={`text-sm ${colorTokens.text.subtle}`}>
                           {t(`counting.counter${String(assignment.count_number)}`)}
                         </div>
                       </div>
@@ -233,7 +236,7 @@ export function CountingDetailPage() {
                       <div className="text-sm font-medium">
                         {assignment.counted_items} / {assignment.total_items}
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className={`text-xs ${colorTokens.text.subtle}`}>
                         {assignment.progress_percentage}%
                       </div>
                     </div>
@@ -247,7 +250,7 @@ export function CountingDetailPage() {
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Configuration */}
-          <div className="bg-white rounded-lg border p-6">
+          <div className={`${colorTokens.surface.base} rounded-lg border p-6`}>
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Settings className="w-5 h-5" />
               {t('counting.detail.configuration')}
@@ -255,19 +258,19 @@ export function CountingDetailPage() {
 
             <dl className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <dt className="text-gray-500">{t('counting.detail.scope')}</dt>
+                <dt className={`${colorTokens.text.subtle}`}>{t('counting.detail.scope')}</dt>
                 <dd className="font-medium">
                   {t(`counting.scopeTypes.${counting.scope_type}`)}
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-500">{t('counting.detail.mode')}</dt>
+                <dt className={`${colorTokens.text.subtle}`}>{t('counting.detail.mode')}</dt>
                 <dd className="font-medium">
                   {t(`counting.executionModes.${counting.execution_mode}`)}
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-500">{t('counting.detail.countsRequired')}</dt>
+                <dt className={`${colorTokens.text.subtle}`}>{t('counting.detail.countsRequired')}</dt>
                 <dd className="font-medium">
                   {1 +
                     (counting.requires_count_2 ? 1 : 0) +
@@ -275,7 +278,7 @@ export function CountingDetailPage() {
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-500">
+                <dt className={`${colorTokens.text.subtle}`}>
                   {t('counting.detail.allowUnexpected')}
                 </dt>
                 <dd className="font-medium">
@@ -288,21 +291,21 @@ export function CountingDetailPage() {
           </div>
 
           {/* Timeline */}
-          <div className="bg-white rounded-lg border p-6">
+          <div className={`${colorTokens.surface.base} rounded-lg border p-6`}>
             <h2 className="text-lg font-semibold mb-4">
               {t('counting.detail.timeline')}
             </h2>
 
             <dl className="space-y-3 text-sm">
               <div>
-                <dt className="text-gray-500">{t('counting.detail.created')}</dt>
+                <dt className={`${colorTokens.text.subtle}`}>{t('counting.detail.created')}</dt>
                 <dd className="font-medium">
                   {format(new Date(counting.created_at), 'MMM d, yyyy h:mm a')}
                 </dd>
               </div>
               {counting.scheduled_start && (
                 <div>
-                  <dt className="text-gray-500">
+                  <dt className={`${colorTokens.text.subtle}`}>
                     {t('counting.detail.scheduledStart')}
                   </dt>
                   <dd className="font-medium">
@@ -315,7 +318,7 @@ export function CountingDetailPage() {
               )}
               {counting.scheduled_end && (
                 <div>
-                  <dt className="text-gray-500">
+                  <dt className={`${colorTokens.text.subtle}`}>
                     {t('counting.detail.scheduledEnd')}
                   </dt>
                   <dd className="font-medium">
@@ -328,7 +331,7 @@ export function CountingDetailPage() {
               )}
               {counting.activated_at && (
                 <div>
-                  <dt className="text-gray-500">
+                  <dt className={`${colorTokens.text.subtle}`}>
                     {t('counting.detail.activated')}
                   </dt>
                   <dd className="font-medium">
@@ -341,7 +344,7 @@ export function CountingDetailPage() {
               )}
               {counting.finalized_at && (
                 <div>
-                  <dt className="text-gray-500">
+                  <dt className={`${colorTokens.text.subtle}`}>
                     {t('counting.detail.finalized')}
                   </dt>
                   <dd className="font-medium">
@@ -354,17 +357,17 @@ export function CountingDetailPage() {
               )}
               {counting.cancelled_at && (
                 <div>
-                  <dt className="text-gray-500">
+                  <dt className={`${colorTokens.text.subtle}`}>
                     {t('counting.detail.cancelled')}
                   </dt>
-                  <dd className="font-medium text-red-600">
+                  <dd className={`font-medium ${colorTokens.intent.danger.text}`}>
                     {format(
                       new Date(counting.cancelled_at),
                       'MMM d, yyyy h:mm a'
                     )}
                   </dd>
                   {counting.cancellation_reason && (
-                    <dd className="text-sm text-gray-500 mt-1">
+                    <dd className={`text-sm ${colorTokens.text.subtle} mt-1`}>
                       {counting.cancellation_reason}
                     </dd>
                   )}
@@ -374,17 +377,17 @@ export function CountingDetailPage() {
           </div>
 
           {/* Created By */}
-          <div className="bg-white rounded-lg border p-6">
+          <div className={`${colorTokens.surface.base} rounded-lg border p-6`}>
             <h2 className="text-lg font-semibold mb-4">
               {t('counting.detail.createdBy')}
             </h2>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center font-medium">
+              <div className={`w-10 h-10 rounded-full ${colorTokens.surface.disabled} flex items-center justify-center font-medium`}>
                 {counting.created_by.name.charAt(0)}
               </div>
               <div>
                 <div className="font-medium">{counting.created_by.name}</div>
-                <div className="text-sm text-gray-500">
+                <div className={`text-sm ${colorTokens.text.subtle}`}>
                   {counting.created_by.email}
                 </div>
               </div>
@@ -415,7 +418,7 @@ function CounterProgressRow({ label, user, progress }: CounterProgressRowProps) 
 
   return (
     <div className="flex items-center gap-4">
-      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium">
+      <div className={`w-8 h-8 rounded-full ${colorTokens.surface.subdued} flex items-center justify-center text-sm font-medium`}>
         {user?.name.charAt(0) ?? '?'}
       </div>
       <div className="flex-1">
@@ -423,16 +426,16 @@ function CounterProgressRow({ label, user, progress }: CounterProgressRowProps) 
           <span className="text-sm font-medium">{user?.name || label}</span>
           <span
             className={`text-sm font-medium ${
-              isComplete ? 'text-green-600' : 'text-gray-600'
+              isComplete ? `${colorTokens.intent.success.text}` : `${colorTokens.text.muted}`
             }`}
           >
             {progress.counted} / {progress.total} ({progress.percentage}%)
           </span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        <div className={`w-full ${colorTokens.surface.subdued} rounded-full h-2`}>
           <div
             className={`h-2 rounded-full transition-all ${
-              isComplete ? 'bg-green-500' : 'bg-blue-500'
+              isComplete ? `${colorTokens.intent.success.bg}` : `${colorTokens.intent.primary.bg}`
             }`}
             style={{ width: `${String(progress.percentage)}%` }}
           />

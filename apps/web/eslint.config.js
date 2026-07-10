@@ -309,7 +309,7 @@ export default tseslint.config(
       ],
     },
   },
-  // Wave 5 design-system sweep: documents/admin have been reduced to 0
+  // Wave 5 design-system sweep: migrated directories have been reduced to 0
   // hardcoded color literals in production source. Keep the broader
   // C7-equivalent utility/palette regex as ERROR here so the next sweep does
   // not inherit regressions.
@@ -317,6 +317,13 @@ export default tseslint.config(
     files: [
       'src/features/documents/**/*.{ts,tsx}',
       'src/features/admin/**/*.{ts,tsx}',
+      'src/features/import/**/*.{ts,tsx}',
+      'src/features/inventory-counting/**/*.{ts,tsx}',
+      'src/features/opening-balances/**/*.{ts,tsx}',
+      'src/features/partners/**/*.{ts,tsx}',
+      'src/features/compliance/**/*.{ts,tsx}',
+      'src/features/loyalty/**/*.{ts,tsx}',
+      'src/features/parts-catalog/**/*.{ts,tsx}',
     ],
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', '**/*.stories.{ts,tsx}'],
     rules: {
@@ -324,11 +331,11 @@ export default tseslint.config(
         'error',
         {
           selector: 'Literal[value=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone|sky|violet|teal|cyan|lime|fuchsia)-(\\d{2,3})\\b/]',
-          message: 'Hardcoded Tailwind color classes are not allowed in documents/admin. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*).',
+          message: 'Hardcoded Tailwind color classes are not allowed in Wave 5 migrated directories. Use semantic design tokens from lib/designTokens.ts.',
         },
         {
           selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone|sky|violet|teal|cyan|lime|fuchsia)-(\\d{2,3})\\b/]',
-          message: 'Hardcoded Tailwind color classes are not allowed in documents/admin. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*).',
+          message: 'Hardcoded Tailwind color classes are not allowed in Wave 5 migrated directories. Use semantic design tokens from lib/designTokens.ts.',
         },
       ],
     },

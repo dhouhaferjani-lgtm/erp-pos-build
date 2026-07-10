@@ -17,6 +17,19 @@ export interface PageHeaderProps {
   className?: string
 }
 
+export interface PageHeaderTitleProps {
+  children: React.ReactNode
+  className?: string
+}
+
+export function PageHeaderTitle({ children, className }: PageHeaderTitleProps) {
+  return (
+    <h1 className={cn('text-2xl font-bold', textColors.primary, className)}>
+      {children}
+    </h1>
+  )
+}
+
 /**
  * Standard page title block used at the top of every feature page.
  *
@@ -38,9 +51,7 @@ export function PageHeader({
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className={cn('text-2xl font-bold', textColors.primary)}>
-            {title}
-          </h1>
+          <PageHeaderTitle>{title}</PageHeaderTitle>
           {subtitle ? (
             <p className={cn('mt-1', textColors.tertiary)}>{subtitle}</p>
           ) : null}

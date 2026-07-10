@@ -13,6 +13,8 @@ import { useUnsavedChangesGuard, confirmDiscard } from '@/hooks/useUnsavedChange
 
 import { useMember, useCreateMember, useUpdateMember } from '../hooks/useMembers'
 import type { CreateMemberData } from '../types/loyalty'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 const memberSchema = z.object({
   phone: z.string().min(1),
@@ -107,7 +109,7 @@ export function MemberFormPage() {
   }
 
   if (isEditing && isLoadingMember) {
-    return <div className="text-center py-12 text-gray-500">{t('common:loading')}</div>
+    return <div className={`text-center py-12 ${colorTokens.text.subtle}`}>{t('common:loading')}</div>
   }
 
   const isSaving = createMutation.isPending || updateMutation.isPending
@@ -118,18 +120,18 @@ export function MemberFormPage() {
         <button
           type="button"
           onClick={cancel}
-          className="p-2 rounded-lg hover:bg-gray-100"
+          className={`p-2 rounded-lg ${colorTokens.intent.neutral.bgHoverSoft}`}
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
           {isEditing ? t('loyalty:members.edit') : t('loyalty:members.create')}
-        </h1>
+        </PageHeaderTitle>
       </div>
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 pb-24">
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">{t('loyalty:sections.basicInfo')}</h2>
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{t('loyalty:sections.basicInfo')}</h2>
 
           <FormField
             label={t('loyalty:fields.phone')}

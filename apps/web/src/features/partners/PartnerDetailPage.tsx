@@ -27,7 +27,7 @@ import { usePartnerBalanceRealtime } from './hooks/usePartnerBalanceRealtime'
 import { usePartnerDeposits } from './hooks/usePartnerDeposits'
 import { RecordDepositModal } from './RecordDepositModal'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/molecules/Tabs'
-import { AddVehicleModal } from '../../components/organisms'
+import { AddVehicleModal } from '../../components/organisms/AddVehicleModal/AddVehicleModal'
 import { VehiclesTab } from '../vehicles/components/organisms/VehiclesTab'
 import { usePartnerVehicles } from '../vehicles/hooks/usePartnerVehicles'
 import { partnerVehiclesInvalidationPredicate } from './_invalidation'
@@ -35,6 +35,9 @@ import { useCompanyConfig } from '@/contexts'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { usePermissions } from '@/hooks/usePermissions'
 import { PartnerLoyaltyCard } from '@/features/loyalty'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 interface PartnerAccountBalance {
   partner_id: string
@@ -93,24 +96,24 @@ interface PaymentsResponse {
 }
 
 const typeColors = {
-  customer: 'bg-blue-100 text-blue-800',
-  supplier: 'bg-purple-100 text-purple-800',
-  both: 'bg-green-100 text-green-800',
+  customer: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`,
+  supplier: `${colorTokens.intent.accent.bgSoft} ${colorTokens.intent.accent.textStronger}`,
+  both: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`,
 }
 
 const documentTypeColors: Record<string, string> = {
-  quote: 'bg-yellow-100 text-yellow-800',
-  sales_order: 'bg-blue-100 text-blue-800',
-  invoice: 'bg-green-100 text-green-800',
-  credit_note: 'bg-red-100 text-red-800',
-  purchase_order: 'bg-purple-100 text-purple-800',
+  quote: `${colorTokens.intent.warning.bgSoft} ${colorTokens.intent.warning.textStronger}`,
+  sales_order: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`,
+  invoice: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`,
+  credit_note: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger}`,
+  purchase_order: `${colorTokens.intent.accent.bgSoft} ${colorTokens.intent.accent.textStronger}`,
 }
 
-const statusColors: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-800',
-  confirmed: 'bg-blue-100 text-blue-800',
-  posted: 'bg-green-100 text-green-800',
-  cancelled: 'bg-red-100 text-red-800',
+const documentWorkflowClasses: Record<string, string> = {
+  draft: `${colorTokens.surface.muted} ${colorTokens.text.strong}`,
+  confirmed: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger}`,
+  posted: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`,
+  cancelled: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger}`,
 }
 
 const PARTNER_DETAIL_TABS = ['overview', 'documents', 'payments', 'vehicles', 'deposits'] as const
@@ -250,7 +253,7 @@ export function PartnerDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('status.loading')}</div>
+        <div className={`${colorTokens.text.subtle}`}>{t('status.loading')}</div>
       </div>
     )
   }
@@ -260,12 +263,12 @@ export function PartnerDetailPage() {
       <div className="space-y-4">
         <Link
           to={basePath}
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('actions.back')}
         </Link>
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+        <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4 ${colorTokens.intent.danger.textStrong}`}>
           {t('common:partner.notFoundError', { entity: entityLabel })}
         </div>
       </div>
@@ -291,14 +294,14 @@ export function PartnerDetailPage() {
         <div className="flex items-center gap-4">
           <Link
             to={basePath}
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('actions.back')}
           </Link>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">{partner.name}</h1>
+              <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{partner.name}</PageHeaderTitle>
               <span
                 className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${typeColors[partner.type]}`}
               >
@@ -306,7 +309,7 @@ export function PartnerDetailPage() {
               </span>
               <span
                 className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  partner.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                  partner.is_active ? `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}` : `${colorTokens.surface.muted} ${colorTokens.text.strong}`
                 }`}
               >
                 {partner.is_active ? t('status.active') : t('status.inactive')}
@@ -319,14 +322,14 @@ export function PartnerDetailPage() {
             <>
               <Link
                 to={`/sales/quotes/new?customer=${partner.id}`}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors`}
               >
                 <FileText className="h-4 w-4" />
                 {t('actions.newQuote')}
               </Link>
               <Link
                 to={`/sales/invoices/new?customer=${partner.id}`}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors`}
               >
                 <Receipt className="h-4 w-4" />
                 {t('actions.newInvoice')}
@@ -334,7 +337,7 @@ export function PartnerDetailPage() {
               <button
                 type="button"
                 onClick={() => { setShowDepositModal(true); }}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors`}
               >
                 <Wallet className="h-4 w-4" />
                 {t('deposits:recordButton')}
@@ -344,7 +347,7 @@ export function PartnerDetailPage() {
           {isSupplierContext && (
             <Link
               to={`/purchases/orders/new?supplier=${partner.id}`}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors`}
             >
               <FileText className="h-4 w-4" />
               {t('actions.newPurchaseOrder')}
@@ -352,7 +355,7 @@ export function PartnerDetailPage() {
           )}
           <Link
             to={`${basePath}/${partner.id}/edit`}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} transition-colors`}
           >
             <Edit className="h-4 w-4" />
             {t('actions.edit')}
@@ -388,17 +391,17 @@ export function PartnerDetailPage() {
         <TabsContent value="overview" className="mt-6">
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Balance Card */}
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
-              <h2 className="mb-4 text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-gray-400" />
+            <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+              <h2 className={`mb-4 text-lg font-semibold ${colorTokens.text.primary} flex items-center gap-2`}>
+                <DollarSign className={`h-5 w-5 ${colorTokens.text.disabled}`} />
                 {t('sections.balance')}
               </h2>
               <dl className="space-y-3">
                 {/* Total Receivable - for customers */}
                 {isCustomerContext && (
                   <div className="flex justify-between">
-                    <dt className="text-sm text-gray-500">{t('fields.totalReceivable')}</dt>
-                    <dd className="text-sm font-medium text-gray-900">
+                    <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('fields.totalReceivable')}</dt>
+                    <dd className={`text-sm font-medium ${colorTokens.text.primary}`}>
                       {formatAmount(partner.receivable_balance ?? '0')}
                     </dd>
                   </div>
@@ -407,8 +410,8 @@ export function PartnerDetailPage() {
                 {/* Total Payable - for suppliers */}
                 {isSupplierContext && (
                   <div className="flex justify-between">
-                    <dt className="text-sm text-gray-500">{t('fields.totalPayable')}</dt>
-                    <dd className="text-sm font-medium text-gray-900">
+                    <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('fields.totalPayable')}</dt>
+                    <dd className={`text-sm font-medium ${colorTokens.text.primary}`}>
                       {formatAmount(partner.payable_balance ?? '0')}
                     </dd>
                   </div>
@@ -417,17 +420,17 @@ export function PartnerDetailPage() {
                 {/* Unallocated Balance / Credit */}
                 {accountBalance && bccomp(accountBalance.unallocated_balance, '0') > 0 && (
                   <>
-                    <div className="border-t border-gray-100 pt-3">
+                    <div className={`border-t ${colorTokens.border.hairline} pt-3`}>
                       <div className="flex justify-between items-center">
-                        <dt className="text-sm text-gray-500 flex items-center gap-2">
-                          <Wallet className="h-4 w-4 text-green-500" />
+                        <dt className={`text-sm ${colorTokens.text.subtle} flex items-center gap-2`}>
+                          <Wallet className={`h-4 w-4 ${colorTokens.intent.success.textSubtle}`} />
                           {t('partner.unallocatedBalance')}
                         </dt>
-                        <dd className="text-sm font-medium text-green-600">
+                        <dd className={`text-sm font-medium ${colorTokens.intent.success.text}`}>
                           {formatAmount(accountBalance.unallocated_balance)}
                         </dd>
                       </div>
-                      <p className="mt-1 text-xs text-gray-400">
+                      <p className={`mt-1 text-xs ${colorTokens.text.disabled}`}>
                         {t('partner.unallocatedBalanceHint', { count: accountBalance.deposit_count })}
                       </p>
                     </div>
@@ -436,8 +439,8 @@ export function PartnerDetailPage() {
 
                 {/* On Account Credit */}
                 {accountBalance && bccomp(accountBalance.unallocated_balance, '0') > 0 && (
-                  <div className="bg-green-50 -mx-2 px-2 py-2 rounded">
-                    <div className="flex items-center gap-2 text-green-700">
+                  <div className={`${colorTokens.intent.success.bgSubtle} -mx-2 px-2 py-2 rounded`}>
+                    <div className={`flex items-center gap-2 ${colorTokens.intent.success.textStrong}`}>
                       <PiggyBank className="h-4 w-4" />
                       <span className="text-xs font-medium">{t('partner.creditAvailable')}</span>
                     </div>
@@ -448,7 +451,7 @@ export function PartnerDetailPage() {
                 {(!accountBalance || bccomp(accountBalance.unallocated_balance, '0') === 0) &&
                  bccomp(partner.receivable_balance ?? '0', '0') === 0 &&
                  bccomp(partner.payable_balance ?? '0', '0') === 0 && (
-                  <div className="text-sm text-gray-400 text-center py-2">
+                  <div className={`text-sm ${colorTokens.text.disabled} text-center py-2`}>
                     {t('partner.noBalance')}
                   </div>
                 )}
@@ -456,35 +459,35 @@ export function PartnerDetailPage() {
             </div>
 
             {/* Contact Information */}
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
-              <h2 className="mb-4 text-lg font-semibold text-gray-900">
+            <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+              <h2 className={`mb-4 text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('sections.contactInfo')}
               </h2>
               <dl className="space-y-4">
                 {partner.email && (
                   <div className="flex items-start gap-3">
-                    <Mail className="mt-0.5 h-5 w-5 text-gray-400" />
+                    <Mail className={`mt-0.5 h-5 w-5 ${colorTokens.text.disabled}`} />
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">{t('fields.email')}</dt>
-                      <dd className="text-gray-900">{partner.email}</dd>
+                      <dt className={`text-sm font-medium ${colorTokens.text.subtle}`}>{t('fields.email')}</dt>
+                      <dd className={`${colorTokens.text.primary}`}>{partner.email}</dd>
                     </div>
                   </div>
                 )}
                 {partner.phone && (
                   <div className="flex items-start gap-3">
-                    <Phone className="mt-0.5 h-5 w-5 text-gray-400" />
+                    <Phone className={`mt-0.5 h-5 w-5 ${colorTokens.text.disabled}`} />
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">{t('fields.phone')}</dt>
-                      <dd className="text-gray-900">{partner.phone}</dd>
+                      <dt className={`text-sm font-medium ${colorTokens.text.subtle}`}>{t('fields.phone')}</dt>
+                      <dd className={`${colorTokens.text.primary}`}>{partner.phone}</dd>
                     </div>
                   </div>
                 )}
                 {addressLines.length > 0 && (
                   <div className="flex items-start gap-3">
-                    <Building2 className="mt-0.5 h-5 w-5 text-gray-400" />
+                    <Building2 className={`mt-0.5 h-5 w-5 ${colorTokens.text.disabled}`} />
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">{t('fields.address')}</dt>
-                      <dd className="text-gray-900">
+                      <dt className={`text-sm font-medium ${colorTokens.text.subtle}`}>{t('fields.address')}</dt>
+                      <dd className={`${colorTokens.text.primary}`}>
                         {addressLines.map((line) => (
                           <div key={line}>{line}</div>
                         ))}
@@ -496,22 +499,22 @@ export function PartnerDetailPage() {
             </div>
 
             {/* Business Information */}
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
-              <h2 className="mb-4 text-lg font-semibold text-gray-900">
+            <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+              <h2 className={`mb-4 text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('sections.businessInfo')}
               </h2>
               <dl className="space-y-4">
                 {partner.vat_number && (
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">{t('fields.taxId')}</dt>
-                    <dd className="text-gray-900">{partner.vat_number}</dd>
+                    <dt className={`text-sm font-medium ${colorTokens.text.subtle}`}>{t('fields.taxId')}</dt>
+                    <dd className={`${colorTokens.text.primary}`}>{partner.vat_number}</dd>
                   </div>
                 )}
                 <div className="flex items-start gap-3">
-                  <Calendar className="mt-0.5 h-5 w-5 text-gray-400" />
+                  <Calendar className={`mt-0.5 h-5 w-5 ${colorTokens.text.disabled}`} />
                   <div>
-                    <dt className="text-sm font-medium text-gray-500">{t('fields.created')}</dt>
-                    <dd className="text-gray-900">
+                    <dt className={`text-sm font-medium ${colorTokens.text.subtle}`}>{t('fields.created')}</dt>
+                    <dd className={`${colorTokens.text.primary}`}>
                       {new Date(partner.created_at).toLocaleDateString()}
                     </dd>
                   </div>
@@ -526,9 +529,9 @@ export function PartnerDetailPage() {
 
             {/* Notes */}
             {partner.notes && (
-              <div className="rounded-lg border border-gray-200 bg-white p-6 lg:col-span-3">
-                <h2 className="mb-4 text-lg font-semibold text-gray-900">{t('fields.notes')}</h2>
-                <p className="whitespace-pre-wrap text-gray-700">{partner.notes}</p>
+              <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 lg:col-span-3`}>
+                <h2 className={`mb-4 text-lg font-semibold ${colorTokens.text.primary}`}>{t('fields.notes')}</h2>
+                <p className={`whitespace-pre-wrap ${colorTokens.text.secondary}`}>{partner.notes}</p>
               </div>
             )}
           </div>
@@ -538,14 +541,14 @@ export function PartnerDetailPage() {
         {(isCustomerContext || isSupplierContext) && (
           <TabsContent value="documents" className="mt-6">
             {documents.length === 0 ? (
-              <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-                <FileText className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-semibold text-gray-900">
+              <div className={`rounded-lg border-2 border-dashed ${colorTokens.border.default} p-12 text-center`}>
+                <FileText className={`mx-auto h-12 w-12 ${colorTokens.text.disabled}`} />
+                <h3 className={`mt-2 text-sm font-semibold ${colorTokens.text.primary}`}>
                   {isSupplierContext
                     ? t('status.noPurchaseOrders')
                     : t('status.noDocuments')}
                 </h3>
-                <p className="mt-1 text-sm text-gray-500">
+                <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
                   {isSupplierContext
                     ? t('status.noPurchaseOrdersDescription')
                     : t('status.noDocumentsDescription')}
@@ -554,7 +557,7 @@ export function PartnerDetailPage() {
                   {isSupplierContext ? (
                     <Link
                       to={`/purchases/orders/new?supplier=${partner.id}`}
-                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                      className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
                     >
                       <FileText className="h-4 w-4" />
                       {t('actions.newPurchaseOrder')}
@@ -562,7 +565,7 @@ export function PartnerDetailPage() {
                   ) : (
                     <Link
                       to={`/sales/quotes/new?customer=${partner.id}`}
-                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                      className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
                     >
                       <FileText className="h-4 w-4" />
                       {t('actions.newQuote')}
@@ -571,28 +574,28 @@ export function PartnerDetailPage() {
                 </div>
               </div>
             ) : (
-              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+              <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
+                <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+                  <thead className={`${colorTokens.surface.page}`}>
                     <tr>
-                      <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                      <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                         {t('fields.documentNumber')}
                       </th>
-                      <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                      <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                         {t('fields.type')}
                       </th>
-                      <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                      <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                         {t('fields.status')}
                       </th>
-                      <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                      <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                         {t('fields.amount')}
                       </th>
-                      <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                      <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                         {t('fields.date')}
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white">
+                  <tbody className={`divide-y ${colorTokens.border.divider} ${colorTokens.surface.base}`}>
                     {documents.map((doc) => {
                       // Determine the correct path based on document type
                       const getDocumentPath = () => {
@@ -609,11 +612,11 @@ export function PartnerDetailPage() {
                       }
 
                       return (
-                        <tr key={doc.id} className="hover:bg-gray-50">
+                        <tr key={doc.id} className={`${colorTokens.intent.neutral.bgHover}`}>
                           <td className="whitespace-nowrap px-6 py-4">
                             <Link
                               to={getDocumentPath()}
-                              className="font-medium text-blue-600 hover:text-blue-900"
+                              className={`font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrongest}`}
                             >
                               {getDocumentNumberLabel(doc.document_number)}
                             </Link>
@@ -627,22 +630,22 @@ export function PartnerDetailPage() {
                           </td>
                           <td className="whitespace-nowrap px-6 py-4">
                             <span
-                              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[doc.status]}`}
+                              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${documentWorkflowClasses[doc.status]}`}
                             >
                               {doc.status}
                             </span>
                           </td>
-                          <td className="whitespace-nowrap px-6 py-4 text-end text-sm font-medium text-gray-900">
+                          <td className={`whitespace-nowrap px-6 py-4 text-end text-sm font-medium ${colorTokens.text.primary}`}>
                             {formatAmount(doc.total ?? '0')}
                           </td>
-                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                          <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                             {new Date(doc.document_date).toLocaleDateString()}
                           </td>
                         </tr>
                       )
                     })}
                   </tbody>
-                </table>
+                </DataTable>
                 {documentsMeta?.current_page && documentsMeta.last_page && documentsMeta.last_page > 1 && (
                   <OffsetPagination
                     currentPage={documentsMeta.current_page}
@@ -666,80 +669,80 @@ export function PartnerDetailPage() {
         {/* Payments Tab */}
         <TabsContent value="payments" className="mt-6">
           {payments.length === 0 ? (
-            <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-              <CreditCard className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-semibold text-gray-900">
+            <div className={`rounded-lg border-2 border-dashed ${colorTokens.border.default} p-12 text-center`}>
+              <CreditCard className={`mx-auto h-12 w-12 ${colorTokens.text.disabled}`} />
+              <h3 className={`mt-2 text-sm font-semibold ${colorTokens.text.primary}`}>
                 {t('status.noPayments')}
               </h3>
-              <p className="mt-1 text-sm text-gray-500">{t('status.noPaymentsDescription')}</p>
+              <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>{t('status.noPaymentsDescription')}</p>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
+              <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+                <thead className={`${colorTokens.surface.page}`}>
                   <tr>
-                    <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                       {t('fields.paymentNumber')}
                     </th>
-                    <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                       {t('fields.method')}
                     </th>
-                    <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                       {t('fields.status')}
                     </th>
-                    <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                       {t('fields.amount')}
                     </th>
-                    <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                       {t('fields.date')}
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
+                <tbody className={`divide-y ${colorTokens.border.divider} ${colorTokens.surface.base}`}>
                   {payments.map((payment) => (
-                    <tr key={payment.id} className="hover:bg-gray-50">
+                    <tr key={payment.id} className={`${colorTokens.intent.neutral.bgHover}`}>
                       <td className="whitespace-nowrap px-6 py-4">
                         <Link
                           to={`/treasury/payments/${payment.id}`}
-                          className="font-medium text-blue-600 hover:text-blue-900"
+                          className={`font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrongest}`}
                         >
                           {payment.payment_number}
                         </Link>
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                      <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                         {payment.payment_method_name ?? '-'}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[payment.status] ?? 'bg-gray-100 text-gray-800'}`}
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${documentWorkflowClasses[payment.status] ?? `${colorTokens.surface.muted} ${colorTokens.text.strong}`}`}
                           >
                             {payment.status}
                           </span>
                           {payment.payment_type === 'advance' && (
-                            <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+                            <span className={`inline-flex rounded-full ${colorTokens.intent.primary.bgSoft} px-2.5 py-0.5 text-xs font-medium ${colorTokens.intent.primary.textStronger}`}>
                               {t('treasury:payments.types.advance')}
                             </span>
                           )}
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-end">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className={`text-sm font-medium ${colorTokens.text.primary}`}>
                           {formatAmount(payment.amount)}
                         </div>
                         {bccomp(payment.unallocated_amount, '0') > 0 && (
-                          <div className="text-xs text-blue-600">
+                          <div className={`text-xs ${colorTokens.intent.primary.text}`}>
                             {t('treasury:payments.creditBalance')}: {formatAmount(payment.unallocated_amount)}
                           </div>
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                      <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                         {new Date(payment.payment_date).toLocaleDateString()}
                       </td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
               {paymentsMeta?.current_page && paymentsMeta.last_page && paymentsMeta.last_page > 1 && (
                 <OffsetPagination
                   currentPage={paymentsMeta.current_page}
@@ -766,7 +769,7 @@ export function PartnerDetailPage() {
               <button
                 type="button"
                 onClick={() => { setShowVehicleModal(true) }}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors`}
               >
                 <Plus className="h-4 w-4" />
                 {t('actions.addVehicle')}
@@ -780,48 +783,48 @@ export function PartnerDetailPage() {
         {showDepositsTab && (
           <TabsContent value="deposits" className="mt-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-900">{t('deposits:history.title')}</h3>
+              <h3 className={`text-sm font-medium ${colorTokens.text.primary}`}>{t('deposits:history.title')}</h3>
               <button
                 type="button"
                 onClick={() => { setShowDepositModal(true); }}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.intent.neutral.bgHover} transition-colors`}
               >
                 <Wallet className="h-4 w-4" />
                 {t('deposits:recordButton')}
               </button>
             </div>
             {deposits.length === 0 ? (
-              <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-500">
+              <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} px-4 py-8 text-center text-sm ${colorTokens.text.subtle}`}>
                 {t('deposits:history.empty')}
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+              <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
+                <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+                  <thead className={`${colorTokens.surface.page}`}>
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">{t('deposits:history.date')}</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">{t('deposits:history.amount')}</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">{t('deposits:history.method')}</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">{t('deposits:history.note')}</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">{t('deposits:history.actor')}</th>
+                      <th className={`px-4 py-2 text-left text-xs font-medium uppercase ${colorTokens.text.subtle}`}>{t('deposits:history.date')}</th>
+                      <th className={`px-4 py-2 text-left text-xs font-medium uppercase ${colorTokens.text.subtle}`}>{t('deposits:history.amount')}</th>
+                      <th className={`px-4 py-2 text-left text-xs font-medium uppercase ${colorTokens.text.subtle}`}>{t('deposits:history.method')}</th>
+                      <th className={`px-4 py-2 text-left text-xs font-medium uppercase ${colorTokens.text.subtle}`}>{t('deposits:history.note')}</th>
+                      <th className={`px-4 py-2 text-left text-xs font-medium uppercase ${colorTokens.text.subtle}`}>{t('deposits:history.actor')}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 bg-white">
+                  <tbody className={`divide-y ${colorTokens.border.divider} ${colorTokens.surface.base}`}>
                     {deposits.map((deposit) => (
                       <tr key={deposit.fiscal_event_id}>
-                        <td className="px-4 py-2 text-sm text-gray-700">
+                        <td className={`px-4 py-2 text-sm ${colorTokens.text.secondary}`}>
                           {new Date(deposit.recorded_at).toLocaleDateString()}
                         </td>
-                        <td className="px-4 py-2 text-sm font-medium text-gray-900">
+                        <td className={`px-4 py-2 text-sm font-medium ${colorTokens.text.primary}`}>
                           {formatCurrency(deposit.amount, { currency: companyCurrency, locale: companyLocale })}
                         </td>
-                        <td className="px-4 py-2 text-sm text-gray-700">{deposit.payment_method_code}</td>
-                        <td className="px-4 py-2 text-sm text-gray-700">{deposit.note}</td>
-                        <td className="px-4 py-2 text-sm text-gray-700">{deposit.actor_name}</td>
+                        <td className={`px-4 py-2 text-sm ${colorTokens.text.secondary}`}>{deposit.payment_method_code}</td>
+                        <td className={`px-4 py-2 text-sm ${colorTokens.text.secondary}`}>{deposit.note}</td>
+                        <td className={`px-4 py-2 text-sm ${colorTokens.text.secondary}`}>{deposit.actor_name}</td>
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             )}
           </TabsContent>

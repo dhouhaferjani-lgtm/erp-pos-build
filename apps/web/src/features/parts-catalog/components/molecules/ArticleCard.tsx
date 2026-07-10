@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { InventoryBadge } from '../atoms/InventoryBadge'
 import { FitmentConfidenceBadge } from '../atoms/FitmentConfidenceBadge'
 import type { EnrichedArticle } from '../../types/catalog'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ArticleCardProps {
   article: EnrichedArticle
@@ -26,23 +27,23 @@ export function ArticleCard({ article, onSelect, viewMode = 'list', className }:
         type="button"
         onClick={() => { onSelect(article) }}
         className={cn(
-          'group w-full text-start rounded-lg border border-gray-200 bg-white p-4',
-          'transition-all duration-200 hover:border-blue-300 hover:shadow-md',
-          'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
+          `group w-full text-start rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`,
+          `transition-all duration-200 ${colorTokens.intent.primary.hoverBorderSubtle} hover:shadow-md`,
+          `focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-1`,
           'flex flex-col h-full',
           className
         )}
       >
         {/* Supplier badge row */}
         <div className="flex items-center justify-between gap-2 mb-3">
-          <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-600/20 uppercase tracking-wide">
+          <span className={`inline-flex items-center rounded-md ${colorTokens.intent.primary.bgSubtle} px-2 py-0.5 text-xs font-semibold ${colorTokens.intent.primary.textStrong} ring-1 ring-inset ${colorTokens.intent.primary.ringSubtle} uppercase tracking-wide`}>
             {article.supplier?.brand ?? 'Unknown'}
           </span>
           {article.local_inventory && <InventoryBadge inventory={article.local_inventory} showQuantity />}
         </div>
 
         {/* Article number */}
-        <p className="text-base font-mono font-bold text-gray-900 mb-1">
+        <p className={`text-base font-mono font-bold ${colorTokens.text.primary} mb-1`}>
           {article.article_number}
         </p>
 
@@ -52,9 +53,9 @@ export function ArticleCard({ article, onSelect, viewMode = 'list', className }:
             {(article.criteria ?? []).slice(0, 3).map((c) => (
               <span
                 key={c.criteria_id}
-                className="inline-flex items-center rounded bg-gray-50 px-1.5 py-0.5 text-xs text-gray-600"
+                className={`inline-flex items-center rounded ${colorTokens.surface.page} px-1.5 py-0.5 text-xs ${colorTokens.text.muted}`}
               >
-                <span className="font-medium text-gray-500">{c.label}:</span>
+                <span className={`font-medium ${colorTokens.text.subtle}`}>{c.label}:</span>
                 <span className="ms-1">{c.value}{c.unit ? ` ${c.unit}` : ''}</span>
               </span>
             ))}
@@ -77,9 +78,9 @@ export function ArticleCard({ article, onSelect, viewMode = 'list', className }:
       type="button"
       onClick={() => { onSelect(article) }}
       className={cn(
-        'group w-full text-start rounded-lg border border-gray-200 bg-white p-4',
-        'transition-all duration-200 hover:border-gray-300 hover:shadow-md',
-        'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
+        `group w-full text-start rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`,
+        `transition-all duration-200 ${colorTokens.border.hover} hover:shadow-md`,
+        `focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-1`,
         className
       )}
     >
@@ -87,7 +88,7 @@ export function ArticleCard({ article, onSelect, viewMode = 'list', className }:
         <div className="min-w-0 flex-1">
           {/* Supplier brand + badges */}
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-600/20 uppercase tracking-wide">
+            <span className={`inline-flex items-center rounded-md ${colorTokens.intent.primary.bgSubtle} px-2 py-0.5 text-xs font-semibold ${colorTokens.intent.primary.textStrong} ring-1 ring-inset ${colorTokens.intent.primary.ringSubtle} uppercase tracking-wide`}>
               {article.supplier?.brand ?? 'Unknown'}
             </span>
             {article.local_inventory && <InventoryBadge inventory={article.local_inventory} showQuantity />}
@@ -97,8 +98,8 @@ export function ArticleCard({ article, onSelect, viewMode = 'list', className }:
           </div>
 
           {/* Article number */}
-          <p className="text-sm font-semibold text-gray-900 truncate">
-            <span className="text-gray-400 font-normal">{t('parts-catalog:article.articleNumber')}</span>{' '}
+          <p className={`text-sm font-semibold ${colorTokens.text.primary} truncate`}>
+            <span className={`${colorTokens.text.disabled} font-normal`}>{t('parts-catalog:article.articleNumber')}</span>{' '}
             <span className="font-mono">{article.article_number}</span>
           </p>
 
@@ -108,14 +109,14 @@ export function ArticleCard({ article, onSelect, viewMode = 'list', className }:
               {(article.criteria ?? []).slice(0, 3).map((c) => (
                 <span
                   key={c.criteria_id}
-                  className="inline-flex items-center rounded bg-gray-50 px-1.5 py-0.5 text-xs text-gray-600"
+                  className={`inline-flex items-center rounded ${colorTokens.surface.page} px-1.5 py-0.5 text-xs ${colorTokens.text.muted}`}
                 >
-                  <span className="font-medium text-gray-500">{c.label}:</span>
+                  <span className={`font-medium ${colorTokens.text.subtle}`}>{c.label}:</span>
                   <span className="ms-1">{c.value}{c.unit ? ` ${c.unit}` : ''}</span>
                 </span>
               ))}
               {(article.criteria ?? []).length > 3 && (
-                <span className="text-xs text-gray-400">
+                <span className={`text-xs ${colorTokens.text.disabled}`}>
                   +{(article.criteria ?? []).length - 3}
                 </span>
               )}
@@ -124,7 +125,7 @@ export function ArticleCard({ article, onSelect, viewMode = 'list', className }:
 
           {/* Cross-reference preview */}
           {(article.cross_references ?? []).length > 0 && (
-            <p className="mt-1.5 text-xs text-gray-400 truncate">
+            <p className={`mt-1.5 text-xs ${colorTokens.text.disabled} truncate`}>
               {(article.cross_references ?? [])
                 .slice(0, 2)
                 .map((r) => r.reference_number)
@@ -135,7 +136,7 @@ export function ArticleCard({ article, onSelect, viewMode = 'list', className }:
         </div>
 
         {/* Arrow */}
-        <ChevronRight className="h-5 w-5 text-gray-300 group-hover:text-gray-500 transition-colors shrink-0 mt-1" />
+        <ChevronRight className={`h-5 w-5 ${colorTokens.text.faint} ${colorTokens.intent.neutral.groupTextHover} transition-colors shrink-0 mt-1`} />
       </div>
     </button>
   )

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { FitmentConfidenceBadge } from '../atoms/FitmentConfidenceBadge'
 import type { CompatibleVehicle } from '../../types/catalog'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface VehicleCompatibilityListProps {
   vehicles: CompatibleVehicle[]
@@ -33,25 +34,25 @@ export function VehicleCompatibilityList({
 
   return (
     <div className={cn('', className)}>
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">
+      <h3 className={`text-sm font-semibold ${colorTokens.text.primary} mb-3`}>
         {t('parts-catalog:article.vehicleCompatibility')}
       </h3>
       <div className="space-y-4">
         {Array.from(grouped.entries()).map(([manufacturer, vehicleList]) => (
           <div key={manufacturer}>
-            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <h4 className={`text-xs font-semibold ${colorTokens.text.subtle} uppercase tracking-wide mb-2`}>
               {manufacturer}
             </h4>
             <div className="space-y-1.5">
               {vehicleList.map((vehicle) => (
                 <div
                   key={vehicle.vehicle_id}
-                  className="flex items-center justify-between rounded-lg bg-gray-50 px-3.5 py-2.5"
+                  className={`flex items-center justify-between rounded-lg ${colorTokens.surface.page} px-3.5 py-2.5`}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-gray-800 truncate">{vehicle.display}</p>
+                    <p className={`text-sm ${colorTokens.text.strong} truncate`}>{vehicle.display}</p>
                     {showDataSource && (
-                      <p className="text-xs text-gray-400 mt-0.5">
+                      <p className={`text-xs ${colorTokens.text.disabled} mt-0.5`}>
                         {t('parts-catalog:fitment.dataSource', { source: vehicle.data_source })}
                       </p>
                     )}

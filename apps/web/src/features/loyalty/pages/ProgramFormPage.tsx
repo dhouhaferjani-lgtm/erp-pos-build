@@ -14,6 +14,8 @@ import { useUnsavedChangesGuard, confirmDiscard } from '@/hooks/useUnsavedChange
 
 import { useProgram, useCreateProgram, useUpdateProgram } from '../hooks/usePrograms'
 import type { CreateProgramData, ProgramType } from '../types/loyalty'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 const programSchema = z.object({
   name: z.string().min(1),
@@ -112,7 +114,7 @@ export function ProgramFormPage() {
   }
 
   if (isEditing && isLoadingProgram) {
-    return <div className="text-center py-12 text-gray-500">{t('common:loading')}</div>
+    return <div className={`text-center py-12 ${colorTokens.text.subtle}`}>{t('common:loading')}</div>
   }
 
   const isSaving = createMutation.isPending || updateMutation.isPending
@@ -123,18 +125,18 @@ export function ProgramFormPage() {
         <button
           type="button"
           onClick={cancel}
-          className="p-2 rounded-lg hover:bg-gray-100"
+          className={`p-2 rounded-lg ${colorTokens.intent.neutral.bgHoverSoft}`}
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
           {isEditing ? t('loyalty:programs.edit') : t('loyalty:programs.create')}
-        </h1>
+        </PageHeaderTitle>
       </div>
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 pb-24">
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('loyalty:sections.basicInfo')}
           </h2>
 
@@ -163,7 +165,7 @@ export function ProgramFormPage() {
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('loyalty:sections.schedule')}
           </h2>
 

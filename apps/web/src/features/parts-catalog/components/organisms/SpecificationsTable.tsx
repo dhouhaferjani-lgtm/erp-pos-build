@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import type { ArticleCriteria } from '../../types/catalog'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface SpecificationsTableProps {
   criteria: ArticleCriteria[]
@@ -14,25 +16,25 @@ export function SpecificationsTable({ criteria, className }: SpecificationsTable
 
   return (
     <div className={cn('', className)}>
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">
+      <h3 className={`text-sm font-semibold ${colorTokens.text.primary} mb-3`}>
         {t('parts-catalog:article.specifications')}
       </h3>
-      <div className="rounded-lg border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <tbody className="divide-y divide-gray-100">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} overflow-hidden`}>
+        <DataTable className="w-full text-sm">
+          <tbody className={`divide-y ${colorTokens.border.dividerSubtle}`}>
             {criteria.map((c, i) => (
-              <tr key={c.criteria_id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                <td className="px-4 py-2.5 text-gray-500 font-medium whitespace-nowrap w-2/5">
+              <tr key={c.criteria_id} className={i % 2 === 0 ? `${colorTokens.surface.base}` : '${colorTokens.surface.pageAlpha}'}>
+                <td className={`px-4 py-2.5 ${colorTokens.text.subtle} font-medium whitespace-nowrap w-2/5`}>
                   {c.label}
                 </td>
-                <td className="px-4 py-2.5 text-gray-900">
+                <td className={`px-4 py-2.5 ${colorTokens.text.primary}`}>
                   {c.value}
-                  {c.unit && <span className="ms-1 text-gray-400">{c.unit}</span>}
+                  {c.unit && <span className={`ms-1 ${colorTokens.text.disabled}`}>{c.unit}</span>}
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
     </div>
   )

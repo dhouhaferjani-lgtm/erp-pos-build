@@ -10,6 +10,9 @@ import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { useMembers } from '../hooks/useMembers'
 import { MemberStatusBadge } from '../components/MemberStatusBadge'
 import type { MemberStatus } from '../types/loyalty'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 export function MemberListPage() {
   const { t } = useTranslation(['loyalty', 'common'])
@@ -33,8 +36,8 @@ export function MemberListPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('loyalty:membersTitle')}</h1>
-          <p className="text-sm mt-1 text-gray-500">{t('loyalty:membersSubtitle')}</p>
+          <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{t('loyalty:membersTitle')}</PageHeaderTitle>
+          <p className={`text-sm mt-1 ${colorTokens.text.subtle}`}>{t('loyalty:membersSubtitle')}</p>
         </div>
         <Button onClick={() => navigate('/pos/loyalty/members/new')}>
           <Plus className="w-4 h-4 mr-2" />
@@ -73,55 +76,55 @@ export function MemberListPage() {
         </div>
       ) : members.length === 0 ? (
         <div className="text-center py-12">
-          <Users className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500 font-medium">{t('loyalty:members.noMembers')}</p>
-          <p className="text-gray-400 text-sm mt-1">{t('loyalty:members.noMembersDescription')}</p>
+          <Users className={`w-12 h-12 mx-auto ${colorTokens.text.faint} mb-4`} />
+          <p className={`${colorTokens.text.subtle} font-medium`}>{t('loyalty:members.noMembers')}</p>
+          <p className={`${colorTokens.text.disabled} text-sm mt-1`}>{t('loyalty:members.noMembersDescription')}</p>
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
+            <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+              <thead className={`${colorTokens.surface.page}`}>
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                     {t('loyalty:fields.name')}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                     {t('loyalty:fields.phone')}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                     {t('loyalty:fields.email')}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                     {t('loyalty:fields.status')}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                     {t('loyalty:fields.enrolledAt')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
                 {members.map((member) => (
                   <tr
                     key={member.id}
-                    className="hover:bg-gray-50 cursor-pointer"
+                    className={`${colorTokens.intent.neutral.bgHover} cursor-pointer`}
                     onClick={() => navigate(`/pos/loyalty/members/${member.id}`)}
                   >
-                    <td className="px-4 py-3 font-medium text-gray-900">
+                    <td className={`px-4 py-3 font-medium ${colorTokens.text.primary}`}>
                       {[member.first_name, member.last_name].filter(Boolean).join(' ') || '-'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{member.phone}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{member.email ?? '-'}</td>
+                    <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{member.phone}</td>
+                    <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{member.email ?? '-'}</td>
                     <td className="px-4 py-3">
                       <MemberStatusBadge status={member.status} />
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
+                    <td className={`px-4 py-3 text-sm ${colorTokens.text.subtle}`}>
                       {new Date(member.enrollment_date).toLocaleDateString()}
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           {meta ? (
             <OffsetPagination

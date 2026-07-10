@@ -2,6 +2,8 @@ import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowRight, Check, AlertCircle, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface ColumnMapperProps {
   sourceColumns: string[]
@@ -79,7 +81,7 @@ export function ColumnMapper({
     <div className="space-y-6">
       {/* Missing Required Warning */}
       {missingRequired.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-4 text-amber-800">
+        <div className={`flex items-start gap-2 rounded-lg ${colorTokens.intent.caution.bgSubtle} p-4 ${colorTokens.intent.caution.textStronger}`}>
           <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-medium">{t('mapping.missingRequired')}</p>
@@ -91,54 +93,54 @@ export function ColumnMapper({
       )}
 
       {/* Mapping Table */}
-      <div className="overflow-hidden rounded-lg border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle}`}>
+        <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+          <thead className={`${colorTokens.surface.page}`}>
             <tr>
-              <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-4 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('mapping.sourceColumn')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 w-12">
+              <th className={`px-4 py-3 text-center text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle} w-12`}>
                 &nbsp;
               </th>
-              <th className="px-4 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-4 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('mapping.targetColumn')}
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500 w-20">
+              <th className={`px-4 py-3 text-center text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle} w-20`}>
                 {t('mapping.status')}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
+          <tbody className={`divide-y ${colorTokens.border.divider} ${colorTokens.surface.base}`}>
             {sourceColumns.map((sourceCol) => {
               const currentTarget = mapping[sourceCol]
               const isMapped = Boolean(currentTarget && targetNames.has(currentTarget))
               const suggested = hasSuggestion(sourceCol)
 
               return (
-                <tr key={sourceCol} className="hover:bg-gray-50">
+                <tr key={sourceCol} className={`${colorTokens.intent.neutral.bgHover}`}>
                   <td className="whitespace-nowrap px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900">{sourceCol}</span>
+                      <span className={`font-medium ${colorTokens.text.primary}`}>{sourceCol}</span>
                       {suggested && (
-                        <span className="text-xs text-green-600">
+                        <span className={`text-xs ${colorTokens.intent.success.text}`}>
                           {t('mapping.suggested')}
                         </span>
                       )}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <ArrowRight className="h-4 w-4 text-gray-400 mx-auto" />
+                    <ArrowRight className={`h-4 w-4 ${colorTokens.text.disabled} mx-auto`} />
                   </td>
                   <td className="px-4 py-3">
                     <select
                       value={isMapped ? currentTarget : ''}
                       onChange={(e) => { handleMappingChange(sourceCol, e.target.value) }}
                       className={cn(
-                        'block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500',
+                        `block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`,
                         isMapped
-                          ? 'border-green-300 bg-green-50'
-                          : 'border-gray-300'
+                          ? `${colorTokens.intent.success.borderSoft} ${colorTokens.intent.success.bgSubtle}`
+                          : `${colorTokens.border.default}`
                       )}
                     >
                       <option value="">{t('mapping.skipColumn')}</option>
@@ -187,21 +189,21 @@ export function ColumnMapper({
                   </td>
                   <td className="px-4 py-3 text-center">
                     {isMapped ? (
-                      <Check data-testid={`mapped-status-${sourceCol}`} className="h-5 w-5 text-green-600 mx-auto" />
+                      <Check data-testid={`mapped-status-${sourceCol}`} className={`h-5 w-5 ${colorTokens.intent.success.text} mx-auto`} />
                     ) : (
-                      <HelpCircle data-testid={`skipped-status-${sourceCol}`} className="h-5 w-5 text-gray-300 mx-auto" />
+                      <HelpCircle data-testid={`skipped-status-${sourceCol}`} className={`h-5 w-5 ${colorTokens.text.faint} mx-auto`} />
                     )}
                   </td>
                 </tr>
               )
             })}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {skippedColumns.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 p-4 text-gray-700">
-          <HelpCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-gray-400" />
+        <div className={`flex items-start gap-2 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4 ${colorTokens.text.secondary}`}>
+          <HelpCircle className={`mt-0.5 h-5 w-5 flex-shrink-0 ${colorTokens.text.disabled}`} />
           <p className="text-sm">
             {t('mapping.skippedColumnsNotice', { columns: skippedColumns.join(', ') })}
           </p>
@@ -209,17 +211,17 @@ export function ColumnMapper({
       )}
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-4 text-sm text-gray-500">
+      <div className={`flex flex-wrap gap-4 text-sm ${colorTokens.text.subtle}`}>
         <div className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-green-500" />
+          <span className={`h-2 w-2 rounded-full ${colorTokens.intent.success.bg}`} />
           {t('mapping.legendMapped')}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-gray-300" />
+          <span className={`h-2 w-2 rounded-full ${colorTokens.surface.disabled}`} />
           {t('mapping.legendSkipped')}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-red-600">*</span>
+          <span className={`${colorTokens.intent.danger.text}`}>*</span>
           {t('mapping.legendRequired')}
         </div>
       </div>
