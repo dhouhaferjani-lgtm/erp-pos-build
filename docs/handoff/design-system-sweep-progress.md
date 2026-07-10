@@ -134,6 +134,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web audit:design-system` reported a stale C3 fingerprint after replacing the raw tokenized revert button.
   - GREEN: `DocumentActionBar` now renders the revert-to-draft action through the canonical `Button` atom.
   - Baseline shrunk from 434 to 433 after removing the stale documents C3 fingerprint.
+- 5.4 `DeliveryNoteConsolidationPage` header slice:
+  - RED: `pnpm --filter @autoerp/web audit:design-system` reported a stale C1 fingerprint after replacing the bespoke page title.
+  - GREEN: the page now uses `PageHeader` with a canonical back `Button`, and imports `DeliveryNoteConsolidation` directly instead of the local barrel.
+  - Baseline shrunk from 433 to 432 after removing the stale documents C1 fingerprint.
 - Verification:
   - `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentActionBar.test.tsx` passed: 2 tests. Existing act-warning noise remains in the component test.
   - `pnpm --filter @autoerp/web test -- src/features/documents/DocumentListPage.test.tsx src/features/documents/__tests__/DocumentTenantScope.test.tsx src/features/documents/components/__tests__/RelatedDocumentsTab.test.tsx` passed: 9 tests. Existing act-warning noise remains in `DocumentTenantScope`.
@@ -141,7 +145,8 @@ Status: in progress.
   - `pnpm --filter @autoerp/web typecheck` passed.
   - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
     - TanStack query key audit: 0 violations.
-    - Design-system audit: 433 acknowledged, 0 new, 0 stale.
+    - Design-system audit: 432 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base 1a7f232ff` passed with no issues for the `DeliveryNoteConsolidationPage` header slice.
   - `npx react-doctor@latest --verbose --scope changed --base 6ca3fba0c` passed with no issues for the documents action-bar button slice.
   - `npx react-doctor@latest --verbose --scope changed --base bb480f355` passed with no issues for the documents remaining-C6 slice after replacing changed-page barrel imports with direct imports.
   - `npx react-doctor@latest --verbose --scope changed --base 744934164` passed with no issues for the documents payment-status slice.

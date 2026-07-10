@@ -34,7 +34,6 @@
     "C1|src/features/dashboard/Dashboard.tsx|<h1 className=\"text-2xl font-bold text-gray-900\">",
     "C1|src/features/documents/CreateCreditNotePage.tsx|<h1 className=\"text-2xl font-bold text-gray-900\">",
     "C1|src/features/documents/CreateReturnNotePage.tsx|<h1 className=\"text-2xl font-bold text-gray-900\">",
-    "C1|src/features/documents/DeliveryNoteConsolidationPage.tsx|<h1 className=\"text-2xl font-bold text-gray-900\">",
     "C1|src/features/documents/ReturnNoteDetailPage.tsx|<h1 className=\"text-2xl font-semibold text-gray-900\">",
     "C1|src/features/documents/ReturnNoteListPage.tsx|<h1 className=\"text-2xl font-semibold text-gray-900\">",
     "C1|src/features/documents/components/DocumentHeader.tsx|<h1 className=\"text-2xl font-bold text-gray-900\">",
