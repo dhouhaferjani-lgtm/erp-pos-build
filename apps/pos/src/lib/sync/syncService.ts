@@ -86,6 +86,10 @@ import { coerceSyncError } from '@/lib/sync/coerceSyncError';
 import { reconcileOpenShift, applyShiftReconcileVerdict } from '@/lib/sync/shiftReconcile';
 import { pullCustomers } from '@/lib/customer/customerSyncService';
 import { pushPendingCustomers } from '@/lib/customer/pendingCustomerSyncService';
+import {
+  pullOpenReplenishment,
+  pushReplenishmentRequests,
+} from '@/lib/replenishment/replenishmentSyncService';
 import { withWriteTransaction } from '@/lib/db/writeGate';
 import {
   upsertVouchers,
@@ -2044,6 +2048,11 @@ export async function runFullSync(
       customersFailed = true;
       errors.push('Customer pull skipped: missing tenant/company context');
     } else {
+      try {
+        await pushReplenishmentRequests(db, tenantId, companyId);
+      } catch (e) {
+        errors.push(`Replenishment push failed: ${coerceSyncError(e)}`);
+      }
       // T-0001 — drain the pending-customer outbox BEFORE the delta pull so
       // this tick's pull already sees the server-created Partner rows and
       // the client→server alias promotion completes in one cycle. Failures
@@ -2087,6 +2096,21 @@ export async function runFullSync(
     const message = coerceSyncError(error);
     try {
       await logSyncOperation(db, 'pull', 'location_stock', null, 'error', message);
+    } catch { /* non-critical */ }
+  }
+
+  try {
+    const { useAuthStore } = await import('@/stores/authStore');
+    const auth = useAuthStore.getState();
+    const tenantId = auth.user?.tenantId;
+    const companyId = auth.companyId;
+    if (tenantId && companyId) {
+      await pullOpenReplenishment(db, tenantId, companyId, terminalId);
+    }
+  } catch (error) {
+    const message = coerceSyncError(error);
+    try {
+      await logSyncOperation(db, 'pull', 'open_replenishment', null, 'error', message);
     } catch { /* non-critical */ }
   }
 

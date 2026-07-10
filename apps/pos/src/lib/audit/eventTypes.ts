@@ -47,5 +47,6 @@ export type PosAuditEventType =
   | 'pos.voucher_double_spend_attempt'
   | 'pos.customer_attached'
   | 'pos.customer_detached'
+  | 'pos.replenishment_requested'
   // ── P2 — operator unlock detail ───────────────────────────────────────
   | 'pos.operator_unlocked';
