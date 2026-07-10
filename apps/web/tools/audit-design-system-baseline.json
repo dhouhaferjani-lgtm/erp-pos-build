@@ -266,8 +266,6 @@
     "C4|src/features/parapharmacy/pages/IngredientFormPage.tsx|missing react-hook-form",
     "C4|src/features/parapharmacy/pages/KeyComponentFormPage.tsx|missing react-hook-form",
     "C4|src/features/promotions/pages/PromotionFormPage.tsx|missing react-hook-form",
-    "C4|src/features/purchases/quote-requests/QuoteRequestCreatePage.tsx|missing react-hook-form",
-    "C4|src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.tsx|missing react-hook-form",
     "C4|src/features/scheduling/components/organisms/AppointmentFormDrawer.tsx|missing react-hook-form",
     "C4|src/features/settings/components/UserEditModal.tsx|missing react-hook-form",
     "C4|src/features/stock-transfers/pages/CreateStockTransferPage.tsx|missing react-hook-form",

@@ -1,8 +1,11 @@
-import { type FormEvent, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Trash2 } from 'lucide-react'
+import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
+import { z } from 'zod'
 
 import { Button } from '@/components/atoms/Button/Button'
 import { Input } from '@/components/atoms/Input/Input'
@@ -35,6 +38,13 @@ interface LineFormState {
 }
 
 const QUOTE_REQUEST_CREATE_FORM_ID = 'quote-request-create-form'
+
+const quoteRequestCreateSchema = z.object({
+  notes: z.string(),
+  validityDate: z.string(),
+})
+
+type QuoteRequestCreateFormValues = z.infer<typeof quoteRequestCreateSchema>
 
 let rowKeyCounter = 0
 
@@ -75,8 +85,13 @@ export function QuoteRequestCreatePage() {
 
   const [suppliers, setSuppliers] = useState<SupplierFormState[]>([emptySupplier()])
   const [lines, setLines] = useState<LineFormState[]>([emptyLine()])
-  const [validityDate, setValidityDate] = useState('')
-  const [notes, setNotes] = useState('')
+  const form = useForm<QuoteRequestCreateFormValues>({
+    defaultValues: {
+      notes: '',
+      validityDate: '',
+    },
+    resolver: zodResolver(quoteRequestCreateSchema),
+  })
 
   function updateSupplier(index: number, value: string) {
     setSuppliers((current) => current.map((supplier, i) => (i === index ? { ...supplier, supplierId: value } : supplier)))
@@ -102,15 +117,14 @@ export function QuoteRequestCreatePage() {
     setLines((current) => current.filter((_, i) => i !== index))
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleValidSubmit(values: QuoteRequestCreateFormValues) {
     const partnerIds = suppliers.map((supplier) => supplier.supplierId).filter((supplierId) => supplierId !== '')
     try {
       const payload = await createGroup.mutateAsync({
         partner_ids: partnerIds,
         lines: lines.map(toPayloadLine),
-        validity_date: validityDate === '' ? null : validityDate,
-        notes: notes.trim() === '' ? null : notes.trim(),
+        validity_date: values.validityDate === '' ? null : values.validityDate,
+        notes: values.notes.trim() === '' ? null : values.notes.trim(),
       })
 
       if (payload.siblings.length === 1) {
@@ -135,7 +149,7 @@ export function QuoteRequestCreatePage() {
       <form
         id={QUOTE_REQUEST_CREATE_FORM_ID}
         className="flex flex-1 flex-col gap-6"
-        onSubmit={(event) => { void handleSubmit(event) }}
+        onSubmit={(event) => { void form.handleSubmit(handleValidSubmit)(event) }}
       >
 
       <section className={`${tokens.card.base} space-y-4`}>
@@ -258,8 +272,7 @@ export function QuoteRequestCreatePage() {
           <Input
             id="rfq-validity"
             type="date"
-            value={validityDate}
-            onChange={(event) => { setValidityDate(event.target.value) }}
+            {...form.register('validityDate')}
           />
         </div>
         <div>
@@ -268,8 +281,7 @@ export function QuoteRequestCreatePage() {
           </label>
           <Input
             id="rfq-notes"
-            value={notes}
-            onChange={(event) => { setNotes(event.target.value) }}
+            {...form.register('notes')}
           />
         </div>
       </section>

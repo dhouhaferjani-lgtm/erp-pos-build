@@ -1,9 +1,12 @@
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle2, FileUp, Plus, ReceiptText, Trash2, TriangleAlert } from 'lucide-react'
+import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
+import { z } from 'zod'
 
 import { Button } from '@/components/atoms/Button/Button'
 import { Input } from '@/components/atoms/Input/Input'
@@ -73,6 +76,18 @@ interface ProcurementPolicyResponse {
 
 const SUPPLIER_INVOICE_CREATE_FORM_ID = 'supplier-invoice-create-form'
 
+const supplierInvoiceCreateSchema = z.object({
+  dueDate: z.string(),
+  invoiceFirstExternalDate: z.string(),
+  invoiceFirstExternalReference: z.string(),
+  invoiceFirstLocationId: z.string(),
+  issueDate: z.string(),
+  notes: z.string(),
+  supplierReference: z.string(),
+})
+
+type SupplierInvoiceCreateFormValues = z.infer<typeof supplierInvoiceCreateSchema>
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -121,11 +136,29 @@ export function SupplierInvoiceCreatePage() {
 
   const [selectedSupplier, setSelectedSupplier] = useState<PartnerPickerValue | null>(null)
   const [selectedPurchaseOrderIds, setSelectedPurchaseOrderIds] = useState<string[]>(initialPurchaseOrderIds)
-  const [supplierReference, setSupplierReference] = useState('')
+  const form = useForm<SupplierInvoiceCreateFormValues>({
+    defaultValues: {
+      dueDate: '',
+      invoiceFirstExternalDate: todayIso(),
+      invoiceFirstExternalReference: '',
+      invoiceFirstLocationId: '',
+      issueDate: todayIso(),
+      notes: '',
+      supplierReference: '',
+    },
+    resolver: zodResolver(supplierInvoiceCreateSchema),
+  })
   const [duplicateCheckReference, setDuplicateCheckReference] = useState('')
-  const [issueDate, setIssueDate] = useState(todayIso())
-  const [dueDate, setDueDate] = useState('')
-  const [notes, setNotes] = useState('')
+  const supplierReferenceField = form.register('supplierReference', {
+    onChange: () => { setDuplicateCheckReference('') },
+  })
+  const supplierReference = form.watch('supplierReference')
+  const issueDate = form.watch('issueDate')
+  const dueDate = form.watch('dueDate')
+  const notes = form.watch('notes')
+  const invoiceFirstLocationId = form.watch('invoiceFirstLocationId')
+  const invoiceFirstExternalReference = form.watch('invoiceFirstExternalReference')
+  const invoiceFirstExternalDate = form.watch('invoiceFirstExternalDate')
   const [lineEdits, setLineEdits] = useState<Record<string, InvoiceLineEdits>>({})
   const [entryMode, setEntryMode] = useState<SupplierInvoiceEntryMode>(
     initialPurchaseOrderIds.length > 0 ? 'receipts' : 'invoiceFirstPending',
@@ -143,9 +176,6 @@ export function SupplierInvoiceCreatePage() {
       batchManufacturingDate: '',
     },
   ])
-  const [invoiceFirstLocationId, setInvoiceFirstLocationId] = useState('')
-  const [invoiceFirstExternalReference, setInvoiceFirstExternalReference] = useState('')
-  const [invoiceFirstExternalDate, setInvoiceFirstExternalDate] = useState(todayIso())
   const [invoiceFirstIdempotencyKey] = useState(newIdempotencyKey)
   const [attachments, setAttachments] = useState<File[]>([])
   const uploadAttachment = useUploadAttachment('')
@@ -372,8 +402,7 @@ export function SupplierInvoiceCreatePage() {
     return payload
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault()
+  async function handleValidSubmit(): Promise<void> {
     let created: SupplierInvoiceDetail
     try {
       created = await createInvoice.mutateAsync(buildPayload())
@@ -605,7 +634,7 @@ export function SupplierInvoiceCreatePage() {
       <form
         id={SUPPLIER_INVOICE_CREATE_FORM_ID}
         className="flex flex-1 flex-col gap-6"
-        onSubmit={(event) => { void handleSubmit(event) }}
+        onSubmit={(event) => { void form.handleSubmit(handleValidSubmit)(event) }}
       >
 
       <section className={`${tokens.card.base} grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_0.8fr_0.8fr]`}>
@@ -664,8 +693,7 @@ export function SupplierInvoiceCreatePage() {
           <Input
             id="issue-date"
             type="date"
-            value={issueDate}
-            onChange={(event) => { setIssueDate(event.target.value) }}
+            {...form.register('issueDate')}
           />
         </div>
 
@@ -676,8 +704,7 @@ export function SupplierInvoiceCreatePage() {
           <Input
             id="due-date"
             type="date"
-            value={dueDate}
-            onChange={(event) => { setDueDate(event.target.value) }}
+            {...form.register('dueDate')}
           />
         </div>
 
@@ -688,12 +715,11 @@ export function SupplierInvoiceCreatePage() {
           <Input
             id="supplier-reference"
             data-testid="supplier-reference"
-            value={supplierReference}
-            onChange={(event) => {
-              setSupplierReference(event.target.value)
-              setDuplicateCheckReference('')
+            {...supplierReferenceField}
+            onBlur={(event) => {
+              void supplierReferenceField.onBlur(event)
+              setDuplicateCheckReference(event.target.value.trim())
             }}
-            onBlur={() => { setDuplicateCheckReference(supplierReference.trim()) }}
           />
           {duplicateWarningVisible ? (
             <p className={`${tokens.helperText.base} flex items-center gap-1 ${textColors.warning}`}>
@@ -711,8 +737,7 @@ export function SupplierInvoiceCreatePage() {
           </label>
           <Input
             id="invoice-notes"
-            value={notes}
-            onChange={(event) => { setNotes(event.target.value) }}
+            {...form.register('notes')}
           />
         </div>
       </section>
@@ -777,8 +802,7 @@ export function SupplierInvoiceCreatePage() {
               <Select
                 id="invoice-first-location-id"
                 data-testid="invoice-first-location-id"
-                value={invoiceFirstLocationId}
-                onChange={(event) => { setInvoiceFirstLocationId(event.target.value) }}
+                {...form.register('invoiceFirstLocationId')}
               >
                 <option value="">{t('purchases:supplierInvoices.create.invoiceFirst.location')}</option>
                 {(locationsQuery.data ?? []).map((location) => (
@@ -793,8 +817,7 @@ export function SupplierInvoiceCreatePage() {
               <Input
                 id="invoice-first-external-reference"
                 data-testid="invoice-first-external-reference"
-                value={invoiceFirstExternalReference}
-                onChange={(event) => { setInvoiceFirstExternalReference(event.target.value) }}
+                {...form.register('invoiceFirstExternalReference')}
               />
             </div>
             <div>
@@ -805,8 +828,7 @@ export function SupplierInvoiceCreatePage() {
                 id="invoice-first-external-date"
                 data-testid="invoice-first-external-date"
                 type="date"
-                value={invoiceFirstExternalDate}
-                onChange={(event) => { setInvoiceFirstExternalDate(event.target.value) }}
+                {...form.register('invoiceFirstExternalDate')}
               />
             </div>
           </div>
