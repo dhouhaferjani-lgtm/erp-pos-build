@@ -52,7 +52,8 @@ import { TerminalNotReadyBanner } from '@/components/atoms/TerminalNotReadyBanne
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
 import { TableSelector } from '@/components/atoms/TableSelector';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
-import { ProductDetailDrawer } from '@/components/organisms/ProductDetailDrawer';
+import { ProductDetailSheet, type DetailTab } from '@/components/organisms/ProductDetailDrawer';
+import { ProductPaneHost } from '@/components/pos/ProductPaneHost';
 import { TransactionCart } from '@/components/organisms/TransactionCart';
 import { CashPaymentScreen } from '@/components/organisms/CashPaymentScreen';
 import { CheckoutSuccessModal } from '@/components/organisms/CheckoutSuccessModal';
@@ -240,6 +241,12 @@ export function HomePage() {
   const [modifierProduct, setModifierProduct] = useState<POSProduct | null>(null);
   const [detailProduct, setDetailProduct] = useState<POSProduct | null>(null);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
+
+  // Detail pane tab state (cart-always-foreground v1) — owned here since the
+  // overlay host that owned it is being retired. Reset to 'details' on every
+  // open: same effective semantics as the old product-id reset (reopening
+  // always started on Details — ProductDetailDrawer.tsx:52-61 pre-deletion).
+  const [detailTab, setDetailTab] = useState<DetailTab>('details');
 
   // T2 — variant picker state: the product whose variants the cashier is
   // currently choosing from (null when the picker is closed).
@@ -985,12 +992,18 @@ export function HomePage() {
     (product: POSProduct) => {
       setModifierProduct(product);
       setEditingLineId(null);
+      // Pane mutual exclusion (spec §1): opening customize closes detail.
+      setDetailProduct(null);
     },
     [],
   );
 
   const handleViewDetails = useCallback((product: POSProduct) => {
+    setDetailTab('details');
     setDetailProduct(product);
+    // Pane mutual exclusion (spec §1): opening detail closes customize.
+    setModifierProduct(null);
+    setEditingLineId(null);
   }, []);
 
   const handleEditModifiers = useCallback(
@@ -1001,6 +1014,8 @@ export function HomePage() {
       if (!matchingProduct) return;
       setModifierProduct(matchingProduct);
       setEditingLineId(itemId);
+      // Pane mutual exclusion (spec §1): editing modifiers closes detail.
+      setDetailProduct(null);
     },
     [cartItems, products],
   );
@@ -1307,6 +1322,12 @@ export function HomePage() {
 
       // Atomic replace — avoids the per-item setState loop that amplified BG3.
       useCartStore.getState().replaceCart(tx.items, tx.transactionDiscount);
+      // Rev 2 (U3): the recalled cart invalidates any in-flight customize-EDIT
+      // (a dangling editingLineId would make Confirm a silent no-op). The
+      // DETAIL pane is deliberately NOT cleared — it is product context, not
+      // cart state (spec §4).
+      setModifierProduct(null);
+      setEditingLineId(null);
       setShowHeldModal(false);
     },
     [recallTransaction],
@@ -1388,6 +1409,12 @@ export function HomePage() {
     clearCart('checkout');
     clearLastReceipt();
     setSelectedTableId(null);
+    // Close-on-settle (Rev 2, owner decision U4): the next sale starts on the
+    // grid — never on the previous customer's product — including through
+    // lock-after-sale. editingLineId is its own state; clear it explicitly.
+    setDetailProduct(null);
+    setModifierProduct(null);
+    setEditingLineId(null);
 
     // Lock screen after sale if enabled
     if (useSettingsStore.getState().lockAfterSale) {
@@ -1498,37 +1525,58 @@ export function HomePage() {
         </div>
       </div>
 
-      {/* Product grid - right panel (second in DOM) */}
-      <div className="flex flex-[7] flex-col overflow-hidden bg-gray-50 p-2">
-        {isFnB && consumptionMode === 'SUR_PLACE' && (
-          <div className="mb-2">
-            <TableSelector
-              selectedTableId={selectedTableId}
-              onSelectTable={setSelectedTableId}
+      {/* Product pane — grid | detail | customize (cart-always-foreground v1).
+          The cart column above is the untouched sibling flex child, so pane
+          views can never occlude it (spec §1, Approach A). ToastSmartPrompts
+          stays OUTSIDE the host: inline, non-occluding, cart-relevant (§4). */}
+      <div className="flex flex-[7] flex-col overflow-hidden bg-surface-canvas p-2">
+        <ProductPaneHost
+          detailProduct={detailProduct}
+          modifierProduct={null /* Task 4 flips this to modifierProduct + the extracted composer */}
+          onCloseDetail={() => setDetailProduct(null)}
+          renderDetail={(product) => (
+            <ProductDetailSheet
+              variant="pane"
+              product={product}
+              onClose={() => setDetailProduct(null)}
+              locationStock={locationStock[product.id]}
+              hardBlockOutOfStock={posStockPolicy === 'block'}
+              activeTab={detailTab}
+              onTabChange={setDetailTab}
             />
-          </div>
-        )}
-        <ProductGrid
-          products={products}
-          categories={categories}
-          onAddToCart={handleAddToCart}
-          onCustomize={handleCustomize}
-          onViewDetails={handleViewDetails}
-          cartProductIds={cartProductIds}
-          cartQuantities={cartQuantities}
-          isLoading={productsLoading}
-          locationStock={locationStock}
-          hardBlockOutOfStock={posStockPolicy === 'block'}
-          consumptionModeToggle={isFnB ? (
-            <ConsumptionModeToggle
-              value={consumptionMode}
-              onChange={handleConsumptionModeChange}
-            />
-          ) : undefined}
-          filters={filtresFilters}
-          onFiltersChange={setFiltresFilters}
-          customerSkinType={customerSkinType}
-        />
+          )}
+          renderCustomize={() => null /* Task 4 renders ModifierComposerSheet here */}
+        >
+          {isFnB && consumptionMode === 'SUR_PLACE' && (
+            <div className="mb-2">
+              <TableSelector
+                selectedTableId={selectedTableId}
+                onSelectTable={setSelectedTableId}
+              />
+            </div>
+          )}
+          <ProductGrid
+            products={products}
+            categories={categories}
+            onAddToCart={handleAddToCart}
+            onCustomize={handleCustomize}
+            onViewDetails={handleViewDetails}
+            cartProductIds={cartProductIds}
+            cartQuantities={cartQuantities}
+            isLoading={productsLoading}
+            locationStock={locationStock}
+            hardBlockOutOfStock={posStockPolicy === 'block'}
+            consumptionModeToggle={isFnB ? (
+              <ConsumptionModeToggle
+                value={consumptionMode}
+                onChange={handleConsumptionModeChange}
+              />
+            ) : undefined}
+            filters={filtresFilters}
+            onFiltersChange={setFiltresFilters}
+            customerSkinType={customerSkinType}
+          />
+        </ProductPaneHost>
         {(smartPromptsVariant === 'toast' || smartPromptsVariant === 'both') && (
           <ToastSmartPrompts {...smartPromptsSharedProps} />
         )}
@@ -1632,15 +1680,6 @@ export function HomePage() {
         onClose={() => setVariantPickerProduct(null)}
         product={variantPickerProduct}
         onConfirm={handleVariantConfirm}
-      />
-
-      {/* Product detail drawer — eye icon on a product tile opens this */}
-      <ProductDetailDrawer
-        isOpen={detailProduct !== null}
-        product={detailProduct}
-        onClose={() => setDetailProduct(null)}
-        locationStock={detailProduct ? locationStock[detailProduct.id] : undefined}
-        hardBlockOutOfStock={posStockPolicy === 'block'}
       />
 
       {/* T2.1 Step B — barcode collision chooser. Mounts when the scan
