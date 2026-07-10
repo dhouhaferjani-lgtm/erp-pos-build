@@ -32,6 +32,10 @@ Status: in progress.
   - GREEN: `violationBaselineKey` now appends a per-file duplicate ordinal (`#1`, `#2`, etc.) assigned during `scanCode`, so copy-pasted identical violations cannot ride one baseline entry.
   - Baseline rewrite: `node apps/web/tools/audit-design-system.mjs --write-baseline` now produces 535 baseline entries for the 535 current C1-C6 occurrences.
   - Verification: `pnpm --filter @autoerp/web test -- tools/__tests__/audit-design-system.test.mjs` passed: 6 tests; `node apps/web/tools/audit-design-system.mjs` passed with 535 acknowledged, 0 new, 0 stale.
+- MJ-3 service-line tax:
+  - RED: `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentLineEditor.test.tsx` failed because a Workshop service carrying `tax_rate: "19.00"` still created a line with `tax_rate: "0"`, `tax_configuration_id: null`, and untaxed total.
+  - GREEN: `ServicePicker` now carries service `tax_rate` and `default_tax_configuration_id`; `DocumentLineEditor` uses those values when adding service lines.
+  - Verification: `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentLineEditor.test.tsx src/components/molecules/pickers/ServicePicker.test.tsx` passed: 28 tests; `pnpm --filter @autoerp/web typecheck` passed.
 
 ## Wave 0 — Tooling & Guardrails
 

@@ -20,6 +20,8 @@ export interface ServicePickerValue {
   pricing_type?: string | null
   hourly_rate?: string | null
   base_price?: string | null
+  tax_rate?: string | null
+  default_tax_configuration_id?: string | null
   currency?: string | null
 }
 
@@ -40,6 +42,8 @@ interface ServiceListItem {
   pricing_type?: string | null
   hourly_rate?: string | null
   base_price?: string | null
+  tax_rate?: string | null
+  default_tax_configuration_id?: string | null
   currency?: string | null
 }
 
@@ -61,6 +65,12 @@ function toValue(item: ServiceListItem): ServicePickerValue {
   }
   if (item.base_price !== undefined && item.base_price !== null) {
     value.base_price = item.base_price
+  }
+  if (item.tax_rate !== undefined && item.tax_rate !== null) {
+    value.tax_rate = item.tax_rate
+  }
+  if (item.default_tax_configuration_id !== undefined && item.default_tax_configuration_id !== null) {
+    value.default_tax_configuration_id = item.default_tax_configuration_id
   }
   if (item.currency !== undefined && item.currency !== null) {
     value.currency = item.currency

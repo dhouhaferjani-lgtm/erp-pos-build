@@ -355,6 +355,8 @@ describe('DocumentLineEditor — designation cells', () => {
             name: 'Oil change labor',
             base_price: '80.000',
             hourly_rate: null,
+            tax_rate: '19.00',
+            default_tax_configuration_id: 'tax-standard',
             currency: 'TND',
           },
         ],
@@ -379,7 +381,9 @@ describe('DocumentLineEditor — designation cells', () => {
         description: 'Oil change labor',
         is_service: true,
         unit_price: '80.000',
-        line_total: '80.000',
+        tax_rate: '19.00',
+        tax_configuration_id: 'tax-standard',
+        line_total: '95.200',
       }),
     ])
   })

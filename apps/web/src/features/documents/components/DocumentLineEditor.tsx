@@ -381,6 +381,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const handleAddService = useCallback(
     (service: ServicePickerValue) => {
       const unitPrice = decimalValue(service.base_price ?? service.hourly_rate)
+      const taxRate = decimalValue(service.tax_rate)
       const newLine: DocumentLine = {
         id: generateId(),
         product_id: '',
@@ -394,9 +395,9 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         unit_price: unitPrice,
         discount_percent: null,
         discount_amount: null,
-        tax_rate: '0',
-        tax_configuration_id: null,
-        line_total: calculateLineTotal('1', unitPrice, '0', null, null),
+        tax_rate: taxRate,
+        tax_configuration_id: service.default_tax_configuration_id ?? null,
+        line_total: calculateLineTotal('1', unitPrice, taxRate, null, null),
         free_quantity: '0',
         price_entry_mode: 'unit',
         is_service: true,

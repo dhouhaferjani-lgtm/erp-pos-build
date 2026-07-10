@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { resetAuth, seedAuth } from '@/test/seedAuth'
 import { ServicePicker, type ServicePickerValue } from './ServicePicker'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
@@ -38,6 +39,11 @@ const brakeFront: ServicePickerValue = {
 describe('ServicePicker', () => {
   beforeEach(() => {
     mockApiGet.mockReset()
+    seedAuth()
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   it('renders a combobox when no value is set', () => {
