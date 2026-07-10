@@ -39,6 +39,25 @@ Status: complete.
 
 New shared-shape components: none.
 
+## Wave 4 — Procurement Family Rebuild
+
+Status: in progress.
+
+- 4.1 `SupplierInvoiceCreatePage` canonical shell/table slice:
+  - RED: `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` failed on missing canonical cancel and save-variant footer actions.
+  - GREEN: the create page now uses `PageHeader`, `StickyFormFooter`, `SaveSplitButton`, shared `DataTable` for manual and receipt lines, and `StatusBadge` for match preview state.
+  - Existing invoice-first, receipt-prefill, duplicate-reference, and attachment-upload payload tests remain covered.
+  - Baseline shrunk from 505 to 501 after removing stale C1/C3/C5 create-page fingerprints.
+- Verification:
+  - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` passed: 16 tests.
+  - `pnpm --filter @autoerp/web typecheck` passed.
+  - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
+    - TanStack query key audit: 0 violations.
+    - Design-system audit: 501 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues.
+
+New shared-shape components: none.
+
 ## Wave 3 — Partner Picker Consolidation
 
 Status: complete.

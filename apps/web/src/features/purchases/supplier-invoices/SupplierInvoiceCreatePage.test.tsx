@@ -168,6 +168,14 @@ vi.mock('sonner', () => ({
 
 let SupplierInvoiceCreatePage: React.ComponentType<Record<string, never>>
 
+function getSaveButton(): HTMLButtonElement {
+  return screen.getByRole('button', { name: 'purchases:supplierInvoices.create.saveDraft' })
+}
+
+async function findSaveButton(): Promise<HTMLButtonElement> {
+  return screen.findByRole('button', { name: 'purchases:supplierInvoices.create.saveDraft' })
+}
+
 beforeEach(async () => {
   vi.clearAllMocks()
   mockHasPermission.mockReturnValue(true)
@@ -212,6 +220,16 @@ beforeEach(async () => {
 })
 
 describe('SupplierInvoiceCreatePage', () => {
+  it('renders canonical footer actions for cancel and save variants', async () => {
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    expect(screen.getByRole('button', { name: 'common:actions.cancel' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'purchases:supplierInvoices.create.saveDraft' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'actions.openSaveMenu' })).toBeInTheDocument()
+  })
+
   it('renders a scan-instead link with the locked supplier_invoice kind when permitted', async () => {
     mockHasPermission.mockReturnValue(true)
     renderWithProviders(<SupplierInvoiceCreatePage />, {
@@ -236,7 +254,7 @@ describe('SupplierInvoiceCreatePage', () => {
     fireEvent.change(screen.getByTestId('manual-line-unit-price-0'), { target: { value: '8.125' } })
     fireEvent.change(screen.getByTestId('manual-line-vat-rate-0'), { target: { value: '0.00' } })
 
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
@@ -288,9 +306,9 @@ describe('SupplierInvoiceCreatePage', () => {
     fireEvent.change(screen.getByTestId('manual-line-vat-rate-0'), { target: { value: '19.00' } })
 
     await waitFor(() => {
-      expect(screen.getByTestId('save-supplier-invoice')).not.toBeDisabled()
+      expect(getSaveButton()).not.toBeDisabled()
     })
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
@@ -329,7 +347,7 @@ describe('SupplierInvoiceCreatePage', () => {
     fireEvent.change(screen.getByTestId('manual-line-quantity-1'), { target: { value: '4.0000' } })
     fireEvent.change(screen.getByTestId('manual-line-unit-price-1'), { target: { value: '9.125' } })
 
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
@@ -364,7 +382,7 @@ describe('SupplierInvoiceCreatePage', () => {
     expect(screen.getByText('purchases:supplierInvoices.create.match.matched')).toBeInTheDocument()
 
     fireEvent.change(screen.getByTestId('supplier-reference'), { target: { value: 'FA-8842' } })
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith({
@@ -439,7 +457,7 @@ describe('SupplierInvoiceCreatePage', () => {
     expect(screen.getByDisplayValue('3.0000')).toBeInTheDocument()
     expect(screen.getByText('purchases:supplierInvoices.create.linkedPOs:{"numbers":"BC-2026-0042"}')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
@@ -462,7 +480,7 @@ describe('SupplierInvoiceCreatePage', () => {
     fireEvent.change(await screen.findByTestId('supplier-invoice-attachments'), {
       target: { files: [file] },
     })
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(uploadAttachmentMutateAsync).toHaveBeenCalledWith({ documentId: 'invoice-1', file })
@@ -480,7 +498,7 @@ describe('SupplierInvoiceCreatePage', () => {
     fireEvent.change(await screen.findByTestId('supplier-invoice-attachments'), {
       target: { files: [file] },
     })
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(navigate).toHaveBeenCalledWith('/purchases/supplier-invoices/invoice-1')
@@ -523,7 +541,7 @@ describe('SupplierInvoiceCreatePage', () => {
     expect(await screen.findByDisplayValue('6.0000')).toBeInTheDocument()
     expect(screen.queryByDisplayValue('0.0000')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId('save-supplier-invoice'))
+    fireEvent.click(getSaveButton())
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
@@ -598,7 +616,7 @@ describe('SupplierInvoiceCreatePage', () => {
       route: '/purchases/supplier-invoices/new?po=po-1',
     })
 
-    fireEvent.click(await screen.findByTestId('save-supplier-invoice'))
+    fireEvent.click(await findSaveButton())
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Validation failed')

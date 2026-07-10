@@ -2,10 +2,13 @@ import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from '
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, FileUp, Plus, ReceiptText, Save, Trash2, TriangleAlert } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileUp, Plus, ReceiptText, Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { MoneyInput, QuantityInput } from '@/components/atoms'
+import { Button, MoneyInput, QuantityInput, StatusBadge, type StatusTone } from '@/components/atoms'
+import { DataTable, PageHeader, type DataTableColumn } from '@/components/molecules'
+import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
+import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { PartnerPicker, ProductPicker, type PartnerPickerValue, type ProductPickerValue } from '@/components/molecules/pickers'
 import { api, getErrorMessage } from '@/lib/api'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
@@ -62,6 +65,8 @@ interface ProcurementPolicyResponse {
   data: { allow_invoice_first: boolean }
 }
 
+const SUPPLIER_INVOICE_CREATE_FORM_ID = 'supplier-invoice-create-form'
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -81,14 +86,14 @@ function linePreview(line: InvoiceLineFormState): MatchPreviewStatus {
   return 'matched'
 }
 
-function matchChipClass(status: MatchPreviewStatus): string {
+function matchPreviewTone(status: MatchPreviewStatus): StatusTone {
   switch (status) {
     case 'matched':
-      return `${tokens.badge.base} ${tokens.badge.green}`
+      return 'success'
     case 'priceVariance':
-      return `${tokens.badge.base} ${tokens.badge.yellow}`
+      return 'warning'
     case 'quantityVariance':
-      return `${tokens.badge.base} ${tokens.badge.red}`
+      return 'danger'
   }
 }
 
@@ -389,35 +394,222 @@ export function SupplierInvoiceCreatePage() {
     void navigate(`/purchases/supplier-invoices/${created.id}`)
   }
 
-  return (
-    <form className="space-y-6" onSubmit={(event) => { void handleSubmit(event) }}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>
-            {t('purchases:supplierInvoices.create.title')}
-          </h1>
-          <p className={`mt-1 text-sm ${textColors.tertiary}`}>
-            {t('purchases:supplierInvoices.create.description')}
-          </p>
-          {hasPermission('document-ingestions.view') && (
-            <Link
-              to="/purchases/scans/new?kind=supplier_invoice"
-              className={`mt-1 inline-block text-sm ${textColors.brand} hover:underline`}
-            >
-              {t('documentIngestions:actions.scanInstead')}
-            </Link>
-          )}
-        </div>
+  const manualLineColumns: DataTableColumn<ManualInvoiceLineFormState>[] = [
+    {
+      key: 'product',
+      header: t('purchases:supplierInvoices.create.columns.product'),
+      cellClassName: 'min-w-64',
+      render: (line, index) => (
+        <>
+          <ProductPicker
+            value={line.product}
+            onChange={(product) => {
+              updateManualLine(index, {
+                product,
+                productId: product?.id ?? '',
+                batchNumber: product?.requires_batch_tracking === true ? line.batchNumber : '',
+                batchExpiryDate: product?.requires_batch_tracking === true ? line.batchExpiryDate : '',
+                batchManufacturingDate: product?.requires_batch_tracking === true ? line.batchManufacturingDate : '',
+              })
+            }}
+            label={t('purchases:supplierInvoices.create.manualLine.productId')}
+            productType="all"
+            testId={`manual-line-product-picker-${String(index)}`}
+          />
+          {isInvoiceFirstDelivered && line.product?.requires_batch_tracking === true ? (
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <input
+                data-testid={`manual-line-batch-number-${String(index)}`}
+                className={tokens.input.base}
+                placeholder={t('purchases:supplierInvoices.create.manualLine.batchNumber')}
+                value={line.batchNumber}
+                onChange={(event) => { updateManualLine(index, { batchNumber: event.target.value }) }}
+              />
+              <input
+                data-testid={`manual-line-batch-expiry-${String(index)}`}
+                type="date"
+                className={tokens.input.base}
+                value={line.batchExpiryDate}
+                onChange={(event) => { updateManualLine(index, { batchExpiryDate: event.target.value }) }}
+              />
+              <input
+                data-testid={`manual-line-batch-manufacturing-${String(index)}`}
+                type="date"
+                className={tokens.input.base}
+                value={line.batchManufacturingDate}
+                onChange={(event) => { updateManualLine(index, { batchManufacturingDate: event.target.value }) }}
+              />
+            </div>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      key: 'quantity',
+      header: t('purchases:supplierInvoices.create.columns.quantity'),
+      numeric: true,
+      width: '9rem',
+      render: (line, index) => (
+        <QuantityInput
+          data-testid={`manual-line-quantity-${String(index)}`}
+          value={line.quantity}
+          onChange={(quantity) => { updateManualLine(index, { quantity }) }}
+          decimalPlaces={4}
+        />
+      ),
+    },
+    {
+      key: 'unitPrice',
+      header: t('purchases:supplierInvoices.create.columns.unitPrice'),
+      numeric: true,
+      width: '9rem',
+      render: (line, index) => (
+        <MoneyInput
+          data-testid={`manual-line-unit-price-${String(index)}`}
+          value={line.unitPrice}
+          onChange={(unitPrice) => { updateManualLine(index, { unitPrice }) }}
+          currency={currency}
+        />
+      ),
+    },
+    {
+      key: 'vatRate',
+      header: t('purchases:supplierInvoices.create.columns.vatRate'),
+      numeric: true,
+      width: '7rem',
+      render: (line, index) => (
+        <input
+          data-testid={`manual-line-vat-rate-${String(index)}`}
+          className={tokens.input.base}
+          value={line.vatRate}
+          onChange={(event) => { updateManualLine(index, { vatRate: event.target.value }) }}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'center',
+      width: '3rem',
+      render: (_line, index) => (
         <button
-          type="submit"
-          data-testid="save-supplier-invoice"
-          disabled={createInvoice.isPending || uploadAttachment.isPending || !canSubmit}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+          type="button"
+          data-testid={`remove-manual-line-${String(index)}`}
+          disabled={manualLines.length <= 1}
+          className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
+          onClick={() => { removeManualLine(index) }}
+          aria-label={t('purchases:supplierInvoices.create.manualLine.remove')}
         >
-          <Save className="me-2 h-4 w-4" />
-          {t('purchases:supplierInvoices.create.saveDraft')}
+          <Trash2 className="h-4 w-4" />
         </button>
-      </div>
+      ),
+    },
+  ]
+
+  const receiptLineColumns: DataTableColumn<InvoiceLineFormState>[] = [
+    {
+      key: 'product',
+      header: t('purchases:supplierInvoices.create.columns.product'),
+      cellClassName: 'max-w-md',
+      render: (line) => (
+        <>
+          <div className="line-clamp-2 font-medium">{line.description}</div>
+          <div className={`line-clamp-2 text-xs ${textColors.tertiary}`}>
+            {[line.poNumber, line.receiptNumber].filter(Boolean).join(' · ')}
+          </div>
+        </>
+      ),
+    },
+    {
+      key: 'received',
+      header: t('purchases:supplierInvoices.create.columns.received'),
+      numeric: true,
+      accessor: (line) => line.receivedQty,
+    },
+    {
+      key: 'invoiced',
+      header: t('purchases:supplierInvoices.create.columns.invoiced'),
+      numeric: true,
+      accessor: (line) => line.alreadyInvoiced,
+    },
+    {
+      key: 'quantity',
+      header: t('purchases:supplierInvoices.create.columns.quantity'),
+      numeric: true,
+      width: '9rem',
+      render: (line, index) => (
+        <QuantityInput
+          data-testid={`invoice-line-quantity-${String(index)}`}
+          value={line.quantity}
+          onChange={(quantity) => { updateLine(index, { quantity }) }}
+          decimalPlaces={4}
+          max={line.matchableQty}
+        />
+      ),
+    },
+    {
+      key: 'unitPrice',
+      header: t('purchases:supplierInvoices.create.columns.unitPrice'),
+      numeric: true,
+      width: '9rem',
+      render: (line, index) => (
+        <MoneyInput
+          data-testid={`invoice-line-unit-price-${String(index)}`}
+          value={line.unitPrice}
+          onChange={(unitPrice) => { updateLine(index, { unitPrice }) }}
+          currency={currency}
+        />
+      ),
+    },
+    {
+      key: 'vatRate',
+      header: t('purchases:supplierInvoices.create.columns.vatRate'),
+      numeric: true,
+      width: '7rem',
+      render: (line, index) => (
+        <input
+          className={tokens.input.base}
+          value={line.vatRate}
+          onChange={(event) => { updateLine(index, { vatRate: event.target.value }) }}
+        />
+      ),
+    },
+    {
+      key: 'match',
+      header: t('purchases:supplierInvoices.create.columns.match'),
+      render: (line) => {
+        const preview = linePreview(line)
+        return (
+          <StatusBadge tone={matchPreviewTone(preview)} className="gap-1">
+            {preview === 'matched' ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+            {t(`purchases:supplierInvoices.create.match.${preview}`)}
+          </StatusBadge>
+        )
+      },
+    },
+  ]
+
+  return (
+    <div className="flex min-h-full flex-col gap-6">
+      <PageHeader
+        title={t('purchases:supplierInvoices.create.title')}
+        subtitle={t('purchases:supplierInvoices.create.description')}
+        actions={hasPermission('document-ingestions.view') ? (
+          <Link
+            to="/purchases/scans/new?kind=supplier_invoice"
+            className={`text-sm ${textColors.brand} hover:underline`}
+          >
+            {t('documentIngestions:actions.scanInstead')}
+          </Link>
+        ) : null}
+        className="mb-0"
+      />
+
+      <form
+        id={SUPPLIER_INVOICE_CREATE_FORM_ID}
+        className="flex flex-1 flex-col gap-6"
+        onSubmit={(event) => { void handleSubmit(event) }}
+      >
 
       <section className={`${tokens.card.base} grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_0.8fr_0.8fr]`}>
         <div>
@@ -663,110 +855,11 @@ export function SupplierInvoiceCreatePage() {
                 {t('purchases:supplierInvoices.create.manualLine.add')}
               </button>
             </div>
-            <div className="overflow-x-auto">
-            <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
-              <thead className={tokens.table.header}>
-                <tr>
-                  <th className={`px-4 py-3 text-start text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.product')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.quantity')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.unitPrice')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.vatRate')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className={`divide-y ${borderColors.divideDefault}`}>
-                {manualLines.map((line, index) => (
-                  <tr key={String(index)}>
-                    <td className="min-w-64 px-4 py-3">
-                      <ProductPicker
-                        value={line.product}
-                        onChange={(product) => {
-                          updateManualLine(index, {
-                            product,
-                            productId: product?.id ?? '',
-                            batchNumber: product?.requires_batch_tracking === true ? line.batchNumber : '',
-                            batchExpiryDate: product?.requires_batch_tracking === true ? line.batchExpiryDate : '',
-                            batchManufacturingDate: product?.requires_batch_tracking === true ? line.batchManufacturingDate : '',
-                          })
-                        }}
-                        label={t('purchases:supplierInvoices.create.manualLine.productId')}
-                        productType="all"
-                        testId={`manual-line-product-picker-${String(index)}`}
-                      />
-                      {isInvoiceFirstDelivered && line.product?.requires_batch_tracking === true ? (
-                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                          <input
-                            data-testid={`manual-line-batch-number-${String(index)}`}
-                            className={tokens.input.base}
-                            placeholder={t('purchases:supplierInvoices.create.manualLine.batchNumber')}
-                            value={line.batchNumber}
-                            onChange={(event) => { updateManualLine(index, { batchNumber: event.target.value }) }}
-                          />
-                          <input
-                            data-testid={`manual-line-batch-expiry-${String(index)}`}
-                            type="date"
-                            className={tokens.input.base}
-                            value={line.batchExpiryDate}
-                            onChange={(event) => { updateManualLine(index, { batchExpiryDate: event.target.value }) }}
-                          />
-                          <input
-                            data-testid={`manual-line-batch-manufacturing-${String(index)}`}
-                            type="date"
-                            className={tokens.input.base}
-                            value={line.batchManufacturingDate}
-                            onChange={(event) => { updateManualLine(index, { batchManufacturingDate: event.target.value }) }}
-                          />
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="w-36 px-4 py-3">
-                      <QuantityInput
-                        data-testid={`manual-line-quantity-${String(index)}`}
-                        value={line.quantity}
-                        onChange={(quantity) => { updateManualLine(index, { quantity }) }}
-                        decimalPlaces={4}
-                      />
-                    </td>
-                    <td className="w-36 px-4 py-3">
-                      <MoneyInput
-                        data-testid={`manual-line-unit-price-${String(index)}`}
-                        value={line.unitPrice}
-                        onChange={(unitPrice) => { updateManualLine(index, { unitPrice }) }}
-                        currency={currency}
-                      />
-                    </td>
-                    <td className="w-28 px-4 py-3">
-                      <input
-                        data-testid={`manual-line-vat-rate-${String(index)}`}
-                        className={tokens.input.base}
-                        value={line.vatRate}
-                        onChange={(event) => { updateManualLine(index, { vatRate: event.target.value }) }}
-                      />
-                    </td>
-                    <td className="w-12 px-4 py-3">
-                      <button
-                        type="button"
-                        data-testid={`remove-manual-line-${String(index)}`}
-                        disabled={manualLines.length <= 1}
-                        className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
-                        onClick={() => { removeManualLine(index) }}
-                        aria-label={t('purchases:supplierInvoices.create.manualLine.remove')}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+            <DataTable
+              columns={manualLineColumns}
+              data={manualLines}
+              keyExtractor={(_line, index) => index}
+            />
           </div>
         ) : receiptLinesQuery.isLoading || purchaseOrdersQuery.isLoading ? (
           <div className={`py-8 text-center text-sm ${textColors.tertiary}`}>
@@ -779,86 +872,11 @@ export function SupplierInvoiceCreatePage() {
               : t('purchases:supplierInvoices.create.noReceiptLines')}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
-              <thead className={tokens.table.header}>
-                <tr>
-                  <th className={`px-4 py-3 text-start text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.product')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.received')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.invoiced')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.quantity')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.unitPrice')}
-                  </th>
-                  <th className={`px-4 py-3 text-end text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.vatRate')}
-                  </th>
-                  <th className={`px-4 py-3 text-start text-xs font-medium uppercase ${textColors.tertiary}`}>
-                    {t('purchases:supplierInvoices.create.columns.match')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className={`divide-y ${borderColors.divideDefault}`}>
-                {lines.map((line, index) => {
-                  const preview = linePreview(line)
-                  return (
-                    <tr key={line.receiptLineId}>
-                      <td className={`max-w-md px-4 py-3 text-sm ${textColors.primary}`}>
-                        <div className="line-clamp-2 font-medium">{line.description}</div>
-                        <div className={`line-clamp-2 text-xs ${textColors.tertiary}`}>
-                          {[line.poNumber, line.receiptNumber].filter(Boolean).join(' · ')}
-                        </div>
-                      </td>
-                      <td className={`px-4 py-3 text-end text-sm ${textColors.secondary}`}>
-                        {line.receivedQty}
-                      </td>
-                      <td className={`px-4 py-3 text-end text-sm ${textColors.secondary}`}>
-                        {line.alreadyInvoiced}
-                      </td>
-                      <td className="w-36 px-4 py-3">
-                        <QuantityInput
-                          data-testid={`invoice-line-quantity-${String(index)}`}
-                          value={line.quantity}
-                          onChange={(quantity) => { updateLine(index, { quantity }) }}
-                          decimalPlaces={4}
-                          max={line.matchableQty}
-                        />
-                      </td>
-                      <td className="w-36 px-4 py-3">
-                        <MoneyInput
-                          data-testid={`invoice-line-unit-price-${String(index)}`}
-                          value={line.unitPrice}
-                          onChange={(unitPrice) => { updateLine(index, { unitPrice }) }}
-                          currency={currency}
-                        />
-                      </td>
-                      <td className="w-28 px-4 py-3">
-                        <input
-                          className={tokens.input.base}
-                          value={line.vatRate}
-                          onChange={(event) => { updateLine(index, { vatRate: event.target.value }) }}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={matchChipClass(preview)}>
-                          {preview === 'matched' ? <CheckCircle2 className="me-1 h-3 w-3" /> : <AlertTriangle className="me-1 h-3 w-3" />}
-                          {t(`purchases:supplierInvoices.create.match.${preview}`)}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={receiptLineColumns}
+            data={lines}
+            keyExtractor={(line) => line.receiptLineId}
+          />
         )}
       </section>
 
@@ -881,6 +899,30 @@ export function SupplierInvoiceCreatePage() {
           </span>
         </div>
       </section>
+
+      <StickyFormFooter>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => { void navigate('/purchases/supplier-invoices') }}
+        >
+          {t('common:actions.cancel')}
+        </Button>
+        <SaveSplitButton
+          form={SUPPLIER_INVOICE_CREATE_FORM_ID}
+          isPending={createInvoice.isPending || uploadAttachment.isPending}
+          disabled={!canSubmit}
+          primaryLabel={t('purchases:supplierInvoices.create.saveDraft')}
+          onPrimarySave={() => {}}
+          onSaveAndClose={() => {
+            const form = document.getElementById(SUPPLIER_INVOICE_CREATE_FORM_ID)
+            if (form instanceof HTMLFormElement) {
+              form.requestSubmit()
+            }
+          }}
+        />
+      </StickyFormFooter>
     </form>
+    </div>
   )
 }
