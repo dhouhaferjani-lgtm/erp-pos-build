@@ -12,7 +12,7 @@ Folds in the accepted findings of the pre-dispatch adversarial review (`docs/sup
 - **Close pane on settle/new-sale** — new owner decision (U4); the within-sale "post-add stays open" decision is untouched.
 - **Esc stacking guard (U1):** the detail pane's Esc handler bails while any `[aria-modal="true"]` element is mounted (every Modal binds its own window Esc listener).
 - **Pulse lands on-screen (U2):** the cart scrolls the affected line into view on `lastAddedNonce` change; the customize-EDIT confirm path also pulses (U9).
-- **Stale customize-EDIT protection (U3):** customize state cleared on cart replacement / removal of the edited line; Confirm validates the line still exists and toasts if not. §4 "held/recall: pane unaffected" now correctly holds for the DETAIL pane only.
+- **Stale customize-EDIT protection (U3):** customize state proactively cleared on recall and on settle/new-sale; for clear-cart, removal of the edited line, and refund draft-resume, the confirm-time validation (line missing → `modifiers.lineGone` toast + close, no mutation) covers the outcome. §4 "held/recall: pane unaffected" now correctly holds for the DETAIL pane only.
 - Deliberate-decision notes made explicit: Esc inert on the composer is a behavior CHANGE (U5); no focus management (U7). Grid-hiding fallback named (U6); pane wrapper gets `overflow-x-auto` (U8); §3 inventory completed (U10).
 
 ## Owner principle
@@ -72,7 +72,7 @@ Current inventory classification (from the 2026-07-10 exploration; completed in 
 ## §4 Edge cases
 
 - **Pay while pane open:** allowed; the payment takeover covers everything including the pane. On settle/new-sale the pane CLOSES (owner decision, Rev 2 U4): `handleNewSale` clears `detailProduct`/`modifierProduct` (and `editingLineId`) so the next sale starts on the grid — including through lock-after-sale; the cart clears normally.
-- **Held/recall while pane open:** cart content swaps; detail pane unaffected; CUSTOMIZE pane state is cleared on cart replacement (recall/clear/settle) and on removal of the line being edited — a dangling `editingLineId` would make Confirm a silent no-op (`updateLineModifiers` no-ops on missing ids, `cartStore.ts:371-393`). Confirm additionally validates the line still exists and toasts if not (U3).
+- **Held/recall while pane open:** cart content swaps; detail pane unaffected; CUSTOMIZE pane state is proactively cleared on recall and on settle/new-sale; clear-cart, removal of the edited line, and refund draft-resume are covered by the confirm-time validation instead — a dangling `editingLineId` would otherwise make Confirm a silent no-op (`updateLineModifiers` no-ops on missing ids, `cartStore.ts:371-393`). Confirm additionally validates the line still exists and toasts if not (U3).
 - **TableSelector (F&B)** hides with the grid; **ToastSmartPrompts** remain visible (inline, non-occluding, cart-relevant).
 - **OOS gating unchanged:** `hardBlockOutOfStock` is already a sheet prop threaded from `posStockPolicy` (`HomePage.tsx:1648`).
 - **Width floor:** at 1366px the pane is ≈840px (sheet aside 344px + ≈490px tab column — comfortable). Set a sane internal `min-w` rather than responsive breakpoints; the POS is a fixed-terminal layout (no breakpoints exist on the split today). The pane wrapper gets `overflow-x-auto` so at degenerate widths content scrolls instead of clipping the tab strip and close X (U8).
