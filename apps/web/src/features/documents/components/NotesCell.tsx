@@ -9,7 +9,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
-import { textColors, borderColors } from '../../../lib/designTokens'
+import { colorClasses, textColors, borderColors } from '../../../lib/designTokens'
 
 export type NotesCellProps = {
   value: string | null
@@ -94,7 +94,7 @@ export function NotesCell({ value, readOnly = false, className = '', valueClassN
         aria-label={t('documents:lines.additionalDescription.editAriaLabel')}
         placeholder={t('documents:lines.additionalDescription.placeholder')}
         rows={2}
-        className={`w-full rounded border ${borderColors.default} px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none`}
+        className={`w-full rounded border ${borderColors.default} px-2 py-1 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500} resize-none`}
       />
     )
   }

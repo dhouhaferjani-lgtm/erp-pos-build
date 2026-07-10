@@ -9,6 +9,7 @@ import { fetchTaxBreakdown, type TaxBreakdown } from '../api/taxApi'
 import { getDecimals } from '@/hooks/useCurrency'
 import { bccomp } from '@/lib/decimal'
 import { formatNumber, formatPercent } from '@/lib/format'
+import { colorClasses } from '@/lib/designTokens'
 
 export interface DocumentTotalsProps {
   documentId: string
@@ -59,17 +60,17 @@ export function DocumentTotals({
   if (isLoading) {
     return (
       <div className={cn('space-y-2', className)}>
-        <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4 ms-auto"></div>
-        <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4 ms-auto"></div>
-        <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4 ms-auto"></div>
+        <div className={`h-4 ${colorClasses.bgGray200} rounded animate-pulse w-3/4 ms-auto`}></div>
+        <div className={`h-4 ${colorClasses.bgGray200} rounded animate-pulse w-3/4 ms-auto`}></div>
+        <div className={`h-4 ${colorClasses.bgGray200} rounded animate-pulse w-3/4 ms-auto`}></div>
       </div>
     )
   }
 
   if (error || !taxBreakdown) {
     return (
-      <div className={cn('rounded-lg border border-red-200 bg-red-50 p-4', className)}>
-        <div className="flex items-center gap-2 text-red-700">
+      <div className={cn(`rounded-lg border ${colorClasses.borderRed200} ${colorClasses.bgRed50} p-4`, className)}>
+        <div className={`flex items-center gap-2 ${colorClasses.textRed700}`}>
           <AlertCircle className="h-4 w-4" />
           <p className="text-sm">
             {t('tax.breakdown.error')}
@@ -87,10 +88,10 @@ export function DocumentTotals({
     <div className={cn('space-y-2', className)}>
       {/* Subtotal */}
       <div className="flex items-center justify-between py-1">
-        <span className="text-sm text-gray-600">
+        <span className={`text-sm ${colorClasses.textGray600}`}>
           {t('documents.subtotal')}
         </span>
-        <span className="text-sm font-medium text-gray-900 font-mono">
+        <span className={`text-sm font-medium ${colorClasses.textGray900} font-mono`}>
           {formatAmount(taxBreakdown.subtotal)} {currency}
         </span>
       </div>
@@ -107,10 +108,10 @@ export function DocumentTotals({
 
               return (
                 <div key={index} className="flex items-center justify-between py-1">
-                  <span className="text-sm text-gray-600">
+                  <span className={`text-sm ${colorClasses.textGray600}`}>
                     {displayName}
                   </span>
-                  <span className="text-sm font-medium text-gray-900 font-mono">
+                  <span className={`text-sm font-medium ${colorClasses.textGray900} font-mono`}>
                     {formatAmount(detail.tax_amount)} {currency}
                   </span>
                 </div>
@@ -122,24 +123,24 @@ export function DocumentTotals({
       {/* Stamp duty (separate from other taxes) */}
       {hasStampDuty && (
         <div className="flex items-center justify-between py-1">
-          <span className="text-sm text-gray-600">
+          <span className={`text-sm ${colorClasses.textGray600}`}>
             {t('tax.breakdown.stampDuty')}
           </span>
-          <span className="text-sm font-medium text-gray-900 font-mono">
+          <span className={`text-sm font-medium ${colorClasses.textGray900} font-mono`}>
             {formatAmount(taxBreakdown.stamp_duty_amount)} {currency}
           </span>
         </div>
       )}
 
       {/* Divider before total */}
-      <div className="border-t border-gray-300 my-2"></div>
+      <div className={`border-t ${colorClasses.borderGray300} my-2`}></div>
 
       {/* Total */}
       <div className="flex items-center justify-between py-1">
-        <span className="text-base font-semibold text-gray-900">
+        <span className={`text-base font-semibold ${colorClasses.textGray900}`}>
           {t('documents.total')}
         </span>
-        <span className="text-base font-bold text-gray-900 font-mono">
+        <span className={`text-base font-bold ${colorClasses.textGray900} font-mono`}>
           {formatAmount(taxBreakdown.total)} {currency}
         </span>
       </div>
@@ -147,12 +148,12 @@ export function DocumentTotals({
       {/* Balance due (for posted invoices) */}
       {hasBalanceDue && (
         <>
-          <div className="border-t border-gray-200 my-2"></div>
+          <div className={`border-t ${colorClasses.borderGray200} my-2`}></div>
           <div className="flex items-center justify-between py-1">
-            <span className="text-sm font-medium text-blue-700">
+            <span className={`text-sm font-medium ${colorClasses.textBlue700}`}>
               {t('invoices.balanceDue')}
             </span>
-            <span className="text-sm font-semibold text-blue-700 font-mono">
+            <span className={`text-sm font-semibold ${colorClasses.textBlue700} font-mono`}>
               {formatAmount(balanceDue)} {currency}
             </span>
           </div>
@@ -161,9 +162,9 @@ export function DocumentTotals({
 
       {/* No taxes message */}
       {!hasTaxes && (
-        <div className="flex items-start gap-2 rounded-lg bg-gray-50 p-3 mt-2">
-          <AlertCircle className="h-4 w-4 text-gray-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-gray-600">
+        <div className={`flex items-start gap-2 rounded-lg ${colorClasses.bgGray50} p-3 mt-2`}>
+          <AlertCircle className={`h-4 w-4 ${colorClasses.textGray600} flex-shrink-0 mt-0.5`} />
+          <p className={`text-sm ${colorClasses.textGray600}`}>
             {t('tax.breakdown.noTaxes')}
           </p>
         </div>

@@ -10,6 +10,7 @@ import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import { AddQuickProductModal } from '../../../components/organisms/AddQuickProductModal/AddQuickProductModal'
 import { TaxConfigurationSelect } from '../../../components/atoms/TaxConfigurationSelect/TaxConfigurationSelect'
+import { Input } from '../../../components/atoms/Input/Input'
 import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
 import { DraftMoneyInput } from '../../../components/atoms/DraftMoneyInput'
 import { QuantityInput } from '../../../components/atoms/QuantityInput/QuantityInput'
@@ -744,7 +745,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         readonly ? (
           <span className={`text-sm ${textColors.primary}`}>{formatPercent(line.discount_percent ?? '0')}</span>
         ) : (
-          <input
+          <Input
             type="number"
             inputMode="decimal"
             min="0"
@@ -757,7 +758,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
               })
             }}
             aria-label={t('sales:lineItems.discount')}
-            className={`${tokens.input.base} w-20 text-end text-sm`}
+            className="w-20 text-end text-sm"
           />
         )
       ),

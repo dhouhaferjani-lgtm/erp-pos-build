@@ -10,6 +10,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/atoms/Button/Button'
 import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { DeliveryNoteConsolidation } from './components/DeliveryNoteConsolidation'
+import { colorClasses } from '@/lib/designTokens'
 
 export function DeliveryNoteConsolidationPage() {
   const { t } = useTranslation(['sales', 'common'])
@@ -35,7 +36,7 @@ export function DeliveryNoteConsolidationPage() {
       />
 
       {/* Main Content */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
         <DeliveryNoteConsolidation
           onSuccess={(invoiceId) => navigate(`/sales/invoices/${invoiceId}`)}
           onCancel={() => navigate('/inventory/delivery-notes')}

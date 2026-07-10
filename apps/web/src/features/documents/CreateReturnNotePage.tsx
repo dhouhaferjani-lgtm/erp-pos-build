@@ -29,6 +29,8 @@ import { useCompanyStore } from '@/stores/companyStore'
 import type { Invoice } from '@/components/ui/InvoiceSearchSelect'
 import type { DeliveryNote } from '@/components/ui/DeliveryNoteSearchSelect'
 import type { ReturnReason } from '@/types/returnNote'
+import { colorClasses } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 // Source type for return note
 type SourceType = 'delivery_note' | 'invoice'
@@ -281,14 +283,14 @@ export function CreateReturnNotePage() {
 
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
         {/* 1. Source Document Selection */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-medium text-gray-900">
+        <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
+          <h2 className={`mb-4 text-lg font-medium ${colorClasses.textGray900}`}>
             {t('sales:returnNotes.form.selectSource')}
           </h2>
 
           {/* Document Type Toggle */}
           <div className="mb-4">
-            <div className="inline-flex rounded-lg border border-gray-200 p-1">
+            <div className={`inline-flex rounded-lg border ${colorClasses.borderGray200} p-1`}>
               <button
                 type="button"
                 onClick={() => {
@@ -302,8 +304,8 @@ export function CreateReturnNotePage() {
                 disabled={isSubmitting}
                 className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
                   sourceType === 'delivery_note'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-700 hover:bg-gray-100'
+                    ? `${colorClasses.bgBlue600} text-white`
+                    : `${colorClasses.textGray700} ${colorClasses.hoverBgGray100}`
                 }`}
               >
                 {t('sales:documents.types.delivery_note')}
@@ -320,8 +322,8 @@ export function CreateReturnNotePage() {
                 disabled={isSubmitting}
                 className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
                   sourceType === 'invoice'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-700 hover:bg-gray-100'
+                    ? `${colorClasses.bgBlue600} text-white`
+                    : `${colorClasses.textGray700} ${colorClasses.hoverBgGray100}`
                 }`}
               >
                 {t('sales:documents.types.invoice')}
@@ -376,25 +378,25 @@ export function CreateReturnNotePage() {
 
           {/* Document Summary */}
           {currentDocument && (
-            <div className="mt-4 rounded-lg bg-gray-50 p-4">
+            <div className={`mt-4 rounded-lg ${colorClasses.bgGray50} p-4`}>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="font-medium text-gray-700">{t('sales:documents.number')}:</span>
-                  <span className="ms-2 text-gray-900">{currentDocument.document_number}</span>
+                  <span className={`font-medium ${colorClasses.textGray700}`}>{t('sales:documents.number')}:</span>
+                  <span className={`ms-2 ${colorClasses.textGray900}`}>{currentDocument.document_number}</span>
                 </div>
                 <div>
-                  <span className="font-medium text-gray-700">{t('sales:documents.date')}:</span>
-                  <span className="ms-2 text-gray-900">
+                  <span className={`font-medium ${colorClasses.textGray700}`}>{t('sales:documents.date')}:</span>
+                  <span className={`ms-2 ${colorClasses.textGray900}`}>
                     {new Date(currentDocument.document_date).toLocaleDateString()}
                   </span>
                 </div>
                 <div>
-                  <span className="font-medium text-gray-700">{t('sales:documents.partner')}:</span>
-                  <span className="ms-2 text-gray-900">{currentDocument.partner?.name}</span>
+                  <span className={`font-medium ${colorClasses.textGray700}`}>{t('sales:documents.partner')}:</span>
+                  <span className={`ms-2 ${colorClasses.textGray900}`}>{currentDocument.partner?.name}</span>
                 </div>
                 <div>
-                  <span className="font-medium text-gray-700">{t('sales:documents.total')}:</span>
-                  <span className="ms-2 text-gray-900">
+                  <span className={`font-medium ${colorClasses.textGray700}`}>{t('sales:documents.total')}:</span>
+                  <span className={`ms-2 ${colorClasses.textGray900}`}>
                     {parseFloat(currentDocument.total || '0').toFixed(decimals)}
                   </span>
                 </div>
@@ -405,14 +407,14 @@ export function CreateReturnNotePage() {
 
         {/* 2. Items to Return (only shows when document selected) */}
         {hasDocument && documentLines.length > 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-lg font-medium text-gray-900">
+          <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
+            <h2 className={`mb-4 text-lg font-medium ${colorClasses.textGray900}`}>
               {t('sales:lineItems.title')}
             </h2>
 
             {/* Line Mode Toggle */}
             <div className="mb-4">
-              <div className="inline-flex rounded-lg border border-gray-200 p-1">
+              <div className={`inline-flex rounded-lg border ${colorClasses.borderGray200} p-1`}>
                 <button
                   type="button"
                   onClick={() => {
@@ -423,8 +425,8 @@ export function CreateReturnNotePage() {
                   disabled={isSubmitting}
                   className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
                     lineMode === 'all'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? `${colorClasses.bgBlue600} text-white`
+                      : `${colorClasses.textGray700} ${colorClasses.hoverBgGray100}`
                   }`}
                 >
                   {t('sales:returnNotes.form.fullReturn')}
@@ -435,8 +437,8 @@ export function CreateReturnNotePage() {
                   disabled={isSubmitting}
                   className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
                     lineMode === 'partial'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? `${colorClasses.bgBlue600} text-white`
+                      : `${colorClasses.textGray700} ${colorClasses.hoverBgGray100}`
                   }`}
                 >
                   {t('sales:returnNotes.form.partialReturn')}
@@ -447,29 +449,29 @@ export function CreateReturnNotePage() {
             {/* Partial Line Selection Table */}
             {lineMode === 'partial' && (
               <div>
-                <div className="overflow-hidden rounded-lg border border-gray-200">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                <div className={`overflow-hidden rounded-lg border ${colorClasses.borderGray200}`}>
+                  <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>
+                    <thead className={`${colorClasses.bgGray50}`}>
                       <tr>
                         <th className="w-10 px-3 py-3"></th>
-                        <th className="px-3 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                        <th className={`px-3 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                           {t('sales:lineItems.item')}
                         </th>
-                        <th className="px-3 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                        <th className={`px-3 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                           {t('sales:lineItems.quantity')}
                         </th>
-                        <th className="px-3 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                        <th className={`px-3 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                           {t('sales:returnNotes.form.returnQuantity')}
                         </th>
-                        <th className="px-3 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                        <th className={`px-3 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                           {t('sales:lineItems.unitPrice')}
                         </th>
-                        <th className="px-3 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                        <th className={`px-3 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                           {t('sales:lineItems.total')}
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
+                    <tbody className={`divide-y ${colorClasses.divideGray200} bg-white`}>
                       {documentLines.map((line) => {
                         const isSelected = selectedLineIds.has(line.id)
                         const returnQty = lineQuantities.get(line.id) || line.quantity
@@ -480,21 +482,21 @@ export function CreateReturnNotePage() {
                         const total = subtotal + tax
 
                         return (
-                          <tr key={line.id} className={isSelected ? 'bg-blue-50' : ''}>
+                          <tr key={line.id} className={isSelected ? `${colorClasses.bgBlue50}` : ''}>
                             <td className="px-3 py-3 text-center">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => { handleToggleLine(line.id) }}
                                 disabled={isSubmitting}
-                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                className={`h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
                               />
                             </td>
                             <td className="px-3 py-3">
-                              <div className="text-sm font-medium text-gray-900">{line.product_code}</div>
-                              <div className="text-sm text-gray-500">{line.description}</div>
+                              <div className={`text-sm font-medium ${colorClasses.textGray900}`}>{line.product_code}</div>
+                              <div className={`text-sm ${colorClasses.textGray500}`}>{line.description}</div>
                             </td>
-                            <td className="px-3 py-3 text-end text-sm text-gray-900">
+                            <td className={`px-3 py-3 text-end text-sm ${colorClasses.textGray900}`}>
                               {line.quantity}
                             </td>
                             <td className="px-3 py-3 text-end">
@@ -508,36 +510,36 @@ export function CreateReturnNotePage() {
                                     handleQuantityChange(line.id, parseInt(e.target.value) || 1, line.quantity)
                                   }}
                                   disabled={isSubmitting}
-                                  className="w-20 rounded-md border-gray-300 px-2 py-1 text-sm text-end"
+                                  className={`w-20 rounded-md ${colorClasses.borderGray300} px-2 py-1 text-sm text-end`}
                                 />
                               ) : (
-                                <span className="text-sm text-gray-400">-</span>
+                                <span className={`text-sm ${colorClasses.textGray400}`}>-</span>
                               )}
                             </td>
-                            <td className="px-3 py-3 text-end text-sm text-gray-900">
+                            <td className={`px-3 py-3 text-end text-sm ${colorClasses.textGray900}`}>
                               {unitPrice.toFixed(decimals)}
                             </td>
-                            <td className="px-3 py-3 text-end text-sm font-medium text-gray-900">
+                            <td className={`px-3 py-3 text-end text-sm font-medium ${colorClasses.textGray900}`}>
                               {isSelected ? total.toFixed(decimals) : '-'}
                             </td>
                           </tr>
                         )
                       })}
                     </tbody>
-                    <tfoot className="bg-gray-50">
+                    <tfoot className={`${colorClasses.bgGray50}`}>
                       <tr>
-                        <td colSpan={5} className="px-3 py-3 text-end text-sm font-medium text-gray-900">
+                        <td colSpan={5} className={`px-3 py-3 text-end text-sm font-medium ${colorClasses.textGray900}`}>
                           {t('sales:returnNotes.form.returnTotal')}
                         </td>
-                        <td className="px-3 py-3 text-end text-sm font-bold text-gray-900">
+                        <td className={`px-3 py-3 text-end text-sm font-bold ${colorClasses.textGray900}`}>
                           {partialReturnTotal.toFixed(decimals)}
                         </td>
                       </tr>
                     </tfoot>
-                  </table>
+                  </DataTable>
                 </div>
                 {selectedLineIds.size === 0 && (
-                  <p className="mt-2 text-sm text-red-600">
+                  <p className={`mt-2 text-sm ${colorClasses.textRed600}`}>
                     {t('sales:returnNotes.form.noLinesSelected')}
                   </p>
                 )}
@@ -546,7 +548,7 @@ export function CreateReturnNotePage() {
 
             {/* All mode - just show line count */}
             {lineMode === 'all' && (
-              <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
+              <div className={`rounded-lg ${colorClasses.bgBlue50} p-4 text-sm ${colorClasses.textBlue800}`}>
                 {t('sales:returnNotes.form.returningAllItems', {
                   count: documentLines.length,
                   defaultValue: `Returning all ${documentLines.length} items`,
@@ -558,8 +560,8 @@ export function CreateReturnNotePage() {
 
         {/* 3. Return Details (only shows when document selected) */}
         {hasDocument && (
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-lg font-medium text-gray-900">
+          <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
+            <h2 className={`mb-4 text-lg font-medium ${colorClasses.textGray900}`}>
               {t('sales:returnNotes.form.returnDetails')}
             </h2>
 
@@ -607,7 +609,7 @@ export function CreateReturnNotePage() {
 
               {/* Notes */}
               <div>
-                <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="notes" className={`block text-sm font-medium ${colorClasses.textGray700}`}>
                   {t('sales:returnNotes.notes')}
                 </label>
                 <Controller
@@ -620,7 +622,7 @@ export function CreateReturnNotePage() {
                       rows={3}
                       disabled={isSubmitting}
                       placeholder={t('sales:returnNotes.notesPlaceholder')}
-                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className={`mt-1 block w-full rounded-lg border ${colorClasses.borderGray300} px-3 py-2 text-sm ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
                     />
                   )}
                 />
@@ -628,7 +630,7 @@ export function CreateReturnNotePage() {
 
               {/* Auto-create credit note (invoice only) */}
               {sourceType === 'invoice' && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <div className={`rounded-lg border ${colorClasses.borderBlue200} ${colorClasses.bgBlue50} p-4`}>
                   <Controller
                     name="auto_create_credit_note"
                     control={control}
@@ -639,13 +641,13 @@ export function CreateReturnNotePage() {
                           checked={field.value}
                           onChange={field.onChange}
                           disabled={isSubmitting}
-                          className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className={`mt-1 h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
                         />
                         <div className="flex-1">
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className={`text-sm font-medium ${colorClasses.textGray900}`}>
                             {t('sales:returnNotes.form.autoCreateCreditNote')}
                           </span>
-                          <p className="mt-1 text-sm text-gray-600">
+                          <p className={`mt-1 text-sm ${colorClasses.textGray600}`}>
                             {t('sales:returnNotes.form.autoCreateCreditNoteHint')}
                           </p>
                         </div>
@@ -660,10 +662,10 @@ export function CreateReturnNotePage() {
 
         {/* Error Display */}
         {createMutation.isError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className={`rounded-lg border ${colorClasses.borderRed200} ${colorClasses.bgRed50} p-4`}>
             <div className="flex gap-3">
-              <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-400" />
-              <p className="text-sm text-red-800">
+              <AlertCircle className={`h-5 w-5 flex-shrink-0 ${colorClasses.textRed400}`} />
+              <p className={`text-sm ${colorClasses.textRed800}`}>
                 {createMutation.error.message || t('sales:returnNotes.messages.createFailed')}
               </p>
             </div>
@@ -671,19 +673,19 @@ export function CreateReturnNotePage() {
         )}
 
         {/* Action Buttons */}
-        <div className="flex justify-end gap-3 border-t border-gray-200 pt-6">
+        <div className={`flex justify-end gap-3 border-t ${colorClasses.borderGray200} pt-6`}>
           <button
             type="button"
             onClick={() => { navigate('/sales/return-notes') }}
             disabled={isSubmitting}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className={`rounded-lg border ${colorClasses.borderGray300} bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} disabled:cursor-not-allowed disabled:opacity-50`}
           >
             {t('common:actions.cancel')}
           </button>
           <button
             type="submit"
             disabled={isSubmitting || !hasDocument}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+            className={`rounded-lg ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700} disabled:cursor-not-allowed ${colorClasses.disabledBgGray400}`}
           >
             {isSubmitting
               ? t('common:status.saving')

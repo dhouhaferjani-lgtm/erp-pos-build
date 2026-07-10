@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { Package, AlertCircle, CreditCard, FileText, Link2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { ReturnReason, ReturnCondition, RefundMethod } from '@/types/returnNote'
+import { colorClasses } from '@/lib/designTokens'
 
 interface ReturnNoteMetadataProps {
   metadata: {
@@ -46,20 +47,20 @@ export function ReturnNoteMetadata({
   const getReasonColor = (reason: ReturnReason): string => {
     switch (reason) {
       case 'defective':
-        return 'bg-red-100 text-red-800 border-red-200'
+        return `${colorClasses.bgRed100} ${colorClasses.textRed800} ${colorClasses.borderRed200}`
       case 'wrong_item':
-        return 'bg-orange-100 text-orange-800 border-orange-200'
+        return `${colorClasses.bgOrange100} ${colorClasses.textOrange800} ${colorClasses.borderOrange200}`
       case 'customer_regret':
-        return 'bg-blue-100 text-blue-800 border-blue-200'
+        return `${colorClasses.bgBlue100} ${colorClasses.textBlue800} ${colorClasses.borderBlue200}`
       case 'damaged_in_transit':
-        return 'bg-red-100 text-red-800 border-red-200'
+        return `${colorClasses.bgRed100} ${colorClasses.textRed800} ${colorClasses.borderRed200}`
       case 'warranty':
-        return 'bg-purple-100 text-purple-800 border-purple-200'
+        return `${colorClasses.bgPurple100} ${colorClasses.textPurple800} ${colorClasses.borderPurple200}`
       case 'exchange':
-        return 'bg-green-100 text-green-800 border-green-200'
+        return `${colorClasses.bgGreen100} ${colorClasses.textGreen800} ${colorClasses.borderGreen200}`
       case 'other':
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200'
+        return `${colorClasses.bgGray100} ${colorClasses.textGray800} ${colorClasses.borderGray200}`
     }
   }
 
@@ -67,30 +68,30 @@ export function ReturnNoteMetadata({
   const getConditionColor = (condition: ReturnCondition): string => {
     switch (condition) {
       case 'unopened':
-        return 'bg-green-100 text-green-800'
+        return `${colorClasses.bgGreen100} ${colorClasses.textGreen800}`
       case 'used':
-        return 'bg-yellow-100 text-yellow-800'
+        return `${colorClasses.bgYellow100} ${colorClasses.textYellow800}`
       case 'damaged':
-        return 'bg-orange-100 text-orange-800'
+        return `${colorClasses.bgOrange100} ${colorClasses.textOrange800}`
       case 'unusable':
-        return 'bg-red-100 text-red-800'
+        return `${colorClasses.bgRed100} ${colorClasses.textRed800}`
       default:
-        return 'bg-gray-100 text-gray-800'
+        return `${colorClasses.bgGray100} ${colorClasses.textGray800}`
     }
   }
 
   return (
-    <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6">
-      <div className="flex items-center gap-2 border-b border-gray-200 pb-3">
-        <Package className="h-5 w-5 text-orange-600" />
-        <h3 className="text-lg font-semibold text-gray-900">
+    <div className={`space-y-4 rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
+      <div className={`flex items-center gap-2 border-b ${colorClasses.borderGray200} pb-3`}>
+        <Package className={`h-5 w-5 ${colorClasses.textOrange600}`} />
+        <h3 className={`text-lg font-semibold ${colorClasses.textGray900}`}>
           {t('returnNotes.summary.title', 'Return Information')}
         </h3>
       </div>
 
       {/* Return Reason */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className={`block text-sm font-medium ${colorClasses.textGray700} mb-2`}>
           {t('returnNotes.reason.label')}
         </label>
         <div className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${getReasonColor(metadata.return_reason)}`}>
@@ -102,7 +103,7 @@ export function ReturnNoteMetadata({
       {/* Return Condition */}
       {metadata.return_condition && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={`block text-sm font-medium ${colorClasses.textGray700} mb-2`}>
             {t('returnNotes.condition.label')}
           </label>
           <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${getConditionColor(metadata.return_condition)}`}>
@@ -114,12 +115,12 @@ export function ReturnNoteMetadata({
       {/* Refund Method */}
       {metadata.refund_method && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={`block text-sm font-medium ${colorClasses.textGray700} mb-2`}>
             {t('returnNotes.refundMethod.label')}
           </label>
           <div className="inline-flex items-center gap-2 text-sm">
-            <CreditCard className="h-4 w-4 text-gray-500" />
-            <span className="text-gray-900">
+            <CreditCard className={`h-4 w-4 ${colorClasses.textGray500}`} />
+            <span className={`${colorClasses.textGray900}`}>
               {t(`returnNotes.refundMethod.${metadata.refund_method.replace(/_/g, '')}`, metadata.refund_method)}
             </span>
           </div>
@@ -128,15 +129,15 @@ export function ReturnNoteMetadata({
 
       {/* Source Documents */}
       {(metadata.source_delivery_note_id || metadata.source_invoice_id) && (
-        <div className="border-t border-gray-200 pt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className={`border-t ${colorClasses.borderGray200} pt-4`}>
+          <label className={`block text-sm font-medium ${colorClasses.textGray700} mb-2`}>
             {t('returnNotes.sourceDeliveryNote', 'Source Document')}
           </label>
           <div className="space-y-2">
             {metadata.source_delivery_note_id && sourceDeliveryNoteNumber && (
               <Link
                 to={`/inventory/delivery-notes/${metadata.source_delivery_note_id}`}
-                className="inline-flex items-center gap-2 rounded-md bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                className={`inline-flex items-center gap-2 rounded-md ${colorClasses.bgPurple50} px-3 py-2 text-sm font-medium ${colorClasses.textPurple700} ${colorClasses.hoverBgPurple100} transition-colors`}
               >
                 <FileText className="h-4 w-4" />
                 {sourceDeliveryNoteNumber}
@@ -145,7 +146,7 @@ export function ReturnNoteMetadata({
             {metadata.source_invoice_id && sourceInvoiceNumber && (
               <Link
                 to={`/sales/invoices/${metadata.source_invoice_id}`}
-                className="inline-flex items-center gap-2 rounded-md bg-green-50 px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-100 transition-colors"
+                className={`inline-flex items-center gap-2 rounded-md ${colorClasses.bgGreen50} px-3 py-2 text-sm font-medium ${colorClasses.textGreen700} ${colorClasses.hoverBgGreen100} transition-colors`}
               >
                 <FileText className="h-4 w-4" />
                 {sourceInvoiceNumber}
@@ -157,13 +158,13 @@ export function ReturnNoteMetadata({
 
       {/* Linked Credit Note */}
       {metadata.linked_credit_note_id && linkedCreditNoteNumber && (
-        <div className="border-t border-gray-200 pt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className={`border-t ${colorClasses.borderGray200} pt-4`}>
+          <label className={`block text-sm font-medium ${colorClasses.textGray700} mb-2`}>
             {t('returnNotes.linkedCreditNote', 'Linked Credit Note')}
           </label>
           <Link
             to={`/sales/credit-notes/${metadata.linked_credit_note_id}`}
-            className="inline-flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 transition-colors"
+            className={`inline-flex items-center gap-2 rounded-md ${colorClasses.bgRed50} px-3 py-2 text-sm font-medium ${colorClasses.textRed700} ${colorClasses.hoverBgRed100} transition-colors`}
           >
             <Link2 className="h-4 w-4" />
             {linkedCreditNoteNumber}
@@ -173,11 +174,11 @@ export function ReturnNoteMetadata({
 
       {/* Notes */}
       {metadata.notes && (
-        <div className="border-t border-gray-200 pt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className={`border-t ${colorClasses.borderGray200} pt-4`}>
+          <label className={`block text-sm font-medium ${colorClasses.textGray700} mb-2`}>
             {t('returnNotes.notes')}
           </label>
-          <p className="text-sm text-gray-600 whitespace-pre-wrap">{metadata.notes}</p>
+          <p className={`text-sm ${colorClasses.textGray600} whitespace-pre-wrap`}>{metadata.notes}</p>
         </div>
       )}
     </div>

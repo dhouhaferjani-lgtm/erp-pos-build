@@ -10,6 +10,7 @@ import { fetchPaymentHistory, type PaymentHistory } from '../api/paymentHistory'
 import { formatCurrency } from '../../../lib/format'
 import { format } from 'date-fns'
 import { bcadd } from '@/lib/decimal'
+import { colorClasses } from '@/lib/designTokens'
 
 export interface PaymentHistorySectionProps {
   documentId: string
@@ -47,12 +48,12 @@ export function PaymentHistorySection({
   if (isLoading) {
     return (
       <div className={cn('space-y-3', className)}>
-        <h3 className="text-sm font-semibold text-gray-900">
+        <h3 className={`text-sm font-semibold ${colorClasses.textGray900}`}>
           {t('sales:documents.paymentHistory')}
         </h3>
         <div className="space-y-2">
-          <div className="h-16 bg-gray-100 rounded animate-pulse"></div>
-          <div className="h-16 bg-gray-100 rounded animate-pulse"></div>
+          <div className={`h-16 ${colorClasses.bgGray100} rounded animate-pulse`}></div>
+          <div className={`h-16 ${colorClasses.bgGray100} rounded animate-pulse`}></div>
         </div>
       </div>
     )
@@ -60,8 +61,8 @@ export function PaymentHistorySection({
 
   if (error) {
     return (
-      <div className={cn('rounded-lg border border-red-200 bg-red-50 p-4', className)}>
-        <div className="flex items-center gap-2 text-red-700">
+      <div className={cn(`rounded-lg border ${colorClasses.borderRed200} ${colorClasses.bgRed50} p-4`, className)}>
+        <div className={`flex items-center gap-2 ${colorClasses.textRed700}`}>
           <AlertCircle className="h-4 w-4" />
           <p className="text-sm">
             {t('common:error.loadingData')}
@@ -74,12 +75,12 @@ export function PaymentHistorySection({
   if (!paymentHistory || paymentHistory.payment_allocations.length === 0) {
     return (
       <div className={cn('space-y-3', className)}>
-        <h3 className="text-sm font-semibold text-gray-900">
+        <h3 className={`text-sm font-semibold ${colorClasses.textGray900}`}>
           {t('sales:documents.paymentHistory')}
         </h3>
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center">
-          <Receipt className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-          <p className="text-sm text-gray-600">
+        <div className={`rounded-lg border ${colorClasses.borderGray200} ${colorClasses.bgGray50} p-6 text-center`}>
+          <Receipt className={`h-8 w-8 ${colorClasses.textGray400} mx-auto mb-2`} />
+          <p className={`text-sm ${colorClasses.textGray600}`}>
             {t('sales:invoices.paymentHistory.noPayments')}
           </p>
         </div>
@@ -95,7 +96,7 @@ export function PaymentHistorySection({
 
   return (
     <div className={cn('space-y-3', className)}>
-      <h3 className="text-sm font-semibold text-gray-900">
+      <h3 className={`text-sm font-semibold ${colorClasses.textGray900}`}>
         {t('sales:documents.paymentHistory')}
       </h3>
 
@@ -103,14 +104,14 @@ export function PaymentHistorySection({
         {paymentHistory.payment_allocations.map((allocation) => (
           <div
             key={allocation.id}
-            className="rounded-lg border border-gray-200 bg-white p-4 hover:border-gray-300 transition-colors"
+            className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-4 ${colorClasses.hoverBorderGray300} transition-colors`}
           >
             <div className="flex items-start justify-between">
               {/* Left side: Payment details */}
               <div className="space-y-2 flex-1">
                 {/* Payment date */}
                 <div className="flex items-center gap-2 text-sm">
-                  <Calendar className="h-4 w-4 text-gray-400" />
+                  <Calendar className={`h-4 w-4 ${colorClasses.textGray400}`} />
                   <EntityLink
                     type="payment"
                     id={allocation.payment_id}
@@ -121,16 +122,16 @@ export function PaymentHistorySection({
 
                 {/* Payment method */}
                 {allocation.payment_method && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <CreditCard className="h-4 w-4 text-gray-400" />
+                  <div className={`flex items-center gap-2 text-sm ${colorClasses.textGray600}`}>
+                    <CreditCard className={`h-4 w-4 ${colorClasses.textGray400}`} />
                     <span>{allocation.payment_method}</span>
                   </div>
                 )}
 
                 {/* Payment reference */}
                 {allocation.payment_reference && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Hash className="h-4 w-4 text-gray-400" />
+                  <div className={`flex items-center gap-2 text-sm ${colorClasses.textGray600}`}>
+                    <Hash className={`h-4 w-4 ${colorClasses.textGray400}`} />
                     <span className="font-mono">{allocation.payment_reference}</span>
                   </div>
                 )}
@@ -138,10 +139,10 @@ export function PaymentHistorySection({
 
               {/* Right side: Amount */}
               <div className="text-end">
-                <div className="text-base font-semibold text-green-600 font-mono">
+                <div className={`text-base font-semibold ${colorClasses.textGreen600} font-mono`}>
                   {formatCurrency(allocation.amount, { currency })}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div className={`text-xs ${colorClasses.textGray500} mt-1`}>
                   {t('sales:invoices.paymentHistory.allocated')}
                 </div>
               </div>
@@ -151,12 +152,12 @@ export function PaymentHistorySection({
       </div>
 
       {/* Total paid summary */}
-      <div className="border-t border-gray-200 pt-3 mt-4">
+      <div className={`border-t ${colorClasses.borderGray200} pt-3 mt-4`}>
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-900">
+          <span className={`text-sm font-medium ${colorClasses.textGray900}`}>
             {t('sales:invoices.paymentHistory.totalPaid')}
           </span>
-          <span className="text-base font-bold text-green-700 font-mono">
+          <span className={`text-base font-bold ${colorClasses.textGreen700} font-mono`}>
             {formatCurrency(totalPaid, { currency })}
           </span>
         </div>

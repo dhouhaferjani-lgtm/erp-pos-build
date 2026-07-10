@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import type { Document } from '../../../types/document'
 import type { DocumentType } from '../DocumentListPage'
+import { colorClasses } from '@/lib/designTokens'
 
 // Conversion targets by document type
 const conversionTargets: Partial<
@@ -141,7 +142,7 @@ export function DocumentActions({
           type="button"
           disabled={isDownloading}
           onClick={onDownloadPdf}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg border ${colorClasses.borderGray300} bg-white px-3 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} disabled:opacity-50 transition-colors`}
           title={t('common:actions.downloadPdf')}
         >
           <Download className="h-4 w-4" />
@@ -154,7 +155,7 @@ export function DocumentActions({
           type="button"
           disabled={isPreviewing}
           onClick={onPreviewPdf}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg border ${colorClasses.borderGray300} bg-white px-3 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} disabled:opacity-50 transition-colors`}
           title={t('common:actions.previewPdf')}
         >
           <Eye className="h-4 w-4" />
@@ -167,7 +168,7 @@ export function DocumentActions({
           type="button"
           disabled={isPrinting}
           onClick={onPrintPdf}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg border ${colorClasses.borderGray300} bg-white px-3 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} disabled:opacity-50 transition-colors`}
           title={t('common:actions.printPdf')}
         >
           <Printer className="h-4 w-4" />
@@ -180,7 +181,7 @@ export function DocumentActions({
           type="button"
           disabled={isSendingEmail}
           onClick={onSendEmail}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg border ${colorClasses.borderGray300} bg-white px-3 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} disabled:opacity-50 transition-colors`}
           title={t('common:actions.sendEmail')}
         >
           <Send className="h-4 w-4" />
@@ -193,7 +194,7 @@ export function DocumentActions({
           type="button"
           disabled={isActionPending}
           onClick={onCancel}
-          className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg border ${colorClasses.borderRed300} bg-white px-3 py-2 text-sm font-medium ${colorClasses.textRed700} ${colorClasses.hoverBgRed50} disabled:opacity-50 transition-colors`}
         >
           <X className="h-4 w-4" />
           {t('documents.cancel')}
@@ -204,7 +205,7 @@ export function DocumentActions({
       {canEdit && (
         <Link
           to={`${basePath}/${document.id}/edit`}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg border ${colorClasses.borderGray300} bg-white px-3 py-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} transition-colors`}
         >
           <Edit className="h-4 w-4" />
           {t('actions.edit')}
@@ -217,7 +218,7 @@ export function DocumentActions({
           type="button"
           disabled={isActionPending}
           onClick={onConfirm}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700} disabled:opacity-50 transition-colors`}
         >
           <Check className="h-4 w-4" />
           {t('common:actions.confirm')}
@@ -230,7 +231,7 @@ export function DocumentActions({
           type="button"
           disabled={isActionPending}
           onClick={onPost}
-          className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorClasses.bgGreen600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgGreen700} disabled:opacity-50 transition-colors`}
         >
           <Check className="h-4 w-4" />
           {t('documents.post')}
@@ -243,7 +244,7 @@ export function DocumentActions({
           type="button"
           disabled={isActionPending}
           onClick={onConvert}
-          className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorClasses.bgPurple600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgPurple700} disabled:opacity-50 transition-colors`}
         >
           <ArrowRight className="h-4 w-4" />
           {document.type === 'quote'
@@ -258,7 +259,7 @@ export function DocumentActions({
           type="button"
           disabled={isActionPending}
           onClick={onConvertToDelivery}
-          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorClasses.bgIndigo600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgIndigo700} disabled:opacity-50 transition-colors`}
         >
           <Truck className="h-4 w-4" />
           {t('orders.convertToDelivery')}
@@ -271,7 +272,7 @@ export function DocumentActions({
           type="button"
           disabled={isActionPending}
           onClick={onReceiveGoods}
-          className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorClasses.bgTeal600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgTeal700} disabled:opacity-50 transition-colors`}
         >
           <Package className="h-4 w-4" />
           {t('purchaseOrders.receiveGoods')}
@@ -283,7 +284,7 @@ export function DocumentActions({
         <button
           type="button"
           onClick={onRecordPayment}
-          className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorClasses.bgGreen600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgGreen700} transition-colors`}
         >
           <CreditCard className="h-4 w-4" />
           {t('documents.recordPayment')}
@@ -295,7 +296,7 @@ export function DocumentActions({
         <button
           type="button"
           onClick={onCreateCreditNote}
-          className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorClasses.bgRed600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgRed700} transition-colors`}
         >
           <MinusCircle className="h-4 w-4" />
           {t('documents.createCreditNote')}
@@ -307,7 +308,7 @@ export function DocumentActions({
         <button
           type="button"
           onClick={onCreateReturnNote}
-          className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorClasses.bgOrange600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgOrange700} transition-colors`}
         >
           <Package className="h-4 w-4" />
           {document.type === 'invoice'

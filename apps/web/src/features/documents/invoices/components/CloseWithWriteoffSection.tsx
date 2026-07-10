@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { AxiosError } from 'axios'
+import { Button } from '@/components/atoms/Button/Button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useToleranceSettings } from '@/features/treasury/hooks/useSmartPayment'
 import { bccomp, bcmul } from '@/lib/decimal'
@@ -89,15 +90,14 @@ export function CloseWithWriteoffSection({
             {t('invoice.closeWithWriteoff.calloutMessage', { amount: formattedBalance })}
           </p>
         </div>
-        <button
+        <Button
           type="button"
           onClick={() => { setIsOpen(true); }}
           disabled={mutation.isPending}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
           data-testid="close-with-writeoff-button"
         >
           {t('invoice.closeWithWriteoff.button', { amount: formattedBalance })}
-        </button>
+        </Button>
       </div>
 
       <ConfirmDialog

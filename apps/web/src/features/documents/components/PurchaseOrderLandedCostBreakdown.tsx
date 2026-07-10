@@ -5,6 +5,7 @@ import {
   type LineAllocation,
 } from '../../../components/organisms/LandedCostBreakdown/LandedCostBreakdown'
 import { useLandedCostBreakdown } from '../hooks/useAdditionalCosts'
+import { colorClasses } from '@/lib/designTokens'
 
 interface PurchaseOrderLandedCostBreakdownProps {
   documentId: string
@@ -26,10 +27,10 @@ export function PurchaseOrderLandedCostBreakdown({
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-4`}>
         <div className="animate-pulse space-y-3">
-          <div className="h-4 w-48 rounded bg-gray-200" />
-          <div className="h-32 rounded bg-gray-200" />
+          <div className={`h-4 w-48 rounded ${colorClasses.bgGray200}`} />
+          <div className={`h-32 rounded ${colorClasses.bgGray200}`} />
         </div>
       </div>
     )
@@ -60,8 +61,8 @@ export function PurchaseOrderLandedCostBreakdown({
   }))
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h2 className="mb-4 text-lg font-semibold text-gray-900">
+    <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-6`}>
+      <h2 className={`mb-4 text-lg font-semibold ${colorClasses.textGray900}`}>
         {t('inventory:landedCost.title')}
       </h2>
       <LandedCostBreakdown lines={lines} currency={effectiveCurrency} showProportion />

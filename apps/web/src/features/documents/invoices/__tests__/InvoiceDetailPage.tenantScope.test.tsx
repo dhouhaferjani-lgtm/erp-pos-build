@@ -100,14 +100,23 @@ vi.mock('../../components/DeliveryConfirmationModal', () => ({
   ),
 }))
 
-vi.mock('../../components', () => ({
+vi.mock('../../components/CreateCreditNoteForm', () => ({
   CreateCreditNoteForm: ({ onSuccess }: { onSuccess: () => void | Promise<void> }) => (
     <button type="button" onClick={() => { void onSuccess(); }}>credit-note-success</button>
   ),
+}))
+
+vi.mock('../../components/CreditNoteList', () => ({
   CreditNoteList: () => null,
+}))
+
+vi.mock('../../components/OutstandingAmountSection', () => ({
   OutstandingAmountSection: ({ onRecordPayment }: { onRecordPayment?: () => void }) => (
     <button type="button" onClick={onRecordPayment}>record-payment-section</button>
   ),
+}))
+
+vi.mock('../../components/PaymentHistorySection', () => ({
   PaymentHistorySection: () => null,
 }))
 

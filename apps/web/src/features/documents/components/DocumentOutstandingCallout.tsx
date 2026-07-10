@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { CreditCard } from 'lucide-react'
-import { Button } from '../../../components/atoms'
-import { tokens, textColors } from '../../../lib/designTokens'
+import { Button } from '../../../components/atoms/Button/Button'
+import { colorClasses, tokens, textColors } from '../../../lib/designTokens'
 import { formatCurrency } from '../../../lib/format'
 
 export interface DocumentOutstandingCalloutProps {
@@ -19,7 +19,7 @@ export function DocumentOutstandingCallout({
 
   return (
     <div
-      className={`${tokens.alert.warning} flex items-center justify-between rounded-md border border-yellow-200 px-4 py-3`}
+      className={`${tokens.alert.warning} flex items-center justify-between rounded-md border ${colorClasses.borderYellow200} px-4 py-3`}
     >
       <div className="flex items-center gap-2">
         <CreditCard className={`h-5 w-5 ${textColors.warningDark}`} />

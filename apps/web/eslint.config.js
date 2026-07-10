@@ -271,6 +271,26 @@ export default tseslint.config(
       ],
     },
   },
+  // Wave 5 design-system sweep: documents/admin have been reduced to 0
+  // hardcoded color literals in production source. Keep the broader
+  // C7-equivalent utility/palette regex as ERROR here so the next sweep does
+  // not inherit regressions.
+  {
+    files: [
+      'src/features/documents/**/*.{ts,tsx}',
+      'src/features/admin/**/*.{ts,tsx}',
+    ],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', '**/*.stories.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone|sky|violet|teal|cyan|lime|fuchsia)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in documents/admin. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*, colorClasses.*).',
+        },
+      ],
+    },
+  },
   // i18n-clean dirs — fully EN/FR translated in the 2026-06 sweep; no
   // untranslated user-facing literal may regress here. The internal
   // super-admin panel (src/features/admin) is intentionally NOT listed yet

@@ -5,6 +5,7 @@ import { VerticalConfigModal } from '../components/VerticalConfigModal'
 import type { AdminVerticalConfig } from '../types'
 import { QueryError } from '@/components/QueryError'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function VerticalsPage() {
   const { t } = useTranslation('admin')
@@ -41,12 +42,12 @@ export function VerticalsPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <h1 className={`mb-8 text-3xl font-bold ${textColors.primary}`}>
+        <h1 className={`mb-8 text-[1.875rem] leading-9 font-bold ${textColors.primary}`}>
           {t('verticals.title')}
         </h1>
 
         <div className="overflow-hidden rounded-lg bg-white shadow">
-          <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
+          <DataTable className={`min-w-full divide-y ${borderColors.divideDefault}`}>
             <thead className={tokens.table.header}>
               <tr>
                 <th
@@ -131,7 +132,7 @@ export function VerticalsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
 
           {verticals.length === 0 && (
             <div className={`p-8 text-center ${textColors.disabled}`}>

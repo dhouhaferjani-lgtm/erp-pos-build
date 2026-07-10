@@ -9,7 +9,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil } from 'lucide-react'
-import { textColors, borderColors, tokens } from '../../../lib/designTokens'
+import { colorClasses, textColors, borderColors, tokens } from '../../../lib/designTokens'
 
 export type DesignationCellProps = {
   value: string
@@ -140,8 +140,8 @@ export function DesignationCell({
           onBlur={handleBlur}
           className={`w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 ${
             emptyError
-              ? tokens.input.error
-              : `${borderColors.default} focus:border-blue-500 focus:ring-blue-500`
+              ? `${colorClasses.borderRed500} ${colorClasses.focusBorderRed500} ${colorClasses.focusRingRed500}`
+              : `${borderColors.default} ${colorClasses.focusBorderBlue500} ${colorClasses.focusRingBlue500}`
           }`}
         />
         {emptyError && (

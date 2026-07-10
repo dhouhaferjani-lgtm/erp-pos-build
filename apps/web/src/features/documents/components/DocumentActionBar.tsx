@@ -22,6 +22,7 @@ import {
 import { Button } from '../../../components/atoms/Button/Button'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { Document } from '../../../types/document'
+import { colorClasses } from '@/lib/designTokens'
 
 export interface DocumentActionBarProps {
   document: Document
@@ -304,27 +305,27 @@ export function DocumentActionBar({
           <button
             type="button"
             onClick={() => { setIsDropdownOpen(!isDropdownOpen); }}
-            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white p-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className={`inline-flex items-center justify-center rounded-md border ${colorClasses.borderGray300} bg-white p-2 text-sm font-medium ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} transition-colors`}
             aria-label={t('common:actions.more', 'More actions')}
           >
             <MoreVertical className="h-5 w-5" />
           </button>
 
           {isDropdownOpen && (
-            <div className="absolute right-0 z-20 mt-2 w-48 origin-top-right rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+            <div className={`absolute right-0 z-20 mt-2 w-48 origin-top-right rounded-md border ${colorClasses.borderGray200} bg-white py-1 shadow-lg`}>
               {canEdit && (
                 <Link
                   to={`${basePath}/${document.id}/edit`}
-                  className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className={`flex items-center gap-3 px-4 py-2 text-sm ${colorClasses.textGray700} ${colorClasses.hoverBgGray50}`}
                   onClick={() => { setIsDropdownOpen(false); }}
                 >
-                  <Edit className="h-4 w-4 text-gray-400" />
+                  <Edit className={`h-4 w-4 ${colorClasses.textGray400}`} />
                   {t('actions.edit')}
                 </Link>
               )}
 
               {canEdit && (onDownloadPdf || onPreviewPdf || onPrintPdf || onSendEmail) && (
-                <div className="my-1 border-t border-gray-100" />
+                <div className={`my-1 border-t ${colorClasses.borderGray100}`} />
               )}
 
               {onPreviewPdf && (
@@ -335,9 +336,9 @@ export function DocumentActionBar({
                     onPreviewPdf()
                     setIsDropdownOpen(false)
                   }}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className={`flex w-full items-center gap-3 px-4 py-2 text-sm ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} disabled:opacity-50`}
                 >
-                  <Eye className="h-4 w-4 text-gray-400" />
+                  <Eye className={`h-4 w-4 ${colorClasses.textGray400}`} />
                   {t('common:preview')}
                 </button>
               )}
@@ -350,9 +351,9 @@ export function DocumentActionBar({
                     onDownloadPdf()
                     setIsDropdownOpen(false)
                   }}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className={`flex w-full items-center gap-3 px-4 py-2 text-sm ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} disabled:opacity-50`}
                 >
-                  <Download className="h-4 w-4 text-gray-400" />
+                  <Download className={`h-4 w-4 ${colorClasses.textGray400}`} />
                   {t('common:download')}
                 </button>
               )}
@@ -365,9 +366,9 @@ export function DocumentActionBar({
                     onPrintPdf()
                     setIsDropdownOpen(false)
                   }}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className={`flex w-full items-center gap-3 px-4 py-2 text-sm ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} disabled:opacity-50`}
                 >
-                  <Printer className="h-4 w-4 text-gray-400" />
+                  <Printer className={`h-4 w-4 ${colorClasses.textGray400}`} />
                   {t('common:print')}
                 </button>
               )}
@@ -380,9 +381,9 @@ export function DocumentActionBar({
                     onSendEmail()
                     setIsDropdownOpen(false)
                   }}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className={`flex w-full items-center gap-3 px-4 py-2 text-sm ${colorClasses.textGray700} ${colorClasses.hoverBgGray50} disabled:opacity-50`}
                 >
-                  <Send className="h-4 w-4 text-gray-400" />
+                  <Send className={`h-4 w-4 ${colorClasses.textGray400}`} />
                   {t('common:send')}
                 </button>
               )}

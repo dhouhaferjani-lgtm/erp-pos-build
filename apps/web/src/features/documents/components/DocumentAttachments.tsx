@@ -19,6 +19,7 @@ import {
   getAttachmentDownloadUrl,
   type DocumentAttachment
 } from '../hooks/useAttachments'
+import { colorClasses } from '@/lib/designTokens'
 
 interface DocumentAttachmentsProps {
   documentId: string
@@ -138,18 +139,18 @@ export function DocumentAttachments({ documentId, readOnly = false, defaultRole 
 
   const getFileIcon = (attachment: DocumentAttachment) => {
     if (attachment.is_image) {
-      return <Image className="h-5 w-5 text-blue-500" />
+      return <Image className={`h-5 w-5 ${colorClasses.textBlue500}`} />
     }
     if (attachment.is_pdf) {
-      return <FileText className="h-5 w-5 text-red-500" />
+      return <FileText className={`h-5 w-5 ${colorClasses.textRed500}`} />
     }
-    return <File className="h-5 w-5 text-gray-500" />
+    return <File className={`h-5 w-5 ${colorClasses.textGray500}`} />
   }
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <Loader2 className={`h-6 w-6 animate-spin ${colorClasses.textGray400}`} />
       </div>
     )
   }
@@ -167,7 +168,7 @@ export function DocumentAttachments({ documentId, readOnly = false, defaultRole 
             relative border-2 border-dashed rounded-lg p-6 text-center transition-colors
             ${dragActive
               ? 'border-primary-500 bg-primary-50'
-              : 'border-gray-300 hover:border-gray-400'
+              : `${colorClasses.borderGray300} ${colorClasses.hoverBorderGray400}`
             }
           `}
         >
@@ -179,11 +180,11 @@ export function DocumentAttachments({ documentId, readOnly = false, defaultRole 
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             accept={config?.allowed_extensions.map(ext => `.${ext}`).join(',')}
           />
-          <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
-          <p className="text-sm text-gray-600">
+          <Upload className={`mx-auto h-8 w-8 ${colorClasses.textGray400} mb-2`} />
+          <p className={`text-sm ${colorClasses.textGray600}`}>
             {t('documents:attachments.dropzone')}
           </p>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className={`text-xs ${colorClasses.textGray500} mt-1`}>
             {t('documents:attachments.allowedTypes', {
               types: config?.allowed_extensions.join(', ') ?? '',
               maxSize: config?.max_file_size_mb ?? 10
@@ -193,7 +194,7 @@ export function DocumentAttachments({ documentId, readOnly = false, defaultRole 
           {uploadMutation.isPending && (
             <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-lg">
               <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
-              <span className="ms-2 text-sm text-gray-600">
+              <span className={`ms-2 text-sm ${colorClasses.textGray600}`}>
                 {t('documents:attachments.uploading')}
               </span>
             </div>
@@ -203,12 +204,12 @@ export function DocumentAttachments({ documentId, readOnly = false, defaultRole 
 
       {/* Error Message */}
       {uploadError && (
-        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
+        <div className={`flex items-center gap-2 p-3 ${colorClasses.bgRed50} border ${colorClasses.borderRed200} rounded-lg ${colorClasses.textRed700}`}>
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           <span className="text-sm">{uploadError}</span>
           <button
             onClick={() => { setUploadError(null); }}
-            className="ms-auto p-1 hover:bg-red-100 rounded"
+            className={`ms-auto p-1 ${colorClasses.hoverBgRed100} rounded`}
           >
             <X className="h-4 w-4" />
           </button>
@@ -221,25 +222,25 @@ export function DocumentAttachments({ documentId, readOnly = false, defaultRole 
           {attachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="flex items-center gap-3 p-3 hover:bg-gray-50"
+              className={`flex items-center gap-3 p-3 ${colorClasses.hoverBgGray50}`}
             >
               {getFileIcon(attachment)}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className={`text-sm font-medium ${colorClasses.textGray900} truncate`}>
                   {attachment.original_filename}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className={`text-xs ${colorClasses.textGray500}`}>
                   {attachment.formatted_file_size}
                   {attachment.description && ` - ${attachment.description}`}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">
+                <span className={`text-xs ${colorClasses.textGray400}`}>
                   {attachment.uploaded_by.name}
                 </span>
                 <button
                   onClick={() => { handleDownload(attachment); }}
-                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                  className={`p-1.5 ${colorClasses.textGray400} ${colorClasses.hoverTextGray600} ${colorClasses.hoverBgGray100} rounded`}
                   title={t('common:download')}
                 >
                   <Download className="h-4 w-4" />
@@ -248,7 +249,7 @@ export function DocumentAttachments({ documentId, readOnly = false, defaultRole 
                   <button
                     onClick={() => void handleDelete(attachment.id)}
                     disabled={deleteMutation.isPending}
-                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                    className={`p-1.5 ${colorClasses.textGray400} ${colorClasses.hoverTextRed600} ${colorClasses.hoverBgRed50} rounded disabled:opacity-50`}
                     title={t('common:delete')}
                   >
                     {deleteMutation.isPending ? (
@@ -263,7 +264,7 @@ export function DocumentAttachments({ documentId, readOnly = false, defaultRole 
           ))}
         </div>
       ) : (
-        <div className="text-center py-8 text-gray-500 text-sm">
+        <div className={`text-center py-8 ${colorClasses.textGray500} text-sm`}>
           {t('documents:attachments.noAttachments')}
         </div>
       )}

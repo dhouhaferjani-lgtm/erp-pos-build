@@ -7,6 +7,8 @@ import {
 } from '../hooks/useTenants'
 import { TenantDetailModal } from '../components/TenantDetailModal'
 import { QueryError } from '@/components/QueryError'
+import { colorClasses } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function TenantsPage() {
   const [search, setSearch] = useState('')
@@ -49,7 +51,7 @@ export function TenantsPage() {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-500">Loading tenants...</div>
+        <div className={`${colorClasses.textGray500}`}>Loading tenants...</div>
       </div>
     )
   }
@@ -69,7 +71,7 @@ export function TenantsPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <h1 className="mb-8 text-3xl font-bold text-gray-900">
+        <h1 className={`mb-8 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
           Tenant Management
         </h1>
 
@@ -79,12 +81,12 @@ export function TenantsPage() {
             placeholder="Search tenants..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); }}
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
+            className={`flex-1 rounded-lg border ${colorClasses.borderGray300} px-4 py-2 ${colorClasses.focusBorderBlue500} focus:outline-none`}
           />
           <select
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); }}
-            className="rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none"
+            className={`rounded-lg border ${colorClasses.borderGray300} px-4 py-2 ${colorClasses.focusBorderBlue500} focus:outline-none`}
           >
             <option value="">All Statuses</option>
             <option value="active">Active</option>
@@ -95,65 +97,65 @@ export function TenantsPage() {
         </div>
 
         <div className="overflow-hidden rounded-lg bg-white shadow">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>
+            <thead className={`${colorClasses.bgGray50}`}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Plan
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Email
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className={`divide-y ${colorClasses.divideGray200} bg-white`}>
               {tenants.map((tenant) => (
                 <tr key={tenant.id}>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium ${colorClasses.textGray900}`}>
                     {tenant.name}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorClasses.textGray500}`}>
                     <span
                       className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
                         tenant.status === 'active'
-                          ? 'bg-green-100 text-green-800'
+                          ? `${colorClasses.bgGreen100} ${colorClasses.textGreen800}`
                           : tenant.status === 'trial'
-                            ? 'bg-blue-100 text-blue-800'
+                            ? `${colorClasses.bgBlue100} ${colorClasses.textBlue800}`
                             : tenant.status === 'suspended'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-gray-100 text-gray-800'
+                              ? `${colorClasses.bgRed100} ${colorClasses.textRed800}`
+                              : `${colorClasses.bgGray100} ${colorClasses.textGray800}`
                       }`}
                     >
                       {tenant.status}
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorClasses.textGray500}`}>
                     {tenant.subscription?.plan.name ?? 'N/A'}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorClasses.textGray500}`}>
                     {tenant.email ?? 'N/A'}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorClasses.textGray500}`}>
                     <div className="flex gap-2">
                       <button
                         onClick={() => { setSelectedTenantId(tenant.id); }}
-                        className="text-indigo-600 hover:text-indigo-900"
+                        className={`${colorClasses.textIndigo600} ${colorClasses.hoverTextIndigo900}`}
                       >
                         View
                       </button>
                       {tenant.subscription?.status === 'trial' && (
                         <button
                           onClick={() => { handleExtendTrial(tenant.id); }}
-                          className="text-blue-600 hover:text-blue-900"
+                          className={`${colorClasses.textBlue600} ${colorClasses.hoverTextBlue900}`}
                         >
                           Extend Trial
                         </button>
@@ -161,7 +163,7 @@ export function TenantsPage() {
                       {tenant.status === 'active' && (
                         <button
                           onClick={() => { handleSuspend(tenant.id); }}
-                          className="text-red-600 hover:text-red-900"
+                          className={`${colorClasses.textRed600} ${colorClasses.hoverTextRed900}`}
                         >
                           Suspend
                         </button>
@@ -169,7 +171,7 @@ export function TenantsPage() {
                       {tenant.status === 'suspended' && (
                         <button
                           onClick={() => { handleActivate(tenant.id); }}
-                          className="text-green-600 hover:text-green-900"
+                          className={`${colorClasses.textGreen600} ${colorClasses.hoverTextGreen900}`}
                         >
                           Activate
                         </button>
@@ -179,10 +181,10 @@ export function TenantsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
 
           {tenants.length === 0 && (
-            <div className="p-8 text-center text-gray-500">
+            <div className={`p-8 text-center ${colorClasses.textGray500}`}>
               No tenants found
             </div>
           )}

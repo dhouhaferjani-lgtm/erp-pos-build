@@ -29,6 +29,7 @@ import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
+import { colorClasses } from '@/lib/designTokens'
 
 type ConfirmAction = 'confirm' | 'convert' | 'revert' | null
 type ActiveTab = 'related' | 'attachments'
@@ -215,8 +216,8 @@ export function QuoteDetailPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">{t('common:loading')}</p>
+          <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${colorClasses.borderBlue600} mx-auto`}></div>
+          <p className={`mt-4 ${colorClasses.textGray600}`}>{t('common:loading')}</p>
         </div>
       </div>
     )
@@ -225,8 +226,8 @@ export function QuoteDetailPage() {
   if (error || !quote) {
     return (
       <div className="py-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">{t('common:errorMessages.generic')}</p>
+        <div className={`${colorClasses.bgRed50} border ${colorClasses.borderRed200} rounded-lg p-4`}>
+          <p className={`${colorClasses.textRed800}`}>{t('common:errorMessages.generic')}</p>
         </div>
       </div>
     )
@@ -266,33 +267,33 @@ export function QuoteDetailPage() {
         <div className="px-4 py-5 sm:px-6">
           <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-3">
             <div>
-              <dt className="text-sm font-medium text-gray-500 flex items-center gap-1">
+              <dt className={`text-sm font-medium ${colorClasses.textGray500} flex items-center gap-1`}>
                 <Calendar className="h-4 w-4" />
                 {t('documents.documentDate')}
               </dt>
-              <dd className="mt-1 text-sm text-gray-900">
+              <dd className={`mt-1 text-sm ${colorClasses.textGray900}`}>
                 {new Date(quote.document_date).toLocaleDateString()}
               </dd>
             </div>
 
             {quote.valid_until && (
               <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                <dt className={`text-sm font-medium ${colorClasses.textGray500} flex items-center gap-1`}>
                   <Calendar className="h-4 w-4" />
                   {t('quotes.validUntil')}
                 </dt>
-                <dd className="mt-1 text-sm text-gray-900">
+                <dd className={`mt-1 text-sm ${colorClasses.textGray900}`}>
                   {new Date(quote.valid_until).toLocaleDateString()}
                 </dd>
               </div>
             )}
 
             <div>
-              <dt className="text-sm font-medium text-gray-500 flex items-center gap-1">
+              <dt className={`text-sm font-medium ${colorClasses.textGray500} flex items-center gap-1`}>
                 <Building2 className="h-4 w-4" />
                 {t('documents.customer')}
               </dt>
-              <dd className="mt-1 text-sm text-gray-900">
+              <dd className={`mt-1 text-sm ${colorClasses.textGray900}`}>
                 <EntityLink
                   type="partner"
                   id={quote.partner_id}
@@ -304,11 +305,11 @@ export function QuoteDetailPage() {
 
             {quote.vehicleContext && (
               <div>
-                <dt className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                <dt className={`text-sm font-medium ${colorClasses.textGray500} flex items-center gap-1`}>
                   <Car className="h-4 w-4" />
                   {t('documents.vehicle')}
                 </dt>
-                <dd className="mt-1 text-sm text-gray-900">
+                <dd className={`mt-1 text-sm ${colorClasses.textGray900}`}>
                   {quote.vehicleContext.vehicle_snapshot?.make} {quote.vehicleContext.vehicle_snapshot?.model}
                   {quote.vehicleContext.vehicle_snapshot?.license_plate &&
                     ` (${quote.vehicleContext.vehicle_snapshot.license_plate})`
@@ -319,11 +320,11 @@ export function QuoteDetailPage() {
 
             {quote.notes && (
               <div className="sm:col-span-3">
-                <dt className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                <dt className={`text-sm font-medium ${colorClasses.textGray500} flex items-center gap-1`}>
                   <FileText className="h-4 w-4" />
                   {t('documents.notes')}
                 </dt>
-                <dd className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">
+                <dd className={`mt-1 text-sm ${colorClasses.textGray900} whitespace-pre-wrap`}>
                   {quote.notes}
                 </dd>
               </div>
@@ -331,7 +332,7 @@ export function QuoteDetailPage() {
           </div>
         </div>
 
-        <div className="border-t border-gray-200">
+        <div className={`border-t ${colorClasses.borderGray200}`}>
           <DocumentLines
             lines={quote.lines ?? []}
             formatAmount={(amount) => formatCurrency(amount, { currency: currentCompany?.currency ?? 'EUR' })}
@@ -340,7 +341,7 @@ export function QuoteDetailPage() {
         </div>
 
         {/* Totals */}
-        <div className="bg-gray-50 px-4 py-5 sm:px-6">
+        <div className={`${colorClasses.bgGray50} px-4 py-5 sm:px-6`}>
           <div className="flex justify-end">
             <div className="w-full max-w-md">
               <DocumentTotals
@@ -355,14 +356,14 @@ export function QuoteDetailPage() {
 
       {/* Tabs */}
       <div className="mt-6">
-        <div className="border-b border-gray-200">
+        <div className={`border-b ${colorClasses.borderGray200}`}>
           <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => { setActiveTab('related'); }}
               className={`${
                 activeTab === 'related'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? `${colorClasses.borderBlue500} ${colorClasses.textBlue600}`
+                  : `border-transparent ${colorClasses.textGray500} ${colorClasses.hoverTextGray700} ${colorClasses.hoverBorderGray300}`
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
             >
               {t('documents.relatedDocuments')}
@@ -371,8 +372,8 @@ export function QuoteDetailPage() {
               onClick={() => { setActiveTab('attachments'); }}
               className={`${
                 activeTab === 'attachments'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? `${colorClasses.borderBlue500} ${colorClasses.textBlue600}`
+                  : `border-transparent ${colorClasses.textGray500} ${colorClasses.hoverTextGray700} ${colorClasses.hoverBorderGray300}`
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
             >
               {t('documents.attachments')}

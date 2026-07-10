@@ -8,6 +8,8 @@ import { useTranslation } from 'react-i18next'
 import { AlertCircle } from 'lucide-react'
 import { useCurrency } from '@/hooks/useCurrency'
 import type { CreditNote, CreditNoteReason } from '@/types/creditNote'
+import { colorClasses } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface CreditNoteListProps {
   creditNotes: CreditNote[]
@@ -85,10 +87,10 @@ export function CreditNoteList({
   // Loading state
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white p-4`}>
         <div className="flex items-center gap-2">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
-          <span className="text-sm text-gray-600">{t('common:status.loading')}</span>
+          <div className={`h-5 w-5 animate-spin rounded-full border-2 ${colorClasses.borderGray300} border-t-blue-600`} />
+          <span className={`text-sm ${colorClasses.textGray600}`}>{t('common:status.loading')}</span>
         </div>
       </div>
     )
@@ -97,12 +99,12 @@ export function CreditNoteList({
   // Empty state
   if (creditNotes.length === 0) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center">
-        <AlertCircle className="mx-auto h-12 w-12 text-gray-400" />
-        <h3 className="mt-2 text-sm font-medium text-gray-900">
+      <div className={`rounded-lg border ${colorClasses.borderGray200} ${colorClasses.bgGray50} p-8 text-center`}>
+        <AlertCircle className={`mx-auto h-12 w-12 ${colorClasses.textGray400}`} />
+        <h3 className={`mt-2 text-sm font-medium ${colorClasses.textGray900}`}>
           {t('sales:creditNotes.empty.title')}
         </h3>
-        <p className="mt-1 text-sm text-gray-600">
+        <p className={`mt-1 text-sm ${colorClasses.textGray600}`}>
           {t('sales:creditNotes.empty.description')}
         </p>
       </div>
@@ -110,24 +112,24 @@ export function CreditNoteList({
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
+    <div className={`rounded-lg border ${colorClasses.borderGray200} bg-white`}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-3">
-        <h3 className="text-sm font-medium text-gray-900">
+      <div className={`flex items-center justify-between border-b ${colorClasses.borderGray200} ${colorClasses.bgGray50} px-4 py-3`}>
+        <h3 className={`text-sm font-medium ${colorClasses.textGray900}`}>
           {t('sales:creditNotes.title')}
         </h3>
 
         <div className="flex items-center gap-4">
           {/* Filter by Reason */}
           <div className="flex items-center gap-2">
-            <label htmlFor="reason-filter" className="text-sm text-gray-600">
+            <label htmlFor="reason-filter" className={`text-sm ${colorClasses.textGray600}`}>
               {t('sales:creditNotes.filterByReason')}:
             </label>
             <select
               id="reason-filter"
               value={filterReason}
               onChange={(e) => { setFilterReason(e.target.value as CreditNoteReason | 'all'); }}
-              className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+              className={`rounded-md border ${colorClasses.borderGray300} px-2 py-1 text-sm`}
               aria-label={t('sales:creditNotes.filterByReason')}
             >
               <option value="all">{t('sales:creditNotes.allReasons')}</option>
@@ -150,14 +152,14 @@ export function CreditNoteList({
 
           {/* Sort Dropdown */}
           <div className="flex items-center gap-2">
-            <label htmlFor="sort-select" className="text-sm text-gray-600">
+            <label htmlFor="sort-select" className={`text-sm ${colorClasses.textGray600}`}>
               {t('sales:creditNotes.sortBy')}:
             </label>
             <select
               id="sort-select"
               value={sortField}
               onChange={(e) => { setSortField(e.target.value as SortField); }}
-              className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+              className={`rounded-md border ${colorClasses.borderGray300} px-2 py-1 text-sm`}
               aria-label={t('sales:creditNotes.sortBy')}
             >
               <option value="date">{t('sales:creditNotes.sortByDate')}</option>
@@ -170,58 +172,58 @@ export function CreditNoteList({
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>
+          <thead className={`${colorClasses.bgGray50}`}>
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                 {t('sales:creditNotes.number')}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                 {t('sales:creditNotes.date')}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                 {t('sales:creditNotes.sourceInvoice')}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                 {t('sales:creditNotes.amount')}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                 {t('sales:creditNotes.reasonLabel')}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider ${colorClasses.textGray500}`}>
                 {t('sales:creditNotes.statusLabel')}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
+          <tbody className={`divide-y ${colorClasses.divideGray200} bg-white`}>
             {sortedCreditNotes.map((creditNote) => (
               <tr
                 key={creditNote.id}
                 onClick={() => { handleRowClick(creditNote); }}
-                className="cursor-pointer transition-colors hover:bg-gray-50"
+                className={`cursor-pointer transition-colors ${colorClasses.hoverBgGray50}`}
               >
-                <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-gray-900">
+                <td className={`whitespace-nowrap px-4 py-3 text-sm font-medium ${colorClasses.textGray900}`}>
                   {creditNote.document_number}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                <td className={`whitespace-nowrap px-4 py-3 text-sm ${colorClasses.textGray700}`}>
                   {formatDate(creditNote.document_date)}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-sm text-blue-600 hover:text-blue-800">
+                <td className={`whitespace-nowrap px-4 py-3 text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}>
                   {creditNote.source_invoice_number}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                <td className={`whitespace-nowrap px-4 py-3 text-sm ${colorClasses.textGray700}`}>
                   {formatAmount(creditNote.total)}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                <td className={`whitespace-nowrap px-4 py-3 text-sm ${colorClasses.textGray700}`}>
                   {getReasonLabel(creditNote.reason)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm">
                   {creditNote.status === 'posted' ? (
-                    <span className="inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                    <span className={`inline-flex rounded-full ${colorClasses.bgGreen100} px-2 py-1 text-xs font-medium ${colorClasses.textGreen800}`}>
                       {t('common:status.posted')}
                     </span>
                   ) : (
-                    <span className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800">
+                    <span className={`inline-flex rounded-full ${colorClasses.bgGray100} px-2 py-1 text-xs font-medium ${colorClasses.textGray800}`}>
                       {t('common:status.draft')}
                     </span>
                   )}
@@ -229,7 +231,7 @@ export function CreditNoteList({
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
     </div>
   )
