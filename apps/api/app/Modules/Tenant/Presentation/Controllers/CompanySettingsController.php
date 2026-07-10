@@ -115,6 +115,7 @@ class CompanySettingsController extends Controller
             'timezone' => 'timezone',
             'date_format' => 'date_format',
             'locale' => 'locale',
+            'line_designation_override_enabled' => 'line_designation_override_enabled',
         ];
 
         $attributes = [];

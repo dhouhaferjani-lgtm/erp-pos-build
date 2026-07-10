@@ -18,7 +18,6 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
 
 /**
@@ -37,8 +36,6 @@ final class DocumentPdfRenderTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        Config::set('features.documents.line_designation_override.enabled', true);
 
         $this->tenant = Tenant::create([
             'name' => 'PDF Render Test Tenant',
@@ -105,6 +102,22 @@ final class DocumentPdfRenderTest extends TestCase
         $this->assertStringNotContainsString('[', $html);
     }
 
+    public function test_pdf_line_items_hide_notes_when_company_setting_is_disabled(): void
+    {
+        $document = $this->buildInvoiceWithOverriddenLine(
+            productName: 'Original Product',
+            lineDescription: 'Override Description',
+            productCode: 'SKU-123',
+            notes: 'Internal installation note',
+            lineDesignationOverrideEnabled: false,
+        );
+
+        $html = $this->renderLineItemsComponent($document);
+
+        $this->assertStringContainsString('Override Description', $html);
+        $this->assertStringNotContainsString('Internal installation note', $html);
+    }
+
     public function test_purchase_order_pdf_line_items_render_gratuite_sub_row_for_free_quantity(): void
     {
         app()->setLocale('fr');
@@ -140,6 +153,7 @@ final class DocumentPdfRenderTest extends TestCase
         string $lineDescription,
         ?string $productCode,
         ?string $notes,
+        bool $lineDesignationOverrideEnabled = true,
     ): Document {
         $suffix = random_int(10000, 99999);
 
@@ -166,6 +180,7 @@ final class DocumentPdfRenderTest extends TestCase
             'delivery_note_next_number' => 1,
             'receipt_prefix' => 'REC-',
             'receipt_next_number' => 1,
+            'line_designation_override_enabled' => $lineDesignationOverrideEnabled,
         ]);
 
         $partner = Partner::create([
@@ -226,6 +241,7 @@ final class DocumentPdfRenderTest extends TestCase
         return view('documents.components.line_items', [
             'lines' => $document->lines,
             'showTax' => true,
+            'lineDesignationOverrideEnabled' => (bool) ($document->company->line_designation_override_enabled ?? false),
             'formatNumber' => fn (string|float|null $n, int $d = 2): string => number_format((float) ($n ?? 0), $d),
             'formatMoney' => fn (string|float|null $a): string => number_format((float) ($a ?? 0), 2).' EUR',
         ])->render();

@@ -27,7 +27,7 @@ import { Button } from '../../components/atoms/Button'
 import { FormField } from '../../components/atoms/FormField'
 import { Input } from '../../components/atoms/Input'
 import { Select } from '../../components/atoms/Select'
-import { StatusBadge } from '../../components/atoms/StatusBadge'
+import { StatusBadge } from '../../components/atoms/StatusBadge/StatusBadge'
 import { Toggle } from '../../components/atoms/Toggle'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { ReceiptSettingsTab } from './components/ReceiptSettingsTab'
@@ -54,6 +54,7 @@ interface CompanySettings {
   timezone: string
   date_format: string
   locale: string
+  line_designation_override_enabled: boolean
 }
 
 interface CompanySettingsResponse {
@@ -161,6 +162,7 @@ export function CompanyPage() {
       timezone: settings.timezone,
       date_format: settings.date_format,
       locale: settings.locale,
+      line_designation_override_enabled: settings.line_designation_override_enabled,
     })
   }
 
@@ -254,6 +256,11 @@ export function CompanyPage() {
   }
 
   const handleInputChange = (field: string, value: string | null) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+    setIsDirty(true)
+  }
+
+  const handleBooleanChange = (field: 'line_designation_override_enabled', value: boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
     setIsDirty(true)
   }
@@ -906,6 +913,33 @@ export function CompanyPage() {
                   <option value="ar">{t('settings:company.languages.ar')}</option>
                 </Select>
               </FormField>
+            </div>
+          </div>
+
+          {/* Document Settings */}
+          <div className={tokens.card.base}>
+            <div className="mb-4">
+              <h2 className={cn(tokens.heading.section, 'mb-1')}>{t('settings:company.documents.title')}</h2>
+              <p className={cn('text-sm', textColors.secondary)}>
+                {t('settings:company.documents.description')}
+              </p>
+            </div>
+            <div className={cn('flex items-start justify-between gap-4 rounded-md border p-4', borderColors.light)}>
+              <span className="min-w-0">
+                <span className={cn('block text-sm font-medium', textColors.primary)}>
+                  {t('settings:company.documents.lineDesignation.label')}
+                </span>
+                <span className={cn('mt-1 block text-xs leading-5', textColors.tertiary)}>
+                  {t('settings:company.documents.lineDesignation.help')}
+                </span>
+              </span>
+              <Toggle
+                aria-label={t('settings:company.documents.lineDesignation.label')}
+                checked={formData.line_designation_override_enabled ?? false}
+                onChange={(e) => {
+                  handleBooleanChange('line_designation_override_enabled', e.target.checked)
+                }}
+              />
             </div>
           </div>
         </div>

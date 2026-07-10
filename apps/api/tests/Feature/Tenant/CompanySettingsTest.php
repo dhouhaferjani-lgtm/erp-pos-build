@@ -223,6 +223,31 @@ class CompanySettingsTest extends TestCase
         $this->assertSame($tenantBefore, $this->tenant->fresh()->only(['tax_id', 'currency_code', 'name', 'address']));
     }
 
+    public function test_update_persists_line_designation_override_setting(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'line_designation_override_enabled' => true,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.line_designation_override_enabled', true);
+
+        $this->assertTrue($this->company->refresh()->line_designation_override_enabled);
+
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'line_designation_override_enabled' => false,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.line_designation_override_enabled', false);
+
+        $this->assertFalse($this->company->refresh()->line_designation_override_enabled);
+    }
+
     public function test_show_response_contract_keys_are_unchanged(): void
     {
         $response = $this->actingAs($this->adminUser, 'sanctum')

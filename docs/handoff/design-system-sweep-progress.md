@@ -65,3 +65,37 @@ Status: complete.
   - `npx react-doctor@latest --verbose --scope changed --base origin/dev` passed with no issues after replacing changed-page barrel imports in `QuoteDetailPage`.
 
 New shared-shape components: `DocumentLines` now renders via `LineItemsTable`.
+
+## Wave 2 — Company Designation Override Setting
+
+Status: complete.
+
+- 2.1 Company-backed feature source:
+  - RED: `php artisan test tests/Feature/Api/CompanyConfigControllerTest.php --filter line_designation_override_comes_from_primary_company_setting` initially returned `false` while the company setting was `true`.
+  - GREEN: added tenant migration `companies.line_designation_override_enabled boolean default false`, model fillable/cast metadata, and `CompanyConfigController` now reads the current company column for the existing `line_designation_override_enabled` payload key.
+- 2.2 Settings update endpoint:
+  - Added `line_designation_override_enabled` validation and update mapping in company settings.
+  - Added a feature test proving true and false updates persist to the company row and return in the settings payload.
+- 2.3 Settings UI:
+  - RED: `pnpm vitest run src/features/settings/CompanyPage.test.tsx` failed because no line-designation switch existed.
+  - GREEN: Company settings now include a Documents section with a `Toggle` for custom line designations; save submits the existing backend key.
+  - Added EN/FR/AR copy. French helper text explicitly says an edited designation must remain a "dénomination précise" of the goods or services sold and is soft guidance, not automatic validation.
+- 2.4 Env-flag removal:
+  - Removed the old `FEATURE_DOCUMENT_LINE_DESIGNATION_OVERRIDE` deployment flag from `config/features.php`.
+  - Document PDF line notes now receive `lineDesignationOverrideEnabled` from the document company instead of config. Factur-X was not touched.
+  - Added PDF render coverage for notes hidden when the company setting is disabled.
+- 2.5 Generated types:
+  - `CompanySettingsData` is not annotated with `#[TypeScript]` and is not present in `packages/shared/types/generated.d.ts`; `php artisan typescript:transform` was not run to avoid unrelated generated-file churn.
+- Verification:
+  - `php artisan test tests/Feature/Api/CompanyConfigControllerTest.php --filter line_designation_override_comes_from_primary_company_setting` passed: 4 assertions.
+  - `php artisan test tests/Feature/Tenant/CompanySettingsTest.php --filter line_designation_override_setting` passed: 6 assertions.
+  - `php artisan test tests/Feature/Modules/Document/DocumentPdfRenderTest.php` passed: 5 tests, 15 assertions.
+  - `./vendor/bin/phpstan analyse app/Http/Controllers/Api/CompanyConfigController.php app/Modules/Company/Domain/Company.php app/Modules/Tenant/Application/DTOs/CompanySettingsData.php app/Modules/Tenant/Presentation/Requests/UpdateCompanySettingsRequest.php app/Modules/Tenant/Presentation/Controllers/CompanySettingsController.php --memory-limit=1G` passed. Including the full touched `CompanySettingsTest.php` still reports pre-existing nullable/test fixture issues outside this wave.
+  - `pnpm vitest run src/features/settings/CompanyPage.test.tsx` passed: 7 tests.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
+    - TanStack query key audit: 0 violations.
+    - Design-system audit: 507 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base origin/dev` passed with no issues after replacing a changed-page barrel import in `CompanyPage`.
+
+New shared-shape components: none.

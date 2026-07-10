@@ -65,6 +65,14 @@
       "branding": "Logo et image de marque",
       "regional": "Paramètres régionaux"
     },
+    "documents": {
+      "title": "Documents",
+      "description": "Paramétrez l'affichage des produits et services sur les documents de vente.",
+      "lineDesignation": {
+        "label": "Autoriser les dénominations de ligne personnalisées",
+        "help": "Une dénomination modifiée doit toujours rester une dénomination précise des biens ou services vendus. Cette indication est un guide, sans validation automatique."
+      }
+    },
     "fields": {
       "name": "Nom de l'entreprise *",
       "companyName": "Nom de l'entreprise",
