@@ -48,13 +48,18 @@ Status: in progress.
   - GREEN: the create page now uses `PageHeader`, `StickyFormFooter`, `SaveSplitButton`, shared `DataTable` for manual and receipt lines, and `StatusBadge` for match preview state.
   - Existing invoice-first, receipt-prefill, duplicate-reference, and attachment-upload payload tests remain covered.
   - Baseline shrunk from 505 to 501 after removing stale C1/C3/C5 create-page fingerprints.
+- 4.2 `SupplierInvoiceListPage` canonical table/status slice:
+  - RED: `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceListPage.test.tsx` failed because invoice rows still rendered in a bespoke `divide-y` table instead of the shared `DataTable`.
+  - GREEN: the list page now uses `PageHeader`, shared `DataTable`, and `StatusBadge` for invoice, match, and pending-receipt status pills.
+  - Baseline shrunk from 501 to 496 after removing stale C1/C5/C6 list-page fingerprints.
 - Verification:
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` passed: 16 tests.
+  - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceListPage.test.tsx` passed: 14 tests.
   - `pnpm --filter @autoerp/web typecheck` passed.
   - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
     - TanStack query key audit: 0 violations.
-    - Design-system audit: 501 acknowledged, 0 new, 0 stale.
-  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues.
+    - Design-system audit: 496 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page slice and again with no issues after the list-page slice.
 
 New shared-shape components: none.
 

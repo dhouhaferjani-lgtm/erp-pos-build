@@ -130,6 +130,16 @@ afterEach(() => {
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
+describe('SupplierInvoiceListPage — canonical layout', () => {
+  it('renders invoice rows in the shared DataTable shell', async () => {
+    renderWithProviders(<SupplierInvoiceListPage />)
+
+    const table = await screen.findByRole('table')
+    expect(table).toHaveClass('border-collapse')
+    expect(table).not.toHaveClass('divide-y')
+  })
+})
+
 describe('SupplierInvoiceListPage — match-status badge', () => {
   it('renders "matched" badge for matched status', async () => {
     mockApiGet.mockResolvedValue(makeListResponse([makeInvoice({ match_status: 'matched' })]))
