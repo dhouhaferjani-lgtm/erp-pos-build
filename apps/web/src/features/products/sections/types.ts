@@ -8,6 +8,9 @@ import type {
 
 import type { EnrichmentAttributeRow, UploadedPhoto } from '../enrichmentCaptureTypes'
 import type { LookupState, SuggestedProduct } from '../productLookupTypes'
+import type { ProductHeroChip, ProductHeroEnrichmentState } from '../productHeroTypes'
+
+export type { ProductHeroChip, ProductHeroEnrichmentState } from '../productHeroTypes'
 
 export type ProductSectionMode = 'view' | 'edit'
 
@@ -103,20 +106,6 @@ export interface DiscountPolicyVerdict {
   policyAsOf: string
   reasons: string[]
   meta: Record<string, unknown>
-}
-
-export type ProductHeroEnrichmentState =
-  | 'never-submitted'
-  | 'pending'
-  | 'ready-for-review'
-  | 'enriched'
-  | 'unavailable'
-
-export interface ProductHeroChip {
-  id: string
-  label: string
-  enriched?: boolean
-  href?: string
 }
 
 interface ProductSectionsBaseAdapter {

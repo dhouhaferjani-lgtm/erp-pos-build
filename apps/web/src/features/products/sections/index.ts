@@ -9,6 +9,8 @@ export { ProductPricingSection, type ProductPricingAdapter } from './ProductPric
 export { ProductInventorySection, type ProductInventoryAdapter } from './ProductInventorySection'
 export { ProductSuppliersSection, type ProductSuppliersAdapter } from './ProductSuppliersSection'
 export { ProductMediaSection, type ProductMediaAdapter } from './ProductMediaSection'
+export { ProductHeroSection, type ProductHeroAdapter } from './ProductHeroSection'
+export { ProductHeroShell, withProductHeroImageVariant } from './ProductHeroShell'
 export { useProductPricingEditAdapter } from './useProductPricingEditAdapter'
 export type {
   ParapharmacySectionFormData,

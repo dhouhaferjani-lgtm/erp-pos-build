@@ -29,12 +29,12 @@ import { useProductRealtime } from '../products/hooks/useProductRealtime'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
 import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
-import { ProductHero } from '../products/editor/components/ProductHero'
 import { ProductGeneralSection } from '../products/sections/ProductGeneralSection'
 import { ProductPricingSection } from '../products/sections/ProductPricingSection'
 import { ProductInventorySection } from '../products/sections/ProductInventorySection'
 import { ProductSuppliersSection } from '../products/sections/ProductSuppliersSection'
 import { ProductMediaSection } from '../products/sections/ProductMediaSection'
+import { ProductHeroSection } from '../products/sections/ProductHeroSection'
 import type { DiscountPolicyVerdict, ProductSectionProduct } from '../products/sections/types'
 import {
   PRODUCT_DETAIL_SECTIONS,
@@ -353,7 +353,7 @@ export function ProductDetailPage() {
         {/* Details Tab */}
         <TabsContent value="details" className="mt-6">
           <div className="space-y-6">
-            <ProductHero product={product} />
+            <ProductHeroSection adapter={{ mode: 'view', product: publicProduct }} />
             <div className="space-y-6">
               <ProductGeneralSection adapter={{ mode: 'view', product }} />
               <ProductPricingSection

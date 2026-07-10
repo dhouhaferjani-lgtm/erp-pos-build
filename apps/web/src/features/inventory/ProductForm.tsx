@@ -38,7 +38,6 @@ import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { buildProductPayload } from './productPayload'
 import { LoyaltyPointsDisplay } from './LoyaltyPointsDisplay'
 import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
-import { ProductEditHero, type EditorHeroEnrichmentState } from '../products/editor/components/ProductEditHero'
 import { SectionNav } from '../products/editor/components/SectionNav'
 import type { EditorSection } from '../products/editor/components/SectionNav'
 import { EditorSectionCard } from '../products/editor/components/EditorSectionCard'
@@ -53,6 +52,7 @@ import { getQuantityDecimals } from '../../lib/quantityScale'
 import type { ProductType } from '../products/types'
 import type {
   ParapharmacySectionFormData,
+  ProductHeroEnrichmentState,
   ProductSectionFormData,
 } from '../products/sections/types'
 import { ProductGeneralSection } from '../products/sections/ProductGeneralSection'
@@ -60,6 +60,7 @@ import { ProductPricingSection } from '../products/sections/ProductPricingSectio
 import { ProductInventorySection } from '../products/sections/ProductInventorySection'
 import { ProductSuppliersSection } from '../products/sections/ProductSuppliersSection'
 import { ProductMediaSection } from '../products/sections/ProductMediaSection'
+import { ProductHeroSection } from '../products/sections/ProductHeroSection'
 import { useProductPricingEditAdapter } from '../products/sections/useProductPricingEditAdapter'
 
 interface Product {
@@ -686,7 +687,7 @@ export function ProductForm() {
     moneyScale,
   })
 
-  const heroEnrichmentState: EditorHeroEnrichmentState = (() => {
+  const heroEnrichmentState: ProductHeroEnrichmentState = (() => {
     const latestStatus = product?.latest_enrichment_result?.status ?? null
     const status = product?.enrichment_status ?? null
     if (latestStatus === 'accepted' || product?.brand_source === 'enriched') return 'enriched'
@@ -813,20 +814,27 @@ export function ProductForm() {
           existing form fields (single source of truth for `barcode`).
           The hero drives the catalog lookup engine (debounce + scanner) —
           no separate BarcodeLookupInput in the General section. */}
-      <ProductEditHero
-        barcode={barcodeValue}
-        onBarcodeChange={(value) => { setValue('barcode', value, { shouldDirty: true }) }}
-        name={nameValue}
-        onNameChange={(value) => { setValue('name', value, { shouldDirty: true }) }}
-        productId={isEditing ? id : undefined}
-        primaryImageUrl={product?.primary_image_url ?? null}
-        bufferedFiles={bufferedImages}
-        onBufferedFilesChange={setBufferedImages}
-        enrichmentState={heroEnrichmentState}
-        chips={heroChips}
-        onProductData={handleProductData}
-        onLookupStateChange={handleLookupStateChange}
-        onManualRefresh={handleManualRefresh}
+      <ProductHeroSection
+        adapter={{
+          mode: 'edit',
+          barcode: barcodeValue,
+          name: nameValue,
+          productId: isEditing && id ? id : null,
+          primaryImageUrl: product?.primary_image_url ?? null,
+          media: {
+            bufferedImages,
+            onBufferedImagesChange: setBufferedImages,
+          },
+          hero: {
+            enrichmentState: heroEnrichmentState,
+            chips: heroChips,
+            onBarcodeChange: (value) => { setValue('barcode', value, { shouldDirty: true }) },
+            onNameChange: (value) => { setValue('name', value, { shouldDirty: true }) },
+            onProductData: handleProductData,
+            onLookupStateChange: handleLookupStateChange,
+            onManualRefresh: handleManualRefresh,
+          },
+        }}
       />
 
       {isEditing ? (
