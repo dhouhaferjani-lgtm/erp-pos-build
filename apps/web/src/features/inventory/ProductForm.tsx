@@ -55,12 +55,11 @@ import type {
   ProductHeroEnrichmentState,
   ProductSectionFormData,
 } from '../products/sections/types'
-import { ProductGeneralSection } from '../products/sections/ProductGeneralSection'
-import { ProductPricingSection } from '../products/sections/ProductPricingSection'
-import { ProductInventorySection } from '../products/sections/ProductInventorySection'
-import { ProductSuppliersSection } from '../products/sections/ProductSuppliersSection'
-import { ProductMediaSection } from '../products/sections/ProductMediaSection'
-import { ProductHeroSection } from '../products/sections/ProductHeroSection'
+import { ProductSectionStack } from '../products/sections/ProductSectionStack'
+import {
+  PRODUCT_SECTION_DEFINITIONS,
+  type ProductSectionKey,
+} from '../products/sections/sectionRegistry'
 import { useProductPricingEditAdapter } from '../products/sections/useProductPricingEditAdapter'
 
 interface Product {
@@ -110,16 +109,7 @@ interface ProductResponse {
 
 type ParapharmacyMetadata = ParapharmacySectionFormData
 
-type EditorSectionKey =
-  | 'general'
-  | 'pricing'
-  | 'inventory'
-  | 'pharmacy'
-  | 'loyalty'
-  | 'suppliers'
-  | 'media'
-  | 'automotive'
-  | 'variants'
+type EditorExtensionKey = 'pharmacy' | 'loyalty' | 'automotive' | 'variants'
 
 interface EditorGateCtx {
   isParapharmacy: boolean
@@ -131,22 +121,24 @@ interface EditorGateCtx {
 interface EditorSectionDef {
   id: string
   labelKey: string
-  component: EditorSectionKey
+  component: ProductSectionKey | EditorExtensionKey
   when?: (ctx: EditorGateCtx) => boolean
   navVisible?: boolean
 }
 
-const EDITOR_SECTIONS: EditorSectionDef[] = [
-  { id: 'section-general', labelKey: 'catalog:editor.sectionLabels.general', component: 'general' },
-  { id: 'section-pricing', labelKey: 'catalog:editor.sectionLabels.pricing', component: 'pricing' },
-  { id: 'section-inventory', labelKey: 'catalog:editor.sectionLabels.inventory', component: 'inventory' },
+const INVENTORY_EXTENSIONS: EditorSectionDef[] = [
   { id: 'section-automotive', labelKey: 'inventory:products.sections.automotiveInfo', component: 'automotive', when: (ctx) => ctx.isOtospex, navVisible: false },
   { id: 'section-pharmacy', labelKey: 'catalog:editor.sectionLabels.pharmacy', component: 'pharmacy', when: (ctx) => ctx.isParapharmacy },
   { id: 'section-loyalty', labelKey: 'catalog:editor.sectionLabels.loyalty', component: 'loyalty', when: (ctx) => ctx.hasLoyalty },
-  { id: 'section-suppliers', labelKey: 'catalog:editor.sectionLabels.suppliers', component: 'suppliers' },
-  { id: 'section-media', labelKey: 'catalog:editor.sectionLabels.media', component: 'media' },
-  { id: 'section-variants', labelKey: 'catalog:variants.title', component: 'variants', when: (ctx) => ctx.isEditing, navVisible: false },
 ]
+
+const EDITOR_SECTIONS: EditorSectionDef[] = PRODUCT_SECTION_DEFINITIONS.flatMap((section) => [
+  { id: section.id, labelKey: section.labelKey, component: section.key },
+  ...(section.key === 'inventory' ? INVENTORY_EXTENSIONS : []),
+  ...(section.key === 'media'
+    ? [{ id: 'section-variants', labelKey: 'catalog:variants.title', component: 'variants' as const, when: (ctx: EditorGateCtx) => ctx.isEditing, navVisible: false }]
+    : []),
+])
 
 export type ProductFormData = ProductSectionFormData
 
@@ -810,33 +802,6 @@ export function ProductForm() {
         </div>
       </div>
 
-      {/* Barcode-first hero: the barcode + name inputs are bound to the
-          existing form fields (single source of truth for `barcode`).
-          The hero drives the catalog lookup engine (debounce + scanner) —
-          no separate BarcodeLookupInput in the General section. */}
-      <ProductHeroSection
-        adapter={{
-          mode: 'edit',
-          barcode: barcodeValue,
-          name: nameValue,
-          productId: isEditing && id ? id : null,
-          primaryImageUrl: product?.primary_image_url ?? null,
-          media: {
-            bufferedImages,
-            onBufferedImagesChange: setBufferedImages,
-          },
-          hero: {
-            enrichmentState: heroEnrichmentState,
-            chips: heroChips,
-            onBarcodeChange: (value) => { setValue('barcode', value, { shouldDirty: true }) },
-            onNameChange: (value) => { setValue('name', value, { shouldDirty: true }) },
-            onProductData: handleProductData,
-            onLookupStateChange: handleLookupStateChange,
-            onManualRefresh: handleManualRefresh,
-          },
-        }}
-      />
-
       {isEditing ? (
         <EnrichmentReadyCard
           state={fastPathState}
@@ -909,55 +874,69 @@ export function ProductForm() {
 
           {/* Centre: stacked section cards */}
           <div className="flex min-w-0 flex-col gap-4">
-            <ProductGeneralSection
-              adapter={{
-                mode: 'edit',
-                form: { control, errors, register, setValue, watch },
+            <ProductSectionStack
+              mode="edit"
+              adapters={{
+                hero: {
+                  mode: 'edit',
+                  barcode: barcodeValue,
+                  name: nameValue,
+                  productId: isEditing && id ? id : null,
+                  primaryImageUrl: product?.primary_image_url ?? null,
+                  media: { bufferedImages, onBufferedImagesChange: setBufferedImages },
+                  hero: {
+                    enrichmentState: heroEnrichmentState,
+                    chips: heroChips,
+                    onBarcodeChange: (value) => { setValue('barcode', value, { shouldDirty: true }) },
+                    onNameChange: (value) => { setValue('name', value, { shouldDirty: true }) },
+                    onProductData: handleProductData,
+                    onLookupStateChange: handleLookupStateChange,
+                    onManualRefresh: handleManualRefresh,
+                  },
+                },
                 general: {
-                  prefilledFields,
-                  clearPrefilledField,
+                  mode: 'edit',
+                  form: { control, errors, register, setValue, watch },
+                  general: { prefilledFields, clearPrefilledField },
                 },
-              }}
-            />
-
-            <ProductPricingSection
-              adapter={{
-                mode: 'edit',
-                canViewCostPrices,
-                currency,
-                locale,
-                moneyScale,
-                form: { control, setValue, watch },
-                isEditing,
-                product: product === undefined ? null : { cost_price: product.cost_price },
-                pricing,
-              }}
-            />
-            <ProductInventorySection
-              adapter={{
-                mode: 'edit',
-                form: { control, register, watch, setValue, errors },
+                pricing: {
+                  mode: 'edit',
+                  canViewCostPrices,
+                  currency,
+                  locale,
+                  moneyScale,
+                  form: { control, setValue, watch },
+                  isEditing,
+                  product: product === undefined ? null : { cost_price: product.cost_price },
+                  pricing,
+                },
                 inventory: {
-                  reorderDecimals,
-                  showBatchTracking,
-                  showOpeningSection,
-                  canEnterOpening,
-                  isOpeningLocked,
-                  productStockQuantity: product?.stock_quantity ?? null,
-                  canResetOpening,
-                  showResetConfirm,
-                  isResettingOpening,
-                  requestOpeningReset: () => { setShowResetConfirm(true) },
-                  cancelOpeningReset: () => { setShowResetConfirm(false) },
-                  resetOpening: handleResetOpening,
+                  mode: 'edit',
+                  form: { control, register, watch, setValue, errors },
+                  inventory: {
+                    reorderDecimals,
+                    showBatchTracking,
+                    showOpeningSection,
+                    canEnterOpening,
+                    isOpeningLocked,
+                    productStockQuantity: product?.stock_quantity ?? null,
+                    canResetOpening,
+                    showResetConfirm,
+                    isResettingOpening,
+                    requestOpeningReset: () => { setShowResetConfirm(true) },
+                    cancelOpeningReset: () => { setShowResetConfirm(false) },
+                    resetOpening: handleResetOpening,
+                  },
+                },
+                suppliers: { mode: 'edit' },
+                media: {
+                  mode: 'edit',
+                  isEditing,
+                  productId: id || null,
+                  media: { bufferedImages, onBufferedImagesChange: setBufferedImages },
                 },
               }}
-            />
-
-            {/* Automotive Information - Otospex only (no section nav entry; it
-                is a vertical-exclusive block layered between inventory and the
-                vertical-gated pharmacy/suppliers sections). */}
-            {isOtospex && (
+              automotive={isOtospex ? (
               <div className={tokens.card.base}>
                 <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('inventory:products.sections.automotiveInfo')}</h2>
 
@@ -1049,46 +1028,25 @@ export function ProductForm() {
                   </button>
                 </div>
               </div>
-            )}
-
-            {/* Pharmacy — parapharmacy vertical only. ParapharmacyMetadataFields
-                renders its own card chrome + (translated) section header. */}
-            {isParapharmacy && (
-              <div id="section-pharmacy" className="scroll-mt-24">
-                <ParapharmacyMetadataFields
-                  control={control}
-                  register={register}
-                  errors={errors}
-                />
-              </div>
-            )}
-
-            {/* Loyalty — module-gated read-only indicative points display */}
-            {hasModule('Loyalty') && (
-              <EditorSectionCard
-                id="section-loyalty"
-                title={t('catalog:editor.sectionLabels.loyalty')}
-              >
-                <LoyaltyPointsDisplay salePrice={salePriceValue} />
-              </EditorSectionCard>
-            )}
-
-            <ProductSuppliersSection adapter={{ mode: 'edit' }} />
-
-            <ProductMediaSection
-              adapter={{
-                mode: 'edit',
-                isEditing,
-                productId: id ?? null,
-                media: {
-                  bufferedImages,
-                  onBufferedImagesChange: setBufferedImages,
-                },
-              }}
-            />
-
-            {/* Variants Section - Only when editing (matrix generation needs a persisted product id) */}
-            {isEditing && id && (
+            ) : undefined}
+              pharmacy={isParapharmacy ? (
+                <div id="section-pharmacy" className="scroll-mt-24">
+                  <ParapharmacyMetadataFields
+                    control={control}
+                    register={register}
+                    errors={errors}
+                  />
+                </div>
+              ) : undefined}
+              loyalty={hasModule('Loyalty') ? (
+                <EditorSectionCard
+                  id="section-loyalty"
+                  title={t('catalog:editor.sectionLabels.loyalty')}
+                >
+                  <LoyaltyPointsDisplay salePrice={salePriceValue} />
+                </EditorSectionCard>
+              ) : undefined}
+              variants={isEditing && id ? (
               <div className={tokens.card.base}>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1109,7 +1067,8 @@ export function ProductForm() {
                 </div>
                 {showVariants && <ProductVariantMatrixEditor productId={id} />}
               </div>
-            )}
+              ) : undefined}
+            />
           </div>
 
           {/* Right rail (mock order): Live on POS preview, before-publish

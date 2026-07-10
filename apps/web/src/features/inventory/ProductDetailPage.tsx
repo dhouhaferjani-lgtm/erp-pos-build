@@ -29,17 +29,8 @@ import { useProductRealtime } from '../products/hooks/useProductRealtime'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
 import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
-import { ProductGeneralSection } from '../products/sections/ProductGeneralSection'
-import { ProductPricingSection } from '../products/sections/ProductPricingSection'
-import { ProductInventorySection } from '../products/sections/ProductInventorySection'
-import { ProductSuppliersSection } from '../products/sections/ProductSuppliersSection'
-import { ProductMediaSection } from '../products/sections/ProductMediaSection'
-import { ProductHeroSection } from '../products/sections/ProductHeroSection'
+import { ProductSectionStack } from '../products/sections/ProductSectionStack'
 import type { DiscountPolicyVerdict, ProductSectionProduct } from '../products/sections/types'
-import {
-  PRODUCT_DETAIL_SECTIONS,
-  type EditorSectionRendererRegistry,
-} from '../products/editor/viewSections'
 
 type Product = Omit<ProductSectionProduct, 'cross_references' | 'oem_numbers'> & {
   cross_references: { brand: string; reference: string }[] | null
@@ -197,7 +188,6 @@ export function ProductDetailPage() {
     ? { costPrice, effectiveMargins, lastPurchaseCost, purchasePrice }
     : null
   const hasAutomotiveData = (product.oem_numbers?.length ?? 0) > 0 || (product.cross_references?.length ?? 0) > 0
-  const sectionGateCtx = { isOtospex, hasAutomotiveData }
   const metadataSection = (
     <div className={cn('rounded-lg border bg-white', borderColors.light)}>
       <div className={cn('border-b px-6 py-4', borderColors.light)}>
@@ -223,8 +213,8 @@ export function ProductDetailPage() {
       </div>
     </div>
   )
-  const sectionRenderers: EditorSectionRendererRegistry<typeof sectionGateCtx> = {
-    automotive: () => (
+  const automotiveSection = isOtospex && hasAutomotiveData ? (
+    <section id="section-automotive">
       <div className={tokens.card.base}>
         <h3 className={cn(tokens.heading.section, 'mb-4 flex items-center gap-2')}>
           <Tag className={cn('h-5 w-5', textColors.disabled)} />
@@ -272,19 +262,8 @@ export function ProductDetailPage() {
           )}
         </div>
       </div>
-    ),
-    metadata: () => metadataSection,
-  }
-  const visibleDetailSections = PRODUCT_DETAIL_SECTIONS
-    .filter((section) => section.when?.(sectionGateCtx) ?? true)
-  const metadataSectionIndex = visibleDetailSections
-    .findIndex((section) => section.component === 'metadata')
-  const contextualDetailSections = metadataSectionIndex === -1
-    ? visibleDetailSections
-    : visibleDetailSections.slice(0, metadataSectionIndex)
-  const trailingDetailSections = metadataSectionIndex === -1
-    ? []
-    : visibleDetailSections.slice(metadataSectionIndex)
+    </section>
+  ) : undefined
 
   const backLink = (
     <Link
@@ -353,11 +332,12 @@ export function ProductDetailPage() {
         {/* Details Tab */}
         <TabsContent value="details" className="mt-6">
           <div className="space-y-6">
-            <ProductHeroSection adapter={{ mode: 'view', product: publicProduct }} />
-            <div className="space-y-6">
-              <ProductGeneralSection adapter={{ mode: 'view', product }} />
-              <ProductPricingSection
-                adapter={{
+            <ProductSectionStack
+              mode="view"
+              adapters={{
+                hero: { mode: 'view', product: publicProduct },
+                general: { mode: 'view', product: publicProduct },
+                pricing: {
                   mode: 'view',
                   canViewCostPrices,
                   costPrices,
@@ -370,33 +350,21 @@ export function ProductDetailPage() {
                   formatPercent: (value) => value === null ? '\u2014' : formatPercent(value),
                   product: publicProduct,
                   ...(discountPolicyVerdict === undefined ? {} : { discountPolicyVerdict }),
-                }}
-              />
-              <ProductInventorySection
-                adapter={{
+                },
+                inventory: {
                   mode: 'view',
                   canViewCostPrices,
                   costPrices,
                   currency: companyCurrency,
                   locale: companyLocale,
                   product: publicProduct,
-                }}
-              />
-              {contextualDetailSections
-                .map((section) => (
-                  <section key={section.id} id={section.id}>
-                    {sectionRenderers[section.component](sectionGateCtx)}
-                  </section>
-                ))}
-              <ProductSuppliersSection adapter={{ mode: 'view' }} />
-              <ProductMediaSection adapter={{ mode: 'view', product: publicProduct }} />
-              {trailingDetailSections
-                .map((section) => (
-                  <section key={section.id} id={section.id}>
-                    {sectionRenderers[section.component](sectionGateCtx)}
-                  </section>
-                ))}
-            </div>
+                },
+                suppliers: { mode: 'view' },
+                media: { mode: 'view', product: publicProduct },
+              }}
+              automotive={automotiveSection}
+            />
+            <section id="section-metadata">{metadataSection}</section>
           </div>
         </TabsContent>
 

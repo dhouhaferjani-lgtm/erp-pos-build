@@ -17,6 +17,11 @@ vi.mock('react-i18next', () => ({
 // router
 const mockNavigate = vi.fn()
 let mockParams: Record<string, string> = {}
+const mockSectionGates = vi.hoisted(() => ({
+  isOtospex: false,
+  vertical: 'generic',
+  hasLoyalty: false,
+}))
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => mockParams,
@@ -89,12 +94,12 @@ vi.mock('../../hooks/usePermissions', () => ({
 
 vi.mock('../../contexts/CompanyConfigContext', () => ({
   useCompanyConfig: () => ({
-    config: { vertical: 'generic' },
-    hasModule: (name: string) => name === 'Inventory',
+    config: { vertical: mockSectionGates.vertical },
+    hasModule: (name: string) => name === 'Inventory' || (name === 'Loyalty' && mockSectionGates.hasLoyalty),
   }),
 }))
 vi.mock('../../contexts/ProductConfigContext', () => ({
-  useProductConfig: () => ({ isOtospex: false }),
+  useProductConfig: () => ({ isOtospex: mockSectionGates.isOtospex }),
 }))
 vi.mock('../../hooks/useCurrency', () => ({
   useCurrency: () => ({ currency: 'EUR', decimals: 2, locale: 'fr-FR' }),
@@ -168,6 +173,9 @@ vi.mock('../uom/components/UnitDropdown', () => ({
 }))
 
 beforeEach(() => {
+  mockSectionGates.isOtospex = false
+  mockSectionGates.vertical = 'generic'
+  mockSectionGates.hasLoyalty = false
   mockParams = {}
   mockNavigate.mockReset()
   mockMutateAsync.mockReset()
@@ -618,6 +626,27 @@ describe('ProductForm (Direction-A editor layout smoke)', () => {
     expect(container.querySelector('#section-pricing')).not.toBeNull()
     expect(container.querySelector('#section-inventory')).not.toBeNull()
     expect(container.querySelector('#section-suppliers')).not.toBeNull()
+  })
+
+  it('renders the canonical shared order and page-level extension gates', () => {
+    const defaultRender = render(<ProductForm />)
+    const shared = Array.from(defaultRender.container.querySelectorAll('[data-product-section-key]'))
+      .map((node) => node.getAttribute('data-product-section-key'))
+    expect(shared).toEqual(['hero', 'general', 'pricing', 'inventory', 'suppliers', 'media'])
+    expect(defaultRender.container.querySelectorAll('[data-product-extension-key]')).toHaveLength(0)
+    defaultRender.unmount()
+
+    mockSectionGates.isOtospex = true
+    const automotiveRender = render(<ProductForm />)
+    expect(automotiveRender.container.querySelector('[data-product-extension-key="automotive"]')).not.toBeNull()
+    automotiveRender.unmount()
+
+    mockSectionGates.isOtospex = false
+    mockSectionGates.vertical = 'parapharmacy'
+    mockSectionGates.hasLoyalty = true
+    const verticalRender = render(<ProductForm />)
+    expect(verticalRender.container.querySelector('[data-product-extension-key="pharmacy"]')).not.toBeNull()
+    expect(verticalRender.container.querySelector('[data-product-extension-key="loyalty"]')).not.toBeNull()
   })
 
   it('renders the related-operations rail and the before-publish checklist', () => {

@@ -3,10 +3,8 @@ import { useTranslation } from 'react-i18next'
 
 import { textColors, tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
-import {
-  ProductHeroShell,
-  withProductHeroImageVariant,
-} from '../../sections/ProductHeroShell'
+import { withProductHeroImageVariant } from '../../productHeroImage'
+import { ProductHeroShell } from '../../sections/ProductHeroShell'
 
 export type ProductHeroProduct = Pick<
   App.Modules.Product.Application.DTOs.ProductData,

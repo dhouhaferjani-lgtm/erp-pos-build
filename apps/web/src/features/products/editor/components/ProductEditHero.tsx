@@ -6,12 +6,10 @@ import { useCatalogBarcodeLookup } from '@/features/inventory/hooks/useCatalogBa
 import type { LookupState, SuggestedProduct } from '@/features/inventory/types/platform'
 import { CreateModeImageBuffer, ProductImageUpload } from '@/features/products/components'
 import type { ProductHeroChip, ProductHeroEnrichmentState } from '@/features/products/productHeroTypes'
+import { withProductHeroImageVariant } from '@/features/products/productHeroImage'
 import { tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
-import {
-  ProductHeroShell,
-  withProductHeroImageVariant,
-} from '../../sections/ProductHeroShell'
+import { ProductHeroShell } from '../../sections/ProductHeroShell'
 
 export type EditorHeroEnrichmentState = ProductHeroEnrichmentState
 

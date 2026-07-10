@@ -10,7 +10,13 @@ export { ProductInventorySection, type ProductInventoryAdapter } from './Product
 export { ProductSuppliersSection, type ProductSuppliersAdapter } from './ProductSuppliersSection'
 export { ProductMediaSection, type ProductMediaAdapter } from './ProductMediaSection'
 export { ProductHeroSection, type ProductHeroAdapter } from './ProductHeroSection'
-export { ProductHeroShell, withProductHeroImageVariant } from './ProductHeroShell'
+export { ProductHeroShell } from './ProductHeroShell'
+export { withProductHeroImageVariant } from '../productHeroImage'
+export {
+  ProductSectionStack,
+  type ProductSectionStackAdapters,
+  type ProductSectionStackProps,
+} from './ProductSectionStack'
 export { useProductPricingEditAdapter } from './useProductPricingEditAdapter'
 export type {
   ParapharmacySectionFormData,

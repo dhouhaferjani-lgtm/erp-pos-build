@@ -24,6 +24,7 @@
     },
     "subtitle": "Scan a barcode to auto-fill from Synerivia, or type by hand.",
     "sectionLabels": {
+      "hero": "Product",
       "general": "General",
       "pricing": "Pricing & Tax",
       "inventory": "Inventory & Units",

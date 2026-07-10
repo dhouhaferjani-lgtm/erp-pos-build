@@ -6,9 +6,9 @@ import { cn } from '@/lib/utils'
 import { EditorSectionCard } from '../editor/components/EditorSectionCard'
 import type { ProductSectionMode } from './types'
 
-export interface ProductSuppliersAdapter {
-  mode: ProductSectionMode
-}
+export type ProductSuppliersAdapter =
+  | { mode: Extract<ProductSectionMode, 'view'> }
+  | { mode: Extract<ProductSectionMode, 'edit'> }
 
 export function ProductSuppliersSection({ adapter: _adapter }: { adapter: ProductSuppliersAdapter }) {
   const { t } = useTranslation('catalog')
