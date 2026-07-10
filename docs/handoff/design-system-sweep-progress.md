@@ -126,12 +126,18 @@ Status: in progress.
   - GREEN: invoice, sales-order, and purchase-order detail pages now render canonical `StatusBadge` directly with shared payment-status tone/icon metadata; `OutstandingAmountSection` imports the shared payment-status type.
   - Deleted `documents/components/PaymentStatusBadge.tsx` and its wrapper-only test.
   - Baseline shrunk from 437 to 436 after removing the stale documents C6 fingerprint.
+- 5.2 `documents/` remaining C6 switches:
+  - RED: `pnpm --filter @autoerp/web audit:design-system` reported stale C6 fingerprints after removing the document-list payment-status filter switch and the related-documents status-color switch.
+  - GREEN: `DocumentListPage` now filters invoice payment statuses through a typed predicate map, and `RelatedDocumentsTab` renders document/current badges through canonical `StatusBadge` plus `statusTone`.
+  - Baseline shrunk from 436 to 434 after removing the remaining documents C6 fingerprints.
 - Verification:
+  - `pnpm --filter @autoerp/web test -- src/features/documents/DocumentListPage.test.tsx src/features/documents/__tests__/DocumentTenantScope.test.tsx src/features/documents/components/__tests__/RelatedDocumentsTab.test.tsx` passed: 9 tests. Existing act-warning noise remains in `DocumentTenantScope`.
   - `pnpm --filter @autoerp/web test -- src/features/documents/invoices/__tests__/InvoiceDetailPage.tenantScope.test.tsx src/features/documents/sales-orders/__tests__/SalesOrderDetailPage.tenantScope.test.tsx src/features/documents/purchase-orders/__tests__/PurchaseOrderDetailPage.tenantScope.test.tsx` passed: 18 tests. Existing act-warning noise remains in those suites.
   - `pnpm --filter @autoerp/web typecheck` passed.
   - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
     - TanStack query key audit: 0 violations.
-    - Design-system audit: 436 acknowledged, 0 new, 0 stale.
+    - Design-system audit: 434 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base bb480f355` passed with no issues for the documents remaining-C6 slice after replacing changed-page barrel imports with direct imports.
   - `npx react-doctor@latest --verbose --scope changed --base 744934164` passed with no issues for the documents payment-status slice.
 
 New shared-shape components: none.

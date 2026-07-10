@@ -9,6 +9,8 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react'
+import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { statusTone } from '@/components/atoms/StatusBadge/statusTone'
 import { EntityLink } from '@/components/molecules/EntityLink'
 import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
 import { useRelatedDocuments, type RelatedDocument } from '../hooks/useRelatedDocuments'
@@ -28,19 +30,9 @@ const documentTypeIcons: Record<string, React.ElementType> = {
   purchase_order: FileCheck,
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'draft':
-      return 'bg-gray-100 text-gray-700'
-    case 'confirmed':
-      return 'bg-blue-100 text-blue-700'
-    case 'posted':
-      return 'bg-green-100 text-green-700'
-    case 'cancelled':
-      return 'bg-red-100 text-red-700'
-    default:
-      return 'bg-gray-100 text-gray-700'
-  }
+const relatedDocumentTones: Record<string, StatusTone> = {
+  confirmed: 'info',
+  posted: 'success',
 }
 
 interface DocumentChainItemProps {
@@ -68,17 +60,13 @@ function DocumentChainItem({ document, isCurrent = false, currency }: DocumentCh
           <span className="font-medium text-gray-900">
             {t(`sales:documents.types.${document.type}`, document.type)}
           </span>
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(
-              document.status
-            )}`}
-          >
+          <StatusBadge tone={statusTone(document.status, relatedDocumentTones)}>
             {t(`sales:documents.statuses.${document.status}`, document.status)}
-          </span>
+          </StatusBadge>
           {isCurrent && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-700">
+            <StatusBadge tone="info">
               {t('sales:relatedDocuments.current')}
-            </span>
+            </StatusBadge>
           )}
         </div>
         <p className="text-sm text-gray-600 mt-1">{documentNumberLabel}</p>

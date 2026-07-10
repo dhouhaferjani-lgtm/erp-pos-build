@@ -405,8 +405,6 @@
     "C6|src/features/coupons/pages/CouponListPage.tsx|STATUS_COLORS: Record<",
     "C6|src/features/coupons/pages/CouponListPage.tsx|const STATUS_COLORS:",
     "C6|src/features/document-ingestions/DocumentIngestionListPage.tsx|switch (status)",
-    "C6|src/features/documents/DocumentListPage.tsx|switch (paymentStatusFilter)",
-    "C6|src/features/documents/components/RelatedDocumentsTab.tsx|switch (status)",
     "C6|src/features/import/pages/ImportHistoryPage.tsx|const getStatusBadge =",
     "C6|src/features/import/pages/ImportHistoryPage.tsx|switch (status)",
     "C6|src/features/inventory-counting/components/CountingStatusBadge.tsx|const statusColors:",
