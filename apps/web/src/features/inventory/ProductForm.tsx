@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAfterSaveNavigation } from '@/hooks/useAfterSaveNavigation'
 import { useUnsavedChangesGuard, confirmDiscard } from '@/hooks/useUnsavedChangesGuard'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm, useFieldArray, Controller } from 'react-hook-form'
+import { useForm, useFieldArray } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { Plus, X, Layers } from 'lucide-react'
 import { toast } from 'sonner'
@@ -13,17 +13,9 @@ import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { colors, tokens, textColors } from '../../lib/designTokens'
-import { CategorySelect } from '../../components/catalog/CategorySelect'
 import { Button } from '../../components/atoms/Button/Button'
 import { Checkbox } from '../../components/atoms/Checkbox/Checkbox'
-import { FormField } from '../../components/atoms/FormField/FormField'
 import { Input } from '../../components/atoms/Input/Input'
-import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
-import { DraftMoneyInput } from '../../components/atoms/DraftMoneyInput'
-import { DraftQuantityInput } from '../../components/atoms/DraftQuantityInput'
-import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
-import { Textarea } from '../../components/atoms/Textarea/Textarea'
-import { Toggle } from '../../components/atoms/Toggle/Toggle'
 import { CatalogBanner } from './components/CatalogBanner'
 import { EnrichmentCapturePanel, type EnrichmentAttributeRow } from './components/EnrichmentCapturePanel'
 import { EnrichmentReadyCard } from './components/EnrichmentReadyCard'
@@ -32,9 +24,7 @@ import { useEnrichmentFastPath } from './hooks/useEnrichmentFastPath'
 import type { SubmitForEnrichmentPayload } from './api/platformApi'
 import type { LookupState, SuggestedProduct } from './types/platform'
 import type { UploadedPhoto } from './api/enrichmentPhotos'
-import { CreateModeImageBuffer } from '../products/components/CreateModeImageBuffer'
 import { ParapharmacyMetadataFields } from '../products/components/ParapharmacyMetadataFields'
-import { ProductImageSection } from '../products/components/ProductImageSection'
 import { uploadProductImage } from '../products/api/productImages'
 import { ProductVariantMatrixEditor } from '../catalog/components/ProductVariantMatrixEditor'
 import { useVariantsForProduct } from '../catalog/hooks/useVariants'
@@ -43,13 +33,11 @@ import type { CategoryTreeNode } from '../catalog/types'
 import { useCompanyConfig } from '../../contexts/CompanyConfigContext'
 import { useCurrency } from '../../hooks/useCurrency'
 import { useProductConfig } from '../../contexts/ProductConfigContext'
-import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
 import { usePermissions } from '../../hooks/usePermissions'
 import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { buildProductPayload } from './productPayload'
 import { LoyaltyPointsDisplay } from './LoyaltyPointsDisplay'
 import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
-import { ProductEditHero, type EditorHeroEnrichmentState } from '../products/editor/components/ProductEditHero'
 import { SectionNav } from '../products/editor/components/SectionNav'
 import type { EditorSection } from '../products/editor/components/SectionNav'
 import { EditorSectionCard } from '../products/editor/components/EditorSectionCard'
@@ -59,16 +47,20 @@ import type { ChecklistItem } from '../products/editor/components/BeforePublishC
 import { LivePosTile } from '../products/editor/components/LivePosTile'
 import { useScrollSpy } from '../products/editor/hooks/useScrollSpy'
 import { formatCurrency } from '../../lib/formatCurrency'
-import { UnitDropdown } from '../uom/components/UnitDropdown'
 import { useUnits } from '../uom/hooks/useUnits'
 import { getQuantityDecimals } from '../../lib/quantityScale'
 import type { ProductType } from '../products/types'
+import type {
+  ParapharmacySectionFormData,
+  ProductHeroEnrichmentState,
+  ProductSectionFormData,
+} from '../products/sections/types'
+import { ProductSectionStack } from '../products/sections/ProductSectionStack'
 import {
-  marginFromCost,
-  priceHtFromMargin,
-  priceTtcFromHt,
-  priceHtFromTtc,
-} from './components/pricing/pricingMath'
+  PRODUCT_SECTION_DEFINITIONS,
+  type ProductSectionKey,
+} from '../products/sections/sectionRegistry'
+import { useProductPricingEditAdapter } from '../products/sections/useProductPricingEditAdapter'
 
 interface Product {
   id: string
@@ -115,30 +107,9 @@ interface ProductResponse {
   data: Product
 }
 
-interface ParapharmacyMetadata {
-  category: string
-  dosage_form: string | null
-  active_ingredients: Array<{ name: string; concentration: string }>
-  usage_instructions: string | null
-  warnings: string | null
-  contraindications: string | null
-  minimum_age: number | null
-  age_restriction: string | null
-  requires_consultation: boolean
-  regulatory_code: string | null
-  storage_requirements: string | null
-}
+type ParapharmacyMetadata = ParapharmacySectionFormData
 
-type EditorSectionKey =
-  | 'general'
-  | 'pricing'
-  | 'inventory'
-  | 'pharmacy'
-  | 'loyalty'
-  | 'suppliers'
-  | 'media'
-  | 'automotive'
-  | 'variants'
+type EditorExtensionKey = 'pharmacy' | 'loyalty' | 'automotive' | 'variants'
 
 interface EditorGateCtx {
   isParapharmacy: boolean
@@ -150,82 +121,26 @@ interface EditorGateCtx {
 interface EditorSectionDef {
   id: string
   labelKey: string
-  component: EditorSectionKey
+  component: ProductSectionKey | EditorExtensionKey
   when?: (ctx: EditorGateCtx) => boolean
   navVisible?: boolean
 }
 
-type HeroBlockKey =
-  | 'identity.image'
-  | 'identity.name'
-  | 'identity.barcode'
-  | 'enrichment.chips'
-  | 'stock.openingQty'
-  | 'pricing.cost'
-  | 'pricing.margin'
-  | 'pricing.priceHt'
-  | 'pricing.priceTtc'
-
-interface HeroBlockDef {
-  id: string
-  component: HeroBlockKey
-  slot: 'image' | 'main' | 'strip'
-  when?: (ctx: EditorGateCtx) => boolean
-}
-
-const EDITOR_SECTIONS: EditorSectionDef[] = [
-  { id: 'section-general', labelKey: 'catalog:editor.sectionLabels.general', component: 'general' },
-  { id: 'section-pricing', labelKey: 'catalog:editor.sectionLabels.pricing', component: 'pricing' },
-  { id: 'section-inventory', labelKey: 'catalog:editor.sectionLabels.inventory', component: 'inventory' },
+const INVENTORY_EXTENSIONS: EditorSectionDef[] = [
   { id: 'section-automotive', labelKey: 'inventory:products.sections.automotiveInfo', component: 'automotive', when: (ctx) => ctx.isOtospex, navVisible: false },
   { id: 'section-pharmacy', labelKey: 'catalog:editor.sectionLabels.pharmacy', component: 'pharmacy', when: (ctx) => ctx.isParapharmacy },
   { id: 'section-loyalty', labelKey: 'catalog:editor.sectionLabels.loyalty', component: 'loyalty', when: (ctx) => ctx.hasLoyalty },
-  { id: 'section-suppliers', labelKey: 'catalog:editor.sectionLabels.suppliers', component: 'suppliers' },
-  { id: 'section-media', labelKey: 'catalog:editor.sectionLabels.media', component: 'media' },
-  { id: 'section-variants', labelKey: 'catalog:variants.title', component: 'variants', when: (ctx) => ctx.isEditing, navVisible: false },
 ]
 
-const HERO_BLOCKS: HeroBlockDef[] = [
-  { id: 'identity.image', component: 'identity.image', slot: 'image' },
-  { id: 'identity.name', component: 'identity.name', slot: 'main' },
-  { id: 'identity.barcode', component: 'identity.barcode', slot: 'main' },
-  { id: 'enrichment.chips', component: 'enrichment.chips', slot: 'main' },
-  { id: 'stock.openingQty', component: 'stock.openingQty', slot: 'strip' },
-  { id: 'pricing.cost', component: 'pricing.cost', slot: 'strip' },
-  { id: 'pricing.margin', component: 'pricing.margin', slot: 'strip' },
-  { id: 'pricing.priceHt', component: 'pricing.priceHt', slot: 'strip' },
-  { id: 'pricing.priceTtc', component: 'pricing.priceTtc', slot: 'strip' },
-]
+const EDITOR_SECTIONS: EditorSectionDef[] = PRODUCT_SECTION_DEFINITIONS.flatMap((section) => [
+  { id: section.id, labelKey: section.labelKey, component: section.key },
+  ...(section.key === 'inventory' ? INVENTORY_EXTENSIONS : []),
+  ...(section.key === 'media'
+    ? [{ id: 'section-variants', labelKey: 'catalog:variants.title', component: 'variants' as const, when: (ctx: EditorGateCtx) => ctx.isEditing, navVisible: false }]
+    : []),
+])
 
-export interface ProductFormData {
-  name: string
-  sku: string
-  is_physical: boolean
-  is_active_for_ecommerce: boolean
-  unit_id: string | null
-  category_id: number | null
-  description: string
-  sale_price: string
-  purchase_price: string
-  tax_rate: string
-  tax_configuration_id: string | null
-  unit: string
-  barcode: string
-  is_active: boolean
-  oem_numbers: string[]
-  cross_references: Array<{ brand: string; reference: string }>
-  parapharmacy_metadata: ParapharmacyMetadata
-  requires_batch_tracking: boolean
-  default_shelf_life_days: number | null
-  units_per_pack: number | null
-  shelf_location: string
-  reorder_point: string
-  reorder_quantity: string
-  /** Opening balance quantity (decimal string). Submitted only when > 0. */
-  opening_qty: string
-  /** Opening balance unit cost (decimal string). Required when opening_qty > 0. */
-  opening_unit_cost: string
-}
+export type ProductFormData = ProductSectionFormData
 
 function findCategoryName(nodes: CategoryTreeNode[], id: number): string | null {
   for (const node of nodes) {
@@ -356,6 +271,15 @@ export function ProductForm() {
     }
   }, [])
 
+  const clearPrefilledField = useCallback((field: 'name' | 'description') => {
+    setPrefilledFields((current) => {
+      if (!current.has(field)) return current
+      const next = new Set(current)
+      next.delete(field)
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     if (lookupState !== 'not_found') {
       setCapturePhotos([])
@@ -365,8 +289,6 @@ export function ProductForm() {
   }, [lookupState])
 
   const oemNumbers = watch('oem_numbers')
-  const categoryId = watch('category_id')
-  const requiresBatchTracking = watch('requires_batch_tracking')
   const watchIsPhysical = watch('is_physical')
   const openingQtyValue = watch('opening_qty')
 
@@ -743,40 +665,21 @@ export function ProductForm() {
   const nameValue = watch('name')
   const skuValue = watch('sku')
   const salePriceValue = watch('sale_price')
-  const purchasePriceValue = watch('purchase_price')
   const taxConfigValue = watch('tax_configuration_id')
   const taxRateValue = watch('tax_rate')
   const barcodeValue = watch('barcode')
 
   const moneyScale = decimals ?? 3
-  const priceHtValue = salePriceValue
-  const priceTtcValue = priceTtcFromHt(priceHtValue, taxRateValue, moneyScale)
-  const costBasisValue = isOpeningLocked ? product?.cost_price ?? '' : purchasePriceValue
-  const marginPercentValue = marginFromCost(costBasisValue, priceHtValue)
+  const pricing = useProductPricingEditAdapter({
+    control,
+    setValue,
+    isOpeningLocked,
+    productCostPrice: product?.cost_price ?? null,
+    canEnterOpening,
+    moneyScale,
+  })
 
-  const handleCostChange = (value: string): void => {
-    setValue('purchase_price', value, { shouldDirty: true })
-    if (canEnterOpening && openingQtyValue.trim() !== '' && openingQtyValue.trim() !== '0') {
-      setValue('opening_unit_cost', value, { shouldDirty: true })
-    }
-  }
-
-  const handlePriceHtChange = (value: string): void => {
-    setValue('sale_price', value, { shouldDirty: true })
-  }
-
-  const handleMarginChange = (value: string): void => {
-    const nextHt = priceHtFromMargin(costBasisValue, value, moneyScale)
-    if (nextHt !== '') {
-      setValue('sale_price', nextHt, { shouldDirty: true })
-    }
-  }
-
-  const handlePriceTtcChange = (value: string): void => {
-    setValue('sale_price', priceHtFromTtc(value, taxRateValue, moneyScale), { shouldDirty: true })
-  }
-
-  const heroEnrichmentState: EditorHeroEnrichmentState = (() => {
+  const heroEnrichmentState: ProductHeroEnrichmentState = (() => {
     const latestStatus = product?.latest_enrichment_result?.status ?? null
     const status = product?.enrichment_status ?? null
     if (latestStatus === 'accepted' || product?.brand_source === 'enriched') return 'enriched'
@@ -834,166 +737,6 @@ export function ProductForm() {
     }
   }
 
-  const heroStripRenderers: Record<HeroBlockKey, () => React.ReactNode> = {
-    'identity.image': () => null,
-    'identity.name': () => null,
-    'identity.barcode': () => null,
-    'enrichment.chips': () => null,
-    'stock.openingQty': () => (
-      <div key="stock.openingQty" className="rounded-md border border-gray-200 bg-white px-3 py-2">
-        <label htmlFor="opening_qty" className={cn('block text-start text-xs', textColors.tertiary)}>
-          {t('inventory:products.openingQtyShort')}
-        </label>
-        {showOpeningSection && canEnterOpening ? (
-          <Controller
-            name="opening_qty"
-            control={control}
-            render={({ field }) => (
-              <QuantityInput
-                id="opening_qty"
-                data-testid="opening-qty-input"
-                decimalPlaces={4}
-                value={field.value ?? ''}
-                onChange={(value) => {
-                  field.onChange(value)
-                  if (value.trim() !== '' && value.trim() !== '0' && watch('opening_unit_cost').trim() === '') {
-                    setValue('opening_unit_cost', purchasePriceValue, { shouldDirty: true })
-                  }
-                }}
-                onBlur={field.onBlur}
-                disabled={!showOpeningSection}
-                className="mt-1"
-              />
-            )}
-          />
-        ) : (
-          <div className="mt-1 space-y-1 text-sm font-semibold text-gray-900">
-            <div>{t('inventory:products.onHandShort')}: {product?.stock_quantity ?? '0.0000'}</div>
-            {isOpeningLocked && canResetOpening && !showResetConfirm && (
-              <button
-                type="button"
-                data-testid="opening-reset-btn"
-                onClick={() => { setShowResetConfirm(true) }}
-                className={cn('text-xs font-medium', textColors.brand)}
-              >
-                {t('inventory:opening.reset_label')}
-              </button>
-            )}
-            {isOpeningLocked && canResetOpening && showResetConfirm && (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => { setShowResetConfirm(false) }}
-                >
-                  {t('inventory:opening.reset_confirm_cancel')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  disabled={isResettingOpening}
-                  onClick={() => { void handleResetOpening() }}
-                >
-                  {isResettingOpening
-                    ? t('status.saving')
-                    : t('inventory:opening.reset_confirm_proceed')}
-                </Button>
-              </div>
-            )}
-            {isOpeningLocked && !canResetOpening && (
-              <Link to="/inventory/stock" className={cn('text-xs font-medium', textColors.brand)}>
-                {t('inventory:opening.view_stock_link')}
-              </Link>
-            )}
-          </div>
-        )}
-      </div>
-    ),
-    'pricing.cost': () => canViewCostPrices ? (
-      <div key="pricing.cost" className="rounded-md border border-gray-200 bg-white px-3 py-2">
-        <label htmlFor="ready_cost_ht" className={cn('block text-start text-xs', textColors.tertiary)}>
-          {isOpeningLocked ? t('inventory:products.costWac') : t('inventory:products.costHt')}
-        </label>
-        {isOpeningLocked ? (
-          <div id="ready_cost_ht" className="mt-2 text-sm font-semibold tabular-nums text-gray-900">
-            {product?.cost_price ?? '0.000'}
-          </div>
-        ) : (
-          <MoneyInput
-            id="ready_cost_ht"
-            data-testid="opening-cost-input"
-            aria-label={t('inventory:products.costHt')}
-            currency={currency}
-            value={purchasePriceValue}
-            onChange={handleCostChange}
-            className="mt-1"
-          />
-        )}
-      </div>
-    ) : null,
-    'pricing.margin': () => canViewCostPrices ? (
-      <div key="pricing.margin" className="rounded-md border border-gray-200 bg-white px-3 py-2">
-        <label htmlFor="ready_margin_percent" className={cn('block text-start text-xs', textColors.tertiary)}>
-          {t('inventory:products.marginPercent')}
-        </label>
-        <DraftQuantityInput
-          id="ready_margin_percent"
-          aria-label={t('inventory:products.marginPercent')}
-          decimalPlaces={2}
-          initialValue={marginPercentValue}
-          onCommit={handleMarginChange}
-          className="mt-1"
-        />
-      </div>
-    ) : null,
-    'pricing.priceHt': () => (
-      <div key="pricing.priceHt" className="rounded-md border border-gray-200 bg-white px-3 py-2">
-        <label htmlFor="ready_price_ht" className={cn('block text-start text-xs', textColors.tertiary)}>
-          {t('inventory:products.priceHt')}
-        </label>
-        <DraftMoneyInput
-          id="ready_price_ht"
-          aria-label={t('inventory:products.priceHt')}
-          currency={currency}
-          initialValue={priceHtValue}
-          onCommit={handlePriceHtChange}
-          className="mt-1"
-        />
-      </div>
-    ),
-    'pricing.priceTtc': () => (
-      <div key="pricing.priceTtc" className="rounded-md border border-gray-200 bg-white px-3 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <label htmlFor="ready_price_ttc" className={cn('block text-start text-xs', textColors.tertiary)}>
-            {t('inventory:products.priceTtc')}
-          </label>
-          {!hasTax && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-              {t('inventory:products.selectTaxHint')}
-            </span>
-          )}
-        </div>
-        <DraftMoneyInput
-          id="ready_price_ttc"
-          aria-label={t('inventory:products.priceTtc')}
-          currency={currency}
-          initialValue={priceTtcValue}
-          onCommit={handlePriceTtcChange}
-          className="mt-1"
-        />
-      </div>
-    ),
-  }
-
-  const readyToSellStrip = (
-    <div data-testid="ready-to-sell-strip" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      {HERO_BLOCKS
-        .filter((block) => block.slot === 'strip' && (block.when?.(editorCtx) ?? true))
-        .map((block) => heroStripRenderers[block.component]())}
-    </div>
-  )
 
   if (isEditing && isLoading) {
     return (
@@ -1058,27 +801,6 @@ export function ProductForm() {
           </div>
         </div>
       </div>
-
-      {/* Barcode-first hero: the barcode + name inputs are bound to the
-          existing form fields (single source of truth for `barcode`).
-          The hero drives the catalog lookup engine (debounce + scanner) —
-          no separate BarcodeLookupInput in the General section. */}
-      <ProductEditHero
-        barcode={barcodeValue}
-        onBarcodeChange={(value) => { setValue('barcode', value, { shouldDirty: true }) }}
-        name={nameValue}
-        onNameChange={(value) => { setValue('name', value, { shouldDirty: true }) }}
-        productId={isEditing ? id : undefined}
-        primaryImageUrl={product?.primary_image_url ?? null}
-        bufferedFiles={bufferedImages}
-        onBufferedFilesChange={setBufferedImages}
-        enrichmentState={heroEnrichmentState}
-        chips={heroChips}
-        onProductData={handleProductData}
-        onLookupStateChange={handleLookupStateChange}
-        onManualRefresh={handleManualRefresh}
-        strip={readyToSellStrip}
-      />
 
       {isEditing ? (
         <EnrichmentReadyCard
@@ -1152,305 +874,69 @@ export function ProductForm() {
 
           {/* Centre: stacked section cards */}
           <div className="flex min-w-0 flex-col gap-4">
-            {/* General */}
-            <EditorSectionCard
-              id="section-general"
-              title={t('catalog:editor.sectionLabels.general')}
-            >
-              <FormField
-                label={`${t('inventory:products.name')} *`}
-                htmlFor="name"
-                error={errors.name?.message}
-              >
-                <Input
-                  type="text"
-                  id="name"
-                  error={Boolean(errors.name)}
-                  className={prefilledFields.has('name') ? colors.success[50] : ''}
-                  {...register('name', {
-                    required: t('inventory:products.nameRequired'),
-                    onChange: () => {
-                      setPrefilledFields((prev) => {
-                        if (!prev.has('name')) return prev
-                        const next = new Set(prev)
-                        next.delete('name')
-                        return next
-                      })
-                    },
-                  })}
-                />
-              </FormField>
-
-              <FormField
-                label={`${t('inventory:products.sku')} *`}
-                htmlFor="sku"
-                error={errors.sku?.message}
-              >
-                <Input
-                  type="text"
-                  id="sku"
-                  error={Boolean(errors.sku)}
-                  {...register('sku', { required: t('inventory:products.skuRequired') })}
-                />
-              </FormField>
-
-              {/* Unit of measure — reuses the UnitDropdown atom from features/uom.
-                  The legacy free-text `unit` Input in the Inventory section stays
-                  untouched (a later Inventory task removes it; the backend mirrors
-                  unit_id→unit server-side). */}
-              <FormField label={t('inventory:products.unitOfMeasure')} htmlFor="unit_id">
-                <UnitDropdown
-                  id="unit_id"
-                  value={watch('unit_id') ?? undefined}
-                  onChange={(id) => { setValue('unit_id', id || null) }}
-                />
-              </FormField>
-
-              <FormField label={t('catalog.products.category')} htmlFor="category">
-                <CategorySelect
-                  value={categoryId}
-                  onChange={(id) => { setValue('category_id', id); }}
-                  className="mt-1"
-                />
-              </FormField>
-
-              <FormField
-                className="sm:col-span-2"
-                label={t('inventory:products.description')}
-                htmlFor="description"
-              >
-                <Textarea
-                  id="description"
-                  rows={3}
-                  className={prefilledFields.has('description') ? colors.success[50] : ''}
-                  {...register('description', {
-                    onChange: () => {
-                      setPrefilledFields((prev) => {
-                        if (!prev.has('description')) return prev
-                        const next = new Set(prev)
-                        next.delete('description')
-                        return next
-                      })
-                    },
-                  })}
-                />
-              </FormField>
-
-              {/* Status toggles — grouped at the bottom of General so the section
-                  reads: identity fields → type/unit/category → description → status. */}
-              <div className="sm:col-span-2 flex flex-wrap items-center gap-6 pt-1">
-                <Controller
-                  name="is_active"
-                  control={control}
-                  render={({ field }) => (
-                    <Toggle
-                      aria-label={t('inventory:products.active')}
-                      label={t('inventory:products.active')}
-                      checked={!!field.value}
-                      onChange={(e) => { field.onChange(e.target.checked) }}
-                      ref={field.ref}
-                    />
-                  )}
-                />
-                <Controller
-                  name="is_active_for_ecommerce"
-                  control={control}
-                  render={({ field }) => (
-                    <Toggle
-                      aria-label={t('inventory:products.isActiveForEcommerce')}
-                      label={t('inventory:products.isActiveForEcommerce')}
-                      checked={!!field.value}
-                      onChange={(e) => { field.onChange(e.target.checked) }}
-                      ref={field.ref}
-                    />
-                  )}
-                />
-              </div>
-            </EditorSectionCard>
-
-            {/* Pricing & Tax */}
-            <EditorSectionCard
-              id="section-pricing"
-              title={t('catalog:editor.sectionLabels.pricing')}
-            >
-              {/* Purchase Price — ex-tax, from supplier */}
-              {canViewCostPrices && (
-                <FormField
-                  label={t('inventory:products.purchasePrice')}
-                  htmlFor="purchase_price"
-                  helperText={t('inventory:products.purchasePriceHelper')}
-                >
-                  <Controller
-                    name="purchase_price"
-                    control={control}
-                    render={({ field }) => (
-                      <MoneyInput
-                        id="purchase_price"
-                        currency={currency}
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        onBlur={field.onBlur}
-                      />
-                    )}
-                  />
-                </FormField>
-              )}
-
-              <FormField label={t('inventory:products.salePrice')} htmlFor="sale_price">
-                <Controller
-                  name="sale_price"
-                  control={control}
-                  render={({ field }) => (
-                    <MoneyInput
-                      id="sale_price"
-                      currency={currency}
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                    />
-                  )}
-                />
-              </FormField>
-
-              {/* Cost (WAC) - Read-only when editing */}
-              {isEditing && product && canViewCostPrices && (
-                <FormField
-                  label={t('inventory:products.costWac')}
-                  htmlFor="cost_wac"
-                  helperText={t('inventory:products.costWacHelper')}
-                >
-                  <Input
-                    id="cost_wac"
-                    type="text"
-                    value={formatCurrency(product.cost_price ?? '0', currency, locale)}
-                    readOnly
-                    className={cn(colors.neutral[50], textColors.tertiary, 'cursor-not-allowed')}
-                  />
-                </FormField>
-              )}
-
-              <div className="sm:col-span-2">
-                <TaxConfigurationField
-                  label={t('inventory:products.fields.taxRate', 'Tax Rate')}
-                  value={watch('tax_configuration_id')}
-                  onChange={(configId, taxRate) => {
-                    setValue('tax_configuration_id', configId)
-                    setValue('tax_rate', taxRate)
-                  }}
-                />
-              </div>
-            </EditorSectionCard>
-
-            {/* Inventory & Units */}
-            <EditorSectionCard
-              id="section-inventory"
-              title={t('catalog:editor.sectionLabels.inventory')}
-            >
-              {/* units_per_pack — plain integer count, Number() coercion is fine (not money/qty) */}
-              <FormField label={t('inventory:products.unitsPerPack')} htmlFor="units_per_pack">
-                <Input
-                  type="number"
-                  id="units_per_pack"
-                  min={1}
-                  placeholder={t('inventory:products.unitsPerPackPlaceholder')}
-                  {...register('units_per_pack', {
-                    setValueAs: (value: string): number | null =>
-                      value === '' || value === null ? null : Number(value),
-                  })}
-                />
-              </FormField>
-
-              {/* shelf_location — free-text string */}
-              <FormField label={t('inventory:products.shelfLocation')} htmlFor="shelf_location">
-                <Input
-                  type="text"
-                  id="shelf_location"
-                  placeholder={t('inventory:products.shelfLocationPlaceholder')}
-                  {...register('shelf_location')}
-                />
-              </FormField>
-
-              {/* reorder_point — decimal quantity string, precision rule 19 */}
-              <FormField label={t('inventory:products.reorderPoint')} htmlFor="reorder_point">
-                <Controller
-                  name="reorder_point"
-                  control={control}
-                  render={({ field }) => (
-                    <QuantityInput
-                      id="reorder_point"
-                      decimalPlaces={reorderDecimals}
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                    />
-                  )}
-                />
-              </FormField>
-
-              {/* reorder_quantity — decimal quantity string, precision rule 19 */}
-              <FormField label={t('inventory:products.reorderQuantity')} htmlFor="reorder_quantity">
-                <Controller
-                  name="reorder_quantity"
-                  control={control}
-                  render={({ field }) => (
-                    <QuantityInput
-                      id="reorder_quantity"
-                      decimalPlaces={reorderDecimals}
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                    />
-                  )}
-                />
-              </FormField>
-
-              {showBatchTracking && (
-                <div data-testid="batch-tracking-section">
-                  <div className="flex items-center gap-2 mt-6">
-                    <Controller
-                      name="requires_batch_tracking"
-                      control={control}
-                      render={({ field }) => (
-                        <Toggle
-                          aria-label={t('inventory:products.requiresBatchTracking')}
-                          label={t('inventory:products.requiresBatchTracking')}
-                          checked={!!field.value}
-                          onChange={(e) => { field.onChange(e.target.checked) }}
-                          ref={field.ref}
-                        />
-                      )}
-                    />
-                  </div>
-                  <p className={tokens.helperText.base}>
-                    {t('inventory:products.requiresBatchTrackingHelper')}
-                  </p>
-
-                  {requiresBatchTracking && (
-                    <FormField
-                      label={t('inventory:products.defaultShelfLifeDays')}
-                      htmlFor="default_shelf_life_days"
-                      className="mt-3"
-                    >
-                      <Input
-                        type="number"
-                        id="default_shelf_life_days"
-                        min={0}
-                        placeholder={t('inventory:products.defaultShelfLifeDaysPlaceholder')}
-                        {...register('default_shelf_life_days', {
-                          setValueAs: (value: string): number | null =>
-                            value === '' || value === null ? null : Number(value),
-                        })}
-                      />
-                    </FormField>
-                  )}
-                </div>
-              )}
-            </EditorSectionCard>
-
-            {/* Automotive Information - Otospex only (no section nav entry; it
-                is a vertical-exclusive block layered between inventory and the
-                vertical-gated pharmacy/suppliers sections). */}
-            {isOtospex && (
+            <ProductSectionStack
+              mode="edit"
+              adapters={{
+                hero: {
+                  mode: 'edit',
+                  barcode: barcodeValue,
+                  name: nameValue,
+                  productId: isEditing && id ? id : null,
+                  primaryImageUrl: product?.primary_image_url ?? null,
+                  media: { bufferedImages, onBufferedImagesChange: setBufferedImages },
+                  hero: {
+                    enrichmentState: heroEnrichmentState,
+                    chips: heroChips,
+                    onBarcodeChange: (value) => { setValue('barcode', value, { shouldDirty: true }) },
+                    onNameChange: (value) => { setValue('name', value, { shouldDirty: true }) },
+                    onProductData: handleProductData,
+                    onLookupStateChange: handleLookupStateChange,
+                    onManualRefresh: handleManualRefresh,
+                  },
+                },
+                general: {
+                  mode: 'edit',
+                  form: { control, errors, register, setValue, watch },
+                  general: { prefilledFields, clearPrefilledField },
+                },
+                pricing: {
+                  mode: 'edit',
+                  canViewCostPrices,
+                  currency,
+                  locale,
+                  moneyScale,
+                  form: { control, setValue, watch },
+                  isEditing,
+                  product: product === undefined ? null : { cost_price: product.cost_price },
+                  pricing,
+                },
+                inventory: {
+                  mode: 'edit',
+                  form: { control, register, watch, setValue, errors },
+                  inventory: {
+                    reorderDecimals,
+                    showBatchTracking,
+                    showOpeningSection,
+                    canEnterOpening,
+                    isOpeningLocked,
+                    productStockQuantity: product?.stock_quantity ?? null,
+                    canResetOpening,
+                    showResetConfirm,
+                    isResettingOpening,
+                    requestOpeningReset: () => { setShowResetConfirm(true) },
+                    cancelOpeningReset: () => { setShowResetConfirm(false) },
+                    resetOpening: handleResetOpening,
+                  },
+                },
+                suppliers: { mode: 'edit' },
+                media: {
+                  mode: 'edit',
+                  isEditing,
+                  productId: id || null,
+                  media: { bufferedImages, onBufferedImagesChange: setBufferedImages },
+                },
+              }}
+              automotive={isOtospex ? (
               <div className={tokens.card.base}>
                 <h2 className={cn(tokens.heading.section, 'mb-4')}>{t('inventory:products.sections.automotiveInfo')}</h2>
 
@@ -1542,71 +1028,25 @@ export function ProductForm() {
                   </button>
                 </div>
               </div>
-            )}
-
-            {/* Pharmacy — parapharmacy vertical only. ParapharmacyMetadataFields
-                renders its own card chrome + (translated) section header. */}
-            {isParapharmacy && (
-              <div id="section-pharmacy" className="scroll-mt-24">
-                <ParapharmacyMetadataFields
-                  control={control}
-                  register={register}
-                  errors={errors}
-                />
-              </div>
-            )}
-
-            {/* Loyalty — module-gated read-only indicative points display */}
-            {hasModule('Loyalty') && (
-              <EditorSectionCard
-                id="section-loyalty"
-                title={t('catalog:editor.sectionLabels.loyalty')}
-              >
-                <LoyaltyPointsDisplay salePrice={salePriceValue} />
-              </EditorSectionCard>
-            )}
-
-            {/* Suppliers — no product-level supplier fields exist on this form;
-                suppliers are managed in Purchases. Render an informational card
-                with a link to the suppliers route (no new data fields). */}
-            <EditorSectionCard
-              id="section-suppliers"
-              title={t('catalog:editor.sectionLabels.suppliers')}
-              contentClassName="sm:grid-cols-1"
-            >
-              <p className={cn('text-sm', textColors.tertiary)}>
-                {t('catalog:editor.suppliers.managedHint')}
-              </p>
-              <Link
-                to="/purchases/suppliers"
-                className={cn('inline-flex items-center gap-1 text-sm', textColors.brand)}
-              >
-                {t('catalog:editor.suppliers.manageLink')}
-              </Link>
-            </EditorSectionCard>
-
-            {/* Media & Files — always rendered so the nav entry + scroll-spy
-                anchor exists in both create and edit mode. In create mode,
-                files are buffered client-side (CreateModeImageBuffer) and
-                uploaded after the product is created. In edit mode,
-                ProductImageSection takes over. */}
-            <EditorSectionCard
-              id="section-media"
-              title={t('catalog:editor.sectionLabels.media')}
-              contentClassName="sm:grid-cols-1"
-            >
-              {isEditing && id ? (
-                <ProductImageSection productId={id} />
-              ) : (
-                <CreateModeImageBuffer
-                  bufferedFiles={bufferedImages}
-                  onFilesChange={setBufferedImages}
-                />
-              )}
-            </EditorSectionCard>
-
-            {/* Variants Section - Only when editing (matrix generation needs a persisted product id) */}
-            {isEditing && id && (
+            ) : undefined}
+              pharmacy={isParapharmacy ? (
+                <div id="section-pharmacy" className="scroll-mt-24">
+                  <ParapharmacyMetadataFields
+                    control={control}
+                    register={register}
+                    errors={errors}
+                  />
+                </div>
+              ) : undefined}
+              loyalty={hasModule('Loyalty') ? (
+                <EditorSectionCard
+                  id="section-loyalty"
+                  title={t('catalog:editor.sectionLabels.loyalty')}
+                >
+                  <LoyaltyPointsDisplay salePrice={salePriceValue} />
+                </EditorSectionCard>
+              ) : undefined}
+              variants={isEditing && id ? (
               <div className={tokens.card.base}>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1627,7 +1067,8 @@ export function ProductForm() {
                 </div>
                 {showVariants && <ProductVariantMatrixEditor productId={id} />}
               </div>
-            )}
+              ) : undefined}
+            />
           </div>
 
           {/* Right rail (mock order): Live on POS preview, before-publish
