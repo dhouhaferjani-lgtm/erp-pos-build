@@ -9,6 +9,7 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
+import { bccomp } from '../../lib/decimal'
 import { cn } from '../../lib/utils'
 import { tokens, textColors, borderColors } from '../../lib/designTokens'
 import { Button } from '../../components/atoms/Button'
@@ -444,7 +445,7 @@ export function RepositoryDetailPage() {
                     // sign handling: never concatenate a literal '+' onto an
                     // already-negative formatted amount (that produced the
                     // "+-50,000 TND" defect).
-                    const isNegative = parseFloat(transaction.amount) < 0
+                    const isNegative = bccomp(transaction.amount, '0') < 0
 
                     return (
                     <tr key={transaction.id} className={tokens.table.rowHover}>

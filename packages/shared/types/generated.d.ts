@@ -36,6 +36,8 @@ export type JournalLineData = {
 id: string;
 journalEntryId: string;
 accountId: string;
+accountCode: string;
+accountName: string;
 debit: string;
 credit: string;
 description: string | null;
@@ -274,14 +276,16 @@ as_of_date: string;
 }
 declare namespace App.Modules.Accounting.Application.Enums {
 export type CashMovementDirection = 'in' | 'out';
-export type CashMovementSourceType = 'customer_payment' | 'payment' | 'pos_receipt' | 'supplier_payment';
+export type CashMovementSourceType = 'customer_payment' | 'payment' | 'pos_receipt' | 'pos_receipt_refund' | 'supplier_payment';
 }
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+export type JournalCode = 'VT' | 'AC' | 'BQ' | 'CA' | 'OD';
 export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
 export type OpeningImportRowStatus = 'PENDING' | 'VALID' | 'INVALID' | 'SKIPPED' | 'POSTED';
+export type PostingMode = 'after_commit' | 'synchronous_in_transaction';
 export type SystemAccountPurpose = 'bank' | 'cash' | 'customer_receivable' | 'supplier_advance' | 'inventory' | 'uninvoiced_revenue' | 'supplier_payable' | 'customer_advance' | 'vat_collected' | 'vat_deductible' | 'product_revenue' | 'service_revenue' | 'cost_of_goods_sold' | 'purchase_expenses' | 'office_expense' | 'travel_expense' | 'meals_expense' | 'utilities_expense' | 'general_expense' | 'retained_earnings' | 'opening_balance_equity' | 'payment_tolerance_expense' | 'payment_tolerance_income' | 'purchase_price_variance_expense' | 'purchase_price_variance_income' | 'sales_return' | 'realized_fx_gain' | 'realized_fx_loss' | 'sales_discount' | 'sales_returns_clearing' | 'voucher_liability' | 'marketing_goodwill_expense' | 'voucher_breakage_income' | 'rounding_loss_expense' | 'pos_tender_clearing' | 'goods_received_not_invoiced' | 'purchase_stamp_duty' | 'sales_stamp_duty_payable';
 }
 declare namespace App.Modules.BatchExpiry.Domain.Enums {
@@ -1900,6 +1904,9 @@ export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
 export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
 export type InstrumentStatus = 'received' | 'in_transit' | 'deposited' | 'clearing' | 'cleared' | 'bounced' | 'expired' | 'cancelled' | 'collected';
+export type MovementDirection = 'in' | 'out';
+export type MovementReasonCode = 'count_variance' | 'correction' | 'theft_loss' | 'other';
+export type MovementSourceType = 'payment' | 'expense' | 'income' | 'refund' | 'fiscal_event' | 'transfer' | 'adjustment' | 'opening_balance' | 'instrument';
 export type PaymentOrigin = 'pos' | 'web_admin' | 'mobile' | 'api' | 'unknown_legacy' | 'back_office';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
 export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos';
