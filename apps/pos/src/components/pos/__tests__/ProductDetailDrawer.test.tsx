@@ -338,5 +338,11 @@ describe('ProductDetailSheet — pane variant (cart-always-foreground v1)', () =
     expect(sheet).toHaveAttribute('aria-modal', 'true');
     expect(sheet).toHaveClass('w-[1080px]');
     expect(sheet).toHaveClass('ez-sheet-rise');
+    // Byte-identity pin: the overlay branch's className must be the EXACT
+    // pre-Task-1 literal string (not just an equivalent class set) until the
+    // overlay variant is deleted in a later task.
+    expect(sheet.className).toBe(
+      'ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-panel bg-surface-overlay shadow-2xl',
+    );
   });
 });

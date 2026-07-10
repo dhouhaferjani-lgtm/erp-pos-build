@@ -163,14 +163,16 @@ export function ProductDetailSheet({
       aria-modal={isPane ? undefined : 'true'}
       aria-label={isPane ? product.name : t('productDetail.title')}
       data-testid="product-detail-modal"
-      className={cn(
-        'relative flex overflow-hidden rounded-panel bg-surface-overlay',
+      className={
         isPane
           ? // Pane: fill the host; min-w floor per spec §4 (aside 344px + usable
             // tab column). shadow-sm reads as a canvas panel, not overlay chrome.
-            'h-full w-full min-w-[680px] shadow-sm'
-          : 'ez-sheet-rise h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] shadow-2xl',
-      )}
+            'relative flex h-full w-full min-w-[680px] overflow-hidden rounded-panel bg-surface-overlay shadow-sm'
+          : // Overlay (default): byte-identical to the pre-Task-1 literal — see
+            // ProductDetailDrawer.test.tsx "keeps the overlay variant as the
+            // default" assertion pinning this exact string.
+            'ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-panel bg-surface-overlay shadow-2xl'
+      }
       onClick={(event) => event.stopPropagation()}
     >
       <aside
