@@ -33,6 +33,13 @@ export interface CartLineItemProps {
    * Driven by `settingsStore.confirmLineDelete` so a store can opt out for speed.
    */
   confirmDelete?: boolean;
+  /**
+   * Added-line pulse (cart-always-foreground v1): nonzero when this line just
+   * received an add while the operator's eye may be in the product pane. A NEW
+   * token value re-fires the animation; 0/undefined = idle. Purely decorative
+   * (aria-hidden overlay) — parents omit it freely (e.g. /theme-preview).
+   */
+  pulseToken?: number;
 }
 
 export function CartLineItem({
@@ -46,9 +53,22 @@ export function CartLineItem({
   expanded,
   onToggleExpand,
   confirmDelete = false,
+  pulseToken = 0,
 }: CartLineItemProps) {
   const { t } = useTranslation();
   const { format, decimals } = useCurrency();
+
+  // Latch the pulse token so the overlay can clear itself on animationend
+  // (and re-mount via `key` when a NEW token arrives for the same line).
+  // Derive from the prop during render — React's sanctioned "adjust state
+  // when a prop changes" idiom (avoids a setState-in-effect cascade): when a
+  // NEW nonzero token arrives, re-arm the overlay; animationend clears it.
+  const [activePulse, setActivePulse] = useState(0);
+  const [seenToken, setSeenToken] = useState(0);
+  if (pulseToken !== seenToken) {
+    setSeenToken(pulseToken);
+    if (pulseToken > 0) setActivePulse(pulseToken);
+  }
 
   const collapsible = typeof onToggleExpand === 'function';
   const isOpen = collapsible ? expanded === true : true;
@@ -71,8 +91,17 @@ export function CartLineItem({
     <div
       data-testid="cart-line"
       data-expanded={isOpen}
-      className="rounded-card border border-border-subtle bg-surface-raised transition-all duration-150"
+      className="relative rounded-card border border-border-subtle bg-surface-raised transition-all duration-150"
     >
+      {activePulse > 0 && (
+        <div
+          key={activePulse}
+          data-testid="cart-line-pulse"
+          aria-hidden="true"
+          className="ez-line-pulse pointer-events-none absolute inset-0 rounded-card"
+          onAnimationEnd={() => setActivePulse(0)}
+        />
+      )}
       {/* Header row — the whole row is the expand/collapse target (when
        * collapsible). The remove control lives in the expanded controls below
        * so it can never be mis-tapped while reaching for the expand affordance
