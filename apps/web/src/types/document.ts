@@ -19,6 +19,7 @@ export interface DocumentLineData {
   id: string
   document_id: string
   product_id: string | null
+  service_id?: string | null
   product_name: string
   product_code?: string | null
   product_barcode?: string | null
@@ -33,6 +34,7 @@ export interface DocumentLineData {
   price_entry_mode?: 'unit' | 'total'
   landed_unit_cost?: string | null
   is_bonus_line?: boolean
+  is_service?: boolean
   discount_percent: string | null
   discount_amount: string | null
   tax_rate: string | null  // Formatted number string from backend

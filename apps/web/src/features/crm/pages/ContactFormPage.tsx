@@ -33,7 +33,7 @@ const contactSchema = z.object({
   gender: z.string(),
   national_id: z.string(),
   notes: z.string(),
-  party_id: z.string(),
+  party_id: z.string().nullable(),
   job_title: z.string(),
   is_primary: z.boolean(),
 })
@@ -67,7 +67,7 @@ export function ContactFormPage() {
       gender: '',
       national_id: '',
       notes: '',
-      party_id: '',
+      party_id: null,
       job_title: '',
       is_primary: false,
     },
@@ -92,7 +92,7 @@ export function ContactFormPage() {
         gender: existingContact.gender ?? '',
         national_id: existingContact.national_id ?? '',
         notes: existingContact.notes ?? '',
-        party_id: primaryParty?.id ?? '',
+        party_id: primaryParty?.id ?? null,
         job_title: primaryParty?.job_title ?? '',
         is_primary: primaryParty?.is_primary ?? false,
       })
@@ -293,8 +293,8 @@ export function ContactFormPage() {
                   control={control}
                   render={({ field }) => (
                     <PartnerPicker
-                      value={field.value ?? ''}
-                      onChange={(next) => { field.onChange(next?.id ?? '') }}
+                      value={field.value ?? null}
+                      onChange={(next) => { field.onChange(next?.id ?? null) }}
                       partnerType="all"
                       label=""
                       placeholder={t('crm:contacts.searchCompany')}

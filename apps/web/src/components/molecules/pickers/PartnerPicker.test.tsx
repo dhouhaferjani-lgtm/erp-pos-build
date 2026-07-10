@@ -148,6 +148,19 @@ describe('PartnerPicker', () => {
     expect(await screen.findByText(/Acme Auto/i)).toBeInTheDocument()
   })
 
+  it('treats an empty string value as no selected partner', async () => {
+    mockApiGet.mockResolvedValue(response([]))
+
+    renderWithProviders(<PartnerPicker value="" onChange={() => undefined} />)
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(mockApiGet).not.toHaveBeenCalled()
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
+  })
+
   it('can include inactive partners when requested', async () => {
     mockApiGet.mockResolvedValue(response([acme]))
     const user = userEvent.setup()

@@ -45,7 +45,7 @@ function getPartnerTypeForDocument(docType: DocumentType | undefined): 'customer
 
 interface DocumentFormData {
   type: 'quote' | 'order' | 'invoice' | 'credit_note' | 'delivery_note' | 'sales_order' | 'purchase_order' | 'return_note' | ''
-  partner_id: string
+  partner_id: string | null
   issue_date: string
   due_date: string
   notes: string
@@ -110,7 +110,8 @@ export function computeLinesDirty(lastSavedLines: string | null, lines: unknown[
 }
 
 interface LinePayload {
-  product_id: string
+  product_id?: string
+  service_id?: string
   quantity: string | number
   unit_price: string | number
   line_total: string | number
@@ -144,13 +145,19 @@ function isZeroFreeQuantity(value: DocumentLine['free_quantity']): boolean {
  */
 export function buildLinePayload(line: DocumentLine): LinePayload {
   const payload: LinePayload = {
-    product_id: line.product_id,
     quantity: line.quantity,
     unit_price: line.unit_price,
     line_total: line.line_total,
     price_entry_mode: line.price_entry_mode ?? 'unit',
     discount_percent: line.discount_percent ?? null,
     discount_amount: line.discount_amount ?? null,
+  }
+  if (line.is_service) {
+    if (line.service_id !== undefined && line.service_id.trim() !== '') {
+      payload.service_id = line.service_id
+    }
+  } else {
+    payload.product_id = line.product_id
   }
   if (!isZeroFreeQuantity(line.free_quantity)) {
     payload.free_quantity = line.free_quantity as string | number
@@ -218,7 +225,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   } = useForm<DocumentFormData>({
     defaultValues: {
       type: effectiveType ?? '',
-      partner_id: '',
+      partner_id: null,
       issue_date: new Date().toISOString().split('T')[0],
       due_date: '',
       notes: '',
@@ -321,7 +328,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
     if (document) {
       reset({
         type: document.type as DocumentFormData['type'],
-        partner_id: document.partner_id ?? '',
+        partner_id: document.partner_id ?? null,
         issue_date: document.issue_date ?? '',
         due_date: document.due_date ?? '',
         notes: document.notes ?? '',
@@ -345,9 +352,10 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
 
   // Initialize lines from document (only once when document first loads)
   if (document?.lines && !hasInitializedLines) {
-    const initialLines = document.lines.map((l) => ({
+    const initialLines = document.lines.map((l): DocumentLine => ({
       id: l.id,
       product_id: l.product_id ?? '',
+      ...(l.service_id !== null && l.service_id !== undefined ? { service_id: l.service_id } : {}),
       product_code: '',
       product_name: l.product_name,
       description: l.description,
@@ -363,6 +371,7 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
       price_entry_mode: l.price_entry_mode ?? 'unit',
       landed_unit_cost: l.landed_unit_cost ?? null,
       is_bonus_line: l.is_bonus_line ?? false,
+      is_service: l.is_service ?? (l.service_id !== null && l.service_id !== undefined),
       quantity_decimals: l.quantity_decimals ?? null,
     }))
     setLines(initialLines)
@@ -548,8 +557,8 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
                 }}
                 render={({ field }) => (
                   <PartnerPicker
-                    value={field.value ?? ''}
-                    onChange={(next) => { field.onChange(next?.id ?? '') }}
+                    value={field.value ?? null}
+                    onChange={(next) => { field.onChange(next?.id ?? null) }}
                     partnerType={partnerTypeFilter ?? 'all'}
                     label=""
                     placeholder={partnerLabel}

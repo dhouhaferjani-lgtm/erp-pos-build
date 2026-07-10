@@ -28,7 +28,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 import type { Invoice } from '@/components/ui/InvoiceSearchSelect'
 
 const creditNoteSchema = z.object({
-  partner_id: z.string().min(1, 'Partner is required'),
+  partner_id: z.string().nullable().refine((value) => value !== null && value.trim() !== '', 'Partner is required'),
   source_invoice_id: z.string().optional(),
   issue_date: z.string().min(1, 'Date is required'),
   reason: z.enum([
@@ -402,8 +402,8 @@ export function CreateCreditNotePage() {
                   control={control}
                   render={({ field }) => (
                     <PartnerPicker
-                      value={field.value ?? ''}
-                      onChange={(next) => { field.onChange(next?.id ?? '') }}
+                      value={field.value ?? null}
+                      onChange={(next) => { field.onChange(next?.id ?? null) }}
                       partnerType="customer"
                       label=""
                       placeholder={t('sales:documents.partner')}

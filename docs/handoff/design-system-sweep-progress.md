@@ -3,6 +3,22 @@
 > Branch: `feat/design-system-unification` in `/Users/houssamr/Projects/syneriva/apps/erp.design-sweep`.
 > Source handoff: `docs/handoff/CODEX-design-system-unification-2026-07-10.md`.
 
+## Gate 1 Fixlist — Blockers
+
+Status: blockers complete; majors not started.
+
+- BL-1 `PartnerPicker` empty-string value:
+  - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` failed because `value=""` triggered a `/partners/` fetch and hid the search input behind a blank selected chip.
+  - GREEN: `PartnerPicker` now normalizes empty string values to no selection and gates ID rehydration on a non-empty id. RHF callers touched by the partner consolidation now write `null` for no partner selection.
+- BL-2 service-line document identity:
+  - Correction to Wave 1 D3: the prior GREEN only proved `DocumentLineEditor` could add a service-shaped row; it did not prove `DocumentForm` preserved that service identity through save/reload.
+  - RED: `pnpm --filter @autoerp/web test -- src/features/documents/DocumentForm.test.tsx` failed because service lines submitted `product_id: ""` with no `service_id`, and loaded server lines rendered as product lines instead of service lines.
+  - GREEN: `buildLinePayload` now sends `service_id` and omits `product_id` for service lines; `DocumentForm` restores `service_id`/`is_service` from loaded document lines; draft autosave accepts the same product/service polymorphic line shape.
+- Verification:
+  - `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx src/features/documents/DocumentForm.test.tsx src/features/documents/__tests__/DocumentForm.tenantScope.test.tsx src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx src/features/crm/__tests__/tenantScope.test.tsx src/features/document-ingestions/__tests__/ReviewIngestionPage.test.tsx src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx` passed: 58 tests.
+  - `pnpm --filter @autoerp/web test -- src/features/crm/pages/__tests__/ContactFormPage.test.tsx` passed: 7 tests.
+  - `pnpm --filter @autoerp/web typecheck` passed.
+
 ## Wave 0 — Tooling & Guardrails
 
 Status: complete.

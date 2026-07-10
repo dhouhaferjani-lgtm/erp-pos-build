@@ -56,12 +56,12 @@ vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
     value,
     onChange,
   }: {
-    value: string
+    value: string | null
     onChange: (v: { id: string; name: string; type: 'customer' } | null) => void
   }) => (
     <input
       data-testid="partner-select"
-      value={value}
+      value={value ?? ''}
       onChange={(e) => {
         onChange(e.target.value === '' ? null : {
           id: e.target.value,

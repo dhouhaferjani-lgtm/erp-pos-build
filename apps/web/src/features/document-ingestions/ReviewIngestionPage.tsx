@@ -115,7 +115,7 @@ export function ReviewIngestionPage() {
   const commitMutation = useCommitDocumentIngestion(id)
   const rejectMutation = useRejectDocumentIngestion(id)
   const reExtractMutation = useReExtractDocumentIngestion(id)
-  const [supplierSelection, setSupplierSelection] = useState<PartnerPickerValue | string | null>('')
+  const [supplierSelection, setSupplierSelection] = useState<PartnerPickerValue | string | null>(null)
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
   const [locationId, setLocationId] = useState('')
   const [pendingReceipt, setPendingReceipt] = useState(false)
@@ -128,7 +128,7 @@ export function ReviewIngestionPage() {
 
   useEffect(() => {
     if (!detail) return
-    setSupplierSelection(detail.suggestions?.supplierCandidates[0]?.id ?? '')
+    setSupplierSelection(detail.suggestions?.supplierCandidates[0]?.id ?? null)
     setLineStates(initialLines(detail))
   }, [detail])
 

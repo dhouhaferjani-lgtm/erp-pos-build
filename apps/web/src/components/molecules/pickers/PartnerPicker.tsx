@@ -109,7 +109,9 @@ export function PartnerPicker({
 
   const trimmedQuery = debouncedQuery.trim()
   const searchEnabled = isOpen
-  const selectedPartnerId = typeof value === 'string' ? value : value?.id ?? null
+  const selectedPartnerId = typeof value === 'string'
+    ? value.trim() === '' ? null : value
+    : value?.id ?? null
   const queryKey = tenantScopedKey(['pickers', 'partner', partnerType, includeInactive, trimmedQuery] as const)
 
   const { data, isLoading, isError } = useQuery({
@@ -133,7 +135,7 @@ export function PartnerPicker({
 
   const { data: selectedPartner } = useQuery({
     queryKey: tenantScopedKey(['partner', selectedPartnerId] as const),
-    enabled: typeof value === 'string' && selectedPartnerId !== null && tenantId !== null && companyId !== null,
+    enabled: typeof value === 'string' && selectedPartnerId !== null && selectedPartnerId !== '' && tenantId !== null && companyId !== null,
     queryFn: async () => {
       const response = await api.get<{ data: PartnerListItem }>(`/partners/${selectedPartnerId}`)
       return toValue(response.data.data)
@@ -193,7 +195,7 @@ export function PartnerPicker({
   const effectiveLabel = label ?? t('partner.label')
   const testIdAttr = testId ?? 'partner-picker'
 
-  const selectedValue = typeof value === 'string' ? selectedPartner : value
+  const selectedValue = typeof value === 'string' ? selectedPartner ?? null : value
 
   if (selectedValue !== null && selectedValue !== undefined) {
     return (

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
-import { DocumentForm, computeLinesDirty } from './DocumentForm'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { DocumentForm, buildLinePayload, computeLinesDirty } from './DocumentForm'
 
 const draftAutoSaveState = vi.hoisted(() => ({
   draftId: undefined as string | undefined,
@@ -8,6 +8,17 @@ const draftAutoSaveState = vi.hoisted(() => ({
   lastSavedAt: null as Date | null,
   autosavePending: false,
   autosaveFailed: false,
+}))
+
+const routerState = vi.hoisted(() => ({
+  id: '',
+  pathname: '/sales/invoices/new',
+  search: '',
+}))
+
+const reactQueryState = vi.hoisted(() => ({
+  document: undefined as unknown,
+  mutationPayloads: [] as unknown[],
 }))
 
 // i18n → return the key so assertions are deterministic
@@ -19,8 +30,8 @@ vi.mock('react-i18next', () => ({
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
-  useParams: () => ({ id: '' }),
-  useLocation: () => ({ pathname: '/sales/invoices/new', search: '' }),
+  useParams: () => ({ id: routerState.id }),
+  useLocation: () => ({ pathname: routerState.pathname, search: routerState.search }),
   Link: ({ to, children, ...props }: { to: string; children: React.ReactNode; className?: string }) => (
     <a href={to} {...props}>{children}</a>
   ),
@@ -31,8 +42,13 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
   return {
     ...actual,
-    useQuery: () => ({ data: undefined, isLoading: false }),
-    useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useQuery: () => ({ data: reactQueryState.document, isLoading: false }),
+    useMutation: () => ({
+      mutate: vi.fn((payload: unknown) => {
+        reactQueryState.mutationPayloads.push(payload)
+      }),
+      isPending: false,
+    }),
     useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   }
 })
@@ -47,7 +63,74 @@ vi.mock('../../hooks/useDraftAutoSave', () => ({
 
 // child components that fetch / render heavy trees — stub them out
 vi.mock('../../components/documents/DocumentLineEditor', () => ({
-  DocumentLineEditor: () => <div data-testid="line-editor" />,
+  DocumentLineEditor: ({
+    lines,
+    onChange,
+  }: {
+    lines: Array<{
+      id: string
+      product_id: string
+      service_id?: string
+      product_name: string
+      description: string
+      quantity: string | number
+      unit_price: string | number
+      tax_rate: string | number
+      line_total: string | number
+      price_entry_mode?: 'unit' | 'total'
+      is_service?: boolean
+    }>
+    onChange: (lines: Array<{
+      id: string
+      product_id: string
+      service_id?: string
+      product_name: string
+      description: string
+      quantity: string | number
+      unit_price: string | number
+      tax_rate: string | number
+      line_total: string | number
+      price_entry_mode?: 'unit' | 'total'
+      is_service?: boolean
+    }>) => void
+  }) => (
+    <div data-testid="line-editor">
+      {lines.map((line) => (
+        <div
+          key={line.id}
+          data-testid={`line-${line.id}`}
+          data-service={line.is_service ? 'true' : 'false'}
+          data-service-id={line.service_id ?? ''}
+          data-product-id={line.product_id ?? ''}
+        >
+          {line.is_service ? 'Service badge' : 'Product line'}: {line.product_name}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => {
+          onChange([
+            ...lines,
+            {
+              id: 'line-service-1',
+              product_id: '',
+              service_id: 'service-1',
+              product_name: 'Oil change labor',
+              description: 'Oil change labor',
+              quantity: '1',
+              unit_price: '80.000',
+              tax_rate: '0',
+              line_total: '80.000',
+              price_entry_mode: 'unit',
+              is_service: true,
+            },
+          ])
+        }}
+      >
+        Add mocked service line
+      </button>
+    </div>
+  ),
 }))
 vi.mock('./components/PurchaseOrderAdditionalCosts', () => ({
   PurchaseOrderAdditionalCosts: ({ documentId }: { documentId: string }) => (
@@ -61,12 +144,12 @@ vi.mock('../../components/molecules/pickers/PartnerPicker', () => ({
     value,
     onChange,
   }: {
-    value: string
+    value: string | null
     onChange: (next: { id: string; name: string; type: 'customer' } | null) => void
   }) => (
     <select
       data-testid="partner-select"
-      value={value}
+      value={value ?? ''}
       onChange={(event) => {
         onChange(event.target.value === '' ? null : {
           id: event.target.value,
@@ -110,6 +193,32 @@ describe('computeLinesDirty', () => {
   })
 })
 
+describe('buildLinePayload', () => {
+  it('sends service_id and omits product_id for service lines', () => {
+    const payload = buildLinePayload({
+      id: 'line-service-1',
+      product_id: '',
+      service_id: 'service-1',
+      product_name: 'Oil change labor',
+      description: 'Oil change labor',
+      quantity: '1',
+      unit_price: '80.000',
+      tax_rate: '0',
+      line_total: '80.000',
+      price_entry_mode: 'unit',
+      is_service: true,
+    })
+
+    expect(payload).toMatchObject({
+      service_id: 'service-1',
+      quantity: '1',
+      unit_price: '80.000',
+      line_total: '80.000',
+    })
+    expect(payload).not.toHaveProperty('product_id')
+  })
+})
+
 describe('DocumentForm (canonical layout)', () => {
   beforeEach(() => {
     draftAutoSaveState.draftId = undefined
@@ -117,6 +226,11 @@ describe('DocumentForm (canonical layout)', () => {
     draftAutoSaveState.lastSavedAt = null
     draftAutoSaveState.autosavePending = false
     draftAutoSaveState.autosaveFailed = false
+    routerState.id = ''
+    routerState.pathname = '/sales/invoices/new'
+    routerState.search = ''
+    reactQueryState.document = undefined
+    reactQueryState.mutationPayloads = []
   })
 
   it('renders a single page-level heading with the entity name', () => {
@@ -162,5 +276,73 @@ describe('DocumentForm (canonical layout)', () => {
 
     expect(screen.getByRole('region', { name: 'Additional costs' })).toBeInTheDocument()
     expect(screen.getByText('Cost row for draft-po-1')).toBeInTheDocument()
+  })
+
+  it('submits service lines with service_id and without product_id', async () => {
+    render(<DocumentForm documentType="invoice" />)
+
+    fireEvent.change(screen.getByTestId('partner-select'), { target: { value: 'partner-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add mocked service line' }))
+    fireEvent.click(screen.getByRole('button', { name: 'actions.save' }))
+
+    await waitFor(() => {
+      expect(reactQueryState.mutationPayloads).toHaveLength(1)
+    })
+
+    const payload = reactQueryState.mutationPayloads[0] as { lines: Array<Record<string, unknown>> }
+    expect(payload.lines[0]).toMatchObject({
+      service_id: 'service-1',
+      description: 'Oil change labor',
+    })
+    expect(payload.lines[0]).not.toHaveProperty('product_id')
+  })
+
+  it('restores service identity for loaded service lines', async () => {
+    routerState.id = 'invoice-1'
+    routerState.pathname = '/sales/invoices/invoice-1/edit'
+    reactQueryState.document = {
+      id: 'invoice-1',
+      type: 'invoice',
+      status: 'draft',
+      partner_id: 'partner-1',
+      issue_date: '2026-07-10',
+      due_date: null,
+      notes: null,
+      external_document_number: null,
+      external_document_date: null,
+      lines: [
+        {
+          id: 'line-existing-service',
+          document_id: 'invoice-1',
+          product_id: null,
+          service_id: 'service-1',
+          product_name: 'Oil change labor',
+          product_code: 'SRV-OIL',
+          line_number: 1,
+          description: 'Oil change labor',
+          quantity: '1',
+          free_quantity: '0',
+          unit_price: '80.000',
+          price_entry_mode: 'unit',
+          discount_percent: null,
+          discount_amount: null,
+          tax_rate: '0',
+          line_total: '80.000',
+          notes: null,
+          designation_default_snapshot: 'Oil change labor',
+          quantity_decimals: null,
+          requires_batch_tracking: false,
+          is_service: true,
+        },
+      ],
+    }
+
+    render(<DocumentForm documentType="invoice" />)
+
+    const row = await screen.findByTestId('line-line-existing-service')
+    expect(row).toHaveTextContent('Service badge')
+    expect(row).toHaveAttribute('data-service', 'true')
+    expect(row).toHaveAttribute('data-service-id', 'service-1')
+    expect(row).toHaveAttribute('data-product-id', '')
   })
 })
