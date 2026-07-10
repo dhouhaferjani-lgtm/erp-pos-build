@@ -19,8 +19,7 @@ import {
   RotateCcw,
   type LucideIcon,
 } from 'lucide-react'
-import { Button } from '../../../components/atoms'
-import { tokens } from '../../../lib/designTokens'
+import { Button } from '../../../components/atoms/Button/Button'
 import { usePermissions } from '../../../hooks/usePermissions'
 import type { Document } from '../../../types/document'
 
@@ -287,15 +286,16 @@ export function DocumentActionBar({
       })}
 
       {canRevert && onRevert && (
-        <button
+        <Button
           type="button"
+          variant="secondary"
           disabled={isActionPending}
           onClick={onRevert}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
+          className="gap-2"
         >
           <RotateCcw className="h-4 w-4" />
           {t('documents.revertToDraft')}
-        </button>
+        </Button>
       )}
 
       {/* MORE DROPDOWN - secondary actions */}

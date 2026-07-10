@@ -130,13 +130,19 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web audit:design-system` reported stale C6 fingerprints after removing the document-list payment-status filter switch and the related-documents status-color switch.
   - GREEN: `DocumentListPage` now filters invoice payment statuses through a typed predicate map, and `RelatedDocumentsTab` renders document/current badges through canonical `StatusBadge` plus `statusTone`.
   - Baseline shrunk from 436 to 434 after removing the remaining documents C6 fingerprints.
+- 5.3 `documents/` action-bar button atom:
+  - RED: `pnpm --filter @autoerp/web audit:design-system` reported a stale C3 fingerprint after replacing the raw tokenized revert button.
+  - GREEN: `DocumentActionBar` now renders the revert-to-draft action through the canonical `Button` atom.
+  - Baseline shrunk from 434 to 433 after removing the stale documents C3 fingerprint.
 - Verification:
+  - `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentActionBar.test.tsx` passed: 2 tests. Existing act-warning noise remains in the component test.
   - `pnpm --filter @autoerp/web test -- src/features/documents/DocumentListPage.test.tsx src/features/documents/__tests__/DocumentTenantScope.test.tsx src/features/documents/components/__tests__/RelatedDocumentsTab.test.tsx` passed: 9 tests. Existing act-warning noise remains in `DocumentTenantScope`.
   - `pnpm --filter @autoerp/web test -- src/features/documents/invoices/__tests__/InvoiceDetailPage.tenantScope.test.tsx src/features/documents/sales-orders/__tests__/SalesOrderDetailPage.tenantScope.test.tsx src/features/documents/purchase-orders/__tests__/PurchaseOrderDetailPage.tenantScope.test.tsx` passed: 18 tests. Existing act-warning noise remains in those suites.
   - `pnpm --filter @autoerp/web typecheck` passed.
   - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
     - TanStack query key audit: 0 violations.
-    - Design-system audit: 434 acknowledged, 0 new, 0 stale.
+    - Design-system audit: 433 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base 6ca3fba0c` passed with no issues for the documents action-bar button slice.
   - `npx react-doctor@latest --verbose --scope changed --base bb480f355` passed with no issues for the documents remaining-C6 slice after replacing changed-page barrel imports with direct imports.
   - `npx react-doctor@latest --verbose --scope changed --base 744934164` passed with no issues for the documents payment-status slice.
 
