@@ -292,10 +292,54 @@ function fingerprintExpression(sourceFile, expr) {
 }
 
 /**
+ * @param {ts.Node} node
+ * @returns {boolean}
+ */
+function isLexicalScope(node) {
+  return (
+    ts.isSourceFile(node) ||
+    ts.isBlock(node) ||
+    ts.isModuleBlock(node) ||
+    ts.isFunctionLike(node)
+  );
+}
+
+/**
+ * @param {ts.Node} node
+ * @returns {Set<ts.Node>}
+ */
+function ancestorLexicalScopes(node) {
+  const scopes = new Set();
+  let current = node.parent;
+  while (current !== undefined) {
+    if (isLexicalScope(current)) {
+      scopes.add(current);
+    }
+    current = current.parent;
+  }
+  return scopes;
+}
+
+/**
+ * @param {ts.Node} node
+ * @returns {ts.Node | null}
+ */
+function nearestLexicalScope(node) {
+  let current = node.parent;
+  while (current !== undefined) {
+    if (isLexicalScope(current)) {
+      return current;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+/**
  * Resolve a shorthand `queryKey` property back to the nearest preceding
- * variable declaration in the same source file. This intentionally stays
- * syntax-only like the rest of the scanner; unresolved shorthand remains
- * default-deny by returning null.
+ * variable declaration whose lexical scope is an ancestor of the shorthand
+ * usage. This intentionally stays syntax-only like the rest of the scanner;
+ * unresolved shorthand remains default-deny by returning null.
  *
  * @param {ts.SourceFile} sourceFile
  * @param {ts.ShorthandPropertyAssignment} shorthand
@@ -304,6 +348,7 @@ function fingerprintExpression(sourceFile, expr) {
 function resolveShorthandQueryKeyInitializer(sourceFile, shorthand) {
   const name = shorthand.name.text;
   const shorthandStart = shorthand.getStart(sourceFile);
+  const inScopeAncestors = ancestorLexicalScopes(shorthand);
   /** @type {{start: number, initializer: ts.Expression} | null} */
   let best = null;
 
@@ -318,7 +363,8 @@ function resolveShorthandQueryKeyInitializer(sourceFile, shorthand) {
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
       node.name.text === name &&
-      node.initializer
+      node.initializer &&
+      inScopeAncestors.has(nearestLexicalScope(node) ?? sourceFile)
     ) {
       if (best === null || nodeStart > best.start) {
         best = { start: nodeStart, initializer: node.initializer };

@@ -220,7 +220,7 @@ beforeEach(async () => {
 })
 
 describe('SupplierInvoiceCreatePage', () => {
-  it('renders canonical footer actions for cancel and save variants', async () => {
+  it('renders canonical footer actions for cancel and save draft', async () => {
     renderWithProviders(<SupplierInvoiceCreatePage />, {
       route: '/purchases/supplier-invoices/new',
     })
@@ -228,7 +228,7 @@ describe('SupplierInvoiceCreatePage', () => {
     expect(screen.getByRole('link', { name: 'common:actions.back' })).toHaveAttribute('href', '/purchases/supplier-invoices')
     expect(screen.getByRole('button', { name: 'common:actions.cancel' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'purchases:supplierInvoices.create.saveDraft' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'actions.openSaveMenu' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'actions.openSaveMenu' })).not.toBeInTheDocument()
   })
 
   it('confirms before cancelling a dirty draft', async () => {

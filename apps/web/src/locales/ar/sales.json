@@ -139,6 +139,15 @@
       "goodsReceivedWithReceipt": "تم استلام البضائع ضمن {{receiptNumber}}"
     }
   },
+  "invoices": {
+    "paymentStatus": {
+      "unpaid": "غير مدفوعة",
+      "partially_paid": "مدفوعة جزئيًا",
+      "in_payment": "قيد الدفع",
+      "paid": "مدفوعة",
+      "overpaid": "مدفوعة بزيادة"
+    }
+  },
   "purchaseOrders": {
     "received": "مُستلَم",
     "receivedOfTotal": "{{received}} من {{total}}",

@@ -32,9 +32,9 @@ const TAG_RE = {
 }
 
 const STATUS_RE = [
-  /(status|state)\w*(Colors?|Classes?|Map|Styles?)\s*:\s*Record</gi,
+  /(status|state)\w*(Colors?|Classes?|Maps?|Styles?)\s*:\s*Record</gi,
   /switch\s*\(\s*\w*[Ss]tatus\w*\s*\)/g,
-  /const\s+\w*(status|state)\w*(Colors?|Classes?|Styles?|Config|Badge\w*)\s*[:=]/gi,
+  /const\s+\w*(status|state)\w*(Colors?|Classes?|Maps?|Styles?|Config|Badge\w*)\s*[:=]/gi,
 ]
 
 /**
@@ -382,8 +382,9 @@ if (isMain) {
   }
 
   if (wantsWriteBaseline) {
-    await writeBaseline(new Set(violations.map(violationBaselineKey)))
-    process.stderr.write(`[gate-summary] Design-system baseline written: ${violations.length} entries\n`)
+    const baselineEntries = new Set(violations.map(violationBaselineKey))
+    await writeBaseline(baselineEntries)
+    process.stderr.write(`[gate-summary] Design-system baseline written: ${baselineEntries.size} entries\n`)
     process.exit(0)
   }
 

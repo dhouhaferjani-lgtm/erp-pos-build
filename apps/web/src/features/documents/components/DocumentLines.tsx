@@ -47,6 +47,11 @@ export function DocumentLines({
       headerClassName: 'min-w-72',
       Cell: ({ line }) => {
         const productName = line.product_name || line.description || '-'
+        const lineDescription = line.description.trim()
+        const displayDescription =
+          lineDescription !== '' && lineDescription !== productName.trim()
+            ? line.description
+            : null
         const productSummary = (
           <ProductCell
             size="sm"
@@ -72,7 +77,7 @@ export function DocumentLines({
               productSummary
             )}
             <div className="max-w-xl">
-              {designationFeatureEnabled ? (
+              {designationFeatureEnabled && displayDescription !== null ? (
                 <DesignationCell
                   value={line.description || productName}
                   originalSnapshot={line.designation_default_snapshot ?? null}
@@ -81,11 +86,11 @@ export function DocumentLines({
                   valueClassName={`line-clamp-2 text-xs ${textColors.tertiary}`}
                   onCommit={() => { /* read-only: no-op */ }}
                 />
-              ) : (
+              ) : displayDescription !== null ? (
                 <span className={`block line-clamp-2 text-xs ${textColors.tertiary}`}>
-                  {line.description || productName}
+                  {displayDescription}
                 </span>
-              )}
+              ) : null}
               {designationFeatureEnabled && line.notes ? (
                 <NotesCell
                   value={line.notes}
@@ -94,8 +99,6 @@ export function DocumentLines({
                   valueClassName={`line-clamp-2 text-xs ${textColors.tertiary}`}
                   onCommit={() => { /* read-only: no-op */ }}
                 />
-              ) : line.notes ? (
-                <span className={`mt-0.5 block line-clamp-2 text-xs ${textColors.tertiary}`}>{line.notes}</span>
               ) : null}
             </div>
           </div>

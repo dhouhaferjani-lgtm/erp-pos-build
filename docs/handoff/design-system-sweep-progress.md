@@ -21,7 +21,7 @@ Status: blockers complete; majors complete.
 
 ## Gate 1 Fixlist — Majors
 
-Status: in progress.
+Status: complete; minor cleanup in progress.
 
 - MJ-1 design-system scanner JSX tag regex:
   - RED: `pnpm --filter @autoerp/web test -- tools/__tests__/audit-design-system.test.mjs` failed because an `<input>` with `onChange={(event) => ...}` and `tokens.input.base` produced zero C2 violations.
@@ -72,6 +72,42 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx src/features/purchases/StandaloneReceiptPage.test.tsx` failed because Quote Request, Supplier Invoice, and Standalone Receipt lacked back breadcrumbs and dirty-state discard confirmation.
   - GREEN: all three pages now render `PageHeader` breadcrumbs, call `useUnsavedChangesGuard`, and guard dirty Cancel/back navigation through `confirmDiscard`.
   - Verification: `pnpm --filter @autoerp/web test -- src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx src/features/purchases/StandaloneReceiptPage.test.tsx` passed: 30 tests; `pnpm --filter @autoerp/web typecheck` passed.
+
+## Gate 1 Fixlist — Minor Batch
+
+Status: complete.
+
+- Dropped duplicate `SaveSplitButton` menus from `QuoteRequestCreatePage` and `SupplierInvoiceCreatePage`; both now expose a single submit action because "Save & Close" had the same behavior as the primary action.
+- Added focused unit coverage for `isPaymentStatus`, `paymentStatusTone`, and payment-status fallback labels after the old wrapper test was deleted.
+- Deleted dead route/page leftovers:
+  - `features/documents/ReturnNoteDetailPage.tsx`; routed code uses `features/documents/return-notes`.
+  - `features/reports/pages/AgedReceivablesPage.tsx`; routed code uses `features/finance/pages`.
+  - duplicate stray `features/finance/AgedReceivablesPage.test.tsx`; canonical coverage remains beside `features/finance/pages/AgedReceivablesPage.tsx`.
+- Hardened the line-designation tenant migration with `Schema::hasColumn` guards and removed PostgreSQL no-op `after()`.
+- Restored `DocumentLines` notes visibility parity with PDF output: notes remain behind the line-designation feature. Also suppresses the article sub-line when it only repeats the product name.
+- `LineItemEntryBar` focus suggestions now request `per_page: 20`.
+- Tooling cleanup:
+  - `audit-design-system.mjs --write-baseline` now logs the deduplicated set size.
+  - C6 detection now catches untyped `statusMap` / `statusMaps` constants.
+  - TanStack shorthand `queryKey` resolution only accepts declarations whose lexical scope is an ancestor of the shorthand usage; otherwise it default-denies.
+- `GoodsReceiptListPage` hardcoded render-path colors were swept to existing design tokens.
+- Removed the supplier-invoice create-page development `console.warn`.
+- Added missing `sales:invoices.paymentStatus.*` Arabic locale keys.
+- Confirmed `data-testid="submit-rfq-group"` has no live references after the quote-request create-page rebuild.
+- Status-tone shifts for owner visual pass:
+  - `RelatedDocumentsTab` current-document chip now uses the shared `info` tone.
+  - `QuoteRequestListPage` lost/cancelled statuses now use the shared neutral tone instead of green.
+  - `SupplierInvoiceListPage` draft/posted statuses now use canonical status tones rather than local color classes.
+- Explicit deferral: the requested full-template PDF render test through `DocumentPdfService` + `invoice.blade.php` is not included in this minor cleanup commit. Current coverage is component-level (`DocumentPdfRenderTest` renders the line-items include directly); the full service-path fixture should be added in a focused backend/PDF pass to avoid broadening this UI/tooling batch.
+- Verification:
+  - `pnpm --filter @autoerp/web test -- tools/__tests__/audit-design-system.test.mjs tools/__tests__/audit-tanstack-keys.test.mjs src/features/documents/components/paymentStatus.test.ts src/features/documents/components/__tests__/DocumentLines.test.tsx src/components/molecules/line-items/LineItemEntryBar.test.tsx src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx src/features/finance/pages/AgedReceivablesPage.test.tsx src/features/documents/components/__tests__/DocumentComponents.tenantScope.test.tsx` passed: 102 tests. Existing act-warning noise remains in the line-entry, goods-receipt, document-component, and return/credit-note suites.
+  - `node apps/web/tools/audit-design-system.mjs` passed: 533 acknowledged, 0 new, 0 stale.
+  - `pnpm --filter @autoerp/web audit:keys` passed: 0 violations.
+  - `pnpm --filter @autoerp/web typecheck` passed.
+  - `pnpm --filter @autoerp/web lint` passed with 0 errors and 8,818 existing warnings; chained key/design audits passed.
+  - `php -l apps/api/database/migrations/tenant/2026_07_10_100000_add_line_designation_override_to_companies.php` passed.
+  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed for the uncommitted diff with score 98.
+  - `npx react-doctor@latest --staged --blocking warning --verbose` reports only the structural large-component warnings for `GoodsReceiptListPage` and `SupplierInvoiceCreatePage` with score 94; the local chained-iteration warning was fixed. Splitting those two large pages is deferred because it is broader than the Gate 1 minor cleanup.
 
 ## Wave 0 — Tooling & Guardrails
 

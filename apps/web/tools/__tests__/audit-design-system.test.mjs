@@ -95,4 +95,18 @@ describe('design-system audit scanner', () => {
     expect(violationBaselineKey(violations[1])).toContain('|#2')
     expect(violationBaselineKey(violations[0])).not.toBe(violationBaselineKey(violations[1]))
   })
+
+  it('flags untyped status map constants as local status maps', () => {
+    const violations = scanCode(`
+      const statusMap = {
+        draft: 'bg-gray-100 text-gray-800',
+      }
+
+      export function ExamplePage() {
+        return <StatusBadge className={statusMap.draft}>Draft</StatusBadge>
+      }
+    `, 'src/features/example/ExamplePage.tsx')
+
+    expect(violations.some((violation) => violation.category === 'C6')).toBe(true)
+  })
 })

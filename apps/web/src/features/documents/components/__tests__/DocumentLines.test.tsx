@@ -47,4 +47,29 @@ describe('DocumentLines', () => {
     expect(screen.getByText('2')).toBeInTheDocument()
     expect(screen.queryByText('2.0000')).not.toBeInTheDocument()
   })
+
+  it('does not repeat the product name as the article sub-line when the description is unchanged', () => {
+    render(
+      <MemoryRouter>
+        <DocumentLines lines={[line]} formatAmount={(amount) => String(amount)} showProductLinks={false} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getAllByText('Brake pads')).toHaveLength(1)
+  })
+
+  it('hides line notes when the line designation feature is disabled', () => {
+    render(
+      <MemoryRouter>
+        <DocumentLines
+          lines={[{ ...line, description: 'Front axle ceramic pads', notes: 'Internal restock note' }]}
+          formatAmount={(amount) => String(amount)}
+          showProductLinks={false}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('Front axle ceramic pads')).toBeInTheDocument()
+    expect(screen.queryByText('Internal restock note')).not.toBeInTheDocument()
+  })
 })

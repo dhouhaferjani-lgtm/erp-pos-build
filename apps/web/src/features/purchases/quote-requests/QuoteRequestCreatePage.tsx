@@ -13,7 +13,6 @@ import { Input } from '@/components/atoms/Input/Input'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
-import { SaveSplitButton } from '@/components/molecules/SaveSplitButton/SaveSplitButton'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { ProductLineSelect } from '@/components/molecules/line-items/ProductLineSelect'
 import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
@@ -135,7 +134,12 @@ export function QuoteRequestCreatePage() {
   }
 
   async function handleValidSubmit(values: QuoteRequestCreateFormValues) {
-    const partnerIds = suppliers.map((supplier) => supplier.supplierId).filter((supplierId) => supplierId !== '')
+    const partnerIds = suppliers.reduce<string[]>((ids, supplier) => {
+      if (supplier.supplierId !== '') {
+        ids.push(supplier.supplierId)
+      }
+      return ids
+    }, [])
     try {
       const payload = await createGroup.mutateAsync({
         partner_ids: partnerIds,
@@ -203,14 +207,11 @@ export function QuoteRequestCreatePage() {
           {suppliers.map((supplier, index) => (
             <div key={supplier.key} className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
-                <label className={tokens.label.base}>
-                  {t('purchases:quoteRequests.fields.supplier')}
-                </label>
                 <PartnerPicker
                   value={supplier.supplierId}
                   onChange={(next) => { updateSupplier(index, next?.id ?? '') }}
                   partnerType="supplier"
-                  label=""
+                  label={t('purchases:quoteRequests.fields.supplier')}
                   placeholder={t('purchases:quoteRequests.fields.supplier')}
                   testId="supplier-picker"
                 />
@@ -333,18 +334,14 @@ export function QuoteRequestCreatePage() {
           >
             {t('common:actions.cancel')}
           </Button>
-          <SaveSplitButton
+          <Button
+            type="submit"
             form={QUOTE_REQUEST_CREATE_FORM_ID}
-            isPending={createGroup.isPending}
-            primaryLabel={t('purchases:quoteRequests.actions.create')}
-            onPrimarySave={() => {}}
-            onSaveAndClose={() => {
-              const form = document.getElementById(QUOTE_REQUEST_CREATE_FORM_ID)
-              if (form instanceof HTMLFormElement) {
-                form.requestSubmit()
-              }
-            }}
-          />
+            disabled={createGroup.isPending}
+            variant="primary"
+          >
+            {t('purchases:quoteRequests.actions.create')}
+          </Button>
         </StickyFormFooter>
       </form>
     </div>

@@ -10,15 +10,22 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasColumn('companies', 'line_designation_override_enabled')) {
+            return;
+        }
+
         Schema::table('companies', function (Blueprint $table): void {
             $table->boolean('line_designation_override_enabled')
-                ->default(false)
-                ->after('receipt_thank_you');
+                ->default(false);
         });
     }
 
     public function down(): void
     {
+        if (! Schema::hasColumn('companies', 'line_designation_override_enabled')) {
+            return;
+        }
+
         Schema::table('companies', function (Blueprint $table): void {
             $table->dropColumn('line_designation_override_enabled');
         });

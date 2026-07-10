@@ -71,7 +71,10 @@ export function LineItemEntryBar({
     queryKey: tenantScopedKey(['line-entry-products', trimmedQuery]),
     queryFn: async () => {
       const response = await api.get<ProductsResponse>('/products', {
-        params: trimmedQuery !== '' ? { search: trimmedQuery } : undefined,
+        params: {
+          per_page: 20,
+          ...(trimmedQuery !== '' ? { search: trimmedQuery } : {}),
+        },
       })
       return response.data
     },

@@ -163,7 +163,7 @@ describe('LineItemEntryBar', () => {
     await user.click(input)
 
     expect(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i })).toBeInTheDocument()
-    expect(apiClientGetMock).toHaveBeenCalledWith('/products', { params: undefined })
+    expect(apiClientGetMock).toHaveBeenCalledWith('/products', { params: { per_page: 20 } })
   })
 
   it('commits the highlighted focus suggestion with Enter when the query is empty', async () => {

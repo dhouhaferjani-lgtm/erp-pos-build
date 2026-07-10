@@ -1,4 +1,4 @@
-import { type ChangeEvent, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -17,7 +17,6 @@ import { Select } from '@/components/atoms/Select/Select'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
 import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
 import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
-import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { PartnerPicker, ProductPicker, type PartnerPickerValue, type ProductPickerValue } from '@/components/molecules/pickers'
 import { api, getErrorMessage } from '@/lib/api'
@@ -35,7 +34,12 @@ import {
   usePurchaseOrdersForSupplierInvoice,
   useUploadAttachment,
 } from './api'
-import type { CreateSupplierInvoicePayload, SupplierInvoiceDetail } from './types'
+import type {
+  CreateSupplierInvoicePayload,
+  PurchaseOrderForSupplierInvoice,
+  PurchaseOrderInvoiceLine,
+  SupplierInvoiceDetail,
+} from './types'
 
 interface InvoiceLineFormState {
   receiptLineId: string
@@ -227,26 +231,29 @@ export function SupplierInvoiceCreatePage() {
     duplicateCheckReference !== '',
   )
 
-  useEffect(() => {
-    if ((receiptLinesQuery.data?.length ?? 0) > 0) {
-      console.warn('Procurement policy tolerance read endpoint is not available; rendering supplier-invoice match preview without active tolerance.')
-    }
-  }, [receiptLinesQuery.data])
-
   const prefilledLines = useMemo((): InvoiceLineFormState[] => {
     const receiptLines = receiptLinesQuery.data ?? []
     if (purchaseOrders.length === 0 || receiptLines.length === 0) {
       return []
     }
 
-    const poLinesById = new Map(purchaseOrders.flatMap((po) => po.lines.map((line) => [line.id, { line, po }] as const)))
-    return receiptLines.map((receiptLine): InvoiceLineFormState => {
+    const poLinesById = new Map<string, { line: PurchaseOrderInvoiceLine; po: PurchaseOrderForSupplierInvoice }>()
+    purchaseOrders.forEach((po) => {
+      po.lines.forEach((line) => {
+        poLinesById.set(line.id, { line, po })
+      })
+    })
+    const nextLines: InvoiceLineFormState[] = []
+    for (const receiptLine of receiptLines) {
       const poLineEntry = poLinesById.get(receiptLine.po_line_id)
       const poLine = poLineEntry?.line
       const matchableQty = positiveSub(receiptLine.received_qty, receiptLine.quantity_invoiced, 4)
+      if (bccomp(matchableQty, '0') <= 0) {
+        continue
+      }
       const unitPrice = receiptLine.received_unit_price ?? poLine?.unit_price ?? '0.000'
       const edits = lineEdits[receiptLine.id] ?? {}
-      return {
+      nextLines.push({
         receiptLineId: receiptLine.id,
         receiptNumber: receiptLine.receipt_number,
         poLineId: receiptLine.po_line_id,
@@ -259,8 +266,9 @@ export function SupplierInvoiceCreatePage() {
         quantity: edits.quantity ?? matchableQty,
         unitPrice: edits.unitPrice ?? unitPrice,
         vatRate: edits.vatRate ?? poLine?.tax_rate ?? '0.00',
-      }
-    }).filter((line) => bccomp(line.matchableQty, '0') > 0)
+      })
+    }
+    return nextLines
   }, [lineEdits, purchaseOrders, receiptLinesQuery.data])
 
   const lines = prefilledLines
@@ -731,11 +739,16 @@ export function SupplierInvoiceCreatePage() {
             {purchaseOrders.map((po) => (
               <option key={po.id} value={po.id}>{po.document_number}</option>
             ))}
-            {(openPurchaseOrdersQuery.data ?? []).filter((po) => !loadedPurchaseOrderIds.has(po.id)).map((po) => (
-              <option key={po.id} value={po.id}>
-                {po.document_number}
-              </option>
-            ))}
+            {(openPurchaseOrdersQuery.data ?? []).reduce<React.ReactNode[]>((options, po) => {
+              if (!loadedPurchaseOrderIds.has(po.id)) {
+                options.push(
+                  <option key={po.id} value={po.id}>
+                    {po.document_number}
+                  </option>,
+                )
+              }
+              return options
+            }, [])}
           </Select>
         </div>
 
@@ -983,19 +996,14 @@ export function SupplierInvoiceCreatePage() {
         >
           {t('common:actions.cancel')}
         </Button>
-        <SaveSplitButton
+        <Button
+          type="submit"
           form={SUPPLIER_INVOICE_CREATE_FORM_ID}
-          isPending={createInvoice.isPending || uploadAttachment.isPending}
-          disabled={!canSubmit}
-          primaryLabel={t('purchases:supplierInvoices.create.saveDraft')}
-          onPrimarySave={() => {}}
-          onSaveAndClose={() => {
-            const form = document.getElementById(SUPPLIER_INVOICE_CREATE_FORM_ID)
-            if (form instanceof HTMLFormElement) {
-              form.requestSubmit()
-            }
-          }}
-        />
+          disabled={!canSubmit || createInvoice.isPending || uploadAttachment.isPending}
+          variant="primary"
+        >
+          {t('purchases:supplierInvoices.create.saveDraft')}
+        </Button>
       </StickyFormFooter>
     </form>
     </div>

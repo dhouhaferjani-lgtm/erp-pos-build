@@ -94,13 +94,13 @@ function getCreateButton(): HTMLButtonElement {
 }
 
 describe('QuoteRequestCreatePage', () => {
-  it('renders canonical footer actions for cancel and save variants', () => {
+  it('renders canonical footer actions for cancel and create', () => {
     renderWithProviders(<QuoteRequestCreatePage />)
 
     expect(screen.getByRole('link', { name: 'common:actions.back' })).toHaveAttribute('href', '/purchases/quote-requests')
     expect(screen.getByRole('button', { name: 'common:actions.cancel' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'purchases:quoteRequests.actions.create' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'actions.openSaveMenu' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'actions.openSaveMenu' })).not.toBeInTheDocument()
   })
 
   it('confirms before cancelling a dirty draft', () => {
