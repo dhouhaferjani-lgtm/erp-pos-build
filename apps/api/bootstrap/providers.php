@@ -32,6 +32,7 @@ use App\Modules\POS\Providers\POSServiceProvider;
 use App\Modules\POS\Providers\TableServiceProvider;
 use App\Modules\Pricing\Providers\PricingServiceProvider;
 use App\Modules\Procurement\Providers\ProcurementServiceProvider;
+use App\Modules\Replenishment\Providers\ReplenishmentServiceProvider;
 use App\Modules\Product\ProductServiceProvider;
 use App\Modules\Progression\Providers\ProgressionServiceProvider;
 use App\Modules\Promotion\Providers\PromotionServiceProvider;
@@ -106,4 +107,5 @@ return [
     WorkshopWorkOrderServiceProvider::class,
     SchedulingServiceProvider::class,
     ProcurementServiceProvider::class,
+    ReplenishmentServiceProvider::class,
 ];
