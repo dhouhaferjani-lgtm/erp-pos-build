@@ -156,6 +156,9 @@
         "externalDate": "تاريخ التسليم"
       },
       "manualLine": {
+        "add": "إضافة بند يدوي",
+        "remove": "حذف البند اليدوي",
+        "batchNumber": "رقم الدفعة",
         "productId": "معرف المنتج"
       },
       "columns": {

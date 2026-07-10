@@ -156,6 +156,9 @@
         "externalDate": "Date livraison"
       },
       "manualLine": {
+        "add": "Ajouter une ligne manuelle",
+        "remove": "Supprimer la ligne manuelle",
+        "batchNumber": "Numéro de lot",
         "productId": "ID produit"
       },
       "columns": {

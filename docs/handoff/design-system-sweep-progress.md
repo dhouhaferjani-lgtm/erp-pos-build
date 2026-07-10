@@ -5,7 +5,7 @@
 
 ## Gate 1 Fixlist — Blockers
 
-Status: blockers complete; MJ-1 through MJ-9 complete.
+Status: blockers complete; MJ-1 through MJ-10 complete.
 
 - BL-1 `PartnerPicker` empty-string value:
   - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` failed because `value=""` triggered a `/partners/` fetch and hid the search input behind a blank selected chip.
@@ -60,6 +60,10 @@ Status: in progress.
   - RED: `DocumentForm.test.tsx` and `DocumentForm.tenantScope.test.tsx` still replaced `PartnerPicker` with local stubs, including one tenant-scope assertion implemented inside the stub.
   - GREEN: both files now render the production `PartnerPicker`; edit-mode rehydration and inline-create affordance coverage exercise the real picker while `AddPartnerModal.test.tsx` remains the owner of partner creation invalidation behavior.
   - Verification: `pnpm --filter @autoerp/web test -- src/features/documents/DocumentForm.test.tsx src/features/documents/__tests__/DocumentForm.tenantScope.test.tsx src/components/organisms/AddPartnerModal/AddPartnerModal.test.tsx` passed: 23 tests; `pnpm --filter @autoerp/web typecheck` passed.
+- MJ-10 supplier-invoice manual-line i18n:
+  - RED: `pnpm --filter @autoerp/web test -- src/lib/i18nRawKeyCoverage.test.tsx` failed in EN/FR/AR because `purchases:supplierInvoices.create.manualLine.add|remove|batchNumber` resolved to raw keys.
+  - GREEN: added the three manual-line labels to `purchases.json` in EN/FR/AR and catalogued them in raw-key coverage.
+  - Verification: `pnpm --filter @autoerp/web test -- src/lib/i18nRawKeyCoverage.test.tsx` passed: 5 tests; `pnpm --filter @autoerp/web typecheck` passed.
 
 ## Wave 0 — Tooling & Guardrails
 
