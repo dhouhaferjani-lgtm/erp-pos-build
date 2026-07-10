@@ -5,7 +5,7 @@
 
 ## Gate 1 Fixlist — Blockers
 
-Status: blockers complete; MJ-1 through MJ-7 complete.
+Status: blockers complete; MJ-1 through MJ-8 complete.
 
 - BL-1 `PartnerPicker` empty-string value:
   - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` failed because `value=""` triggered a `/partners/` fetch and hid the search input behind a blank selected chip.
@@ -52,6 +52,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- src/features/settings/__tests__/SettingsPages.tenantScope.test.tsx` failed because saving Company settings refetched `company-settings` but left a live tenant-scoped `company-config` query untouched.
   - GREEN: `CompanyPage` save success now invalidates both `tenantScopedKey(['company-settings'])` and `tenantScopedKey(['company-config'])`, without touching another tenant's cached config entry.
   - Verification: `pnpm --filter @autoerp/web test -- src/features/settings/__tests__/SettingsPages.tenantScope.test.tsx` passed: 3 tests; `pnpm --filter @autoerp/web typecheck` passed.
+- MJ-8 partner inline-create labels:
+  - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` failed because a supplier-filtered `PartnerPicker` still rendered the inline create button as "Add new customer".
+  - GREEN: `PartnerPicker` now resolves the inline-create label from `partnerType`, with `partner.addNew.customer`, `partner.addNew.supplier`, and `partner.addNew.generic` keys in EN/FR/AR.
+  - Verification: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` passed: 11 tests; `pnpm --filter @autoerp/web typecheck` passed.
 
 ## Wave 0 — Tooling & Guardrails
 

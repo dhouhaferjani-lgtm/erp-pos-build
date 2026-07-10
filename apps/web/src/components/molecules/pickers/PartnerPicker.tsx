@@ -81,6 +81,12 @@ function toValue(item: PartnerListItem): PartnerPickerValue {
   return value
 }
 
+function addNewLabelKey(partnerType: PartnerTypeFilter): string {
+  if (partnerType === 'customer') return 'partner.addNew.customer'
+  if (partnerType === 'supplier') return 'partner.addNew.supplier'
+  return 'partner.addNew.generic'
+}
+
 export function PartnerPicker({
   value,
   onChange,
@@ -194,6 +200,7 @@ export function PartnerPicker({
   const effectivePlaceholder = placeholder ?? t('partner.searchPlaceholder')
   const effectiveLabel = label ?? t('partner.label')
   const testIdAttr = testId ?? 'partner-picker'
+  const inlineAddNewLabel = t(addNewLabelKey(partnerType))
 
   const selectedValue = typeof value === 'string' ? selectedPartner ?? null : value
 
@@ -287,7 +294,7 @@ export function PartnerPicker({
                     }
                   }}
                 >
-                  {t('partner.addNew')}
+                  {inlineAddNewLabel}
                 </button>
               ) : null}
             </div>

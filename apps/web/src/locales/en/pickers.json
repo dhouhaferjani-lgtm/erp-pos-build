@@ -11,7 +11,11 @@
     "label": "Customer",
     "searchPlaceholder": "Search customer by name, email, or tax ID…",
     "empty": "No matching partners.",
-    "addNew": "Add new customer",
+    "addNew": {
+      "customer": "Add new customer",
+      "supplier": "Add new supplier",
+      "generic": "Add new partner"
+    },
     "selectedChip": "Selected customer",
     "typeChip": {
       "customer": "Customer",

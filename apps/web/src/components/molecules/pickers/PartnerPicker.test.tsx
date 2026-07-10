@@ -201,6 +201,20 @@ describe('PartnerPicker', () => {
     })
   })
 
+  it('uses a supplier-specific inline creation label in supplier contexts', async () => {
+    mockApiGet.mockResolvedValue(response([]))
+    const user = userEvent.setup()
+    renderWithProviders(<PartnerPicker value={null} onChange={() => undefined} partnerType="supplier" allowNewInline />)
+
+    await user.click(screen.getByRole('combobox'))
+
+    await waitFor(() => {
+      expect(screen.getByText(/no matching partners/i)).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: /add new supplier/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add new customer/i })).not.toBeInTheDocument()
+  })
+
   it('shows the empty state when the backend returns no rows', async () => {
     mockApiGet.mockResolvedValue(response([]))
     const user = userEvent.setup()
