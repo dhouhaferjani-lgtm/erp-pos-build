@@ -87,7 +87,6 @@
     "C1|src/features/promotions/pages/PromotionFormPage.tsx|<h1 className=\"text-2xl font-bold text-gray-900\">",
     "C1|src/features/promotions/pages/PromotionListPage.tsx|<h1 className=\"text-2xl font-bold text-gray-900\">",
     "C1|src/features/purchases/quote-requests/QuoteRequestComparisonPage.tsx|<h1 className={`text-2xl font-bold ${textColors.primary}`}>",
-    "C1|src/features/purchases/quote-requests/QuoteRequestListPage.tsx|<h1 className={`text-2xl font-bold ${textColors.primary}`}>",
     "C1|src/features/reports/pages/AgedReceivablesPage.tsx|<h1 className=\"text-3xl font-bold text-gray-900 mb-2\">",
     "C1|src/features/scheduling/pages/AppointmentDetailPage.tsx|<h1 className={`text-2xl font-bold ${textColors.primary}`}>",
     "C1|src/features/scheduling/pages/CapacityReportPage.tsx|<h1 className={`text-2xl font-bold ${textColors.primary}`}>",
