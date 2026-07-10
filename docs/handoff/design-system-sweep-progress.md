@@ -84,6 +84,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web audit:design-system` flagged stale C2 filter fingerprints after replacing native filter inputs/selects.
   - GREEN: the list filters now use canonical `Input` and `Select` controls, and cursor pagination uses canonical `Button` controls while preserving existing filter API behavior.
   - Baseline shrunk from 467 to 462 after removing stale supplier-invoice list filter fingerprints.
+- 4.11 `QuoteRequestCreatePage` input controls slice:
+  - RED: `pnpm --filter @autoerp/web audit:design-system` flagged stale C2 fingerprints after replacing native line description, validity date, and notes inputs.
+  - GREEN: the create page now uses canonical `Input` controls for those fields while preserving the existing fan-out payload behavior.
+  - Baseline shrunk from 462 to 459 after removing stale quote-request create input fingerprints.
 - Verification:
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` passed: 16 tests.
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceListPage.test.tsx` passed: 14 tests.
@@ -98,8 +102,8 @@ Status: in progress.
   - `pnpm --filter @autoerp/web typecheck` passed.
   - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
     - TanStack query key audit: 0 violations.
-    - Design-system audit: 462 acknowledged, 0 new, 0 stale.
-  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page, list-page, standalone receipt, quote-request create, goods-receipt list, quote-request list, quote-request detail, quote-request comparison, supplier-invoice detail, and supplier-invoice list filter slices.
+    - Design-system audit: 459 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page, list-page, standalone receipt, quote-request create, goods-receipt list, quote-request list, quote-request detail, quote-request comparison, supplier-invoice detail, supplier-invoice list filter, and quote-request create input slices.
 
 New shared-shape components: none.
 

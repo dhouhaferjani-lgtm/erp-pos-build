@@ -5,6 +5,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/atoms/Button/Button'
+import { Input } from '@/components/atoms/Input/Input'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
@@ -216,9 +217,8 @@ export function QuoteRequestCreatePage() {
                 onChange={(productId) => { updateLine(index, { productId }) }}
                 placeholder={t('purchases:quoteRequests.fields.product')}
               />
-              <input
+              <Input
                 data-testid={`line-description-${String(index)}`}
-                className={tokens.input.base}
                 value={line.description}
                 onChange={(event) => { updateLine(index, { description: event.target.value }) }}
                 placeholder={t('purchases:quoteRequests.fields.description')}
@@ -255,10 +255,9 @@ export function QuoteRequestCreatePage() {
           <label className={tokens.label.base} htmlFor="rfq-validity">
             {t('purchases:quoteRequests.fields.validityDate')}
           </label>
-          <input
+          <Input
             id="rfq-validity"
             type="date"
-            className={tokens.input.base}
             value={validityDate}
             onChange={(event) => { setValidityDate(event.target.value) }}
           />
@@ -267,9 +266,8 @@ export function QuoteRequestCreatePage() {
           <label className={tokens.label.base} htmlFor="rfq-notes">
             {t('purchases:quoteRequests.fields.notes')}
           </label>
-          <input
+          <Input
             id="rfq-notes"
-            className={tokens.input.base}
             value={notes}
             onChange={(event) => { setNotes(event.target.value) }}
           />
