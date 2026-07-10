@@ -26,7 +26,9 @@ import { useCompany } from '../../hooks/useCompany'
 import { usePermissions } from '../../hooks/usePermissions'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { Button } from '../../components/atoms/Button/Button'
 import { EntityLink } from '../../components/molecules/EntityLink'
+import { PageHeader } from '../../components/molecules/PageHeader/PageHeader'
 import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from './components/ReceiveGoodsDialog'
 
 interface PurchaseOrderLine {
@@ -419,59 +421,65 @@ export function GoodsReceiptListPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {t('inventory:goodsReceipt.title')}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {t('inventory:goodsReceipt.description')}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-start justify-end gap-2">
-          {hasPermission('document-ingestions.view') && (
-            <button
-              type="button"
-              onClick={() => { void navigate('/purchases/scans/new?kind=supplier_delivery_note') }}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
-            >
-              <ScanLine className="h-4 w-4" />
-              {t('documentIngestions:actions.scanDeliveryNote')}
-            </button>
-          )}
-          {hasPermission('goods-receipt.create-standalone') && (
-            <button
-              type="button"
-              onClick={() => { void navigate('/purchases/receipts/new') }}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
-            >
-              <Plus className="h-4 w-4" />
-              {t('purchases:standaloneReceipt.actions.newReceipt')}
-            </button>
-          )}
-          {activeTab === 'received' && canCreateSupplierInvoice && (
-            <div className="flex flex-col items-end gap-1">
-              <button
+      <PageHeader
+        title={t('inventory:goodsReceipt.title')}
+        subtitle={t('inventory:goodsReceipt.description')}
+        actions={
+          <>
+            {hasPermission('document-ingestions.view') && (
+              <Button
                 type="button"
-                data-testid="invoice-receipts"
-                disabled={!canInvoiceSelectedReceipts}
-                title={invoiceSelectionBlocked ? t('purchases:supplierInvoices.create.crossSupplierTooltip') : undefined}
-                onClick={handleInvoiceReceipts}
-                className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
+                onClick={() => {
+                  void navigate('/purchases/scans/new?kind=supplier_delivery_note')
+                }}
+                variant="secondary"
+                className="gap-2"
               >
-                <ReceiptText className="h-4 w-4" />
-                {t('purchases:supplierInvoices.create.invoiceReceipts')}
-              </button>
-              {invoiceSelectionBlocked && (
-                <span className={`text-xs ${textColors.warning}`}>
-                  {t('purchases:supplierInvoices.create.crossSupplierTooltip')}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+                <ScanLine className="h-4 w-4" />
+                {t('documentIngestions:actions.scanDeliveryNote')}
+              </Button>
+            )}
+            {hasPermission('goods-receipt.create-standalone') && (
+              <Button
+                type="button"
+                onClick={() => {
+                  void navigate('/purchases/receipts/new')
+                }}
+                variant="secondary"
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                {t('purchases:standaloneReceipt.actions.newReceipt')}
+              </Button>
+            )}
+            {activeTab === 'received' && canCreateSupplierInvoice && (
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  type="button"
+                  data-testid="invoice-receipts"
+                  disabled={!canInvoiceSelectedReceipts}
+                  title={
+                    invoiceSelectionBlocked
+                      ? t('purchases:supplierInvoices.create.crossSupplierTooltip')
+                      : undefined
+                  }
+                  onClick={handleInvoiceReceipts}
+                  className="gap-2"
+                >
+                  <ReceiptText className="h-4 w-4" />
+                  {t('purchases:supplierInvoices.create.invoiceReceipts')}
+                </Button>
+                {invoiceSelectionBlocked && (
+                  <span className={`text-xs ${textColors.warning}`}>
+                    {t('purchases:supplierInvoices.create.crossSupplierTooltip')}
+                  </span>
+                )}
+              </div>
+            )}
+          </>
+        }
+        className="mb-0"
+      />
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
