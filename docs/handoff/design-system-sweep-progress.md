@@ -40,6 +40,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/line-items/LineItemEntryBar.test.tsx` failed because product suggestions stayed open after pointerdown outside the entry bar.
   - GREEN: `LineItemEntryBar` now closes the listbox on outside `pointerdown` while preserving inside selection behavior.
   - Verification: `pnpm --filter @autoerp/web test -- src/components/molecules/line-items/LineItemEntryBar.test.tsx` passed: 8 tests; `pnpm --filter @autoerp/web typecheck` passed.
+- MJ-5 empty-query keyboard commit:
+  - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/line-items/LineItemEntryBar.test.tsx` failed because Enter on a highlighted focus suggestion did nothing when the query was empty.
+  - GREEN: `LineItemEntryBar` now commits highlighted open suggestions before the empty-query scanner bailout.
+  - Verification: `pnpm --filter @autoerp/web test -- src/components/molecules/line-items/LineItemEntryBar.test.tsx` passed: 9 tests; `pnpm --filter @autoerp/web typecheck` passed.
 
 ## Wave 0 — Tooling & Guardrails
 

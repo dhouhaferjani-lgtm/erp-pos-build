@@ -166,6 +166,24 @@ describe('LineItemEntryBar', () => {
     expect(apiClientGetMock).toHaveBeenCalledWith('/products', { params: undefined })
   })
 
+  it('commits the highlighted focus suggestion with Enter when the query is empty', async () => {
+    const user = userEvent.setup()
+    const onAddProduct = vi.fn()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(<LineItemEntryBar onAddProduct={onAddProduct} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+    expect(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i })).toHaveAttribute('aria-selected', 'true')
+
+    await user.keyboard('{Enter}')
+
+    expect(onAddProduct).toHaveBeenCalledWith(product, expect.objectContaining({ source: 'search', incrementBy: 1 }))
+    expect(input).toHaveValue('')
+    expect(input).toHaveFocus()
+  })
+
   it('closes product suggestions on pointerdown outside', async () => {
     const user = userEvent.setup()
     apiClientGetMock.mockResolvedValue({ data: { data: [product] } })

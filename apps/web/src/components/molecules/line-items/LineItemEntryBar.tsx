@@ -196,6 +196,13 @@ export function LineItemEntryBar({
 
     if (event.key !== 'Enter' && event.key !== 'Tab') return
 
+    if (isOpen && products.length > 0) {
+      event.preventDefault()
+      event.stopPropagation()
+      commitSearchAdd(products[highlightedIndex] ?? products[0])
+      return
+    }
+
     if (trimmedQuery === '') {
       if (event.key === 'Enter') event.preventDefault()
       return
@@ -203,11 +210,6 @@ export function LineItemEntryBar({
 
     event.preventDefault()
     event.stopPropagation()
-
-    if (isOpen && products.length > 0) {
-      commitSearchAdd(products[highlightedIndex] ?? products[0])
-      return
-    }
 
     resolveScan(trimmedQuery)
   }
