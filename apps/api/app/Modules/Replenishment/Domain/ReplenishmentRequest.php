@@ -36,6 +36,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $rejection_reason
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property string $location_name
+ * @property string $product_name
+ * @property string|null $variant_name
  */
 final class ReplenishmentRequest extends Model
 {

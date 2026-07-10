@@ -295,6 +295,11 @@ class RolesAndPermissionsSeeder extends Seeder
             'pos.tolerance.apply',
             'pos.view_cross_location_stock',
 
+            // Replenishment requests
+            'replenishment.view',
+            'replenishment.create',
+            'replenishment.process',
+
             // POS Orders
             'pos_orders.view',
             'pos_orders.create',
@@ -480,6 +485,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'pos.approve_discount_limit_override', 'pos.approve_tender_tolerance_override',
             'pos.approve_void_or_return_override', 'pos.approve_cash_drawer_control',
             'pos.configure_cash_count', 'pos.tolerance.apply', 'pos.view_cross_location_stock',
+            'replenishment.view', 'replenishment.create', 'replenishment.process',
             'pos_orders.view', 'pos_orders.create', 'pos_orders.update', 'pos_orders.delete',
             'pos_held_orders.view', 'pos_held_orders.create', 'pos_held_orders.delete',
             'batches.view', 'batches.create', 'batches.update', 'batches.delete',
@@ -654,6 +660,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'scheduling.appointments.update', 'scheduling.appointments.cancel',
             'marketplace.browse',
             'catalog_cart.view', 'catalog_cart.create',
+            'replenishment.view', 'replenishment.create',
         ]);
         $this->command->info('Created role: operator');
 
