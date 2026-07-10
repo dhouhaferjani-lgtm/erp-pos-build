@@ -5,8 +5,14 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle2, FileUp, Plus, ReceiptText, Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { Button, MoneyInput, QuantityInput, StatusBadge, type StatusTone } from '@/components/atoms'
-import { DataTable, PageHeader, type DataTableColumn } from '@/components/molecules'
+import { Button } from '@/components/atoms/Button/Button'
+import { Input } from '@/components/atoms/Input/Input'
+import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
+import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
+import { Select } from '@/components/atoms/Select/Select'
+import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
+import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { PartnerPicker, ProductPicker, type PartnerPickerValue, type ProductPickerValue } from '@/components/molecules/pickers'
@@ -86,15 +92,10 @@ function linePreview(line: InvoiceLineFormState): MatchPreviewStatus {
   return 'matched'
 }
 
-function matchPreviewTone(status: MatchPreviewStatus): StatusTone {
-  switch (status) {
-    case 'matched':
-      return 'success'
-    case 'priceVariance':
-      return 'warning'
-    case 'quantityVariance':
-      return 'danger'
-  }
+const matchPreviewTone: Record<MatchPreviewStatus, StatusTone> = {
+  matched: 'success',
+  priceVariance: 'warning',
+  quantityVariance: 'danger',
 }
 
 function newIdempotencyKey(): string {
@@ -418,24 +419,21 @@ export function SupplierInvoiceCreatePage() {
           />
           {isInvoiceFirstDelivered && line.product?.requires_batch_tracking === true ? (
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <input
+              <Input
                 data-testid={`manual-line-batch-number-${String(index)}`}
-                className={tokens.input.base}
                 placeholder={t('purchases:supplierInvoices.create.manualLine.batchNumber')}
                 value={line.batchNumber}
                 onChange={(event) => { updateManualLine(index, { batchNumber: event.target.value }) }}
               />
-              <input
+              <Input
                 data-testid={`manual-line-batch-expiry-${String(index)}`}
                 type="date"
-                className={tokens.input.base}
                 value={line.batchExpiryDate}
                 onChange={(event) => { updateManualLine(index, { batchExpiryDate: event.target.value }) }}
               />
-              <input
+              <Input
                 data-testid={`manual-line-batch-manufacturing-${String(index)}`}
                 type="date"
-                className={tokens.input.base}
                 value={line.batchManufacturingDate}
                 onChange={(event) => { updateManualLine(index, { batchManufacturingDate: event.target.value }) }}
               />
@@ -478,9 +476,8 @@ export function SupplierInvoiceCreatePage() {
       numeric: true,
       width: '7rem',
       render: (line, index) => (
-        <input
+        <Input
           data-testid={`manual-line-vat-rate-${String(index)}`}
-          className={tokens.input.base}
           value={line.vatRate}
           onChange={(event) => { updateManualLine(index, { vatRate: event.target.value }) }}
         />
@@ -492,16 +489,17 @@ export function SupplierInvoiceCreatePage() {
       align: 'center',
       width: '3rem',
       render: (_line, index) => (
-        <button
+        <Button
           type="button"
           data-testid={`remove-manual-line-${String(index)}`}
           disabled={manualLines.length <= 1}
-          className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
+          variant="ghost"
+          size="sm"
           onClick={() => { removeManualLine(index) }}
           aria-label={t('purchases:supplierInvoices.create.manualLine.remove')}
         >
           <Trash2 className="h-4 w-4" />
-        </button>
+        </Button>
       ),
     },
   ]
@@ -567,8 +565,7 @@ export function SupplierInvoiceCreatePage() {
       numeric: true,
       width: '7rem',
       render: (line, index) => (
-        <input
-          className={tokens.input.base}
+        <Input
           value={line.vatRate}
           onChange={(event) => { updateLine(index, { vatRate: event.target.value }) }}
         />
@@ -580,7 +577,7 @@ export function SupplierInvoiceCreatePage() {
       render: (line) => {
         const preview = linePreview(line)
         return (
-          <StatusBadge tone={matchPreviewTone(preview)} className="gap-1">
+          <StatusBadge tone={matchPreviewTone[preview]} className="gap-1">
             {preview === 'matched' ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
             {t(`purchases:supplierInvoices.create.match.${preview}`)}
           </StatusBadge>
@@ -634,10 +631,9 @@ export function SupplierInvoiceCreatePage() {
           <label className={tokens.label.base} htmlFor="source-po">
             {t('purchases:supplierInvoices.create.purchaseOrder')}
           </label>
-          <select
+          <Select
             id="source-po"
             data-testid="source-purchase-order"
-            className={tokens.select.base}
             multiple
             value={selectedPurchaseOrderIds}
             disabled={lockedFromEntryPoint}
@@ -658,17 +654,16 @@ export function SupplierInvoiceCreatePage() {
                 {po.document_number}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div>
           <label className={tokens.label.base} htmlFor="issue-date">
             {t('purchases:supplierInvoices.create.issueDate')}
           </label>
-          <input
+          <Input
             id="issue-date"
             type="date"
-            className={tokens.input.base}
             value={issueDate}
             onChange={(event) => { setIssueDate(event.target.value) }}
           />
@@ -678,10 +673,9 @@ export function SupplierInvoiceCreatePage() {
           <label className={tokens.label.base} htmlFor="due-date">
             {t('purchases:supplierInvoices.create.dueDate')}
           </label>
-          <input
+          <Input
             id="due-date"
             type="date"
-            className={tokens.input.base}
             value={dueDate}
             onChange={(event) => { setDueDate(event.target.value) }}
           />
@@ -691,10 +685,9 @@ export function SupplierInvoiceCreatePage() {
           <label className={tokens.label.base} htmlFor="supplier-reference">
             {t('purchases:supplierInvoices.create.supplierReference')}
           </label>
-          <input
+          <Input
             id="supplier-reference"
             data-testid="supplier-reference"
-            className={tokens.input.base}
             value={supplierReference}
             onChange={(event) => {
               setSupplierReference(event.target.value)
@@ -716,9 +709,8 @@ export function SupplierInvoiceCreatePage() {
           <label className={tokens.label.base} htmlFor="invoice-notes">
             {t('purchases:supplierInvoices.create.notes')}
           </label>
-          <input
+          <Input
             id="invoice-notes"
-            className={tokens.input.base}
             value={notes}
             onChange={(event) => { setNotes(event.target.value) }}
           />
@@ -734,11 +726,12 @@ export function SupplierInvoiceCreatePage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {invoiceFirstAllowed ? (
-            <button
+            <Button
               type="button"
               data-testid="invoice-first-pending"
               disabled={lockedFromEntryPoint}
-              className={`${tokens.button.base} ${entryMode === 'invoiceFirstPending' ? tokens.button.primary : tokens.button.secondary} ${tokens.button.sizes.sm}`}
+              variant={entryMode === 'invoiceFirstPending' ? 'primary' : 'secondary'}
+              size="sm"
               onClick={() => {
                 setEntryMode('invoiceFirstPending')
                 setSelectedPurchaseOrderIds([])
@@ -746,14 +739,15 @@ export function SupplierInvoiceCreatePage() {
               }}
             >
               {t('purchases:supplierInvoices.create.entryMode.pending')}
-            </button>
+            </Button>
           ) : null}
           {deliveredInvoiceFirstAllowed ? (
-            <button
+            <Button
               type="button"
               data-testid="invoice-first-delivered"
               disabled={lockedFromEntryPoint}
-              className={`${tokens.button.base} ${entryMode === 'invoiceFirstDelivered' ? tokens.button.primary : tokens.button.secondary} ${tokens.button.sizes.sm}`}
+              variant={entryMode === 'invoiceFirstDelivered' ? 'primary' : 'secondary'}
+              size="sm"
               onClick={() => {
                 setEntryMode('invoiceFirstDelivered')
                 setSelectedPurchaseOrderIds([])
@@ -761,16 +755,17 @@ export function SupplierInvoiceCreatePage() {
               }}
             >
               {t('purchases:supplierInvoices.create.entryMode.delivered')}
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
             type="button"
             disabled={selectedPurchaseOrderIds.length === 0}
-            className={`${tokens.button.base} ${entryMode === 'receipts' ? tokens.button.primary : tokens.button.secondary} ${tokens.button.sizes.sm}`}
+            variant={entryMode === 'receipts' ? 'primary' : 'secondary'}
+            size="sm"
             onClick={() => { setEntryMode('receipts') }}
           >
             {t('purchases:supplierInvoices.create.entryMode.receipts')}
-          </button>
+          </Button>
         </div>
 
         {isInvoiceFirstDelivered ? (
@@ -779,10 +774,9 @@ export function SupplierInvoiceCreatePage() {
               <label className={tokens.label.base} htmlFor="invoice-first-location-id">
                 {t('purchases:supplierInvoices.create.invoiceFirst.location')}
               </label>
-              <select
+              <Select
                 id="invoice-first-location-id"
                 data-testid="invoice-first-location-id"
-                className={tokens.select.base}
                 value={invoiceFirstLocationId}
                 onChange={(event) => { setInvoiceFirstLocationId(event.target.value) }}
               >
@@ -790,16 +784,15 @@ export function SupplierInvoiceCreatePage() {
                 {(locationsQuery.data ?? []).map((location) => (
                   <option key={location.id} value={location.id}>{location.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={tokens.label.base} htmlFor="invoice-first-external-reference">
                 {t('purchases:supplierInvoices.create.invoiceFirst.externalReference')}
               </label>
-              <input
+              <Input
                 id="invoice-first-external-reference"
                 data-testid="invoice-first-external-reference"
-                className={tokens.input.base}
                 value={invoiceFirstExternalReference}
                 onChange={(event) => { setInvoiceFirstExternalReference(event.target.value) }}
               />
@@ -808,11 +801,10 @@ export function SupplierInvoiceCreatePage() {
               <label className={tokens.label.base} htmlFor="invoice-first-external-date">
                 {t('purchases:supplierInvoices.create.invoiceFirst.externalDate')}
               </label>
-              <input
+              <Input
                 id="invoice-first-external-date"
                 data-testid="invoice-first-external-date"
                 type="date"
-                className={tokens.input.base}
                 value={invoiceFirstExternalDate}
                 onChange={(event) => { setInvoiceFirstExternalDate(event.target.value) }}
               />
@@ -845,15 +837,16 @@ export function SupplierInvoiceCreatePage() {
         {!isReceiptMode ? (
           <div className="space-y-3">
             <div className="flex justify-end">
-              <button
+              <Button
                 type="button"
                 data-testid="add-manual-line"
-                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+                variant="secondary"
+                size="sm"
                 onClick={addManualLine}
               >
                 <Plus className="me-1.5 h-4 w-4" />
                 {t('purchases:supplierInvoices.create.manualLine.add')}
-              </button>
+              </Button>
             </div>
             <DataTable
               columns={manualLineColumns}
@@ -885,12 +878,11 @@ export function SupplierInvoiceCreatePage() {
           {t('purchases:supplierInvoices.create.attachments')}
         </label>
         <div className="flex flex-wrap items-center gap-3">
-          <input
+          <Input
             id="supplier-invoice-attachments"
             data-testid="supplier-invoice-attachments"
             type="file"
             multiple
-            className={tokens.input.base}
             onChange={handleAttachments}
           />
           <span className={`inline-flex items-center gap-1 text-sm ${textColors.tertiary}`}>

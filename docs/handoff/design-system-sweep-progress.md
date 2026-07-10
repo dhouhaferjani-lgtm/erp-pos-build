@@ -88,6 +88,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web audit:design-system` flagged stale C2 fingerprints after replacing native line description, validity date, and notes inputs.
   - GREEN: the create page now uses canonical `Input` controls for those fields while preserving the existing fan-out payload behavior.
   - Baseline shrunk from 462 to 459 after removing stale quote-request create input fingerprints.
+- 4.12 `SupplierInvoiceCreatePage` controls/status slice:
+  - RED: `pnpm --filter @autoerp/web audit:design-system` flagged stale C2/C3/C6 fingerprints after replacing native controls and the match-preview switch.
+  - GREEN: the create page now uses canonical `Input`, `Select`, and `Button` controls for invoice metadata, manual lines, entry modes, invoice-first delivery fields, attachments, and match-preview tone mapping while preserving create payload behavior.
+  - Baseline shrunk from 459 to 439 after removing stale supplier-invoice create fingerprints.
 - Verification:
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` passed: 16 tests.
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceListPage.test.tsx` passed: 14 tests.
@@ -102,8 +106,8 @@ Status: in progress.
   - `pnpm --filter @autoerp/web typecheck` passed.
   - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
     - TanStack query key audit: 0 violations.
-    - Design-system audit: 459 acknowledged, 0 new, 0 stale.
-  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page, list-page, standalone receipt, quote-request create, goods-receipt list, quote-request list, quote-request detail, quote-request comparison, supplier-invoice detail, supplier-invoice list filter, and quote-request create input slices.
+    - Design-system audit: 439 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page, list-page, standalone receipt, quote-request create, goods-receipt list, quote-request list, quote-request detail, quote-request comparison, supplier-invoice detail, supplier-invoice list filter, quote-request create input, and supplier-invoice create controls slices.
 
 New shared-shape components: none.
 
