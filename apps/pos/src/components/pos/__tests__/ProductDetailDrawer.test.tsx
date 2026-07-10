@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ProductDetailDrawer } from '@/components/pos/ProductDetailDrawer';
+import { ProductDetailDrawer, ProductDetailSheet } from '@/components/pos/ProductDetailDrawer';
 import type { POSProduct } from '@/types/product';
 
 vi.mock('react-i18next', () => ({
@@ -282,5 +282,61 @@ describe('ProductDetailDrawer — Strategy A accent repoint (Task 18)', () => {
     const sourcePath = join(process.cwd(), 'src/components/pos/ProductDetailDrawer.tsx');
     const source = readFileSync(sourcePath, 'utf-8');
     expect(source).not.toMatch(/\b(?:bg|text|border)-accent(?:-\w+)?\b/);
+  });
+});
+
+// Cart-always-foreground v1 (spec §2.1) — the sheet gains a 'pane' variant that
+// fills the product pane fluidly with region (not dialog) semantics. The
+// overlay variant stays the default and byte-identical during the transition.
+describe('ProductDetailSheet — pane variant (cart-always-foreground v1)', () => {
+  function renderPane() {
+    return render(
+      <ProductDetailSheet
+        variant="pane"
+        product={product}
+        onClose={() => {}}
+        activeTab="details"
+        onTabChange={() => {}}
+      />,
+    );
+  }
+
+  it('renders as a non-modal region labelled by the product name', () => {
+    renderPane();
+    const pane = screen.getByTestId('product-detail-modal');
+    expect(pane).toHaveAttribute('role', 'region');
+    expect(pane).toHaveAttribute('aria-label', 'Widget');
+    expect(pane).not.toHaveAttribute('aria-modal');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('fills its host fluidly with a min-w floor and no overlay geometry/animation', () => {
+    renderPane();
+    const pane = screen.getByTestId('product-detail-modal');
+    expect(pane).toHaveClass('h-full');
+    expect(pane).toHaveClass('w-full');
+    expect(pane).toHaveClass('min-w-[680px]');
+    expect(pane.className).not.toContain('w-[1080px]');
+    expect(pane.className).not.toContain('h-[680px]');
+    expect(pane.className).not.toContain('max-w-[96vw]');
+    expect(pane.className).not.toContain('max-h-[92vh]');
+    expect(pane.className).not.toContain('ez-sheet-rise');
+    expect(pane.className).not.toContain('fixed');
+  });
+
+  it('keeps the overlay variant as the default (dialog semantics + fixed geometry)', () => {
+    render(
+      <ProductDetailSheet
+        product={product}
+        onClose={() => {}}
+        activeTab="details"
+        onTabChange={() => {}}
+      />,
+    );
+    const sheet = screen.getByTestId('product-detail-modal');
+    expect(sheet).toHaveAttribute('role', 'dialog');
+    expect(sheet).toHaveAttribute('aria-modal', 'true');
+    expect(sheet).toHaveClass('w-[1080px]');
+    expect(sheet).toHaveClass('ez-sheet-rise');
   });
 });

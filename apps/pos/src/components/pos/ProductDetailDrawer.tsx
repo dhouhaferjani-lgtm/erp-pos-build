@@ -83,6 +83,12 @@ interface ProductDetailSheetProps {
   hardBlockOutOfStock?: boolean;
   activeTab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
+  /**
+   * Cart-always-foreground v1 (spec §2.1): 'overlay' (default) = the fixed-size
+   * centered sheet inside an overlay host; 'pane' = fluid fill of the product
+   * pane with region (not dialog) semantics — it is genuinely not a modal.
+   */
+  variant?: 'overlay' | 'pane';
 }
 
 /**
@@ -98,6 +104,7 @@ export function ProductDetailSheet({
   hardBlockOutOfStock = true,
   activeTab,
   onTabChange,
+  variant = 'overlay',
 }: ProductDetailSheetProps) {
   const { t } = useTranslation('pos');
   const { t: tSmart } = useTranslation('smart-prompts');
@@ -148,13 +155,22 @@ export function ProductDetailSheet({
     { id: 'other_branches', label: t('productDetail.tabs.otherBranches') },
   ];
 
+  const isPane = variant === 'pane';
+
   return (
     <section
-      role="dialog"
-      aria-modal="true"
-      aria-label={t('productDetail.title')}
+      role={isPane ? 'region' : 'dialog'}
+      aria-modal={isPane ? undefined : 'true'}
+      aria-label={isPane ? product.name : t('productDetail.title')}
       data-testid="product-detail-modal"
-      className="ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-panel bg-surface-overlay shadow-2xl"
+      className={cn(
+        'relative flex overflow-hidden rounded-panel bg-surface-overlay',
+        isPane
+          ? // Pane: fill the host; min-w floor per spec §4 (aside 344px + usable
+            // tab column). shadow-sm reads as a canvas panel, not overlay chrome.
+            'h-full w-full min-w-[680px] shadow-sm'
+          : 'ez-sheet-rise h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] shadow-2xl',
+      )}
       onClick={(event) => event.stopPropagation()}
     >
       <aside
