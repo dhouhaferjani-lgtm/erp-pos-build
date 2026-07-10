@@ -193,6 +193,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'payments.allocate',
             'payments.void',
             'payments.refund',
+            // payments.reverse: deliberately admin-only (owner decision, ratified 2026-07-10).
+            // The reverse endpoint currently moves no cash and posts no GL — it's a
+            // bookkeeping-level undo — so it stays restricted to admin until it gets
+            // spine treatment (see payments.refund grants below for the money-moving flow).
             'payments.reverse',
 
             'instruments.view',
@@ -446,7 +450,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.post', 'expenses.pay',
             'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
             'income.view', 'income.create', 'income.update', 'income.post',
-            'payments.view', 'payments.create', 'payments.allocate',
+            'payments.view', 'payments.create', 'payments.allocate', 'payments.refund',
             'instruments.view', 'instruments.create', 'instruments.transfer',
             'repositories.view',
             'treasury.view', 'treasury.adjust',
@@ -662,7 +666,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete', 'expenses.post', 'expenses.pay',
             'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
             'income.view', 'income.create', 'income.update', 'income.delete', 'income.post',
-            'payments.view', 'payments.create', 'payments.allocate',
+            'payments.view', 'payments.create', 'payments.allocate', 'payments.refund',
             'instruments.view', 'instruments.transfer', 'instruments.clear',
             'repositories.view', 'repositories.manage',
             'treasury.view', 'treasury.manage', 'treasury.adjust',
