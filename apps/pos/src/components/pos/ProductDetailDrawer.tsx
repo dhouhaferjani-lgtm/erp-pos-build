@@ -49,9 +49,11 @@ interface ProductDetailSheetProps {
 
 /**
  * The drawer's sheet content, extracted so /theme-preview can render it
- * inline (no overlay) for headless visual verification. The overlay host,
- * placement, and z-strategy stay in ProductDetailDrawer — this component is
- * purely the one-sheet surface.
+ * inline (no overlay) for headless visual verification. In production the
+ * 'pane' variant is hosted by ProductPaneHost in HomePage — there is no
+ * overlay host component anymore (Task 5 deleted it). The 'overlay' variant
+ * remains live in this file only as the prop's default value; it has no
+ * production consumer.
  */
 export function ProductDetailSheet({
   product,
@@ -124,9 +126,10 @@ export function ProductDetailSheet({
           ? // Pane: fill the host; min-w floor per spec §4 (aside 344px + usable
             // tab column). shadow-sm reads as a canvas panel, not overlay chrome.
             'relative flex h-full w-full min-w-[680px] overflow-hidden rounded-panel bg-surface-overlay shadow-sm'
-          : // Overlay (default): byte-identical to the pre-Task-1 literal — see
-            // ProductDetailDrawer.test.tsx "keeps the overlay variant as the
-            // default" assertion pinning this exact string.
+          : // Overlay (default, no production consumer): byte-identical to the
+            // pre-Task-1 literal — see ProductDetailDrawer.test.tsx "keeps the
+            // overlay variant as the default" assertion, which pins this exact
+            // string until the 'overlay' variant itself is removed.
             'ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-panel bg-surface-overlay shadow-2xl'
       }
       onClick={(event) => event.stopPropagation()}

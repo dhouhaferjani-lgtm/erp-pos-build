@@ -366,5 +366,13 @@ describe('ProductDetailSheet — pane variant (cart-always-foreground v1)', () =
     expect(sheet).toHaveAttribute('aria-modal', 'true');
     expect(sheet).toHaveClass('w-[1080px]');
     expect(sheet).toHaveClass('ez-sheet-rise');
+    // Byte-identity pin: the overlay branch's className has no host of its own
+    // to test (Task 5 deleted the overlay host component) — this string pins
+    // the exact literal in ProductDetailDrawer.tsx's overlay branch (variant
+    // default) so a future refactor can't silently drift its geometry/shadow
+    // classes. Remove only when the 'overlay' variant itself is deleted.
+    expect(sheet.className).toBe(
+      'ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-panel bg-surface-overlay shadow-2xl',
+    );
   });
 });
