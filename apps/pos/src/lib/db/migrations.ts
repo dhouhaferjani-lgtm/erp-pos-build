@@ -1856,4 +1856,43 @@ export const migrations: Migration[] = [
       await db.execute(`DELETE FROM sync_metadata WHERE key = 'customers.updated_since'`);
     },
   },
+  {
+    version: 60,
+    name: 'create_replenishment_tables',
+    sql: `
+      CREATE TABLE IF NOT EXISTS replenishment_outbox (
+        client_request_uuid TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        terminal_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        variant_id TEXT,
+        requested_qty TEXT,
+        note TEXT,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved', 'failed')),
+        sync_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, client_request_uuid)
+      );
+      CREATE INDEX IF NOT EXISTS idx_replenishment_outbox_status
+        ON replenishment_outbox(tenant_id, company_id, status, updated_at);
+
+      CREATE TABLE IF NOT EXISTS open_replenishment_cache (
+        tenant_id TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        variant_id TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL,
+        requested_qty TEXT,
+        request_count INTEGER NOT NULL DEFAULT 1,
+        last_requested_at TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, company_id, request_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_open_replenishment_product
+        ON open_replenishment_cache(tenant_id, company_id, product_id, variant_id);
+    `,
+  },
 ];
