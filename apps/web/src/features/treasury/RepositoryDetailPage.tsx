@@ -436,7 +436,17 @@ export function RepositoryDetailPage() {
                   </tr>
                 </thead>
                 <tbody className={cn('divide-y bg-white', borderColors.divideDefault)}>
-                  {transactions.map((transaction) => (
+                  {transactions.map((transaction) => {
+                    // `transaction.amount` already carries its own sign (a
+                    // refund payment is stored negative — PaymentRefundService
+                    // — unlike RepositoryMovement.amount, which is unsigned
+                    // with a separate `direction`). Mirror the Movements tab's
+                    // sign handling: never concatenate a literal '+' onto an
+                    // already-negative formatted amount (that produced the
+                    // "+-50,000 TND" defect).
+                    const isNegative = parseFloat(transaction.amount) < 0
+
+                    return (
                     <tr key={transaction.id} className={tokens.table.rowHover}>
                       <td className="whitespace-nowrap px-6 py-4">
                         <EntityLink
@@ -502,11 +512,17 @@ export function RepositoryDetailPage() {
                           </span>
                         )}
                       </td>
-                      <td className={cn('whitespace-nowrap px-6 py-4 text-end text-sm font-medium tabular-nums', textColors.success)}>
-                        +{formatAmount(transaction.amount)}
+                      <td
+                        className={cn(
+                          'whitespace-nowrap px-6 py-4 text-end text-sm font-medium tabular-nums',
+                          isNegative ? textColors.error : textColors.success,
+                        )}
+                      >
+                        {isNegative ? '' : '+'}{formatAmount(transaction.amount)}
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

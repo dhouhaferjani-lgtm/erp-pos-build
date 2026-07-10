@@ -298,6 +298,38 @@ final class RepositoryMovementsEndpointTest extends TestCase
         $this->assertSame('20.000', $data[0]['amount']);
     }
 
+    /**
+     * Audit M1: `occurred_at` is a full UTC timestamp, so a naive
+     * `date_to=<today>` comparison against midnight would exclude every
+     * same-day row (proven live: 59 unfiltered vs 58 filtered). `date_to`
+     * must be inclusive of the entire end date.
+     */
+    public function test_date_to_is_inclusive_of_the_entire_end_date(): void
+    {
+        $this->recordMovement(
+            $this->repository,
+            MovementDirection::In,
+            '10.000',
+            MovementSourceType::Payment,
+            occurredAt: CarbonImmutable::parse('2026-07-10 23:30:00'),
+        );
+        $this->recordMovement(
+            $this->repository,
+            MovementDirection::In,
+            '20.000',
+            MovementSourceType::Payment,
+            occurredAt: CarbonImmutable::parse('2026-07-11 00:00:00'),
+        );
+
+        $response = $this->actingAs($this->user)
+            ->getJson("/api/v1/payment-repositories/{$this->repository->id}/movements?date_to=2026-07-10");
+
+        $response->assertOk();
+        $data = $response->json('data');
+        $this->assertCount(1, $data);
+        $this->assertSame('10.000', $data[0]['amount']);
+    }
+
     public function test_movements_for_repository_in_another_company_is_not_found(): void
     {
         $otherRepository = PaymentRepository::factory()->for($this->companyB)->create([

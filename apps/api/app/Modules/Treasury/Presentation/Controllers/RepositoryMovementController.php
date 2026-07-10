@@ -9,6 +9,7 @@ use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -64,7 +65,13 @@ final class RepositoryMovementController extends Controller
         }
 
         if (array_key_exists('date_to', $validated)) {
-            $query->where('occurred_at', '<=', $validated['date_to']);
+            // `occurred_at` is a full UTC timestamp, not a date column — a bare
+            // '<=' comparison against 'YYYY-MM-DD' parses to that date's
+            // midnight and silently excludes every same-day row (audit M1).
+            // Mirror ReportsController::resolveDateRangeForProfitLoss's
+            // end-of-day convention for timestamp columns so date_to is
+            // inclusive of the entire end date.
+            $query->where('occurred_at', '<=', Carbon::parse($validated['date_to'])->endOfDay());
         }
 
         if (array_key_exists('source_type', $validated)) {

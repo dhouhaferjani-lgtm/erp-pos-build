@@ -350,6 +350,53 @@ class CreateJournalEntryTest extends TestCase
         );
     }
 
+    /**
+     * Wave 2A Item 4: `GET /journal-entries/{id}` must return `account_code`
+     * / `account_name` per line — the JE detail page ("Compte" column) reads
+     * exactly those two fields and renders blank without them. Pre-existing
+     * defect (JournalLineData::toArray never emitted them; predates the
+     * treasury spine — confirmed unchanged at base 6a3292b42).
+     */
+    public function test_show_journal_entry_includes_account_code_and_name_per_line(): void
+    {
+        $createResponse = $this->actingAs($this->user)->postJson('/api/v1/journal-entries', [
+            'entry_date' => '2025-01-15',
+            'description' => 'Cash sale',
+            'lines' => [
+                [
+                    'account_id' => $this->cashAccount->id,
+                    'debit' => '100.00',
+                    'credit' => '0.00',
+                ],
+                [
+                    'account_id' => $this->revenueAccount->id,
+                    'debit' => '0.00',
+                    'credit' => '100.00',
+                ],
+            ],
+        ]);
+        $createResponse->assertCreated();
+
+        $response = $this->actingAs($this->user)
+            ->getJson("/api/v1/journal-entries/{$createResponse->json('data.id')}");
+
+        $response->assertOk();
+
+        /** @var array<int, array{account_id: string, account_code: string, account_name: string}> $lines */
+        $lines = $response->json('data.lines');
+        $this->assertCount(2, $lines);
+
+        $byAccountId = [];
+        foreach ($lines as $line) {
+            $byAccountId[$line['account_id']] = $line;
+        }
+
+        $this->assertSame('1100', $byAccountId[$this->cashAccount->id]['account_code']);
+        $this->assertSame('Cash', $byAccountId[$this->cashAccount->id]['account_name']);
+        $this->assertSame('4000', $byAccountId[$this->revenueAccount->id]['account_code']);
+        $this->assertSame('Sales Revenue', $byAccountId[$this->revenueAccount->id]['account_name']);
+    }
+
     public function test_multi_line_journal_entry(): void
     {
         $taxAccount = Account::create([
