@@ -10,6 +10,17 @@
 
 **Spec (authoritative):** `docs/superpowers/specs/2026-07-10-pos-cart-always-foreground-design.md`. All work in worktree `apps/erp.cart-foreground`, branch `feat/pos-cart-foreground`. All paths below are relative to the worktree root unless absolute. Do NOT push.
 
+## Rev 2 (2026-07-10) — adversarial-review reconciliation
+
+Folds in the accepted findings of `docs/superpowers/specs/reviews/2026-07-10-pos-cart-always-foreground-spec-plan-adversarial-review.md` (2 reviewers, 0 BLOCKER / 5 MAJOR / 12 MINOR). **Rev 2 items override any conflicting text below**; all task bodies below have also been amended in place so the plan reads consistently.
+
+- **OWNER DECISION (U4): close pane on settle/new-sale.** `handleNewSale` clears `detailProduct` / `modifierProduct` / `editingLineId` (all three are separate `useState`s — clearing `modifierProduct` does NOT clear `editingLineId` by itself); `handleRecall`'s `replaceCart` path clears `modifierProduct` / `editingLineId` but NOT `detailProduct` (detail pane unaffected, spec §4). Task 3 carries the detail-side tests; the customize-side tests land in Task 4, where the composer stub exists. Within-sale "post-add stays open" is untouched.
+- **Esc stacking guard (U1)** — Task 2: the pane's Esc handler bails while `document.querySelector('[aria-modal="true"]')` is non-null (every Modal binds its own window Esc listener, `Modal.tsx:31-39`), with a stub-dialog test.
+- **Scroll-added-line-into-view (U2)** and **customize-EDIT confirm stamps the pulse (U9)** — Task 6 (store: `updateLineModifiers` also stamps `lastAddedLineId`/`lastAddedNonce`; UI: `TransactionCart` scrolls the matching line into view on nonce change).
+- **Stale customize-EDIT guard (U3)** — Task 4: `handleModifierConfirm` validates the edited line still exists; if not, toast with NEW i18n key `modifiers.lineGone` and close.
+- **Citation/count fixes:** `seedStores` copy range 216–354 (C2); composer fixture citation `:50-84` (C3); `CartLineItem` call sites `:261`/`:283`, subscription anchors `confirmLineDelete :96` / `cartPosition :97` (C4); the re-authored pane container line migrates `bg-gray-50` → `bg-surface-canvas` per repo rule 18 (C5); explicit-scale instruction scoped to `bcadd`/`bcsum` only — `bccomp(a, b)` takes NO scale arg, `decimal.ts:42` (C6); 22 drawer-test call sites, and `ThemePreviewPage.tsx:855` is the 4th `onViewDetails={setDetailProduct}` site (C1/C7).
+- **Task 7** policy-doc inventory completed (U10); **Task 8** device checklist extended (U1/U2/U4/U5); **Task 3** notes the U6 hidden-grid fallback (scrollTop capture / `visibility` hiding); **Task 2** pane wrappers carry `overflow-x-auto` (U8) so a squeezed sheet scrolls instead of clipping the tab strip and close X.
+
 ## Global Constraints
 
 - **Design tokens only** — no hex values or raw Tailwind palette classes in `.tsx` (ESLint color-guard must stay clean); new CSS uses `var(--…)` semantic tokens from `apps/pos/src/index.css`.
@@ -24,7 +35,7 @@
 
 ## Decisions taken while planning (for reviewers)
 
-1. **Pulse triggers on `cartStore.addItem` only** (both its merge-increment and new-line paths). Every `addItemGated` ingress lands there (`addItemWithDefaults` delegates to `addItem`, `apps/pos/src/stores/cartStore.ts:333-336`). Cart-local `updateQuantity` (stepper/numpad) does NOT pulse — the operator is already looking at the cart, and quantity edits are not "adds landing from the pane". `replaceCart`/hydration resets pulse state (a recalled cart must not pulse).
+1. **Pulse triggers on `cartStore.addItem`** (both its merge-increment and new-line paths) **and — Rev 2, U9 — on a successful `updateLineModifiers`** (the customize-EDIT confirm is a pane-originated cart mutation the operator must confirm). Every `addItemGated` ingress lands on `addItem` (`addItemWithDefaults` delegates, `apps/pos/src/stores/cartStore.ts:333-336`). Cart-local `updateQuantity` (stepper/numpad) does NOT pulse — the operator is already looking at the cart, and quantity edits are not "adds landing from the pane". `replaceCart`/hydration resets pulse state (a recalled cart must not pulse).
 2. **Detail-tab state moves to HomePage** (`detailTab`), reset to `'details'` on every `handleViewDetails`. The old overlay host owned it with a product-id reset that in practice always reopened on Details (see comment `apps/pos/src/components/pos/ProductDetailDrawer.tsx:52-55`) — reset-on-open preserves those semantics exactly, including "opening detail for a different product swaps content in place".
 3. **`ModifierSelectionModal` is deleted** after extraction (HomePage is its only consumer — verified by grep; spec §2.3). Its test suite is ported to `ModifierComposerSheet`. The two "renders nothing when closed / product null" tests are dropped: mount-gating now belongs to `ProductPaneHost` and is tested there.
 4. **The extracted composer fixes the two `parseFloat`-on-money instances it inherits** (`ModifierSelectionModal.tsx:88,94,167`) using `bcadd`/`bcsum`/`bccomp` — moving code into a new file makes it "new code" under the precision guard; displayed values are unchanged (behavior parity holds).
@@ -198,7 +209,7 @@ export interface ProductPaneHostProps {
 export function ProductPaneHost(props: ProductPaneHostProps): JSX.Element;
 ```
 
-DOM contract: root `data-testid="product-pane-host"`; grid wrapper `data-testid="product-pane-grid"` carries `flex` in grid view and `hidden` otherwise; pane wrappers `data-testid="product-pane-detail"` / `"product-pane-customize"`. Esc closes DETAIL only. No `fixed`/`inset-0`/`aria-modal` anywhere on the host path.
+DOM contract: root `data-testid="product-pane-host"`; grid wrapper `data-testid="product-pane-grid"` carries `flex` in grid view and `hidden` otherwise; pane wrappers `data-testid="product-pane-detail"` / `"product-pane-customize"`. Esc closes DETAIL only — and ONLY when no modal dialog is above the pane: the handler bails while `document.querySelector('[aria-modal="true"]')` is non-null (Rev 2, U1 — every Modal binds its own window Esc listener, `Modal.tsx:31-39`; without the guard one Esc press would close both surfaces). No `fixed`/`inset-0`/`aria-modal` anywhere on the host path.
 
 **Steps:**
 
@@ -284,6 +295,26 @@ describe('ProductPaneHost', () => {
     expect(onCloseDetail).toHaveBeenCalledTimes(1);
   });
 
+  it('Escape does NOT close the detail pane while a modal dialog is above it (Rev 2, U1)', () => {
+    const onCloseDetail = vi.fn();
+    renderHost({ detailProduct: productA, onCloseDetail });
+
+    // Stub a stacked dialog (variant picker, held, customer search…) — every
+    // Modal binds its own window Esc listener (Modal.tsx:31-39); that press
+    // belongs to the dialog, not the pane.
+    const dialogStub = document.createElement('div');
+    dialogStub.setAttribute('role', 'dialog');
+    dialogStub.setAttribute('aria-modal', 'true');
+    document.body.appendChild(dialogStub);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onCloseDetail).not.toHaveBeenCalled();
+
+    dialogStub.remove();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onCloseDetail).toHaveBeenCalledTimes(1);
+  });
+
   it('Escape does NOT close the customize pane (explicit confirm/cancel only, spec §4)', () => {
     const onCloseDetail = vi.fn();
     renderHost({ modifierProduct: productB, onCloseDetail });
@@ -359,7 +390,13 @@ export function ProductPaneHost({
   useEffect(() => {
     if (paneView !== 'detail') return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCloseDetail();
+      if (event.key !== 'Escape') return;
+      // Esc-stacking guard (Rev 2, U1): every Modal binds its own window Esc
+      // listener (Modal.tsx:31-39). While a dialog is stacked above the pane
+      // (variant picker, held, customer search…), that Esc belongs to the
+      // dialog — bail so one press doesn't close both surfaces.
+      if (document.querySelector('[aria-modal="true"]') !== null) return;
+      onCloseDetail();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -378,13 +415,16 @@ export function ProductPaneHost({
       >
         {children}
       </div>
+      {/* overflow-x-auto (Rev 2, U8): the sheets carry min-w-[680px]; at
+          degenerate pane widths the wrapper scrolls horizontally instead of
+          clipping the tab strip and close X inside overflow-hidden parents. */}
       {paneView === 'detail' && detailProduct !== null && (
-        <div data-testid="product-pane-detail" className="flex min-h-0 flex-1 flex-col">
+        <div data-testid="product-pane-detail" className="flex min-h-0 flex-1 flex-col overflow-x-auto">
           {renderDetail(detailProduct)}
         </div>
       )}
       {paneView === 'customize' && modifierProduct !== null && (
-        <div data-testid="product-pane-customize" className="flex min-h-0 flex-1 flex-col">
+        <div data-testid="product-pane-customize" className="flex min-h-0 flex-1 flex-col overflow-x-auto">
           {renderCustomize(modifierProduct)}
         </div>
       )}
@@ -409,16 +449,16 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 3: HomePage wiring — detail pane + structural invariant test
 
 **Files:**
-- Modify: `apps/pos/src/pages/HomePage.tsx` — import block (`:55`), state (`:241`), `handleCustomize` (`:984-990`), `handleViewDetails` (`:992-994`), `handleEditModifiers` (`:996-1006`), product-pane layout (`:1502-1535`), overlay mount removal (`:1637-1644`).
+- Modify: `apps/pos/src/pages/HomePage.tsx` — import block (`:55`), state (`:241`), `handleCustomize` (`:984-990`), `handleViewDetails` (`:992-994`), `handleEditModifiers` (`:996-1006`), `handleRecall` (`:1303-1313`), `handleNewSale` (`:1385-1396`), product-pane layout (`:1502-1535`), overlay mount removal (`:1637-1644`).
 - Test: `apps/pos/src/pages/__tests__/HomePage.paneInvariant.test.tsx` (new; harness copied from `apps/pos/src/pages/__tests__/HomePage.customerModal.test.tsx`).
 
 **Interfaces:**
 - Consumes: `ProductPaneHost` (Task 2 signature), `ProductDetailSheet` with `variant="pane"` + `activeTab`/`onTabChange` (Task 1), `DetailTab` type (barrel `@/components/organisms/ProductDetailDrawer`, re-exported from `components/pos/ProductDetailDrawer.tsx:34`), existing `detailProduct`/`modifierProduct`/`editingLineId` state, `locationStock` record and `posStockPolicy` already threaded to the grid (`HomePage.tsx:1520-1521`).
-- Produces: HomePage state contract for later tasks — `handleViewDetails` clears `modifierProduct`+`editingLineId` and resets `detailTab`; `handleCustomize`/`handleEditModifiers` clear `detailProduct`. `ProductPaneHost` mounted inside the `flex flex-[7]` container wrapping `TableSelector`+`ProductGrid` as children, with `ToastSmartPrompts` OUTSIDE the host (stays visible during panes, spec §4). Interim: `modifierProduct={null}` and `renderCustomize={() => null}` are passed to the host (Task 4 flips them); the `ModifierSelectionModal` overlay mount (`:1620-1625`) stays for now.
+- Produces: HomePage state contract for later tasks — `handleViewDetails` clears `modifierProduct`+`editingLineId` and resets `detailTab`; `handleCustomize`/`handleEditModifiers` clear `detailProduct`. Close-on-settle (Rev 2, owner decision U4): `handleNewSale` clears `detailProduct`+`modifierProduct`+`editingLineId`; `handleRecall`'s `replaceCart` path clears `modifierProduct`+`editingLineId` but NOT `detailProduct` (detail pane unaffected, spec §4). `ProductPaneHost` mounted inside the `flex flex-[7]` container wrapping `TableSelector`+`ProductGrid` as children, with `ToastSmartPrompts` OUTSIDE the host (stays visible during panes, spec §4). Interim: `modifierProduct={null}` and `renderCustomize={() => null}` are passed to the host (Task 4 flips them); the `ModifierSelectionModal` overlay mount (`:1620-1625`) stays for now.
 
 **Steps:**
 
-- [ ] **Step 1 — failing test.** Create `apps/pos/src/pages/__tests__/HomePage.paneInvariant.test.tsx`. Build it from the existing HomePage render harness: copy VERBATIM from `apps/pos/src/pages/__tests__/HomePage.customerModal.test.tsx` — the lib/hook mocks (its lines 10–113), the heavy component mocks (lines 114–215), the store imports + `seedStores()` helper (lines 216–352), and the `import { HomePage } from '../HomePage';` — with exactly these THREE mock changes, then append the new describe block below.
+- [ ] **Step 1 — failing test.** Create `apps/pos/src/pages/__tests__/HomePage.paneInvariant.test.tsx`. Build it from the existing HomePage render harness: copy VERBATIM from `apps/pos/src/pages/__tests__/HomePage.customerModal.test.tsx` — the lib/hook mocks (its lines 10–113), the heavy component mocks (lines 114–215), the store imports + `seedStores()` helper (lines 216–354), and the `import { HomePage } from '../HomePage';` — with exactly these FIVE mock changes, then append the new describe block below.
 
 Change (1): replace the `@/components/organisms/ProductGrid` mock with a stub that exposes trigger buttons for the pane callbacks:
 
@@ -464,6 +504,30 @@ vi.mock('@/components/organisms/ProductDetailDrawer', () => ({
 ```
 
 Change (3): keep the copied `@/components/organisms/ModifierSelectionModal` mock as-is (`ModifierSelectionModal: () => null`) — Task 4 updates it.
+
+Change (4) (Rev 2, U4): replace the `@/components/organisms/CheckoutSuccessModal` mock (`() => null`) with a trigger stub so tests can drive `handleNewSale` (HomePage passes it as `onClose`, `HomePage.tsx:1552`; the mount is gated on `lastReceipt`, which the settle test seeds):
+
+```tsx
+vi.mock('@/components/organisms/CheckoutSuccessModal', () => ({
+  CheckoutSuccessModal: ({ onClose }: { onClose: () => void }) => (
+    <button data-testid="new-sale-trigger" onClick={onClose}>
+      new sale
+    </button>
+  ),
+}));
+```
+
+Change (5) (Rev 2, U3/U4): replace the `@/components/organisms/HeldTransactionsModal` mock (`() => null`) with a recall trigger (HomePage passes `onRecall={(id) => void handleRecall(id)}`, `HomePage.tsx:1580`):
+
+```tsx
+vi.mock('@/components/organisms/HeldTransactionsModal', () => ({
+  HeldTransactionsModal: ({ onRecall }: { onRecall: (id: string) => void }) => (
+    <button data-testid="recall-trigger" onClick={() => onRecall('held-1')}>
+      recall
+    </button>
+  ),
+}));
+```
 
 Append the tests:
 
@@ -532,8 +596,46 @@ describe('HomePage — pane invariant (cart always foreground)', () => {
     // detailProduct must have been cleared by handleCustomize.
     expect(screen.queryByTestId('product-detail-sheet-stub')).toBeNull();
   });
+
+  it('settle/new-sale closes the detail pane — the next sale starts on the grid (Rev 2, U4)', async () => {
+    // CheckoutSuccessModal only mounts when lastReceipt is set (HomePage.tsx:1549-1558).
+    usePaymentStore.setState({
+      lastReceipt: { receipt_number: 'R-1', total: '10.000' } as never,
+    } as never);
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-detail-trigger'));
+    });
+    expect(screen.getByTestId('product-detail-sheet-stub')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('new-sale-trigger'));
+    });
+    expect(screen.queryByTestId('product-detail-sheet-stub')).toBeNull();
+    expect(screen.getByTestId('product-pane-grid')).not.toHaveClass('hidden');
+  });
+
+  it('recall leaves the DETAIL pane open (spec §4: detail is product context, not cart state)', async () => {
+    // seedStores' recallTransaction resolves undefined (early return before
+    // replaceCart) — override it so handleRecall reaches the replaceCart path.
+    useHoldStore.setState({
+      recallTransaction: vi
+        .fn()
+        .mockResolvedValue({ items: [], transactionDiscount: undefined }) as never,
+    } as never);
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-detail-trigger'));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('recall-trigger'));
+    });
+    expect(screen.getByTestId('product-detail-sheet-stub')).toBeInTheDocument();
+  });
 });
 ```
+
+(The customize-side of U3/U4 — recall clearing the composer, and the vanished-line confirm guard — is tested in Task 4 Step 5, where the composer stub exists.)
 
 - [ ] **Step 2 — RED.** `cd apps/pos && pnpm exec vitest run src/pages/__tests__/HomePage.paneInvariant.test.tsx` — fails (the detail still mounts via the old overlay `ProductDetailDrawer`, which the barrel mock doesn't export → HomePage import of the barrel breaks, and/or no `product-pane-detail` testid exists). Kill orphaned workers.
 
@@ -583,6 +685,51 @@ import { ProductPaneHost } from '@/components/pos/ProductPaneHost';
 
 (d) In `handleEditModifiers` (lines 996-1006), add `setDetailProduct(null);` immediately after `setEditingLineId(itemId);`.
 
+(d2) **Close-on-settle + recall invalidation (Rev 2, U3/U4).** Replace `handleNewSale` (lines 1385-1396) with:
+
+```tsx
+  const handleNewSale = useCallback(() => {
+    setShowSuccessModal(false);
+    // Checkout-success teardown — NOT a discard (no fraud signal).
+    clearCart('checkout');
+    clearLastReceipt();
+    setSelectedTableId(null);
+    // Close-on-settle (Rev 2, owner decision U4): the next sale starts on the
+    // grid — never on the previous customer's product — including through
+    // lock-after-sale. editingLineId is its own state; clear it explicitly.
+    setDetailProduct(null);
+    setModifierProduct(null);
+    setEditingLineId(null);
+
+    // Lock screen after sale if enabled
+    if (useSettingsStore.getState().lockAfterSale) {
+      useOperatorStore.getState().lock();
+    }
+  }, [clearCart, clearLastReceipt]);
+```
+
+and replace `handleRecall` (lines 1303-1313) with:
+
+```tsx
+  const handleRecall = useCallback(
+    async (id: string) => {
+      const tx = await recallTransaction(id);
+      if (!tx) return;
+
+      // Atomic replace — avoids the per-item setState loop that amplified BG3.
+      useCartStore.getState().replaceCart(tx.items, tx.transactionDiscount);
+      // Rev 2 (U3): the recalled cart invalidates any in-flight customize-EDIT
+      // (a dangling editingLineId would make Confirm a silent no-op). The
+      // DETAIL pane is deliberately NOT cleared — it is product context, not
+      // cart state (spec §4).
+      setModifierProduct(null);
+      setEditingLineId(null);
+      setShowHeldModal(false);
+    },
+    [recallTransaction],
+  );
+```
+
 (e) Replace the product-pane container (lines 1502-1535) with:
 
 ```tsx
@@ -590,7 +737,7 @@ import { ProductPaneHost } from '@/components/pos/ProductPaneHost';
           The cart column above is the untouched sibling flex child, so pane
           views can never occlude it (spec §1, Approach A). ToastSmartPrompts
           stays OUTSIDE the host: inline, non-occluding, cart-relevant (§4). */}
-      <div className="flex flex-[7] flex-col overflow-hidden bg-gray-50 p-2">
+      <div className="flex flex-[7] flex-col overflow-hidden bg-surface-canvas p-2">
         <ProductPaneHost
           detailProduct={detailProduct}
           modifierProduct={null /* Task 4 flips this to modifierProduct + the extracted composer */}
@@ -644,7 +791,9 @@ import { ProductPaneHost } from '@/components/pos/ProductPaneHost';
       </div>
 ```
 
-(The `ProductGrid` props are copied unchanged from the current lines 1511-1531 — only the wrapper changes.)
+(The `ProductGrid` props are copied unchanged from the current lines 1511-1531 — only the wrapper changes. Rev 2, C5: the re-authored wrapper line migrates the old `bg-gray-50` to `bg-surface-canvas` — repo rule 18 requires token migration on touched lines.)
+
+**Hidden-grid device fallback (Rev 2, U6):** `display:none` + TanStack Virtual scroll restoration is browser-behavioral and invisible to jsdom. If the Task 8 device/playwright pass shows the grid returning scrolled-to-top (or virtualizer thrash) after a pane closes, the named fallback is: capture the grid scroll container's `scrollTop` on hide and restore it on show, or switch `ProductPaneHost`'s hidden branch to `visibility`-based hiding (keeps layout) — contained inside `ProductPaneHost`, no API change.
 
 (f) Delete the overlay mount at lines 1637-1644 (`{/* Product detail drawer — eye icon … */}` + the `<ProductDetailDrawer …/>` element).
 
@@ -666,11 +815,11 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `apps/pos/src/components/organisms/ModifierSelectionModal/ModifierComposerSheet.tsx`
 - Delete: `apps/pos/src/components/organisms/ModifierSelectionModal/ModifierSelectionModal.tsx`, `apps/pos/src/components/organisms/ModifierSelectionModal/__tests__/ModifierSelectionModal.test.tsx`
-- Modify: `apps/pos/src/components/organisms/ModifierSelectionModal/index.ts` (barrel), `apps/pos/src/pages/HomePage.tsx` (import `:63`, host props from Task 3 step (e), modal mount `:1619-1625` — line numbers shift slightly after Task 3; locate by content), `apps/pos/src/locales/fr/pos.json` + `apps/pos/src/locales/en/pos.json` (`modifiers.cancel`), `apps/pos/src/pages/__tests__/HomePage.customerModal.test.tsx` + `apps/pos/src/pages/__tests__/HomePage.paneInvariant.test.tsx` (mock factory update)
+- Modify: `apps/pos/src/components/organisms/ModifierSelectionModal/index.ts` (barrel), `apps/pos/src/pages/HomePage.tsx` (import `:63`, host props from Task 3 step (e), modal mount `:1619-1625` — line numbers shift slightly after Task 3; locate by content), `apps/pos/src/locales/fr/pos.json` + `apps/pos/src/locales/en/pos.json` (`modifiers.cancel`, `modifiers.lineGone`), `apps/pos/src/pages/__tests__/HomePage.customerModal.test.tsx` + `apps/pos/src/pages/__tests__/HomePage.paneInvariant.test.tsx` (mock factory updates)
 - Test: `apps/pos/src/components/organisms/ModifierSelectionModal/__tests__/ModifierComposerSheet.test.tsx` (new; ports the old suite)
 
 **Interfaces:**
-- Consumes: `POSProduct` (`@/types/product`), `ModifierGroup`/`Modifier` (`@/types/modifier`), `SelectedModifier` (`@/types/cart`), `useCurrency` (`@/lib/currency`), `bcadd`/`bcsum`/`bccomp` (`apps/pos/src/lib/decimal.ts:22,51,42` — ALWAYS pass the explicit `decimals` scale, never rely on the default 3), `cn`, `Check`/`X` from lucide-react. Host contract from Task 2 (`renderCustomize`). HomePage's `handleModifierConfirm` (`HomePage.tsx:1008-1022`) already adds-and-closes on confirm.
+- Consumes: `POSProduct` (`@/types/product`), `ModifierGroup`/`Modifier` (`@/types/modifier`), `SelectedModifier` (`@/types/cart`), `useCurrency` (`@/lib/currency`), `bcadd`/`bcsum` (`apps/pos/src/lib/decimal.ts:22,51` — ALWAYS pass the explicit `decimals` scale to these two, never rely on the default 3) and `bccomp` (`decimal.ts:42` — `bccomp(a, b)` takes NO scale argument; Rev 2, C6), `cn`, `Check`/`X` from lucide-react. Host contract from Task 2 (`renderCustomize`). HomePage's `handleModifierConfirm` (`HomePage.tsx:1008-1022`) already adds-and-closes on confirm; this task hardens its EDIT path (Rev 2, U3 — see Step 6 (b2)).
 - Produces:
 
 ```tsx
@@ -682,11 +831,11 @@ export interface ModifierComposerSheetProps {
 export function ModifierComposerSheet(props: ModifierComposerSheetProps): JSX.Element;
 ```
 
-Barrel `index.ts` re-exports exactly `ModifierComposerSheet` + `ModifierComposerSheetProps` (the `ModifierSelectionModal` export is removed). New i18n key `modifiers.cancel` (fr "Annuler" / en "Cancel"). Root: `role="region"`, `aria-label={t('modifiers.customize')}`, `data-testid="modifier-composer-sheet"`, `h-full w-full min-w-[680px]`, own header with title + 48px close X. Gating/pricing/quantity semantics byte-identical to the old modal (except decimal-safe math, decision 4).
+Barrel `index.ts` re-exports exactly `ModifierComposerSheet` + `ModifierComposerSheetProps` (the `ModifierSelectionModal` export is removed). New i18n keys: `modifiers.cancel` (fr "Annuler" / en "Cancel") and `modifiers.lineGone` (fr "Ligne introuvable — le panier a changé" / en "Line not found — the cart changed"; Rev 2, U3). Root: `role="region"`, `aria-label={t('modifiers.customize')}`, `data-testid="modifier-composer-sheet"`, `h-full w-full min-w-[680px]`, own header with title + 48px close X. Gating/pricing/quantity semantics byte-identical to the old modal (except decimal-safe math, decision 4).
 
 **Steps:**
 
-- [ ] **Step 1 — failing test.** Create `apps/pos/src/components/organisms/ModifierSelectionModal/__tests__/ModifierComposerSheet.test.tsx` (port of the old suite — the fixtures `toppingsGroup`/`sizeGroup`/`productWithModifiers` are copied verbatim from `ModifierSelectionModal.test.tsx:44-77`):
+- [ ] **Step 1 — failing test.** Create `apps/pos/src/components/organisms/ModifierSelectionModal/__tests__/ModifierComposerSheet.test.tsx` (port of the old suite — the fixtures `toppingsGroup`/`sizeGroup`/`productWithModifiers` are copied verbatim from `ModifierSelectionModal.test.tsx:50-84`):
 
 ```tsx
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -1122,9 +1271,11 @@ export function ModifierComposerSheet({ product, onConfirm, onClose }: ModifierC
 
 Two intentional deltas from the source, both preserving behavior: chip buttons `py-2` → `min-h-12` added (touch-target floor; the old `py-2` chips were ~38px) and `if (!allValid || !product) return` → `if (!allValid) return` (`product` is now non-nullable).
 
-Add the i18n key to BOTH locale files, inside the existing `"modifiers"` object:
-- `apps/pos/src/locales/fr/pos.json` → `"cancel": "Annuler"`
-- `apps/pos/src/locales/en/pos.json` → `"cancel": "Cancel"`
+Add the i18n keys to BOTH locale files, inside the existing `"modifiers"` object:
+- `apps/pos/src/locales/fr/pos.json` → `"cancel": "Annuler"` and `"lineGone": "Ligne introuvable — le panier a changé"`
+- `apps/pos/src/locales/en/pos.json` → `"cancel": "Cancel"` and `"lineGone": "Line not found — the cart changed"`
+
+(`modifiers.lineGone` is consumed by HomePage's confirm guard in Step 6 (b2) — Rev 2, U3.)
 
 - [ ] **Step 4 — GREEN (component).** `cd apps/pos && pnpm exec vitest run "src/components/organisms/ModifierSelectionModal/__tests__/ModifierComposerSheet.test.tsx"` — all pass. Kill orphaned workers. Commit:
 
@@ -1135,17 +1286,57 @@ git commit -m "feat(pos): extract ModifierComposerSheet (pane-hosted composer, d
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 5 — failing wiring test.** In `apps/pos/src/pages/__tests__/HomePage.paneInvariant.test.tsx`, replace the `@/components/organisms/ModifierSelectionModal` mock factory with:
+- [ ] **Step 5 — failing wiring test.** In `apps/pos/src/pages/__tests__/HomePage.paneInvariant.test.tsx`, replace the `@/components/organisms/ModifierSelectionModal` mock factory with a stub that also surfaces the confirm callback (Rev 2, U3):
 
 ```tsx
 vi.mock('@/components/organisms/ModifierSelectionModal', () => ({
-  ModifierComposerSheet: ({ product }: { product: { name: string } }) => (
-    <div data-testid="modifier-composer-stub">{product.name}</div>
+  ModifierComposerSheet: ({
+    product,
+    onConfirm,
+  }: {
+    product: { name: string };
+    onConfirm: (selectedModifiers: unknown[]) => void;
+  }) => (
+    <div data-testid="modifier-composer-stub">
+      {product.name}
+      <button data-testid="composer-confirm-trigger" onClick={() => onConfirm([])}>
+        confirm
+      </button>
+    </div>
   ),
 }));
 ```
 
-and append to the `describe('HomePage — pane invariant …')` block:
+Also (Rev 2, U3): replace the copied `@/components/organisms/TransactionCart` mock with one that surfaces `onEditModifiers` (drives `handleEditModifiers` → the customize-EDIT path):
+
+```tsx
+vi.mock('@/components/organisms/TransactionCart', () => ({
+  TransactionCart: ({
+    customerControl,
+    onEditModifiers,
+  }: {
+    customerControl?: ReactNode;
+    onEditModifiers?: (itemId: string) => void;
+  }) => (
+    <div data-testid="transaction-cart">
+      {customerControl}
+      <button data-testid="edit-line-trigger" onClick={() => onEditModifiers?.('line-1')}>
+        edit line
+      </button>
+    </div>
+  ),
+}));
+```
+
+and add a sonner mock at the top of the file (with the other module mocks) so the U3 toast is assertable — HomePage does not mount `<Toaster>` (that lives in `App.tsx:440`), so mocking only `toast` is safe:
+
+```tsx
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+}));
+```
+
+Then append to the `describe('HomePage — pane invariant …')` block:
 
 ```tsx
   it('hosts customize as an in-pane view (no fixed-inset overlay) and detail↔customize stay exclusive', async () => {
@@ -1170,9 +1361,59 @@ and append to the `describe('HomePage — pane invariant …')` block:
     expect(screen.queryByTestId('modifier-composer-stub')).toBeNull();
     expect(screen.getByTestId('product-detail-sheet-stub')).toBeInTheDocument();
   });
+
+  it('recall clears the CUSTOMIZE pane (cart replacement invalidates the in-flight edit, Rev 2 U3/U4)', async () => {
+    useHoldStore.setState({
+      recallTransaction: vi
+        .fn()
+        .mockResolvedValue({ items: [], transactionDiscount: undefined }) as never,
+    } as never);
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-customize-trigger'));
+    });
+    expect(screen.getByTestId('modifier-composer-stub')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('recall-trigger'));
+    });
+    expect(screen.queryByTestId('modifier-composer-stub')).toBeNull();
+  });
+
+  it('customize-EDIT confirm on a vanished line toasts and closes — never a silent no-op (Rev 2, U3)', async () => {
+    const { toast } = await import('sonner');
+    // Seed a cart line + its matching product so handleEditModifiers
+    // (HomePage.tsx:996-1006) can open the composer in EDIT mode.
+    const gadget = { id: 'p2', name: 'Gadget', sku: 'G1', sale_price: '5.000', stock_quantity: 3 };
+    useProductStore.setState({ products: [gadget] } as never);
+    useCartStore.setState({
+      items: [{ id: 'line-1', product: { id: 'p2', name: 'Gadget' }, quantity: 1 }] as never,
+    } as never);
+
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('edit-line-trigger'));
+    });
+    expect(screen.getByTestId('modifier-composer-stub')).toBeInTheDocument();
+
+    // The cart stays interactive while composing — the edited line vanishes
+    // under the composer (removal / recall / clear).
+    act(() => {
+      useCartStore.setState({ items: [] } as never);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('composer-confirm-trigger'));
+    });
+    expect(vi.mocked(useCartStore.getState().updateLineModifiers)).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith('modifiers.lineGone');
+    expect(screen.queryByTestId('modifier-composer-stub')).toBeNull();
+  });
 ```
 
-Run `cd apps/pos && pnpm exec vitest run src/pages/__tests__/HomePage.paneInvariant.test.tsx` — the new test fails (customize still renders through the old modal overlay path / `renderCustomize` returns null). Kill orphaned workers.
+(The harness mocks `react-i18next` with `t: (key) => key`, so the toast asserts the raw key; `updateLineModifiers` is the `vi.fn()` seeded by `seedStores`.)
+
+Run `cd apps/pos && pnpm exec vitest run src/pages/__tests__/HomePage.paneInvariant.test.tsx` — the new tests fail (customize still renders through the old modal overlay path / `renderCustomize` returns null; the confirm guard doesn't exist yet). Kill orphaned workers.
 
 - [ ] **Step 6 — wire HomePage + delete the modal.** In `apps/pos/src/pages/HomePage.tsx`:
 
@@ -1199,7 +1440,40 @@ and:
           )}
 ```
 
-(`handleModifierConfirm`, `HomePage.tsx:1008-1022`, already performs the gated add / line-modifier update AND closes via `setModifierProduct(null)` + `setEditingLineId(null)` — confirm-closes-back-to-grid per spec §1 with zero changes.)
+(`handleModifierConfirm`, `HomePage.tsx:1008-1022`, already performs the gated add / line-modifier update AND closes via `setModifierProduct(null)` + `setEditingLineId(null)` — confirm-closes-back-to-grid per spec §1. Rev 2 adds the U3 guard below; the rest is unchanged.)
+
+(b2) **Vanished-line confirm guard (Rev 2, U3).** The cart is interactive while composing, and `updateLineModifiers` silently no-ops on a missing line id (`cartStore.ts:371-393`) — validate and give feedback instead. Add `import { toast } from 'sonner';` to HomePage's imports (sonner is the app's established toast idiom, cf. `cartIngress.ts:16`; HomePage's `t` comes from the existing `useTranslation()` at `:100`). Replace `handleModifierConfirm` (lines 1008-1022) with:
+
+```tsx
+  const handleModifierConfirm = useCallback(
+    (selectedModifiers: SelectedModifier[]) => {
+      if (!modifierProduct) return;
+      if (editingLineId) {
+        // Rev 2 (U3): the cart stays interactive while composing — the edited
+        // line can vanish under the composer (removal, recall, clear).
+        // updateLineModifiers silently no-ops on a missing id, so validate
+        // and toast instead of a silent nothing.
+        const lineStillExists = useCartStore
+          .getState()
+          .items.some((item) => item.id === editingLineId);
+        if (!lineStillExists) {
+          toast.error(t('modifiers.lineGone'));
+          setModifierProduct(null);
+          setEditingLineId(null);
+          return;
+        }
+        // Editing modifiers on an EXISTING line never changes quantity — ungated.
+        updateLineModifiers(editingLineId, selectedModifiers);
+      } else {
+        // Task 11 — a new modifier-configured line is a stock add: gated.
+        void addItemGated(modifierProduct, { selectedModifiers });
+      }
+      setModifierProduct(null);
+      setEditingLineId(null);
+    },
+    [modifierProduct, editingLineId, updateLineModifiers, t],
+  );
+```
 
 (c) Delete the `{/* Modifier selection modal */}` mount (the `<ModifierSelectionModal …/>` block, pre-Task-3 lines 1619-1625).
 
@@ -1232,7 +1506,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 5: Overlay host deletion + `/theme-preview` migration
 
 **Files:**
-- Modify: `apps/pos/src/components/pos/ProductDetailDrawer.tsx` (delete the overlay host `ProductDetailDrawer` + `ProductDetailDrawerProps` + `DETAILS_TAB`, lines 18-77 + 43; prune the now-unused `useState` import), `apps/pos/src/components/organisms/ProductDetailDrawer/index.ts` (barrel), `apps/pos/src/pages/ThemePreviewPage.tsx` (import `:30`, state `:369`, grid `onViewDetails` handlers `:766,823,840`, overlay-demo button `:769-778`, inline-sheet section `:782-797`, overlay mount `:935-939`)
+- Modify: `apps/pos/src/components/pos/ProductDetailDrawer.tsx` (delete the overlay host `ProductDetailDrawer` + `ProductDetailDrawerProps` + `DETAILS_TAB`, lines 18-77 + 43; prune the now-unused `useState` import), `apps/pos/src/components/organisms/ProductDetailDrawer/index.ts` (barrel), `apps/pos/src/pages/ThemePreviewPage.tsx` (import `:30`, state `:369`, grid `onViewDetails` handlers `:766,823,840,855`, overlay-demo button `:769-778`, inline-sheet section `:782-797`, overlay mount `:935-939`)
 - Test: `apps/pos/src/components/pos/__tests__/ProductDetailDrawer.test.tsx`, `apps/pos/src/components/pos/__tests__/ProductDetailDrawerMerchandising.test.tsx` (convert to sheet-harness rendering)
 
 **Interfaces:**
@@ -1285,7 +1559,7 @@ function SheetHarness({
 }
 ```
 
-(c) Mechanically replace every `render(<ProductDetailDrawer isOpen product={…} onClose={() => {}}` with `render(<SheetHarness product={…} onClose={() => {}}` (drop the `isOpen` prop; keep `locationStock`/`hardBlockOutOfStock` args as-is; ~21 call sites — replace ALL, verify with `grep -c '<ProductDetailDrawer' <file>` → 0 afterward). The Task 1 describe block's direct `<ProductDetailSheet …>` renders stay unchanged.
+(c) Mechanically replace every `render(<ProductDetailDrawer isOpen product={…} onClose={() => {}}` with `render(<SheetHarness product={…} onClose={() => {}}` (drop the `isOpen` prop; keep `locationStock`/`hardBlockOutOfStock` args as-is; 22 call sites (Rev 2, C7) — replace ALL, verify with `grep -c '<ProductDetailDrawer' <file>` → 0 afterward). The Task 1 describe block's direct `<ProductDetailSheet …>` renders stay unchanged.
 
 (d) In `apps/pos/src/components/pos/__tests__/ProductDetailDrawerMerchandising.test.tsx`: same import change, add the same `SheetHarness` (verbatim copy — this file has its own mock preamble), and rewrite its single `renderDrawer` helper (`:162-171`) to:
 
@@ -1305,7 +1579,7 @@ function renderDrawer(product: POSProduct | null = currentProduct) {
 
 (b) State (line 369): replace `const [detailProduct, setDetailProduct] = useState<POSProduct | null>(null);` with `const [panePreviewProduct, setPanePreviewProduct] = useState<POSProduct>(SELL_PRODUCTS[0]!);` (keep `drawerPreviewTab` at line 371 — rename it `panePreviewTab`/`setPanePreviewTab` for coherence, updating its two uses).
 
-(c) Repoint every `onViewDetails={setDetailProduct}` (lines 766, 823, 840) to `onViewDetails={setPanePreviewProduct}` — tapping the eye on any demo card now swaps the pane preview's product.
+(c) Repoint every `onViewDetails={setDetailProduct}` (lines 766, 823, 840, and 855 — the Tableau density section's `ProductTable`; Rev 2, C1) to `onViewDetails={setPanePreviewProduct}` — tapping the eye on any demo card now swaps the pane preview's product. Verify completeness: `grep -n 'setDetailProduct' apps/pos/src/pages/ThemePreviewPage.tsx` → 0 hits after this step.
 
 (d) Delete the `open-product-detail-preview` button block (lines 769-778) and the `<ProductDetailDrawer …/>` mount (lines 935-939).
 
@@ -1347,7 +1621,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 6: Added-line pulse
 
 **Files:**
-- Modify: `apps/pos/src/stores/cartStore.ts` (`CartState` `:39-59`, `initialState` `:228-233`, `addItem` merge path `:273-279` + new-line path `:329`, `clearCart` set `:446`, `replaceCart` `:558-562`), `apps/pos/src/components/organisms/TransactionCart/TransactionCart.tsx` (imports `:12`, subscriptions after `:97`, both `CartLineItem` call sites `:260-274` and `:281-296`), `apps/pos/src/components/molecules/CartLineItem/CartLineItem.tsx` (props `:12-36`, root div `:70-75`, overlay child), `apps/pos/src/index.css` (append after `.ez-tap` block `:451-453`; extend the reduced-motion list `:454-462`)
+- Modify: `apps/pos/src/stores/cartStore.ts` (`CartState` `:39-59`, `initialState` `:228-233`, `addItem` merge path `:273-279` + new-line path `:329`, `updateLineModifiers` `:371-393` (Rev 2, U9), `clearCart` set `:446`, `replaceCart` `:558-562`), `apps/pos/src/components/organisms/TransactionCart/TransactionCart.tsx` (react import `:1`, store import next to `:12`, subscriptions after the `confirmLineDelete` (`:96`) / `cartPosition` (`:97`) pair, scroll container `:218` (Rev 2, U2), both `CartLineItem` call sites `:261` and `:283`), `apps/pos/src/components/molecules/CartLineItem/CartLineItem.tsx` (props `:12-36`, root div `:70-75`, overlay child), `apps/pos/src/index.css` (append after `.ez-tap` block `:451-453`; extend the reduced-motion list `:454-462`)
 - Test: `apps/pos/src/stores/__tests__/cartStore.test.ts` (append describe), `apps/pos/src/components/molecules/CartLineItem/CartLineItem.test.tsx` (append describe), `apps/pos/src/components/organisms/TransactionCart/__tests__/TransactionCart.test.tsx` (mock update + append test)
 
 **Interfaces:**
@@ -1356,14 +1630,14 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ```ts
 // cartStore additions (CartState):
-lastAddedLineId: string | null; // line id of the most recent addItem (new line OR merge-increment)
-lastAddedNonce: number;         // monotonic; bumps on every addItem so repeat adds re-trigger
+lastAddedLineId: string | null; // line id of the most recent addItem (new line OR merge-increment) OR updateLineModifiers hit (customize-EDIT confirm, Rev 2 U9)
+lastAddedNonce: number;         // monotonic; bumps on every stamp so repeat adds re-trigger
 
 // CartLineItemProps addition:
 pulseToken?: number; // nonzero = pulse now; a NEW value re-fires; 0/undefined = idle
 ```
 
-CSS: `@keyframes ez-line-pulse` + `.ez-line-pulse` (blue `--action` background fade, 650ms, reduced-motion exempt). `TransactionCart` maps store state → `pulseToken={item.id === lastAddedLineId ? lastAddedNonce : 0}` on BOTH sale-line render branches. No i18n (decorative, `aria-hidden`).
+CSS: `@keyframes ez-line-pulse` + `.ez-line-pulse` (blue `--action` background fade, 650ms, reduced-motion exempt). `TransactionCart` maps store state → `pulseToken={item.id === lastAddedLineId ? lastAddedNonce : 0}` on BOTH sale-line render branches, and on `lastAddedNonce` change scrolls the matching line into view — `scrollIntoView({ block: 'nearest', behavior: 'smooth' })`, optional-call-guarded for jsdom (Rev 2, U2: new lines land below the fold on 8+ line tickets; a pulse that fires off-screen is the exact failure this story fixes). No i18n (decorative, `aria-hidden`).
 
 **Steps:**
 
@@ -1399,6 +1673,22 @@ CSS: `@keyframes ez-line-pulse` + `.ez-line-pulse` (blue `--action` background f
       expect(state.lastAddedNonce).toBe(1);
     });
 
+    it('stamps the pulse on updateLineModifiers — customize-EDIT confirm (Rev 2, U9)', () => {
+      useCartStore.getState().addItem(makeProduct());
+      const lineId = useCartStore.getState().items[0]!.id;
+
+      useCartStore.getState().updateLineModifiers(lineId, []);
+      const state = useCartStore.getState();
+      expect(state.lastAddedLineId).toBe(lineId);
+      expect(state.lastAddedNonce).toBe(2); // 1 from addItem, +1 from the edit
+    });
+
+    it('does NOT stamp the pulse when updateLineModifiers misses (vanished line stays a no-op)', () => {
+      useCartStore.getState().addItem(makeProduct());
+      useCartStore.getState().updateLineModifiers('no-such-line', []);
+      expect(useCartStore.getState().lastAddedNonce).toBe(1); // unchanged
+    });
+
     it('resets pulse state on clearCart and replaceCart (recalls must not pulse)', () => {
       useCartStore.getState().addItem(makeProduct());
       useCartStore.getState().clearCart('checkout');
@@ -1424,7 +1714,8 @@ Note: the suite's `beforeEach` calls `clearCart()`, which (after this task) rese
 ```ts
   /**
    * Added-line pulse (cart-always-foreground v1, spec §2.5): the line id that
-   * received the most recent `addItem` (new line OR merge-increment), plus a
+   * received the most recent `addItem` (new line OR merge-increment) or
+   * `updateLineModifiers` hit (customize-EDIT confirm, Rev 2 U9), plus a
    * monotonic nonce so a repeat add of the SAME line re-triggers the pulse.
    * Reset on clear/replace — a recalled or hydrated cart must not pulse.
    * Stale ids after removeItem are harmless: the UI matches by live line id.
@@ -1462,6 +1753,42 @@ Note: the suite's `beforeEach` calls `clearCart()`, which (after this task) rese
 (e) `clearCart` set (line 446): add `lastAddedLineId: null, lastAddedNonce: 0` to the `set({ … })` object.
 
 (f) `replaceCart` (line 561): add `lastAddedLineId: null, lastAddedNonce: 0` to its `set({ … })` object.
+
+(g) **Customize-EDIT confirm stamps the pulse (Rev 2, U9).** Replace `updateLineModifiers` (lines 371-393) with (mapping body unchanged — only the miss-guard and the stamp are new):
+
+```ts
+  updateLineModifiers: (lineId: string, newModifiers: SelectedModifier[]) => {
+    set((state) => {
+      // Rev 2 (U9): a customize-EDIT confirm is a pane-originated cart
+      // mutation the operator must confirm — stamp the pulse like addItem.
+      // A missing line id stays a no-op AND does not stamp.
+      if (!state.items.some((item) => item.id === lineId)) return state;
+      return {
+        items: state.items.map((item) => {
+          if (item.id !== lineId) return item;
+          const decimals = getDecimals();
+          const currentAdjustment = bcsum(
+            item.product.selectedModifiers?.map((m) => m.price_adjustment) ?? [],
+            decimals,
+          );
+          const basePrice = bcsub(item.product.price, currentAdjustment, decimals);
+          const newAdjustment = bcsum(newModifiers.map((m) => m.price_adjustment), decimals);
+          const priceValue = bcadd(basePrice, newAdjustment, decimals);
+          const lineTotal = bcmul(priceValue, String(item.quantity), decimals);
+          return {
+            ...item,
+            product: { ...item.product, selectedModifiers: newModifiers, price: priceValue },
+            unit_price: priceValue,
+            line_total: lineTotal,
+            tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
+          };
+        }),
+        lastAddedLineId: lineId,
+        lastAddedNonce: state.lastAddedNonce + 1,
+      };
+    });
+  },
+```
 
 - [ ] **Step 4 — GREEN (store).** `cd apps/pos && pnpm exec vitest run src/stores/__tests__/cartStore.test.ts src/stores/__tests__/cartStore.audit.test.ts` — all pass. Kill orphaned workers.
 
@@ -1543,6 +1870,24 @@ describe('TransactionCart — added-line pulse routing', () => {
     expect(screen.getByTestId('cart-line-item-1')).toHaveAttribute('data-pulse-token', '3');
     expect(screen.getByTestId('cart-line-item-2')).toHaveAttribute('data-pulse-token', '0');
   });
+
+  it('scrolls the just-added line into view on nonce change (Rev 2, U2)', () => {
+    // jsdom stubs scrollIntoView as not-implemented — install a spy.
+    const scrollSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollSpy;
+
+    useCartStore.setState({ lastAddedLineId: 'item-2', lastAddedNonce: 1 });
+    renderCart({
+      items: [makeCartItem({ id: 'item-1' }), makeCartItem({ id: 'item-2' })],
+      itemCount: 2,
+    });
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest', behavior: 'smooth' });
+    // The call target (`this` of the method call) is item-2's line wrapper.
+    expect(
+      (scrollSpy.mock.contexts[0] as Element).getAttribute('data-cart-line-id'),
+    ).toBe('item-2');
+  });
 });
 ```
 
@@ -1593,19 +1938,51 @@ and insert the overlay as the FIRST child of that root div:
       )}
 ```
 
-(b) `apps/pos/src/components/organisms/TransactionCart/TransactionCart.tsx`: add `import { useCartStore } from '@/stores/cartStore';` next to the settingsStore import (line 12). After the `confirmLineDelete` subscription (line 96), add:
+(b) `apps/pos/src/components/organisms/TransactionCart/TransactionCart.tsx`: extend the react import (line 1) to `import { useEffect, useRef, useState, type ReactNode } from 'react';` and add `import { useCartStore } from '@/stores/cartStore';` next to the settingsStore import (line 12). After the `confirmLineDelete` (`:96`) / `cartPosition` (`:97`) subscription pair (Rev 2, C4), add:
 
 ```tsx
   // Added-line pulse: the store stamps the last-added line + a nonce; only the
   // matching line receives a nonzero token (cart-always-foreground v1).
   const lastAddedLineId = useCartStore((s) => s.lastAddedLineId);
   const lastAddedNonce = useCartStore((s) => s.lastAddedNonce);
+
+  // Rev 2 (U2): scroll the just-added line into view. The list is
+  // overflow-y-auto and new lines append at the bottom — on 8+ line tickets
+  // they land below the fold, and a pulse that fires off-screen is the exact
+  // "did it work?" failure this story fixes.
+  const lineListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (lastAddedNonce === 0 || lastAddedLineId === null) return;
+    const line = lineListRef.current?.querySelector(
+      `[data-cart-line-id="${lastAddedLineId}"]`,
+    );
+    // Optional call — jsdom does not implement scrollIntoView.
+    line?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [lastAddedNonce, lastAddedLineId]);
 ```
 
-Add to BOTH `<CartLineItem …/>` call sites — the refund-mode "Buying new" branch (lines 260-274) and the normal sale branch (lines 281-296) — the prop:
+Attach the ref to the scrollable line list (line 218): `<div ref={lineListRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-0.5">`.
+
+At BOTH `<CartLineItem …/>` call sites — the refund-mode "Buying new" branch (line 261) and the normal sale branch (line 283), Rev 2 C4 — wrap the element in a keyed scroll-target div (the `key` moves from `CartLineItem` to the wrapper; each wrapper is a direct child of its `divide-y` container, so the dividers are preserved) and add the token prop. The normal sale branch becomes (the refund-mode branch is identical except for its indentation):
 
 ```tsx
-                      pulseToken={item.id === lastAddedLineId ? lastAddedNonce : 0}
+            {items.map((item) => (
+              <div key={item.id} data-cart-line-id={item.id}>
+                <CartLineItem
+                  item={item}
+                  onUpdateQuantity={onUpdateQuantity}
+                  onRemove={onRemoveItem}
+                  onQuantityTap={onQuantityTap}
+                  onDiscount={onLineDiscount}
+                  onEditModifiers={onEditModifiers}
+                  onRemoveDiscount={onRemoveLineDiscount}
+                  expanded={expandedLineId === item.id}
+                  onToggleExpand={toggleLine}
+                  confirmDelete={confirmLineDelete}
+                  pulseToken={item.id === lastAddedLineId ? lastAddedNonce : 0}
+                />
+              </div>
+            ))}
 ```
 
 (`ReturnLineItem` lines never pulse — returns are not adds.)
@@ -1672,10 +2049,13 @@ Every new POS surface declares one of three classes in review:
   Current: CashPaymentScreen, AdvancedPaymentsModal, CheckoutSuccessModal,
   DiscountModal, LineDiscountModal, QuantityNumpad, HeldTransactionsModal,
   RefundCheckoutFlow, ReceiptScanConfirmationSheet, ReceiptLocatorScreen,
-  CustomerSearchModal.
+  CustomerSearchModal, CardPaymentModal, VoucherTenderModal, CashDrawerModal,
+  RefundConfirmModal, EndOfDayPreviewModal, SaleDetailModal.
+  Note: CustomerSearchModal stays class (b) in v1, but its attach outcome is
+  cart-visible — a legitimate class-(a) candidate for v2.
 - **(c) System/admin** — shift, PIN, fiscal durability, reports → full-screen
   allowed. Current: OpenShiftScreen, CloseShiftModal, ReportsMenu,
-  DurabilityGateModal, LoyaltyEnrollDialog.
+  DurabilityGateModal, LoyaltyEnrollDialog, XReportModal, ZReportModal.
 
 No lint tooling in v1 — the pane host being the easiest path is the
 enforcement; reviewers reject an undeclared class-(a) `fixed inset-0` surface.
@@ -1747,12 +2127,16 @@ cd apps/pos && pnpm exec eslint \
   1. Open a product's detail (eye icon) — the grid is replaced, the cart stays fully visible on its side.
   2. Équivalents tab → tap an equivalent → the cart line appears/increments WITH a brief blue pulse; the pane stays open.
   3. Add the same equivalent again → the same line pulses again.
-  4. While detail is open: change a cart quantity, attach a customer, and press Pay — all work; payment takes over the full screen (allowed, class b); after settle the cart clears and the pane remains.
+  4. While detail is open: change a cart quantity, attach a customer, and press Pay — all work; payment takes over the full screen (allowed, class b); after settle the cart clears AND the pane closes (Rev 2, owner decision U4).
   5. Esc (or X) closes detail back to the grid at the same scroll position.
   6. Tap Personnaliser on a modifier product — composer replaces the grid; cart visible; Esc does NOTHING; Cancel (X) returns to grid; Confirm adds (pulse) and returns to grid.
   7. Scan a barcode while a pane is open — the add lands in the visible cart with the toast.
   8. F&B tenant: TableSelector hides with the grid; smart-prompt toasts stay visible.
   9. Cart-position "end" setting: repeat 1-2 with the cart on the right.
+  10. (Rev 2, U2) Build a >6-line ticket, then add from the pane — the cart SCROLLS the affected line into view and it pulses; the confirmation is never off-screen.
+  11. (Rev 2, U1) With the detail pane open, trigger a dialog above it (e.g. scan a code that opens the variant picker); press Esc — ONLY the picker closes, the pane stays open.
+  12. (Rev 2, U5) Esc on the composer does nothing — this is a DELIBERATE behavior change (the old modal closed on Esc); confirm it feels right in real use.
+  13. (Rev 2, U4) Close-on-settle: settle with a pane open — the next sale starts on the GRID, including with lock-after-sale enabled (unlock → grid, not the previous customer's product).
 
 - [ ] **Step 6 — closing commit** (only if Steps 1-4 forced fixes; otherwise nothing to commit). Any fix follows the same TDD loop and lands as `fix(pos): <what> (final verification)` with the co-author trailer. Do NOT push; do NOT merge — the orchestrator reviews first.
 
