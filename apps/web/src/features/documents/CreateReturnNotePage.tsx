@@ -13,6 +13,8 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@/components/atoms/Button/Button'
+import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
 import { entityRoutes } from '@/lib/entityRoutes'
@@ -261,24 +263,21 @@ export function CreateReturnNotePage() {
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      {/* Header */}
-      <div className="mb-6 flex items-center gap-4">
-        <button
-          onClick={() => { navigate('/sales/return-notes') }}
-          className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          {t('common:actions.back')}
-        </button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">
-            {t('sales:returnNotes.new')}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {t('sales:returnNotes.createDescription')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title={t('sales:returnNotes.new')}
+        subtitle={t('sales:returnNotes.createDescription')}
+        actions={(
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => { navigate('/sales/return-notes') }}
+            className="gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('common:actions.back')}
+          </Button>
+        )}
+      />
 
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
         {/* 1. Source Document Selection */}

@@ -138,14 +138,20 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web audit:design-system` reported a stale C1 fingerprint after replacing the bespoke page title.
   - GREEN: the page now uses `PageHeader` with a canonical back `Button`, and imports `DeliveryNoteConsolidation` directly instead of the local barrel.
   - Baseline shrunk from 433 to 432 after removing the stale documents C1 fingerprint.
+- 5.5 Credit/return note create-page headers:
+  - RED: `pnpm --filter @autoerp/web audit:design-system` reported stale C1 fingerprints after replacing bespoke create-page titles.
+  - GREEN: `CreateCreditNotePage` and `CreateReturnNotePage` now use `PageHeader` with canonical back `Button` actions while preserving existing form layouts.
+  - Baseline shrunk from 432 to 430 after removing stale documents C1 fingerprints.
 - Verification:
+  - `pnpm --filter @autoerp/web test -- src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx` passed: 4 tests. Existing act-warning noise remains in the suite.
   - `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentActionBar.test.tsx` passed: 2 tests. Existing act-warning noise remains in the component test.
   - `pnpm --filter @autoerp/web test -- src/features/documents/DocumentListPage.test.tsx src/features/documents/__tests__/DocumentTenantScope.test.tsx src/features/documents/components/__tests__/RelatedDocumentsTab.test.tsx` passed: 9 tests. Existing act-warning noise remains in `DocumentTenantScope`.
   - `pnpm --filter @autoerp/web test -- src/features/documents/invoices/__tests__/InvoiceDetailPage.tenantScope.test.tsx src/features/documents/sales-orders/__tests__/SalesOrderDetailPage.tenantScope.test.tsx src/features/documents/purchase-orders/__tests__/PurchaseOrderDetailPage.tenantScope.test.tsx` passed: 18 tests. Existing act-warning noise remains in those suites.
   - `pnpm --filter @autoerp/web typecheck` passed.
   - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
     - TanStack query key audit: 0 violations.
-    - Design-system audit: 432 acknowledged, 0 new, 0 stale.
+    - Design-system audit: 430 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base 87e1bb100` passed with no issues for the credit/return note create-page header slice.
   - `npx react-doctor@latest --verbose --scope changed --base 1a7f232ff` passed with no issues for the `DeliveryNoteConsolidationPage` header slice.
   - `npx react-doctor@latest --verbose --scope changed --base 6ca3fba0c` passed with no issues for the documents action-bar button slice.
   - `npx react-doctor@latest --verbose --scope changed --base bb480f355` passed with no issues for the documents remaining-C6 slice after replacing changed-page barrel imports with direct imports.

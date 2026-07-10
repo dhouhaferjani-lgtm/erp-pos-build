@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useForm, Controller } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -21,6 +21,7 @@ import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
 import { DocumentLineEditor, type DocumentLine } from '@/components/documents/DocumentLineEditor'
 import { Button } from '@/components/atoms/Button/Button'
+import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter/StickyFormFooter'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -278,25 +279,24 @@ export function CreateCreditNotePage() {
 
   return (
     <div className="flex min-h-full flex-col bg-gray-50">
-      {/* Header */}
       <div className="border-b border-gray-200 bg-white">
         <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-4">
-            <Link
-              to="/sales/credit-notes"
-              className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold text-gray-900">
-                {t('sales:creditNotes.new')}
-              </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                {t('sales:creditNotes.createDescription', 'Create a new credit note')}
-              </p>
-            </div>
-          </div>
+          <PageHeader
+            title={t('sales:creditNotes.new')}
+            subtitle={t('sales:creditNotes.createDescription', 'Create a new credit note')}
+            actions={(
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => { navigate('/sales/credit-notes') }}
+                className="gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                {t('common:actions.back')}
+              </Button>
+            )}
+            className="mb-0"
+          />
         </div>
       </div>
 
