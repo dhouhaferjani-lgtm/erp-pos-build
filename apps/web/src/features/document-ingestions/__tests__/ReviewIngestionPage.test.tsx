@@ -227,7 +227,7 @@ describe('ReviewIngestionPage', () => {
 
     renderReview()
 
-    await user.selectOptions(await screen.findByLabelText('Supplier'), 'supplier-1')
+    await screen.findByRole('option', { name: 'Main Warehouse' })
     await user.selectOptions(screen.getByLabelText('Location'), 'loc-1')
 
     const line = screen.getByTestId('review-line-0')
@@ -299,7 +299,7 @@ describe('ReviewIngestionPage', () => {
     })
     renderReview()
 
-    await user.selectOptions(await screen.findByLabelText('Supplier'), 'supplier-1')
+    await screen.findByRole('option', { name: 'Main Warehouse' })
     await user.selectOptions(screen.getByLabelText('Location'), 'loc-1')
     const line = screen.getByTestId('review-line-0')
     await user.click(within(line).getByRole('button', { name: 'Serum C 30ml' }))
@@ -323,7 +323,14 @@ describe('ReviewIngestionPage', () => {
 
   it('opens an in-page create-supplier dialog seeded from the extraction, without navigating away', async () => {
     const user = userEvent.setup()
-    mockApiGet.mockResolvedValue(detailResponse())
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/partners/sup-9') {
+        return Promise.resolve({
+          data: { data: { id: 'sup-9', name: 'PharmaDistrib', type: 'supplier', email: null, city: null } },
+        })
+      }
+      return Promise.resolve(detailResponse())
+    })
 
     renderReview()
 
@@ -360,8 +367,9 @@ describe('ReviewIngestionPage', () => {
     await user.click(within(dialog).getByRole('button', { name: /create/i }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(screen.getByLabelText('Supplier')).toHaveValue('sup-9')
-    expect(screen.getByRole('option', { name: 'PharmaDistrib' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('partner-picker')).toHaveTextContent('PharmaDistrib')
+    })
   })
 
   it('posts only PartnerFormData keys when creating a supplier from the review page (no extraction-field leakage)', async () => {

@@ -9,7 +9,7 @@ import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchContact, createContact, updateContact, contactKeys, contactsInvalidationPredicate } from '../api/contactApi'
 import type { CreateContactData } from '../api/contactApi'
-import { PartnerSelect } from '../components/PartnerSelect'
+import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { Input } from '@/components/atoms/Input/Input'
 import { Select } from '@/components/atoms/Select/Select'
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
@@ -292,9 +292,12 @@ export function ContactFormPage() {
                   name="party_id"
                   control={control}
                   render={({ field }) => (
-                    <PartnerSelect
+                    <PartnerPicker
                       value={field.value ?? ''}
-                      onChange={field.onChange}
+                      onChange={(next) => { field.onChange(next?.id ?? '') }}
+                      partnerType="all"
+                      label=""
+                      placeholder={t('crm:contacts.searchCompany')}
                     />
                   )}
                 />

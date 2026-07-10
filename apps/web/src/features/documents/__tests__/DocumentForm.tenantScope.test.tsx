@@ -67,35 +67,67 @@ vi.mock('@/components/molecules/StickyFormFooter/StickyFormFooter', () => ({
   StickyFormFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 
-vi.mock('@/components/ui/PartnerSearchSelect', () => ({
-  PartnerSearchSelect: ({
-    onAddNew,
+vi.mock('@/components/molecules/pickers/PartnerPicker', async () => {
+  const { useQueryClient } = await vi.importActual<typeof import('@tanstack/react-query')>('@tanstack/react-query')
+  const { useAuthStore } = await vi.importActual<typeof import('@/stores/authStore')>('@/stores/authStore')
+  const { useCompanyStore } = await vi.importActual<typeof import('@/stores/companyStore')>('@/stores/companyStore')
+
+  return {
+  PartnerPicker: ({
+    allowNewInline,
     onChange,
     value,
   }: {
-    onAddNew: () => void
-    onChange: (value: string) => void
+    allowNewInline?: boolean
+    onChange: (value: { id: string; name: string; type: 'customer' } | null) => void
     value: string
-  }) => (
-    <div>
-      <select aria-label="partner-select" value={value} onChange={(event) => { onChange(event.target.value) }}>
-        <option value="">Select partner</option>
-        <option value="partner-1">Partner A</option>
-      </select>
-      <button type="button" onClick={onAddNew}>add-partner</button>
-    </div>
-  ),
-}))
+  }) => {
+    const queryClient = useQueryClient()
+    const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+    const companyId = useCompanyStore((state) => state.currentCompanyId)
 
-vi.mock('@/components/organisms', () => ({
-  AddPartnerModal: ({
-    isOpen,
-    onSuccess,
-  }: {
-    isOpen: boolean
-    onSuccess: (partner: { id: string }) => void
-  }) => (isOpen ? <button type="button" onClick={() => { onSuccess({ id: 'partner-2' }) }}>partner-success</button> : null),
-}))
+    return (
+      <div>
+        <select
+          aria-label="partner-select"
+          value={value}
+          onChange={(event) => {
+            onChange(event.target.value === '' ? null : {
+              id: event.target.value,
+              name: 'Partner A',
+              type: 'customer',
+            })
+          }}
+        >
+          <option value="">Select partner</option>
+          <option value="partner-1">Partner A</option>
+        </select>
+        {allowNewInline ? (
+          <button
+            type="button"
+            onClick={() => {
+              onChange({ id: 'partner-2', name: 'Partner B', type: 'customer' })
+              void queryClient.invalidateQueries({
+                predicate: (q) => {
+                  const key = q.queryKey
+                  return (
+                    key.length >= 3 &&
+                    key[0] === 'partners' &&
+                    key[key.length - 2] === tenantId &&
+                    key[key.length - 1] === companyId
+                  )
+                },
+              })
+            }}
+          >
+            add-partner
+          </button>
+        ) : null}
+      </div>
+    )
+  },
+  }
+})
 
 function setTenant(tenantId: string, companyId: string) {
   useAuthStore.setState({
@@ -241,7 +273,7 @@ describe('DocumentForm tenant scope', () => {
     })
 
     await userEvent.selectOptions(await screen.findByLabelText('partner-select'), 'partner-1')
-    const issueDateInput = await screen.findByLabelText(/Issue Date/)
+    const issueDateInput = await screen.findByLabelText('sales:documents.issueDate', { exact: false })
     await userEvent.clear(issueDateInput)
     await userEvent.type(issueDateInput, '2026-05-11')
 
@@ -277,9 +309,8 @@ describe('DocumentForm tenant scope', () => {
       expect(partnersCalls).toBe(1)
     })
 
-    await userEvent.click(screen.getByRole('button', { name: 'add-partner' }))
     await act(async () => {
-      await userEvent.click(screen.getByRole('button', { name: 'partner-success' }))
+      await userEvent.click(screen.getByRole('button', { name: 'add-partner' }))
     })
 
     await waitFor(() => {

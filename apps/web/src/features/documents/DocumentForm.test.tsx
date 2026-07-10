@@ -56,11 +56,29 @@ vi.mock('./components/PurchaseOrderAdditionalCosts', () => ({
     </section>
   ),
 }))
-vi.mock('../../components/ui/PartnerSearchSelect', () => ({
-  PartnerSearchSelect: () => <div data-testid="partner-select" />,
-}))
-vi.mock('../../components/organisms', () => ({
-  AddPartnerModal: () => null,
+vi.mock('../../components/molecules/pickers/PartnerPicker', () => ({
+  PartnerPicker: ({
+    value,
+    onChange,
+  }: {
+    value: string
+    onChange: (next: { id: string; name: string; type: 'customer' } | null) => void
+  }) => (
+    <select
+      data-testid="partner-select"
+      value={value}
+      onChange={(event) => {
+        onChange(event.target.value === '' ? null : {
+          id: event.target.value,
+          name: 'Partner A',
+          type: 'customer',
+        })
+      }}
+    >
+      <option value="">Select partner</option>
+      <option value="partner-1">Partner A</option>
+    </select>
+  ),
 }))
 
 // ---------------------------------------------------------------------------

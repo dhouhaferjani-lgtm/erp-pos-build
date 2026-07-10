@@ -14,9 +14,12 @@ import { PurchaseOrderAdditionalCosts } from './components/PurchaseOrderAddition
 import { StickyFormFooter } from '../../components/molecules/StickyFormFooter/StickyFormFooter'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
-import { Button, FormField, Input, Select, Textarea } from '../../components/atoms'
-import { AddPartnerModal } from '../../components/organisms'
-import { PartnerSearchSelect } from '../../components/ui/PartnerSearchSelect'
+import { Button } from '../../components/atoms/Button/Button'
+import { FormField } from '../../components/atoms/FormField/FormField'
+import { Input } from '../../components/atoms/Input/Input'
+import { Select } from '../../components/atoms/Select/Select'
+import { Textarea } from '../../components/atoms/Textarea/Textarea'
+import { PartnerPicker } from '../../components/molecules/pickers/PartnerPicker'
 import { useCompany } from '../../hooks/useCompany'
 import { useDraftAutoSave } from '../../hooks/useDraftAutoSave'
 import { useAfterSaveNavigation } from '@/hooks/useAfterSaveNavigation'
@@ -188,8 +191,6 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   const [hasAppliedUrlPartner, setHasAppliedUrlPartner] = useState(false)
   // Lines state (managed separately from form)
   const [lines, setLines] = useState<DocumentLine[]>([])
-  // Partner modal state
-  const [showPartnerModal, setShowPartnerModal] = useState(false)
   // Snapshot of lines as of the last successful save (autosave or manual).
   // null = never saved; used to detect any change including clearing all lines.
   const lastSavedLinesRef = useRef<string | null>(null)
@@ -546,12 +547,13 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
                   required: t('validation.required', 'This field is required'),
                 }}
                 render={({ field }) => (
-                  <PartnerSearchSelect
+                  <PartnerPicker
                     value={field.value ?? ''}
-                    onChange={field.onChange}
-                    partnerType={partnerTypeFilter}
-                    error={errors.partner_id?.message}
-                    onAddNew={() => { setShowPartnerModal(true) }}
+                    onChange={(next) => { field.onChange(next?.id ?? '') }}
+                    partnerType={partnerTypeFilter ?? 'all'}
+                    label=""
+                    placeholder={partnerLabel}
+                    allowNewInline
                   />
                 )}
               />
@@ -676,21 +678,6 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
           />
         </StickyFormFooter>
       </form>
-
-      {/* Add Partner Modal */}
-      <AddPartnerModal
-        isOpen={showPartnerModal}
-        onClose={() => { setShowPartnerModal(false) }}
-        partnerType={partnerTypeFilter}
-        onSuccess={(partner) => {
-          // Set the form value immediately
-          setValue('partner_id', partner.id)
-          // Invalidate partners query to refresh the dropdown with new partner
-          void queryClient.invalidateQueries({
-            predicate: scopedNamespacePredicate('partners', tenantId, companyId),
-          })
-        }}
-      />
     </div>
   )
 }

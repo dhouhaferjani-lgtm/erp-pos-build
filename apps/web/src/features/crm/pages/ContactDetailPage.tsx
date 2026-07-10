@@ -6,7 +6,7 @@ import { ArrowLeft, Pencil, Trash2, Building2, User, Plus, X } from 'lucide-reac
 import { toast } from 'sonner'
 import { fetchContact, deleteContact, linkContactToParty, unlinkContactFromParty, contactKeys, contactsInvalidationPredicate } from '../api/contactApi'
 import type { LinkPartyData } from '../api/contactApi'
-import { PartnerSelect } from '../components/PartnerSelect'
+import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { getErrorMessage } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
@@ -189,7 +189,13 @@ export function ContactDetailPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-gray-700">{t('crm:contacts.company')}</label>
-                <PartnerSelect value={linkPartyId} onChange={setLinkPartyId} />
+                <PartnerPicker
+                  value={linkPartyId}
+                  onChange={(next) => { setLinkPartyId(next?.id ?? '') }}
+                  partnerType="all"
+                  label=""
+                  placeholder={t('crm:contacts.searchCompany')}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">{t('crm:contacts.jobTitle')}</label>

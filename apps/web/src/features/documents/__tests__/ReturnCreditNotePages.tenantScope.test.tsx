@@ -88,12 +88,12 @@ vi.mock('@/components/ui/DeliveryNoteSearchSelect', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/PartnerSearchSelect', () => ({
-  PartnerSearchSelect: ({ onChange }: { onChange: (partnerId: string) => void }) => (
+vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
+  PartnerPicker: ({ onChange }: { onChange: (partner: { id: string; name: string; type: 'customer' }) => void }) => (
     <button
       type="button"
       onClick={() => {
-        onChange('partner-1')
+        onChange({ id: 'partner-1', name: 'Partner A', type: 'customer' })
       }}
     >
       partner-select

@@ -5,6 +5,8 @@ import { MapPin, ChevronDown, Check, Plus, Settings, Warehouse, Store, Building2
 import { cn } from '../../../lib/utils'
 import { textColors, colors } from '../../../lib/designTokens'
 import { useLocation } from '../../../hooks/useLocation'
+import { useAuthStore } from '../../../stores/authStore'
+import { useCompanyStore } from '../../../stores/companyStore'
 import { useQueryClient } from '@tanstack/react-query'
 import { AddLocationModal } from '../AddLocationModal'
 import type { LocationType } from '../../../stores/locationStore'
@@ -23,6 +25,16 @@ interface LocationSwitcherProps {
   className?: string
 }
 
+function activeScopePredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (q: { queryKey: readonly unknown[] }) => boolean {
+  return (q) => {
+    const k = q.queryKey
+    return k.length >= 2 && k[k.length - 2] === tenantId && k[k.length - 1] === companyId
+  }
+}
+
 /**
  * LocationSwitcher allows users to switch between locations for inventory operations.
  *
@@ -31,6 +43,8 @@ interface LocationSwitcherProps {
 export function LocationSwitcher({ className = '' }: LocationSwitcherProps) {
   const { t } = useTranslation('common')
   const { currentLocation, locations, hasMultipleLocations, switchLocation, isLoading } = useLocation()
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId)
   const [isOpen, setIsOpen] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -54,9 +68,9 @@ export function LocationSwitcher({ className = '' }: LocationSwitcherProps) {
   const handleLocationChange = (locationId: string) => {
     if (locationId !== currentLocation?.id) {
       switchLocation(locationId)
-      // Location scope changed — refetch ALL cached data, not just stock
-      // (parity with CompanySelector's company-switch behavior).
-      void queryClient.invalidateQueries()
+      // Location scope changed: refetch all active-company data without
+      // invalidating caches that belong to another tenant/company.
+      void queryClient.invalidateQueries({ predicate: activeScopePredicate(tenantId, companyId) })
     }
     setIsOpen(false)
   }

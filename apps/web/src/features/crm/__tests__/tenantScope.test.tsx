@@ -51,7 +51,7 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
-// PartnerSelect transitively imports useAuthStore + useCompanyStore via lib path
+// PartnerPicker transitively imports useAuthStore + useCompanyStore via lib path
 // — keep it real so the production wrap is exercised.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -235,8 +235,8 @@ describe('cross-tenant isolation (predicate-based contacts cascade)', () => {
     expect(tBDetail?.state.isInvalidated).toBe(false)
   })
 
-  it('predicate must NOT match the partners namespace (PartnerSelect cache)', () => {
-    // Sibling-namespace assertion: 'partners' (used by PartnerSelect) must not
+  it('predicate must NOT match the partners namespace (PartnerPicker cache)', () => {
+    // Sibling-namespace assertion: 'partners' (used by legacy partner caches) must not
     // be invalidated by contact mutations.
     const pred = contactsInvalidationPredicate('tenant-A', 'company-1')
     expect(pred({ queryKey: ['partners', 'search', '', 'tenant-A', 'company-1'] })).toBe(false)

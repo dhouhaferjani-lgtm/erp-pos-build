@@ -39,6 +39,37 @@ Status: complete.
 
 New shared-shape components: none.
 
+## Wave 3 — Partner Picker Consolidation
+
+Status: complete.
+
+- 3.1 `PartnerPicker` canonical behavior:
+  - Added suggestions-on-focus, ID-only rehydration through `tenantScopedKey(['partner', id])`, `includeInactive`, and inline creation through `AddPartnerModal`.
+  - Kept caller-owned creation flows via `onAddNew` for pages that need custom prefill.
+  - Added focused coverage for focus suggestions, bare-ID rehydration, inactive inclusion, and inline creation.
+- 3.2 Legacy picker migrations:
+  - Replaced `PartnerSearchSelect` in `DocumentForm`, `CreateCreditNotePage`, `QuoteRequestCreatePage`, and `CustomerHistoryAuditPage`.
+  - Replaced CRM `PartnerSelect` usage in contact create/edit and detail flows.
+  - Replaced document-ingestion `SupplierPicker` with `PartnerPicker` plus a page-level `Create supplier` action for the prefilled modal flow.
+  - Kept explicit labels/placeholders at migrated call sites; nested form-field call sites pass `label=""` to avoid duplicate visible labels.
+- 3.3 Dead component removal:
+  - Deleted `components/ui/PartnerSearchSelect.tsx`.
+  - Deleted `features/crm/components/PartnerSelect.tsx`.
+  - Deleted `features/document-ingestions/components/SupplierPicker.tsx` and its obsolete test.
+  - Baseline shrunk from 507 to 505 after removing stale `SupplierPicker` design-system fingerprints.
+- 3.4 Tenant-scope regression found during verification:
+  - `LocationSwitcher` previously invalidated every query on location switch.
+  - Updated it to invalidate all active tenant/company-suffixed queries without invalidating another tenant/company cache, and updated component/shared selector tests.
+- Verification:
+  - Focused Wave 3 suite passed: `pnpm vitest run src/components/molecules/pickers/PartnerPicker.test.tsx src/components/__tests__/SharedSelectors.tenantScope.test.tsx src/components/organisms/LocationSwitcher/__tests__/LocationSwitcher.test.tsx src/features/documents/DocumentForm.test.tsx src/features/documents/__tests__/DocumentForm.tenantScope.test.tsx src/features/documents/__tests__/ReturnCreditNotePages.tenantScope.test.tsx src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx src/features/customer-history-audit/pages/__tests__/CustomerHistoryAuditPage.test.tsx src/features/crm/pages/__tests__/ContactFormPage.test.tsx src/features/crm/__tests__/tenantScope.test.tsx src/features/document-ingestions/__tests__/ReviewIngestionPage.test.tsx` passed: 76 tests.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
+    - TanStack query key audit: 0 violations.
+    - Design-system audit: 505 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with one residual warning: `ContactFormPage` is still a large component. Splitting it is unrelated to this picker consolidation and was left out of scope.
+
+New shared-shape components: `PartnerPicker` is now the canonical partner/supplier/customer picker.
+
 ## Wave 1 — High-Impact UX Corrections
 
 Status: complete.

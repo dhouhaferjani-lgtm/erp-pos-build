@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 
 import { MoneyInput, QuantityInput } from '@/components/atoms'
 import { ProductLineSelect } from '@/components/molecules/line-items'
-import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
+import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { useCompanyStore } from '@/stores/companyStore'
 
@@ -149,11 +149,13 @@ export function QuoteRequestCreatePage() {
                 <label className={tokens.label.base}>
                   {t('purchases:quoteRequests.fields.supplier')}
                 </label>
-                <PartnerSearchSelect
+                <PartnerPicker
                   value={supplier.supplierId}
-                  onChange={(next) => { updateSupplier(index, next) }}
+                  onChange={(next) => { updateSupplier(index, next?.id ?? '') }}
                   partnerType="supplier"
+                  label=""
                   placeholder={t('purchases:quoteRequests.fields.supplier')}
+                  testId="supplier-picker"
                 />
               </div>
               {suppliers.length > 1 && (

@@ -50,13 +50,25 @@ vi.mock('../../api/contactApi', () => ({
   contactsInvalidationPredicate: () => () => false,
 }))
 
-// Mock PartnerSelect
-vi.mock('../../components/PartnerSelect', () => ({
-  PartnerSelect: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+// Mock PartnerPicker
+vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
+  PartnerPicker: ({
+    value,
+    onChange,
+  }: {
+    value: string
+    onChange: (v: { id: string; name: string; type: 'customer' } | null) => void
+  }) => (
     <input
       data-testid="partner-select"
       value={value}
-      onChange={(e) => { onChange(e.target.value); }}
+      onChange={(e) => {
+        onChange(e.target.value === '' ? null : {
+          id: e.target.value,
+          name: 'Selected company',
+          type: 'customer',
+        })
+      }}
     />
   ),
 }))

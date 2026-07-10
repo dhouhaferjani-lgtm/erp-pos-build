@@ -114,11 +114,23 @@ vi.mock('@/features/pos/hooks/useTerminals', () => ({
   }),
 }))
 
-// ─── PartnerSearchSelect mock ─────────────────────────────────────────────────
+// ─── PartnerPicker mock ───────────────────────────────────────────────────────
 
-vi.mock('@/components/ui/PartnerSearchSelect', () => ({
-  PartnerSearchSelect: ({ placeholder, onChange }: { placeholder: string; onChange: (v: string) => void }) => (
-    <button type="button" data-testid={`partner-picker-${placeholder}`} onClick={() => { onChange('partner-x') }}>
+vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
+  PartnerPicker: ({
+    placeholder,
+    onChange,
+  }: {
+    placeholder: string
+    onChange: (v: { id: string; name: string; type: 'customer' } | null) => void
+  }) => (
+    <button
+      type="button"
+      data-testid={`partner-picker-${placeholder}`}
+      onClick={() => {
+        onChange({ id: 'partner-x', name: 'Partner X', type: 'customer' })
+      }}
+    >
       {placeholder}
     </button>
   ),

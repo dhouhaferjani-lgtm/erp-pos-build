@@ -8,6 +8,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
+import { AddPartnerModal } from '@/components/organisms/AddPartnerModal'
 
 /**
  * Minimal partner shape a caller must hand back on `onChange`. This mirrors
@@ -26,7 +27,7 @@ export interface PartnerPickerValue {
 export type PartnerTypeFilter = 'customer' | 'supplier' | 'all'
 
 interface PartnerPickerProps {
-  value: PartnerPickerValue | null
+  value: PartnerPickerValue | string | null
   onChange: (next: PartnerPickerValue | null) => void
   label?: string
   placeholder?: string
@@ -36,13 +37,16 @@ interface PartnerPickerProps {
   partnerType?: PartnerTypeFilter
   /** Optional data-testid override for automation. */
   testId?: string
+  /** Include inactive partners in search results. Defaults to active-only. */
+  includeInactive?: boolean
   /**
    * When true, the empty state shows an "Add new customer" affordance that
-   * opens the partner-create page in a new tab. Callers that cannot reach
-   * that flow from the current surface (e.g. embedded modals) should leave
-   * this off. Default: false.
+   * opens AddPartnerModal inline. Callers that cannot create from the current
+   * surface should leave this off. Default: false.
    */
   allowNewInline?: boolean
+  /** Optional caller-owned create flow, used when the caller needs custom prefill. */
+  onAddNew?: () => void
 }
 
 interface PartnerListItem {
@@ -86,7 +90,9 @@ export function PartnerPicker({
   required = false,
   partnerType = 'customer',
   testId,
+  includeInactive = false,
   allowNewInline = false,
+  onAddNew,
 }: PartnerPickerProps) {
   const { t } = useTranslation('pickers')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -95,26 +101,44 @@ export function PartnerPicker({
 
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const debouncedQuery = useDebouncedValue(query, 250)
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
-  const searchEnabled = isOpen && debouncedQuery.trim().length >= 2
-  const queryKey = tenantScopedKey(['pickers', 'partner', partnerType, debouncedQuery] as const)
+  const trimmedQuery = debouncedQuery.trim()
+  const searchEnabled = isOpen
+  const selectedPartnerId = typeof value === 'string' ? value : value?.id ?? null
+  const queryKey = tenantScopedKey(['pickers', 'partner', partnerType, includeInactive, trimmedQuery] as const)
 
   const { data, isLoading, isError } = useQuery({
     queryKey,
     enabled: searchEnabled && !disabled && tenantId !== null && companyId !== null,
     queryFn: async () => {
-      const params = new URLSearchParams({ per_page: '20', is_active: 'true' })
-      params.set('search', debouncedQuery.trim())
+      const params = new URLSearchParams({ per_page: '20' })
+      if (!includeInactive) {
+        params.set('is_active', 'true')
+      }
+      if (trimmedQuery !== '') {
+        params.set('search', trimmedQuery)
+      }
       if (partnerType !== 'all') {
         params.set('type', partnerType)
       }
       const response = await api.get<PartnerListResponse>(`/partners?${params.toString()}`)
       return response.data.data.map(toValue)
     },
+  })
+
+  const { data: selectedPartner } = useQuery({
+    queryKey: tenantScopedKey(['partner', selectedPartnerId] as const),
+    enabled: typeof value === 'string' && selectedPartnerId !== null && tenantId !== null && companyId !== null,
+    queryFn: async () => {
+      const response = await api.get<{ data: PartnerListItem }>(`/partners/${selectedPartnerId}`)
+      return toValue(response.data.data)
+    },
+    staleTime: 60000,
   })
 
   // Reset highlighted row when the result set changes — -1 = no
@@ -165,15 +189,13 @@ export function PartnerPicker({
     }
   }
 
-  const openAddNewTab = (): void => {
-    window.open('/partners/new', '_blank', 'noopener,noreferrer')
-  }
-
   const effectivePlaceholder = placeholder ?? t('partner.searchPlaceholder')
   const effectiveLabel = label ?? t('partner.label')
   const testIdAttr = testId ?? 'partner-picker'
 
-  if (value !== null) {
+  const selectedValue = typeof value === 'string' ? selectedPartner : value
+
+  if (selectedValue !== null && selectedValue !== undefined) {
     return (
       <div
         ref={containerRef}
@@ -181,13 +203,13 @@ export function PartnerPicker({
         data-testid={testIdAttr}
       >
         <div className="min-w-0 flex-1">
-          <div className={`truncate text-sm font-medium ${textColors.primary}`}>{value.name}</div>
+          <div className={`truncate text-sm font-medium ${textColors.primary}`}>{selectedValue.name}</div>
           <div className={`flex items-center gap-1 truncate text-xs ${textColors.tertiary}`}>
             <span className={`${tokens.badge.base} ${tokens.badge.blue}`}>
-              {t(`partner.typeChip.${value.type}`)}
+              {t(`partner.typeChip.${selectedValue.type}`)}
             </span>
-            {value.city !== undefined && value.city !== null ? <span>{value.city}</span> : null}
-            {value.email !== undefined && value.email !== null ? <span>{value.email}</span> : null}
+            {selectedValue.city !== undefined && selectedValue.city !== null ? <span>{selectedValue.city}</span> : null}
+            {selectedValue.email !== undefined && selectedValue.email !== null ? <span>{selectedValue.email}</span> : null}
           </div>
         </div>
         <button
@@ -207,44 +229,41 @@ export function PartnerPicker({
   }
 
   return (
-    <div ref={containerRef} className="relative" data-testid={testIdAttr}>
-      {effectiveLabel !== '' ? (
-        <label className={tokens.label.base}>
-          {effectiveLabel}
-          {required ? <span className={tokens.label.required}> *</span> : null}
-        </label>
-      ) : null}
-      <input
-        ref={inputRef}
-        type="text"
-        role="combobox"
-        aria-expanded={isOpen}
-        aria-controls={listboxId}
-        aria-autocomplete="list"
-        className={tokens.input.base}
-        placeholder={effectivePlaceholder}
-        value={query}
-        disabled={disabled}
-        onChange={(e) => {
-          setQuery(e.target.value)
-          setIsOpen(true)
-        }}
-        onFocus={() => {
-          setIsOpen(true)
-        }}
-        onKeyDown={handleKeyDown}
-      />
-      {isOpen ? (
-        <div
-          id={listboxId}
-          role="listbox"
-          className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
-        >
-          {!searchEnabled ? (
-            <div className={`px-3 py-2 text-xs ${textColors.tertiary}`}>
-              {t('common.minCharacters')}
-            </div>
-          ) : isLoading ? (
+    <>
+      <div ref={containerRef} className="relative" data-testid={testIdAttr}>
+        {effectiveLabel !== '' ? (
+          <label className={tokens.label.base}>
+            {effectiveLabel}
+            {required ? <span className={tokens.label.required}> *</span> : null}
+          </label>
+        ) : null}
+        <input
+          ref={inputRef}
+          type="text"
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          className={tokens.input.base}
+          placeholder={effectivePlaceholder}
+          value={query}
+          disabled={disabled}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setIsOpen(true)
+          }}
+          onFocus={() => {
+            setIsOpen(true)
+          }}
+          onKeyDown={handleKeyDown}
+        />
+        {isOpen ? (
+          <div
+            id={listboxId}
+            role="listbox"
+            className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
+          >
+            {isLoading ? (
             <div className={`px-3 py-2 text-sm ${textColors.tertiary}`}>
               {t('common.loading')}
             </div>
@@ -253,11 +272,18 @@ export function PartnerPicker({
           ) : results.length === 0 ? (
             <div className={`px-3 py-2 text-sm ${textColors.tertiary}`}>
               {t('partner.empty')}
-              {allowNewInline ? (
+              {allowNewInline || onAddNew !== undefined ? (
                 <button
                   type="button"
                   className={`ml-2 text-sm ${textColors.brand} hover:underline`}
-                  onClick={openAddNewTab}
+                  onClick={() => {
+                    setIsOpen(false)
+                    if (onAddNew !== undefined) {
+                      onAddNew()
+                    } else {
+                      setIsAddModalOpen(true)
+                    }
+                  }}
                 >
                   {t('partner.addNew')}
                 </button>
@@ -304,8 +330,20 @@ export function PartnerPicker({
               )
             })
           )}
-        </div>
+          </div>
+        ) : null}
+      </div>
+      {allowNewInline && onAddNew === undefined && isAddModalOpen ? (
+        <AddPartnerModal
+          isOpen={isAddModalOpen}
+          onClose={() => { setIsAddModalOpen(false) }}
+          partnerType={partnerType === 'all' ? undefined : partnerType}
+          onSuccess={(partner) => {
+            onChange(toValue(partner))
+            setIsAddModalOpen(false)
+          }}
+        />
       ) : null}
-    </div>
+    </>
   )
 }

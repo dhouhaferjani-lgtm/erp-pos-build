@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/authStore'
@@ -10,7 +11,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { AddVehicleModal } from '../organisms/AddVehicleModal/AddVehicleModal'
 import { LocationSwitcher } from '../organisms/LocationSwitcher/LocationSwitcher'
 import { LocationField } from '../ui/LocationField'
-import { PartnerSearchSelect } from '../ui/PartnerSearchSelect'
+import { PartnerPicker } from '../molecules/pickers/PartnerPicker'
 import { ProductLineSelect } from '../molecules/line-items'
 
 const mockApiGet = vi.hoisted(() => vi.fn())
@@ -102,7 +103,11 @@ function createClient() {
 
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    return (
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </MemoryRouter>
+    )
   }
 }
 
@@ -197,7 +202,14 @@ describe('shared selector tenant scope', () => {
     render(
       <div>
         <LocationField value="loc-1" onChange={vi.fn()} />
-        <PartnerSearchSelect value="partner-1" onChange={vi.fn()} partnerType="customer" />
+        <PartnerPicker value="partner-1" onChange={vi.fn()} partnerType="customer" label="" />
+        <PartnerPicker
+          value={null}
+          onChange={vi.fn()}
+          partnerType="customer"
+          label=""
+          placeholder="Partner search"
+        />
         <ProductLineSelect value="product-1" onChange={vi.fn()} />
       </div>,
       { wrapper: wrapper(queryClient) },
@@ -216,11 +228,11 @@ describe('shared selector tenant scope', () => {
       ])
     })
 
-    await user.click(screen.getByText('Partner A'))
+    await user.click(screen.getByPlaceholderText('Partner search'))
     await waitFor(() => {
-      expect(queryClient.getQueryData(['partners-search', 'customer', '', 'tenant-A', 'company-1'])).toEqual({
-        data: [{ id: 'partner-1', name: 'Partner A', type: 'customer' }],
-      })
+      expect(queryClient.getQueryData(['pickers', 'partner', 'customer', false, '', 'tenant-A', 'company-1'])).toEqual([
+        { id: 'partner-1', name: 'Partner A', type: 'customer' },
+      ])
     })
 
     await user.click(screen.getByText(/Product A/))

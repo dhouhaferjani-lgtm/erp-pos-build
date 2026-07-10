@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { ShieldAlert } from 'lucide-react'
 import { Spinner } from '@/components/atoms/Spinner/Spinner'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
-import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
+import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { UserPicker } from '@/components/ui/UserPicker'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useTerminals } from '@/features/pos/hooks/useTerminals'
@@ -148,10 +148,13 @@ export function CustomerHistoryAuditPage() {
           >
             {t('customer-history-audit:filters.partner')}
           </label>
-          <PartnerSearchSelect
+          <PartnerPicker
             value={partnerIdParam}
-            onChange={(id) => { setParam('partner_id', id) }}
+            onChange={(next) => { setParam('partner_id', next?.id ?? '') }}
+            partnerType="all"
+            label=""
             placeholder={t('customer-history-audit:filters.partner')}
+            includeInactive
           />
         </div>
 

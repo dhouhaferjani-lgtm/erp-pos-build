@@ -17,7 +17,7 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { api } from '@/lib/api'
 import { entityRoutes } from '@/lib/entityRoutes'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
-import { PartnerSearchSelect } from '@/components/ui/PartnerSearchSelect'
+import { PartnerPicker } from '@/components/molecules/pickers/PartnerPicker'
 import { InvoiceSearchSelect } from '@/components/ui/InvoiceSearchSelect'
 import { DocumentLineEditor, type DocumentLine } from '@/components/documents/DocumentLineEditor'
 import { Button } from '@/components/atoms/Button/Button'
@@ -401,13 +401,13 @@ export function CreateCreditNotePage() {
                   name="partner_id"
                   control={control}
                   render={({ field }) => (
-                    <PartnerSearchSelect
+                    <PartnerPicker
                       value={field.value ?? ''}
-                      onChange={field.onChange}
+                      onChange={(next) => { field.onChange(next?.id ?? '') }}
                       partnerType="customer"
+                      label=""
                       placeholder={t('sales:documents.partner')}
                       disabled={creditMode === 'invoice' && !!selectedInvoice}
-                      error={errors.partner_id?.message}
                     />
                   )}
                 />

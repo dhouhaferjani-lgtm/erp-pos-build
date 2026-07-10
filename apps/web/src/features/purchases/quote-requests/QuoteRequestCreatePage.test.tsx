@@ -32,18 +32,26 @@ vi.mock('@/components/molecules/line-items', () => ({
   ),
 }))
 
-vi.mock('@/components/ui/PartnerSearchSelect', () => ({
-  PartnerSearchSelect: ({
+vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
+  PartnerPicker: ({
     value,
     onChange,
+    testId,
   }: {
     value: string
-    onChange: (value: string) => void
+    onChange: (value: { id: string; name: string; type: 'supplier' } | null) => void
+    testId?: string
   }) => (
     <select
-      data-testid="supplier-picker"
+      data-testid={testId ?? 'supplier-picker'}
       value={value}
-      onChange={(event) => { onChange(event.target.value) }}
+      onChange={(event) => {
+        onChange(event.target.value === '' ? null : {
+          id: event.target.value,
+          name: event.target.value === 'supplier-1' ? 'LaboDerm' : 'BioSupply',
+          type: 'supplier',
+        })
+      }}
     >
       <option value="" />
       <option value="supplier-1">LaboDerm</option>
