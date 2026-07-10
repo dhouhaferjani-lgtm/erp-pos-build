@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { Button } from '@/components/atoms/Button/Button'
+import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { formatCurrency, formatQuantity } from '@/lib/decimal'
 
@@ -72,27 +74,24 @@ export function QuoteRequestComparisonPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>
-            {t('purchases:quoteRequests.comparison.title')}
-          </h1>
-          <p className={`mt-1 text-sm ${textColors.tertiary}`}>
-            {t('purchases:quoteRequests.comparison.description')}
-          </p>
-        </div>
-        {canReopen && (
-          <button
-            type="button"
-            data-testid="reopen-group"
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
-            onClick={() => { void reopen() }}
-          >
-            <RotateCcw className="me-2 h-4 w-4" />
-            {t('purchases:quoteRequests.actions.reopen')}
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title={t('purchases:quoteRequests.comparison.title')}
+        subtitle={t('purchases:quoteRequests.comparison.description')}
+        actions={
+          canReopen ? (
+            <Button
+              type="button"
+              data-testid="reopen-group"
+              variant="secondary"
+              onClick={() => { void reopen() }}
+            >
+              <RotateCcw className="me-2 h-4 w-4" />
+              {t('purchases:quoteRequests.actions.reopen')}
+            </Button>
+          ) : null
+        }
+        className="mb-0"
+      />
 
       <section className={`${tokens.card.base} overflow-x-auto`}>
         <div
@@ -122,14 +121,15 @@ export function QuoteRequestComparisonPage() {
                 {t('purchases:quoteRequests.fields.leadTimeDays')}: {sibling.lead_time_days ?? '-'}
               </div>
               {groupAllowsChanges && sibling.responded_at && sibling.status === 'confirmed' && (
-                <button
+                <Button
                   type="button"
                   data-testid={`award-${sibling.id}`}
-                  className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} mt-3`}
+                  size="sm"
+                  className="mt-3"
                   onClick={() => { setPendingAwardId(sibling.id) }}
                 >
                   {t('purchases:quoteRequests.actions.award')}
-                </button>
+                </Button>
               )}
             </div>
           ))}
@@ -179,21 +179,20 @@ export function QuoteRequestComparisonPage() {
               {t('purchases:quoteRequests.confirm.awardMessage')}
             </p>
             <div className={tokens.modal.footer}>
-              <button
+              <Button
                 type="button"
-                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+                variant="secondary"
                 onClick={() => { setPendingAwardId(null) }}
               >
                 {t('common:actions.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 data-testid="confirm-award"
-                className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
                 onClick={() => { void confirmAward() }}
               >
                 {t('purchases:quoteRequests.actions.award')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

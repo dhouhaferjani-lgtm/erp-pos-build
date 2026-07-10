@@ -72,6 +72,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web audit:design-system` flagged stale C2/C3 fingerprints after replacing bespoke response inputs and action buttons.
   - GREEN: the detail page now uses canonical `Input`, `Button`, and `StatusBadge` controls for response metadata, send/edit/convert/save actions, and document status.
   - Baseline shrunk from 487 to 480 after removing stale C2/C3 quote-request detail fingerprints.
+- 4.8 `QuoteRequestComparisonPage` shell/action slice:
+  - RED: `pnpm --filter @autoerp/web audit:design-system` flagged stale C1/C3 fingerprints after replacing the bespoke title and action buttons.
+  - GREEN: the comparison page now uses `PageHeader` and canonical `Button` controls for reopen, per-supplier award, cancel, and confirm actions while preserving the comparison grid.
+  - Baseline shrunk from 480 to 475 after removing stale C1/C3 quote-request comparison fingerprints.
 - Verification:
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` passed: 16 tests.
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceListPage.test.tsx` passed: 14 tests.
@@ -80,11 +84,12 @@ Status: in progress.
   - `pnpm --filter @autoerp/web test -- src/features/purchases/GoodsReceiptListPage.tenantScope.test.tsx` passed: 16 tests.
   - `pnpm --filter @autoerp/web test -- src/features/purchases/quote-requests/QuoteRequestListPage.test.tsx` passed: 2 tests.
   - `pnpm --filter @autoerp/web test -- src/features/purchases/quote-requests/QuoteRequestDetailPage.test.tsx` passed: 5 tests.
+  - `pnpm --filter @autoerp/web test -- src/features/purchases/quote-requests/QuoteRequestComparisonPage.test.tsx` passed: 11 tests.
   - `pnpm --filter @autoerp/web typecheck` passed.
   - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
     - TanStack query key audit: 0 violations.
-    - Design-system audit: 480 acknowledged, 0 new, 0 stale.
-  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page, list-page, standalone receipt, quote-request create, goods-receipt list, quote-request list, and quote-request detail slices.
+    - Design-system audit: 475 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page, list-page, standalone receipt, quote-request create, goods-receipt list, quote-request list, quote-request detail, and quote-request comparison slices.
 
 New shared-shape components: none.
 
