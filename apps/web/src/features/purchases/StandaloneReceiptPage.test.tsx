@@ -115,6 +115,14 @@ describe('StandaloneReceiptPage', () => {
     )
   })
 
+  it('renders receipt lines in the shared DataTable shell', async () => {
+    renderWithProviders(<StandaloneReceiptPage />)
+
+    const table = await screen.findByRole('table')
+    expect(table).toHaveClass('border-collapse')
+    expect(table).not.toHaveClass('divide-y')
+  })
+
   it('submits string qty and money values to the standalone receipt endpoint', async () => {
     const user = userEvent.setup()
     renderWithProviders(<StandaloneReceiptPage />)

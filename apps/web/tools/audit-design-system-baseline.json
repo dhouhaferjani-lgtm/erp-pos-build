@@ -426,7 +426,6 @@
     "C5|src/features/pricing/PriceListDetailPage.tsx|<table className=\"min-w-full divide-y divide-gray-200\">",
     "C5|src/features/pricing/PriceListListPage.tsx|<table className=\"min-w-full divide-y divide-gray-200\">",
     "C5|src/features/promotions/pages/PromotionListPage.tsx|<table className=\"min-w-full divide-y divide-gray-200\">",
-    "C5|src/features/purchases/StandaloneReceiptPage.tsx|<table className={`min-w-full divide-y ${borderColors.divideDefault}`}>",
     "C5|src/features/purchases/supplier-invoices/SupplierInvoiceDetailPage.tsx|<table className=\"min-w-full divide-y divide-gray-200\">",
     "C5|src/features/reports/pages/AgedReceivablesPage.tsx|<table className=\"min-w-full divide-y divide-gray-200\">",
     "C5|src/features/services/ServiceListPage.tsx|<table className=\"min-w-full divide-y divide-gray-200\">",

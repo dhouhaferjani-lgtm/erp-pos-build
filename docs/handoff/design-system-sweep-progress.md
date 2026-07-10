@@ -52,14 +52,19 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceListPage.test.tsx` failed because invoice rows still rendered in a bespoke `divide-y` table instead of the shared `DataTable`.
   - GREEN: the list page now uses `PageHeader`, shared `DataTable`, and `StatusBadge` for invoice, match, and pending-receipt status pills.
   - Baseline shrunk from 501 to 496 after removing stale C1/C5/C6 list-page fingerprints.
+- 4.3 `StandaloneReceiptPage` line-table slice:
+  - RED: `pnpm --filter @autoerp/web test -- src/features/purchases/StandaloneReceiptPage.test.tsx` failed because receipt lines still rendered in a bespoke `divide-y` table.
+  - GREEN: receipt lines now render through the shared `DataTable`, preserving the existing quantity, free-quantity, unit-price, product, and remove-line controls.
+  - Baseline shrunk from 496 to 495 after removing the stale standalone receipt C5 fingerprint.
 - Verification:
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` passed: 16 tests.
   - `pnpm --filter @autoerp/web test -- src/features/purchases/supplier-invoices/SupplierInvoiceListPage.test.tsx` passed: 14 tests.
+  - `pnpm --filter @autoerp/web test -- src/features/purchases/StandaloneReceiptPage.test.tsx` passed: 5 tests.
   - `pnpm --filter @autoerp/web typecheck` passed.
   - `pnpm --filter @autoerp/web lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
     - TanStack query key audit: 0 violations.
-    - Design-system audit: 496 acknowledged, 0 new, 0 stale.
-  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page slice and again with no issues after the list-page slice.
+    - Design-system audit: 495 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues for the create-page, list-page, and standalone receipt slices.
 
 New shared-shape components: none.
 
