@@ -4,6 +4,8 @@ import { VatPeriodStatusBadge } from './VatPeriodStatusBadge'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Button } from '@/components/atoms/Button/Button'
 import type { VatPeriod } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface VatPeriodListProps {
   periods: VatPeriod[]
@@ -92,55 +94,55 @@ export function VatPeriodList({
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+          <thead className={`${colorTokens.surface.page}`}>
             <tr>
-              <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('finance:vatReporting.columns.period')}
               </th>
-              <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('finance:vatReporting.columns.dateRange')}
               </th>
-              <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('finance:vatReporting.columns.outputVat')}
               </th>
-              <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('finance:vatReporting.columns.inputVat')}
               </th>
-              <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('finance:vatReporting.columns.netDue')}
               </th>
-              <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('finance:vatReporting.columns.status')}
               </th>
-              <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('finance:vatReporting.columns.actions')}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
+          <tbody className={`divide-y ${colorTokens.border.divider} bg-white`}>
             {periods.map((period) => {
               const isOpen = period.status === 'OPEN'
               return (
                 <tr key={period.id}>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium ${colorTokens.text.primary}`}>
                     {period.label}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                     {period.period_start} — {period.period_end}
                   </td>
                   <td
-                    className={`whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900 ${isOpen ? 'italic' : ''}`}
+                    className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary} ${isOpen ? 'italic' : ''}`}
                   >
                     {formatAmount(period.total_output_vat)}
                   </td>
                   <td
-                    className={`whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900 ${isOpen ? 'italic' : ''}`}
+                    className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary} ${isOpen ? 'italic' : ''}`}
                   >
                     {formatAmount(period.total_input_vat)}
                   </td>
                   <td
-                    className={`whitespace-nowrap px-6 py-4 text-end text-sm text-gray-900 ${isOpen ? 'italic' : ''}`}
+                    className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary} ${isOpen ? 'italic' : ''}`}
                   >
                     {formatAmount(period.net_vat)}
                   </td>
@@ -207,7 +209,7 @@ export function VatPeriodList({
               )
             })}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       <ConfirmDialog

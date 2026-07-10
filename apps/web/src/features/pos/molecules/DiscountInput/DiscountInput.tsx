@@ -10,6 +10,7 @@ import {
   isDiscountAboveTolerance,
 } from '../../lib/discountValidation'
 import type { ToleranceSettings } from '@/types/treasury'
+import { Input, Textarea } from '@/components/atoms'
 
 export interface DiscountData {
   type: 'percentage' | 'fixed'
@@ -262,7 +263,7 @@ export function DiscountInput({
           {discountType === 'percentage' ? t('cart.percentage') : t('cart.fixed')}
         </label>
         <div className="relative mt-1">
-          <input
+          <Input
             id="discount-value"
             type="number"
             step={discountType === 'percentage' ? '0.01' : '0.001'}
@@ -273,11 +274,7 @@ export function DiscountInput({
               setDiscountValue(e.target.value)
               setError('')
             }}
-            className={cn(
-              tokens.input.base,
-              error && tokens.input.error,
-              touchOptimized && 'text-lg py-3'
-            )}
+            className={cn(touchOptimized && 'text-lg py-3')}
             placeholder={discountType === 'percentage' ? '0.00' : '0.000'}
           />
           <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
@@ -302,7 +299,7 @@ export function DiscountInput({
               <span className={textColors.error}> *</span>
             )}
           </label>
-          <textarea
+          <Textarea
             id="discount-reason"
             rows={touchOptimized ? 3 : 2}
             value={reason}
@@ -311,7 +308,6 @@ export function DiscountInput({
               setError('')
             }}
             className={cn(
-              tokens.textarea.base,
               touchOptimized && 'text-lg'
             )}
             placeholder={t('cart.reasonRequired')}

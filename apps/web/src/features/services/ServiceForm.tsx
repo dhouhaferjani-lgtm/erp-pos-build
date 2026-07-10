@@ -12,6 +12,8 @@ import { servicesInvalidationPredicate } from './_invalidation'
 import type { Service, CreateServiceData, CategoriesResponse } from './types'
 import { TaxConfigurationField } from '../../components/molecules/TaxConfigurationField'
 import { MoneyInput, QuantityInput } from '@/components/atoms'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 interface ServiceResponse {
   data: Service
@@ -164,7 +166,7 @@ export function ServiceForm() {
   if (isEditing && isLoadingService) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('status.loading')}</div>
+        <div className={`${colorTokens.text.subtle}`}>{t('status.loading')}</div>
       </div>
     )
   }
@@ -175,17 +177,17 @@ export function ServiceForm() {
       <div className="flex items-center gap-4">
         <Link
           to="/services"
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} hover:${colorTokens.text.primary}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('actions.back')}
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
             {isEditing
               ? t('services.editService')
               : t('services.createService')}
-          </h1>
+          </PageHeaderTitle>
         </div>
       </div>
 
@@ -196,60 +198,60 @@ export function ServiceForm() {
       >
         {/* Error display */}
         {mutation.error && (
-          <div className="rounded-lg bg-red-50 p-4 text-red-700">
+          <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4 ${colorTokens.intent.danger.textStrong}`}>
             {t('errors.saveFailed')}
           </div>
         )}
 
         {/* Basic Information */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
             {t('services.basicInfo')}
           </h2>
           <div className="grid gap-6 sm:grid-cols-2">
             {/* Code */}
             <div>
-              <label htmlFor="code" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="code" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('services.fields.code', 'Code')} *
               </label>
               <input
                 type="text"
                 id="code"
                 {...register('code', { required: t('validation.required') })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
                 placeholder={t('services.form.codePlaceholder')}
               />
               {errors.code && (
-                <p className="mt-1 text-sm text-red-600">{errors.code.message}</p>
+                <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.code.message}</p>
               )}
             </div>
 
             {/* Name */}
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="name" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('fields.name')} *
               </label>
               <input
                 type="text"
                 id="name"
                 {...register('name', { required: t('validation.required') })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
                 placeholder={t('services.namePlaceholder')}
               />
               {errors.name && (
-                <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
+                <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.name.message}</p>
               )}
             </div>
 
             {/* Category */}
             <div>
-              <label htmlFor="category_id" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="category_id" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('services.fields.category', 'Category')}
               </label>
               <select
                 id="category_id"
                 {...register('category_id')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
               >
                 <option value="">{t('services.noCategory')}</option>
                 {categories.map((category) => (
@@ -262,13 +264,13 @@ export function ServiceForm() {
 
             {/* Status */}
             <div>
-              <label htmlFor="is_active" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="is_active" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('fields.status')}
               </label>
               <select
                 id="is_active"
                 {...register('is_active')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
               >
                 <option value="true">{t('status.active')}</option>
                 <option value="false">{t('status.inactive')}</option>
@@ -277,14 +279,14 @@ export function ServiceForm() {
 
             {/* Description */}
             <div className="sm:col-span-2">
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="description" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('fields.description')}
               </label>
               <textarea
                 id="description"
                 {...register('description')}
                 rows={3}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
                 placeholder={t('services.descriptionPlaceholder')}
               />
             </div>
@@ -292,20 +294,20 @@ export function ServiceForm() {
         </div>
 
         {/* Pricing Information */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
+          <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
             {t('services.pricing')}
           </h2>
           <div className="grid gap-6 sm:grid-cols-2">
             {/* Pricing Type */}
             <div>
-              <label htmlFor="pricing_type" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="pricing_type" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('services.pricingTypeLabel')} *
               </label>
               <select
                 id="pricing_type"
                 {...register('pricing_type', { required: true })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
               >
                 <option value="flat_rate">{t('services.pricingTypes.flatRate')}</option>
                 <option value="hourly">{t('services.pricingTypes.hourly')}</option>
@@ -315,13 +317,13 @@ export function ServiceForm() {
 
             {/* Currency */}
             <div>
-              <label htmlFor="currency" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="currency" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('fields.currency')} *
               </label>
               <select
                 id="currency"
                 {...register('currency', { required: true })}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
               >
                 <option value="TND">{t('settings:company.currencies.TND')}</option>
                 <option value="EUR">{t('settings:company.currencies.EUR')}</option>
@@ -332,7 +334,7 @@ export function ServiceForm() {
             {/* Base Price (for flat_rate) */}
             {pricingType === 'flat_rate' && (
               <div>
-                <label htmlFor="base_price" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="base_price" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('services.fields.basePrice')} *
                 </label>
                 <MoneyInput
@@ -345,7 +347,7 @@ export function ServiceForm() {
                   placeholder="0.00"
                 />
                 {errors.base_price && (
-                  <p className="mt-1 text-sm text-red-600">{errors.base_price.message}</p>
+                  <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.base_price.message}</p>
                 )}
               </div>
             )}
@@ -354,7 +356,7 @@ export function ServiceForm() {
             {pricingType === 'hourly' && (
               <>
                 <div>
-                  <label htmlFor="hourly_rate" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="hourly_rate" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                     {t('services.fields.hourlyRate')} *
                   </label>
                   <MoneyInput
@@ -367,11 +369,11 @@ export function ServiceForm() {
                     placeholder="0.00"
                   />
                   {errors.hourly_rate && (
-                    <p className="mt-1 text-sm text-red-600">{errors.hourly_rate.message}</p>
+                    <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.hourly_rate.message}</p>
                   )}
                 </div>
                 <div>
-                  <label htmlFor="default_duration_minutes" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="default_duration_minutes" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                     {t('services.fields.defaultDuration')}
                   </label>
                   <input
@@ -380,7 +382,7 @@ export function ServiceForm() {
                     min="0"
                     id="default_duration_minutes"
                     {...register('default_duration_minutes', { valueAsNumber: true })}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
                     placeholder="60"
                   />
                 </div>
@@ -390,7 +392,7 @@ export function ServiceForm() {
             {/* Percentage (for percentage) */}
             {pricingType === 'percentage' && (
               <div>
-                <label htmlFor="base_price" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="base_price" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('services.fields.percentage')} *
                 </label>
                 <div className="relative mt-1">
@@ -405,10 +407,10 @@ export function ServiceForm() {
                     placeholder="10"
                     className="block w-full pe-8"
                   />
-                  <span className="absolute inset-y-0 end-3 flex items-center text-gray-500">%</span>
+                  <span className={`absolute inset-y-0 end-3 flex items-center ${colorTokens.text.subtle}`}>%</span>
                 </div>
                 {errors.base_price && (
-                  <p className="mt-1 text-sm text-red-600">{errors.base_price.message}</p>
+                  <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.base_price.message}</p>
                 )}
               </div>
             )}
@@ -429,14 +431,14 @@ export function ServiceForm() {
         <div className="flex items-center justify-end gap-3">
           <Link
             to="/services"
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className={`rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page}`}
           >
             {t('actions.cancel')}
           </Link>
           <button
             type="submit"
             disabled={isSubmitting || mutation.isPending}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className={`rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50`}
           >
             {mutation.isPending ? t('status.saving') : t('actions.save')}
           </button>

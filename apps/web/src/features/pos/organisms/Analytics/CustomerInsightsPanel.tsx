@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { colors, textColors, borderColors } from '@/lib/designTokens'
 import type { CustomerAnalytics } from '../../api/analyticsApi'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface CustomerInsightsPanelProps {
   data: CustomerAnalytics
@@ -36,7 +37,7 @@ export function CustomerInsightsPanel({ data }: CustomerInsightsPanelProps) {
       {data.top_customers.length > 0 && (
         <div className={cardSurface}>
           <h3 className={cn('mb-4 text-lg font-medium', textColors.primary)}>{t('pos:analytics.topCustomers')}</h3>
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead>
               <tr className={cn('border-b text-left', borderColors.light, textColors.tertiary)}>
                 <th className="py-2 pr-4">#</th>
@@ -55,7 +56,7 @@ export function CustomerInsightsPanel({ data }: CustomerInsightsPanelProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
     </div>

@@ -14,6 +14,8 @@ import { TransferOwnershipModal } from './components/organisms/TransferOwnership
 import { useLogVehicleMileage } from './hooks/useLogVehicleMileage'
 import { useVehicleWithCurrentOwner } from './hooks/useVehicleWithCurrentOwner'
 import type { MileageSource } from './types'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Button } from '@/components/atoms'
 
 const MILEAGE_SOURCES: MileageSource[] = ['service', 'manual', 'odometer_photo', 'external_api']
 
@@ -132,9 +134,9 @@ export function VehicleDetailPage() {
             {t('common:actions.back')}
           </Link>
           <div>
-            <h1 className={`text-2xl font-bold ${textColors.primary}`}>
+            <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>
               {vehicle.brand} {vehicle.model}
-            </h1>
+            </PageHeaderTitle>
             <p className={`${textColors.tertiary} font-mono`}>{vehicle.license_plate}</p>
           </div>
         </div>
@@ -146,14 +148,14 @@ export function VehicleDetailPage() {
             <Edit className="h-4 w-4" />
             {t('common:actions.edit')}
           </Link>
-          <button
+          <Button variant="secondary"
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
-            className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.md} gap-2`}
+            className="gap-2"
           >
             <Trash2 className="h-4 w-4" />
             {t('common:actions.delete')}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -242,13 +244,12 @@ export function VehicleDetailPage() {
             {t('vehicle-ownership:page.ownershipSection')}
           </h2>
           {canTransferOwnership ? (
-            <button
+            <Button size="sm"
               type="button"
               onClick={() => { setShowTransferModal(true) }}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
             >
               {t('vehicle-ownership:page.transferOwnership')}
-            </button>
+            </Button>
           ) : null}
         </div>
         <OwnershipHistoryTimeline vehicleId={vehicleId} />
@@ -261,13 +262,12 @@ export function VehicleDetailPage() {
             {t('vehicle-ownership:page.mileageSection')}
           </h2>
           {canLogMileage ? (
-            <button
+            <Button size="sm"
               type="button"
               onClick={() => { setShowMileageForm((prev) => !prev) }}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
             >
               {t('vehicle-ownership:page.logMileage')}
-            </button>
+            </Button>
           ) : null}
         </div>
         {showMileageForm && canLogMileage ? (
@@ -311,7 +311,7 @@ export function VehicleDetailPage() {
               </div>
             ) : null}
             <div className="flex items-center justify-end gap-2">
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   setShowMileageForm(false)
@@ -322,14 +322,13 @@ export function VehicleDetailPage() {
                 disabled={logMileageMutation.isPending}
               >
                 {t('vehicle-ownership:ownership.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button size="sm"
                 type="submit"
                 disabled={logMileageMutation.isPending || mileageValue.trim() === ''}
-                className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
               >
                 {t('vehicle-ownership:mileage.logButton')}
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}

@@ -19,6 +19,8 @@ import { getErrorMessage } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 const contactSchema = z.object({
   first_name: z.string().min(1, 'crm:contacts.validation.firstNameRequired'),
@@ -157,18 +159,18 @@ export function ContactFormPage() {
       <div className="flex items-center gap-4">
         <Link
           to="/crm/contacts"
-          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} hover:${colorTokens.text.primary}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('common:actions.back')}
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
           {isEditing ? t('crm:contacts.editContact') : t('crm:contacts.newContact')}
-        </h1>
+        </PageHeaderTitle>
       </div>
 
       <form onSubmit={(e) => { void handleSubmit(onSubmit)(e) }} className="space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
           <div className="grid gap-6 sm:grid-cols-2">
             <FormField
               label={t('crm:contacts.firstName')}
@@ -281,8 +283,8 @@ export function ContactFormPage() {
         </div>
 
         {/* Company Association (optional) */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
+          <h2 className={`mb-4 text-lg font-semibold ${colorTokens.text.primary}`}>
             {t('crm:contacts.companyAssociations')}
           </h2>
           <div className="grid gap-6 sm:grid-cols-2">
@@ -315,9 +317,9 @@ export function ContactFormPage() {
                   type="checkbox"
                   id="is_primary"
                   {...register('is_primary')}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} focus:${colorTokens.intent.primary.ring}`}
                 />
-                <span className="text-sm text-gray-700">{t('crm:contacts.isPrimary')}</span>
+                <span className={`text-sm ${colorTokens.text.secondary}`}>{t('crm:contacts.isPrimary')}</span>
               </label>
             </FormField>
           </div>

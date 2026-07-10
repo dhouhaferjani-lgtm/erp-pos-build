@@ -17,6 +17,7 @@ import { Button, Checkbox, FormField, Input, Select, StatusBadge, Toggle } from 
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { EmptyState } from '../../components/molecules'
 import { ZonesPanel } from './zones/ZonesPanel'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type LocationType = 'shop' | 'warehouse' | 'office' | 'mobile'
 
@@ -255,7 +256,7 @@ export function LocationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={cn('text-2xl font-bold', textColors.primary)}>{t('locations.title')}</h1>
+          <PageHeaderTitle className={cn('text-2xl font-bold', textColors.primary)}>{t('locations.title')}</PageHeaderTitle>
           <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('locations.subtitle')}</p>
           <p className={cn('mt-1 text-sm', textColors.tertiary)}>{t('settings:locations.scopeHint')}</p>
         </div>

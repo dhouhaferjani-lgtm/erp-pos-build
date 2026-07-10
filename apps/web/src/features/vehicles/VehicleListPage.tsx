@@ -9,6 +9,8 @@ import { SearchInput } from '../../components/molecules/SearchInput'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface Vehicle {
   id: string
@@ -64,7 +66,7 @@ export function VehicleListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>{t('vehicles:title')}</h1>
+          <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>{t('vehicles:title')}</PageHeaderTitle>
           <p className={textColors.disabled}>
             {total} {total === 1 ? t('vehicles:singular') : t('vehicles:plural')} {t('vehicles:registered')}
           </p>
@@ -122,7 +124,7 @@ export function VehicleListPage() {
         </div>
       ) : (
         <div className={`overflow-hidden rounded-lg border ${borderColors.light} bg-white`}>
-          <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
+          <DataTable className={`min-w-full divide-y ${borderColors.divideDefault}`}>
             <thead className={tokens.table.header}>
               <tr>
                 <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.disabled}`}>
@@ -179,7 +181,7 @@ export function VehicleListPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
     </div>

@@ -11,6 +11,7 @@ import { Select } from '../../../components/atoms/Select'
 import { FormField } from '../../../components/atoms/FormField'
 import { useCategories, useCreateUnit, useUpdateUnit } from '../hooks/useUnits'
 import type { Unit } from '../api/uomApi'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Validation schema for unit form
@@ -178,8 +179,8 @@ export function AddUnitModal({ isOpen, onClose, unit, categoryId }: AddUnitModal
         <ModalContent>
           {/* System unit warning */}
           {isSystemUnit && (
-            <div className="rounded-md bg-yellow-50 p-4">
-              <p className="text-sm text-yellow-800">{t('uom:errors.systemUnit')}</p>
+            <div className={`rounded-md ${colorTokens.intent.warning.bgSubtle} p-4`}>
+              <p className={`text-sm ${colorTokens.intent.warning.textStronger}`}>{t('uom:errors.systemUnit')}</p>
             </div>
           )}
 

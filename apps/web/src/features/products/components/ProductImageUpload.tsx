@@ -7,6 +7,7 @@ import { getErrorMessage } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ProductImageUploadProps {
   productId: string
@@ -107,7 +108,7 @@ export function ProductImageUpload({ productId, onUploadSuccess }: ProductImageU
       <div
         className={`
           relative cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors
-          ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
+          ${dragActive ? `${colorTokens.intent.primary.borderFocus} ${colorTokens.intent.primary.bgSubtle}` : `${colorTokens.border.default} hover:${colorTokens.border.strong}`}
           ${uploadMutation.isPending ? 'cursor-not-allowed opacity-50' : ''}
         `}
         onDragEnter={handleDrag}
@@ -127,17 +128,17 @@ export function ProductImageUpload({ productId, onUploadSuccess }: ProductImageU
 
         <div className="space-y-2">
           <div className="flex justify-center">
-            <Upload className={`h-10 w-10 ${dragActive ? 'text-blue-500' : 'text-gray-400'}`} />
+            <Upload className={`h-10 w-10 ${dragActive ? `${colorTokens.intent.primary.textSubtle}` : `${colorTokens.text.disabled}`}`} />
           </div>
 
           {uploadMutation.isPending ? (
-            <p className="text-sm text-gray-600">{t('products:images.uploading')}</p>
+            <p className={`text-sm ${colorTokens.text.muted}`}>{t('products:images.uploading')}</p>
           ) : (
             <>
-              <p className="text-sm text-gray-600">
+              <p className={`text-sm ${colorTokens.text.muted}`}>
                 {t('products:images.dragDropOrClick')}
               </p>
-              <p className="text-xs text-gray-500">
+              <p className={`text-xs ${colorTokens.text.subtle}`}>
                 {t('products:images.supportedFormatsDetail')}
               </p>
             </>
@@ -146,9 +147,9 @@ export function ProductImageUpload({ productId, onUploadSuccess }: ProductImageU
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3">
-          <AlertCircle className="h-4 w-4 flex-shrink-0 text-red-600 mt-0.5" />
-          <p className="text-sm text-red-800">{error}</p>
+        <div className={`flex items-start gap-2 rounded-md border ${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle} p-3`}>
+          <AlertCircle className={`h-4 w-4 flex-shrink-0 ${colorTokens.intent.danger.text} mt-0.5`} />
+          <p className={`text-sm ${colorTokens.intent.danger.textStronger}`}>{error}</p>
         </div>
       )}
     </div>

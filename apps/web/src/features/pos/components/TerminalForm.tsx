@@ -8,6 +8,7 @@ import { Select } from '@/components/atoms/Select'
 import { Textarea } from '@/components/atoms/Textarea'
 import { Button } from '@/components/atoms/Button'
 import type { Terminal, CreateTerminalInput, UpdateTerminalInput } from '../hooks/useTerminals'
+import { Checkbox } from '@/components/atoms'
 
 interface TerminalFormProps {
   terminal?: Terminal | undefined
@@ -191,9 +192,8 @@ export function TerminalForm({
 
           {/* Allow Line Item Discounts */}
           <div className="mb-4 flex items-center gap-3">
-            <input
+            <Checkbox
               {...register('allow_line_discounts')}
-              type="checkbox"
               id="allow_line_discounts"
               className={tokens.checkbox.base}
             />
@@ -204,9 +204,8 @@ export function TerminalForm({
 
           {/* Allow Transaction Discounts */}
           <div className="mb-4 flex items-center gap-3">
-            <input
+            <Checkbox
               {...register('allow_transaction_discounts')}
-              type="checkbox"
               id="allow_transaction_discounts"
               className={tokens.checkbox.base}
             />

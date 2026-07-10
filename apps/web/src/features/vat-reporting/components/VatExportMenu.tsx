@@ -4,6 +4,7 @@ import { Download } from 'lucide-react'
 import { Button } from '@/components/atoms/Button/Button'
 import { useVatExportFormats } from '../hooks/useVatReport'
 import { useVatExport } from '../hooks/useVatExport'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface VatExportMenuProps {
   periodId: string
@@ -47,12 +48,12 @@ export function VatExportMenu({ periodId }: VatExportMenuProps) {
       </Button>
 
       {isOpen && formats && formats.length > 0 && (
-        <div className="absolute end-0 z-10 mt-1 w-48 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+        <div className={`absolute end-0 z-10 mt-1 w-48 rounded-md border ${colorTokens.border.subtle} bg-white py-1 shadow-lg`}>
           {formats.map((format) => (
             <button
               key={format.format}
               type="button"
-              className="block w-full px-4 py-2 text-start text-sm text-gray-700 hover:bg-gray-100"
+              className={`block w-full px-4 py-2 text-start text-sm ${colorTokens.text.secondary} hover:${colorTokens.surface.muted}`}
               onClick={() => { handleExport(format.format); }}
               disabled={exportMutation.isPending}
             >

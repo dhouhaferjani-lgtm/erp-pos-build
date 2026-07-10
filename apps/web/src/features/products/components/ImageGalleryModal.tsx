@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Grid3x3, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { ProductMediaItem } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ImageGalleryModalProps {
   productId: string
@@ -133,7 +134,7 @@ export function ImageGalleryModal({
                 <button
                   key={image.id}
                   onClick={() => { handleImageClick(index); }}
-                  className="group relative aspect-square overflow-hidden rounded-lg bg-gray-800 transition-transform hover:scale-105"
+                  className={`group relative aspect-square overflow-hidden rounded-lg ${colorTokens.surface.inverse} transition-transform hover:scale-105`}
                 >
                   <img
                     src={image.url ?? undefined}
@@ -141,7 +142,7 @@ export function ImageGalleryModal({
                     className="h-full w-full object-cover"
                   />
                   {image.is_primary && (
-                    <div className="absolute top-2 right-2 rounded bg-yellow-500 px-2 py-1 text-xs font-medium text-white">
+                    <div className={`absolute top-2 right-2 rounded ${colorTokens.intent.warning.bg} px-2 py-1 text-xs font-medium text-white`}>
                       {t('images.primary')}
                     </div>
                   )}
@@ -176,7 +177,7 @@ export function ImageGalleryModal({
                 className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
               />
               {currentImage.is_primary && (
-                <div className="absolute top-4 right-4 rounded-lg bg-yellow-500 px-3 py-1.5 text-sm font-medium text-white">
+                <div className={`absolute top-4 right-4 rounded-lg ${colorTokens.intent.warning.bg} px-3 py-1.5 text-sm font-medium text-white`}>
                   {t('images.primary')}
                 </div>
               )}

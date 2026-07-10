@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { Calendar, Package, FileText } from 'lucide-react'
 import { ProductLineSelect } from '@/components/molecules/line-items'
 import type { Batch } from '../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 const batchFormSchema = z.object({
   product_id: z.string().min(1, 'Product is required'),
@@ -19,12 +20,12 @@ export type BatchFormData = z.infer<typeof batchFormSchema>
 
 interface BatchFormProps {
   batch?: Batch
-  onSubmit: (data: BatchFormData) => void
+  onSave: (data: BatchFormData) => void
   isSubmitting?: boolean
   submitLabel?: string
 }
 
-export function BatchForm({ batch, onSubmit, isSubmitting = false, submitLabel }: BatchFormProps) {
+export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: BatchFormProps) {
   const { t } = useTranslation(['batches', 'common'])
 
   const {
@@ -58,7 +59,7 @@ export function BatchForm({ batch, onSubmit, isSubmitting = false, submitLabel }
   }, [batch, setValue])
 
   const handleFormSubmit = handleSubmit((data) => {
-    onSubmit(data)
+    onSave(data)
   })
 
   // Get today's date for min date validation
@@ -68,10 +69,10 @@ export function BatchForm({ batch, onSubmit, isSubmitting = false, submitLabel }
     <form onSubmit={handleFormSubmit} className="space-y-6">
       {/* Product Selection */}
       <div>
-        <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+        <label className={`mb-2 flex items-center gap-2 text-sm font-medium ${colorTokens.text.secondary}`}>
           <Package className="h-4 w-4" />
           {t('batches:fields.product')}
-          <span className="text-red-500">*</span>
+          <span className={`${colorTokens.intent.danger.textSubtle}`}>*</span>
         </label>
         <ProductLineSelect
           value={selectedProductId}
@@ -81,10 +82,10 @@ export function BatchForm({ batch, onSubmit, isSubmitting = false, submitLabel }
           className="w-full"
         />
         {errors.product_id && (
-          <p className="mt-1 text-sm text-red-600">{errors.product_id.message}</p>
+          <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.product_id.message}</p>
         )}
         {batch && (
-          <p className="mt-1 text-sm text-gray-500">
+          <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
             {t('batches:form.productCannotBeChanged')}
           </p>
         )}
@@ -92,20 +93,20 @@ export function BatchForm({ batch, onSubmit, isSubmitting = false, submitLabel }
 
       {/* Batch Number */}
       <div>
-        <label htmlFor="batch_number" className="mb-2 block text-sm font-medium text-gray-700">
+        <label htmlFor="batch_number" className={`mb-2 block text-sm font-medium ${colorTokens.text.secondary}`}>
           {t('batches:fields.batchNumber')}
-          <span className="text-red-500">*</span>
+          <span className={`${colorTokens.intent.danger.textSubtle}`}>*</span>
         </label>
         <input
           id="batch_number"
           type="text"
           {...register('batch_number')}
           disabled={isSubmitting}
-          className="block w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+          className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring} disabled:${colorTokens.surface.muted} disabled:${colorTokens.text.subtle}`}
           placeholder={t('batches:form.enterBatchNumber')}
         />
         {errors.batch_number && (
-          <p className="mt-1 text-sm text-red-600">{errors.batch_number.message}</p>
+          <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.batch_number.message}</p>
         )}
       </div>
 
@@ -113,10 +114,10 @@ export function BatchForm({ batch, onSubmit, isSubmitting = false, submitLabel }
       <div className="grid gap-6 sm:grid-cols-2">
         {/* Expiry Date */}
         <div>
-          <label htmlFor="expiry_date" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+          <label htmlFor="expiry_date" className={`mb-2 flex items-center gap-2 text-sm font-medium ${colorTokens.text.secondary}`}>
             <Calendar className="h-4 w-4" />
             {t('batches:fields.expiryDate')}
-            <span className="text-red-500">*</span>
+            <span className={`${colorTokens.intent.danger.textSubtle}`}>*</span>
           </label>
           <input
             id="expiry_date"
@@ -124,19 +125,19 @@ export function BatchForm({ batch, onSubmit, isSubmitting = false, submitLabel }
             {...register('expiry_date')}
             disabled={isSubmitting}
             min={today}
-            className="block w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+            className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring} disabled:${colorTokens.surface.muted} disabled:${colorTokens.text.subtle}`}
           />
           {errors.expiry_date && (
-            <p className="mt-1 text-sm text-red-600">{errors.expiry_date.message}</p>
+            <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.expiry_date.message}</p>
           )}
         </div>
 
         {/* Manufacturing Date */}
         <div>
-          <label htmlFor="manufacturing_date" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+          <label htmlFor="manufacturing_date" className={`mb-2 flex items-center gap-2 text-sm font-medium ${colorTokens.text.secondary}`}>
             <Calendar className="h-4 w-4" />
             {t('batches:fields.manufacturingDate')}
-            <span className="text-gray-400">({t('common:optional')})</span>
+            <span className={`${colorTokens.text.disabled}`}>({t('common:optional')})</span>
           </label>
           <input
             id="manufacturing_date"
@@ -144,40 +145,40 @@ export function BatchForm({ batch, onSubmit, isSubmitting = false, submitLabel }
             {...register('manufacturing_date')}
             disabled={isSubmitting}
             max={today}
-            className="block w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+            className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring} disabled:${colorTokens.surface.muted} disabled:${colorTokens.text.subtle}`}
           />
           {errors.manufacturing_date && (
-            <p className="mt-1 text-sm text-red-600">{errors.manufacturing_date.message}</p>
+            <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.manufacturing_date.message}</p>
           )}
         </div>
       </div>
 
       {/* Notes */}
       <div>
-        <label htmlFor="notes" className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+        <label htmlFor="notes" className={`mb-2 flex items-center gap-2 text-sm font-medium ${colorTokens.text.secondary}`}>
           <FileText className="h-4 w-4" />
           {t('batches:fields.notes')}
-          <span className="text-gray-400">({t('common:optional')})</span>
+          <span className={`${colorTokens.text.disabled}`}>({t('common:optional')})</span>
         </label>
         <textarea
           id="notes"
           {...register('notes')}
           disabled={isSubmitting}
           rows={4}
-          className="block w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+          className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring} disabled:${colorTokens.surface.muted} disabled:${colorTokens.text.subtle}`}
           placeholder={t('batches:form.enterNotes')}
         />
         {errors.notes && (
-          <p className="mt-1 text-sm text-red-600">{errors.notes.message}</p>
+          <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.notes.message}</p>
         )}
       </div>
 
       {/* Submit Button */}
-      <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-6">
+      <div className={`flex items-center justify-end gap-3 border-t ${colorTokens.border.subtle} pt-6`}>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-300 disabled:text-gray-500"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-6 py-2.5 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:${colorTokens.intent.primary.ring} focus:ring-offset-2 disabled:${colorTokens.surface.disabled} disabled:${colorTokens.text.subtle}`}
         >
           {isSubmitting ? (
             <>

@@ -115,7 +115,7 @@ function renderForm(onSubmit = vi.fn<(data: CreateExpenseDTO) => void>()) {
 
   render(
     <QueryClientProvider client={queryClient}>
-      <ExpenseFormFields onSubmit={onSubmit} />
+      <ExpenseFormFields onSave={onSubmit} />
     </QueryClientProvider>
   )
 

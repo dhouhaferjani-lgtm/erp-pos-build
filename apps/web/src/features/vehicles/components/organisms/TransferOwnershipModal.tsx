@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
-import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { borderColors, textColors } from '@/lib/designTokens'
 import { usePermissions } from '@/hooks/usePermissions'
 import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/pickers'
 import { useTransferVehicleOwnership } from '../../hooks/useTransferVehicleOwnership'
 import type { OwnershipReason } from '../../types'
+import { Button } from '@/components/atoms'
 
 interface TransferOwnershipModalProps {
   vehicleId: string
@@ -93,14 +94,14 @@ export function TransferOwnershipModal({
           <h2 className={`text-lg font-semibold ${textColors.primary}`}>
             {t('ownership.transfer')}
           </h2>
-          <button
+          <Button
             type="button"
             aria-label={t('common:close', { defaultValue: 'Close' })}
             onClick={onClose}
             className={textColors.tertiary}
           >
             <X className="h-5 w-5" />
-          </button>
+          </Button>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -158,21 +159,20 @@ export function TransferOwnershipModal({
           ) : null}
 
           <div className="flex items-center justify-end gap-2 mt-2">
-            <button
+            <Button
               type="button"
               onClick={onClose}
               className={`rounded border px-3 py-1 text-sm ${borderColors.default} ${textColors.secondary}`}
               disabled={mutation.isPending}
             >
               {t('ownership.cancel')}
-            </button>
-            <button
+            </Button>
+            <Button size="sm"
               type="submit"
               disabled={mutation.isPending || newOwner === null}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
             >
               {t('ownership.confirmTransfer')}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

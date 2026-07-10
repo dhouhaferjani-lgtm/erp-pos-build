@@ -7,6 +7,7 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { Banknote } from 'lucide-react'
 import { tokens, colors, textColors, borderColors, focusRing } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/atoms'
 
 export interface CashTenderedModalProps {
   isOpen: boolean
@@ -100,22 +101,22 @@ export function CashTenderedModal({
 
         {/* Denomination Buttons */}
         <div className="flex flex-wrap gap-2">
-          <button
+          <Button
             type="button"
             onClick={handleExact}
-            className={cn('flex-1 min-w-[80px] px-3 py-2.5 text-sm font-medium rounded-lg transition-colors', tokens.button.primary)}
+            className={cn('flex-1 min-w-[80px] px-3 py-2.5 text-sm font-medium rounded-lg transition-colors')}
           >
             {t('pos:cashTendered.exactAmount')}
-          </button>
+          </Button>
           {DENOMINATIONS.map((amount) => (
-            <button
+            <Button variant="secondary"
               key={amount}
               type="button"
               onClick={() => { handleDenomination(amount); }}
-              className={cn('flex-1 min-w-[60px] px-3 py-2.5 text-sm font-medium tabular-nums rounded-lg transition-colors', tokens.button.secondary)}
+              className={cn('flex-1 min-w-[60px] px-3 py-2.5 text-sm font-medium tabular-nums rounded-lg transition-colors')}
             >
               {formatMoney(amount)}
-            </button>
+            </Button>
           ))}
         </div>
 

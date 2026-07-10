@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { textColors, borderColors, focusRing } from '@/lib/designTokens'
+import { textColors, borderColors, focusRing , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { ProductCard, type Product } from '../../molecules'
 import { POSButton } from '../../atoms'
 import { Search, X, Package, ScanBarcode } from 'lucide-react'
@@ -130,7 +130,7 @@ export function ProductGrid({
         {/* Barcode / SKU Input */}
         {onBarcodeSubmit && (
           <div className="relative">
-            <ScanBarcode className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-600" />
+            <ScanBarcode className={`absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 ${colorTokens.intent.available.text}`} />
             <input
               ref={barcodeInputRef}
               type="text"
@@ -140,9 +140,9 @@ export function ProductGrid({
               placeholder={t('pos:barcode.inputPlaceholder')}
               className={cn(
                 'w-full ps-10 pe-10 py-3 rounded-lg',
-                'border-2 border-emerald-300 bg-emerald-50',
-                'focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500',
-                'placeholder:text-emerald-400',
+                `border-2 ${colorTokens.intent.available.border} ${colorTokens.intent.available.bgSubtle}`,
+                `focus:outline-none focus:ring-2 focus:${colorTokens.intent.available.ringFocus} focus:${colorTokens.intent.available.borderFocus}`,
+                `placeholder:${colorTokens.intent.available.textFaint}`,
                 isBarcodeSearching && 'animate-pulse',
                 touchOptimized && 'py-4 text-lg'
               )}
@@ -154,7 +154,7 @@ export function ProductGrid({
                 className="absolute end-3 top-1/2 -translate-y-1/2"
                 aria-label={t('pos:barcode.clearInput')}
               >
-                <X className="w-5 h-5 text-emerald-400 hover:text-emerald-600" />
+                <X className={`w-5 h-5 ${colorTokens.intent.available.textFaint} hover:${colorTokens.intent.available.text}`} />
               </button>
             )}
           </div>

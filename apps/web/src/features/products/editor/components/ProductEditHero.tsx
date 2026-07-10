@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Barcode, Camera, ImageIcon, Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { colors, textColors } from '@/lib/designTokens'
+import { colors, textColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useCatalogBarcodeLookup } from '@/features/inventory/hooks/useCatalogBarcodeLookup'
 import { CreateModeImageBuffer, ProductImageUpload } from '@/features/products/components'
 import type { LookupState, SuggestedProduct } from '@/features/inventory/types/platform'
@@ -171,7 +171,7 @@ export function ProductEditHero({
                       enrichmentState === 'unavailable'
                         ? 'bg-white/10 text-[#B7C6D9]'
                         : enrichmentState === 'ready-for-review'
-                          ? 'bg-amber-300/20 text-amber-100'
+                          ? `${colorTokens.intent.caution.bgSoftStronger}/20 ${colorTokens.intent.caution.textFaint}`
                           : 'bg-[rgba(31,138,91,.18)] text-[#7BE0B0]',
                     )}
                   >
@@ -196,7 +196,7 @@ export function ProductEditHero({
         </div>
 
         {isUploadOpen && (
-          <div className="mt-4 rounded-lg border border-[#2C4A6E] bg-white p-3 text-gray-900">
+          <div className={`mt-4 rounded-lg border border-[#2C4A6E] bg-white p-3 ${colorTokens.text.primary}`}>
             {productId !== undefined ? (
               <ProductImageUpload productId={productId} onUploadSuccess={() => { setIsUploadOpen(false) }} />
             ) : (
@@ -206,7 +206,7 @@ export function ProductEditHero({
         )}
       </div>
 
-      <div className="bg-gray-50 px-4 py-4 sm:px-5">
+      <div className={`${colorTokens.surface.page} px-4 py-4 sm:px-5`}>
         <div className={cn('mb-3 text-start text-xs font-semibold uppercase', textColors.tertiary)}>
           {t('inventory:products.readyToSell')}
         </div>

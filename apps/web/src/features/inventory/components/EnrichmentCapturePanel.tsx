@@ -4,6 +4,7 @@ import type React from 'react'
 import { useTranslation } from 'react-i18next'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
+import { Button, Input } from '@/components/atoms'
 import {
   MAX_PHOTO_BYTES,
   type UploadedPhoto,
@@ -106,15 +107,15 @@ export function EnrichmentCapturePanel({
               <span className={cn(textColors.secondary, 'max-w-48 truncate text-sm')}>
                 {photo.filename}
               </span>
-              <button
+              <Button variant="ghost"
                 type="button"
-                className={cn(tokens.button.base, tokens.button.ghost, 'p-1')}
+                className={cn( 'p-1')}
                 onClick={() => removePhoto(photo.photoId)}
                 disabled={disabled}
                 aria-label={t('barcodeLookup.captureRemovePhoto')}
               >
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -143,9 +144,8 @@ export function EnrichmentCapturePanel({
         <label className={tokens.label.base} htmlFor="enrichment-capture-brand">
           {t('barcodeLookup.captureBrandLabel')}
         </label>
-        <input
+        <Input
           id="enrichment-capture-brand"
-          className={tokens.input.base}
           value={brand}
           onChange={(event) => onBrandChange(event.target.value)}
           disabled={disabled}
@@ -158,15 +158,14 @@ export function EnrichmentCapturePanel({
           <p className={cn(tokens.label.base, 'mb-0')}>
             {t('barcodeLookup.captureAttributesLabel')}
           </p>
-          <button
+          <Button size="sm" variant="secondary"
             type="button"
-            className={cn(tokens.button.base, tokens.button.secondary, tokens.button.sizes.sm)}
             onClick={() => onAttributesChange([...attributes, { key: '', value: '' }])}
             disabled={disabled}
           >
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
             {t('barcodeLookup.captureAddAttribute')}
-          </button>
+          </Button>
         </div>
 
         {attributes.length === 0 ? (
@@ -175,31 +174,29 @@ export function EnrichmentCapturePanel({
 
         {attributes.map((row, index) => (
           <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-            <input
-              className={tokens.input.base}
+            <Input
               value={row.key}
               onChange={(event) => updateAttribute(index, { key: event.target.value })}
               disabled={disabled}
               aria-label={t('barcodeLookup.captureAttributeKey')}
               placeholder={t('barcodeLookup.captureAttributeKey')}
             />
-            <input
-              className={tokens.input.base}
+            <Input
               value={row.value}
               onChange={(event) => updateAttribute(index, { value: event.target.value })}
               disabled={disabled}
               aria-label={t('barcodeLookup.captureAttributeValue')}
               placeholder={t('barcodeLookup.captureAttributeValue')}
             />
-            <button
+            <Button variant="ghost"
               type="button"
-              className={cn(tokens.button.base, tokens.button.ghost, 'mt-1 p-2')}
+              className={cn( 'mt-1 p-2')}
               onClick={() => onAttributesChange(attributes.filter((_, rowIndex) => rowIndex !== index))}
               disabled={disabled}
               aria-label={t('barcodeLookup.captureRemoveAttribute')}
             >
               <Trash2 className="h-4 w-4" aria-hidden="true" />
-            </button>
+            </Button>
           </div>
         ))}
       </div>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronDown, FolderOpen, Folder, Edit, Trash2, Plus } from 'lucide-react'
 import type { CategoryApiResponse } from '../api'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface CategoryTreeViewProps {
   categories: CategoryApiResponse[]
@@ -30,7 +31,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
     <div className="select-none">
       {/* Category Row */}
       <div
-        className="flex items-center gap-2 py-2 px-3 hover:bg-gray-50 rounded-md group"
+        className={`flex items-center gap-2 py-2 px-3 hover:${colorTokens.surface.page} rounded-md group`}
         style={{ paddingInlineStart: `${indentWidth}px` }}
         onMouseEnter={() => { setShowActions(true); }}
         onMouseLeave={() => { setShowActions(false); }}
@@ -38,34 +39,34 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
         {/* Expand/Collapse Button */}
         <button
           onClick={() => { setIsExpanded(!isExpanded); }}
-          className={`flex-shrink-0 p-0.5 rounded hover:bg-gray-200 ${
+          className={`flex-shrink-0 p-0.5 rounded hover:${colorTokens.surface.subdued} ${
             hasChildren ? 'visible' : 'invisible'
           }`}
           aria-label={isExpanded ? t('inventory:categories.collapseAll') : t('inventory:categories.expandAll')}
         >
           {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-gray-600" />
+            <ChevronDown className={`w-4 h-4 ${colorTokens.text.muted}`} />
           ) : (
-            <ChevronRight className="w-4 h-4 text-gray-600" />
+            <ChevronRight className={`w-4 h-4 ${colorTokens.text.muted}`} />
           )}
         </button>
 
         {/* Folder Icon */}
         <div className="flex-shrink-0">
           {isExpanded ? (
-            <FolderOpen className="w-5 h-5 text-blue-500" />
+            <FolderOpen className={`w-5 h-5 ${colorTokens.intent.primary.textSubtle}`} />
           ) : (
-            <Folder className="w-5 h-5 text-gray-400" />
+            <Folder className={`w-5 h-5 ${colorTokens.text.disabled}`} />
           )}
         </div>
 
         {/* Category Name */}
         <div className="flex-1 flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium text-gray-900 truncate">
+          <span className={`text-sm font-medium ${colorTokens.text.primary} truncate`}>
             {category.name}
           </span>
           {!category.is_active && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${colorTokens.surface.muted} ${colorTokens.text.strong}`}>
               {t('common:inactive')}
             </span>
           )}
@@ -73,7 +74,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
 
         {/* Products Count */}
         {category.products_count !== null && category.products_count > 0 && (
-          <span className="text-xs text-gray-500">
+          <span className={`text-xs ${colorTokens.text.subtle}`}>
             {category.products_count} {category.products_count === 1 ? t('inventory:products.singular') : t('inventory:products.plural')}
           </span>
         )}
@@ -83,7 +84,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
           {onAddSubcategory && (
             <button
               onClick={() => { onAddSubcategory(category); }}
-              className="p-1 rounded hover:bg-gray-200 text-gray-600 hover:text-blue-600"
+              className={`p-1 rounded hover:${colorTokens.surface.subdued} ${colorTokens.text.muted} hover:${colorTokens.intent.primary.text}`}
               title={t('inventory:categories.actions.addSubcategory')}
             >
               <Plus className="w-4 h-4" />
@@ -92,7 +93,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
           {onEdit && (
             <button
               onClick={() => { onEdit(category); }}
-              className="p-1 rounded hover:bg-gray-200 text-gray-600 hover:text-blue-600"
+              className={`p-1 rounded hover:${colorTokens.surface.subdued} ${colorTokens.text.muted} hover:${colorTokens.intent.primary.text}`}
               title={t('inventory:categories.actions.edit')}
             >
               <Edit className="w-4 h-4" />
@@ -101,7 +102,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
           {onDelete && (
             <button
               onClick={() => { onDelete(category); }}
-              className="p-1 rounded hover:bg-gray-200 text-gray-600 hover:text-red-600"
+              className={`p-1 rounded hover:${colorTokens.surface.subdued} ${colorTokens.text.muted} hover:${colorTokens.intent.danger.text}`}
               title={t('inventory:categories.actions.delete')}
             >
               <Trash2 className="w-4 h-4" />
@@ -134,8 +135,8 @@ export function CategoryTreeView({ categories, onEdit, onDelete, onAddSubcategor
 
   if (categories.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        <Folder className="mx-auto h-12 w-12 text-gray-400" />
+      <div className={`text-center py-12 ${colorTokens.text.subtle}`}>
+        <Folder className={`mx-auto h-12 w-12 ${colorTokens.text.disabled}`} />
         <p className="mt-2 text-sm">{t('inventory:categories.empty.title')}</p>
       </div>
     )

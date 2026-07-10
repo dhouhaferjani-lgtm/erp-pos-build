@@ -7,6 +7,7 @@ import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useCompanyStore, type Company } from '../../stores/companyStore'
 import { useAuthStore } from '../../stores/authStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface CompanyResponse {
   id: string
@@ -114,10 +115,10 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
   // Show loading while fetching companies (only if authenticated and not on admin routes)
   if (isAuthenticated && !isAdminRoute && isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page}`}>
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          <p className="text-gray-500">{t('company.modal.loading')}</p>
+          <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
+          <p className={`${colorTokens.text.subtle}`}>{t('company.modal.loading')}</p>
         </div>
       </div>
     )
@@ -126,10 +127,10 @@ export function CompanyProvider({ children }: CompanyProviderProps) {
   // If authenticated but no companies (edge case), show error (skip on admin routes)
   if (isAuthenticated && !isAdminRoute && !isLoading && companies.length === 0 && !isError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page}`}>
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900">{t('company.modal.noCompaniesTitle')}</h2>
-          <p className="mt-2 text-gray-600">
+          <h2 className={`text-xl font-semibold ${colorTokens.text.primary}`}>{t('company.modal.noCompaniesTitle')}</h2>
+          <p className={`mt-2 ${colorTokens.text.muted}`}>
             {t('company.modal.noCompaniesMessage')}
           </p>
         </div>

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { colors, textColors, borderColors } from '@/lib/designTokens'
 import type { DiscountAnalysis } from '../../api/analyticsApi'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface DiscountBreakdownChartProps {
   data: DiscountAnalysis
@@ -57,7 +58,7 @@ export function DiscountBreakdownChart({ data }: DiscountBreakdownChartProps) {
       {data.top_discounted_products.length > 0 && (
         <div className={cn('rounded-lg border p-4', borderColors.light, colors.white)}>
           <h3 className={cn('mb-4 text-lg font-medium', textColors.primary)}>{t('pos:analytics.topDiscountedProducts')}</h3>
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead>
               <tr className={cn('border-b text-left', borderColors.light, textColors.tertiary)}>
                 <th className="py-2 pr-4">{t('pos:analytics.product')}</th>
@@ -74,7 +75,7 @@ export function DiscountBreakdownChart({ data }: DiscountBreakdownChartProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
     </div>

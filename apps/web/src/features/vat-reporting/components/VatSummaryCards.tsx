@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface VatSummaryCardsProps {
   outputVat: string
@@ -22,8 +23,8 @@ interface StatCardProps {
 
 function StatCard({ label, amount, colorClass }: StatCardProps) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <p className="text-sm font-medium text-gray-500">{label}</p>
+    <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-4 shadow-sm`}>
+      <p className={`text-sm font-medium ${colorTokens.text.subtle}`}>{label}</p>
       <p className={`mt-1 text-2xl font-semibold ${colorClass}`}>
         {formatAmount(amount)}
       </p>
@@ -44,22 +45,22 @@ export function VatSummaryCards({
       <StatCard
         label={t('finance:vatReporting.summary.outputVat')}
         amount={outputVat}
-        colorClass="text-red-600"
+        colorClass={colorTokens.intent.danger.text}
       />
       <StatCard
         label={t('finance:vatReporting.summary.inputVat')}
         amount={inputVat}
-        colorClass="text-green-600"
+        colorClass={colorTokens.intent.success.text}
       />
       <StatCard
         label={t('finance:vatReporting.summary.creditBroughtForward')}
         amount={creditBroughtForward}
-        colorClass="text-blue-600"
+        colorClass={colorTokens.intent.primary.text}
       />
       <StatCard
         label={t('finance:vatReporting.summary.amountPayable')}
         amount={amountPayable}
-        colorClass={parseFloat(amountPayable) > 0 ? 'text-red-600' : 'text-green-600'}
+        colorClass={parseFloat(amountPayable) > 0 ? `${colorTokens.intent.danger.text}` : `${colorTokens.intent.success.text}`}
       />
     </div>
   )

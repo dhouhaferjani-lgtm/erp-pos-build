@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Ticket, X, Loader2, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { textColors, borderColors, colors, tokens, focusRing } from '@/lib/designTokens'
+import { textColors, borderColors, colors, focusRing , semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { Input } from '@/components/atoms'
 import { POSButton } from '../../atoms'
 import { validateCoupon, type ValidateCouponResponse } from '@/features/coupons/api/couponApi'
 import { useCurrency } from '@/hooks/useCurrency'
@@ -85,18 +86,18 @@ export function CouponCodeInput({
     return (
       <div
         className={cn(
-          'flex items-center justify-between px-3 py-2 rounded-lg border border-emerald-200 bg-emerald-50',
+          `flex items-center justify-between px-3 py-2 rounded-lg border ${colorTokens.intent.available.borderSubtle} ${colorTokens.intent.available.bgSubtle}`,
           className,
         )}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <Check className={`w-4 h-4 ${colorTokens.intent.available.text} flex-shrink-0`} />
           <div className="min-w-0">
-            <span className="text-sm font-medium text-emerald-700 truncate block">
+            <span className={`text-sm font-medium ${colorTokens.intent.available.textStrong} truncate block`}>
               {state.name}
             </span>
             {parseFloat(state.discountAmount) > 0 && (
-              <span className="text-xs text-emerald-600 tabular-nums">
+              <span className={`text-xs ${colorTokens.intent.available.text} tabular-nums`}>
                 -{toFixedCurrency(parseFloat(state.discountAmount))} {currency}
               </span>
             )}
@@ -105,7 +106,7 @@ export function CouponCodeInput({
         <button
           type="button"
           onClick={handleRemove}
-          className={cn('p-1 rounded text-emerald-500 transition-colors', textColors.hoverError, colors.hover.red50)}
+          className={cn(`p-1 rounded ${colorTokens.intent.available.textSubtle} transition-colors`, textColors.hoverError, colors.hover.red50)}
           aria-label={t('pos:cart.removeCoupon')}
         >
           <X className="w-4 h-4" />
@@ -119,7 +120,7 @@ export function CouponCodeInput({
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Ticket className={cn('absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4', textColors.disabled)} />
-          <input
+          <Input
             type="text"
             value={inputValue}
             onChange={(e) => {
@@ -132,7 +133,7 @@ export function CouponCodeInput({
               'w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2',
               focusRing.primary,
               state.status === 'error'
-                ? cn(borderColors.error, tokens.alert.error)
+                ? cn(borderColors.error, colorTokens.intent.danger.bgSubtle, colorTokens.intent.danger.text)
                 : cn(borderColors.default, colors.white),
             )}
             disabled={state.status === 'validating'}

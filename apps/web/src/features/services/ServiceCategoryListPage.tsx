@@ -18,6 +18,8 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { serviceCategoriesInvalidationPredicate } from './_invalidation'
 import type { ServiceCategory, CategoriesResponse, CreateCategoryData } from './types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 interface CategoryFormData {
   name: string
@@ -157,17 +159,17 @@ export function ServiceCategoryListPage() {
     return (
       <div key={category.id}>
         <div
-          className={`flex items-center justify-between px-4 py-3 hover:bg-gray-50 ${
-            level > 0 ? 'border-s-2 border-gray-200' : ''
+          className={`flex items-center justify-between px-4 py-3 hover:${colorTokens.surface.page} ${
+            level > 0 ? `border-s-2 ${colorTokens.border.subtle}` : ''
           }`}
           style={{ paddingInlineStart: `${1 + level * 1.5}rem` }}
         >
           <div className="flex items-center gap-3">
-            <FolderTree className="h-5 w-5 text-gray-400" />
+            <FolderTree className={`h-5 w-5 ${colorTokens.text.disabled}`} />
             <div>
-              <p className="font-medium text-gray-900">{category.name}</p>
+              <p className={`font-medium ${colorTokens.text.primary}`}>{category.name}</p>
               {category.description && (
-                <p className="text-sm text-gray-500">{category.description}</p>
+                <p className={`text-sm ${colorTokens.text.subtle}`}>{category.description}</p>
               )}
             </div>
           </div>
@@ -175,8 +177,8 @@ export function ServiceCategoryListPage() {
             <span
               className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                 category.is_active
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-gray-100 text-gray-800'
+                  ? `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`
+                  : `${colorTokens.surface.muted} ${colorTokens.text.strong}`
               }`}
             >
               {category.is_active ? t('status.active') : t('status.inactive')}
@@ -184,7 +186,7 @@ export function ServiceCategoryListPage() {
             <div className="flex items-center gap-1">
               <button
                 onClick={() => { openEditModal(category); }}
-                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                className={`rounded p-1 ${colorTokens.text.disabled} hover:${colorTokens.surface.muted} hover:${colorTokens.text.muted}`}
                 title={t('actions.edit')}
               >
                 <Edit className="h-4 w-4" />
@@ -192,7 +194,7 @@ export function ServiceCategoryListPage() {
               <button
                 onClick={() => { handleDelete(category); }}
                 disabled={deleteMutation.isPending}
-                className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                className={`rounded p-1 ${colorTokens.text.disabled} hover:${colorTokens.intent.danger.bgSubtle} hover:${colorTokens.intent.danger.text} disabled:opacity-50`}
                 title={t('actions.delete')}
               >
                 <Trash2 className="h-4 w-4" />
@@ -201,7 +203,7 @@ export function ServiceCategoryListPage() {
           </div>
         </div>
         {childCategories.length > 0 && (
-          <div className="border-s border-gray-100" style={{ marginInlineStart: `${1 + level * 1.5}rem` }}>
+          <div className={`border-s ${colorTokens.border.hairline}`} style={{ marginInlineStart: `${1 + level * 1.5}rem` }}>
             {childCategories.map((child) => renderCategory(child, level + 1))}
           </div>
         )}
@@ -216,23 +218,23 @@ export function ServiceCategoryListPage() {
         <div className="flex items-center gap-4">
           <Link
             to="/services"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} hover:${colorTokens.text.primary}`}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('actions.back')}
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
               {t('services.categories', 'Service Categories')}
-            </h1>
-            <p className="text-gray-500">
+            </PageHeaderTitle>
+            <p className={`${colorTokens.text.subtle}`}>
               {categories.length} {categories.length === 1 ? t('services.categoryCount.singular', 'category') : t('services.categoryCount.plural', 'categories')}
             </p>
           </div>
         </div>
         <button
           onClick={openCreateModal}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover}`}
         >
           <Plus className="h-4 w-4" />
           {t('services.addCategory', 'Add Category')}
@@ -242,25 +244,25 @@ export function ServiceCategoryListPage() {
       {/* Content */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="text-gray-500">{t('status.loading')}</div>
+          <div className={`${colorTokens.text.subtle}`}>{t('status.loading')}</div>
         </div>
       ) : error ? (
-        <div className="rounded-lg bg-red-50 p-4 text-red-700">
+        <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4 ${colorTokens.intent.danger.textStrong}`}>
           {t('errors.loadingFailed', 'Error loading data. Please try again.')}
         </div>
       ) : categories.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
-          <FolderTree className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">
+        <div className={`rounded-lg border-2 border-dashed ${colorTokens.border.default} p-12 text-center`}>
+          <FolderTree className={`mx-auto h-12 w-12 ${colorTokens.text.disabled}`} />
+          <h3 className={`mt-2 text-sm font-semibold ${colorTokens.text.primary}`}>
             {t('services.noCategories', 'No categories')}
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
             {t('services.noCategoriesDescription', 'Create categories to organize your services.')}
           </p>
           <div className="mt-6">
             <button
               onClick={openCreateModal}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover}`}
             >
               <Plus className="h-4 w-4" />
               {t('services.addCategory', 'Add Category')}
@@ -268,7 +270,7 @@ export function ServiceCategoryListPage() {
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white divide-y ${colorTokens.border.dividerSubtle}`}>
           {rootCategories.map((category) => renderCategory(category))}
         </div>
       )}
@@ -277,15 +279,15 @@ export function ServiceCategoryListPage() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-              <h3 className="text-lg font-semibold text-gray-900">
+            <div className={`flex items-center justify-between border-b ${colorTokens.border.subtle} px-6 py-4`}>
+              <h3 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
                 {editingCategory
                   ? t('services.editCategory', 'Edit Category')
                   : t('services.createCategory', 'Create Category')}
               </h3>
               <button
                 onClick={closeModal}
-                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                className={`rounded p-1 ${colorTokens.text.disabled} hover:${colorTokens.surface.muted} hover:${colorTokens.text.muted}`}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -293,30 +295,30 @@ export function ServiceCategoryListPage() {
             <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} className="p-6 space-y-4">
               {/* Name */}
               <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="name" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('fields.name', 'Name')} *
                 </label>
                 <input
                   type="text"
                   id="name"
                   {...register('name', { required: t('validation.required', 'This field is required') })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
                   placeholder={t('services.categoryNamePlaceholder', 'Maintenance')}
                 />
                 {errors.name && (
-                  <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
+                  <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.name.message}</p>
                 )}
               </div>
 
               {/* Parent Category */}
               <div>
-                <label htmlFor="parent_id" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="parent_id" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('services.parentCategory', 'Parent Category')}
                 </label>
                 <select
                   id="parent_id"
                   {...register('parent_id')}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
                 >
                   <option value="">{t('services.noParent', 'None (Root Category)')}</option>
                   {categories
@@ -331,27 +333,27 @@ export function ServiceCategoryListPage() {
 
               {/* Description */}
               <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="description" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('fields.description', 'Description')}
                 </label>
                 <textarea
                   id="description"
                   {...register('description')}
                   rows={2}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
                 />
               </div>
 
               {/* Sort Order */}
               <div>
-                <label htmlFor="sort_order" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="sort_order" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('services.sortOrder', 'Sort Order')}
                 </label>
                 <input
                   type="number"
                   id="sort_order"
                   {...register('sort_order', { valueAsNumber: true })}
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
                 />
               </div>
 
@@ -361,9 +363,9 @@ export function ServiceCategoryListPage() {
                   type="checkbox"
                   id="is_active"
                   {...register('is_active')}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} focus:${colorTokens.intent.primary.ring}`}
                 />
-                <label htmlFor="is_active" className="text-sm text-gray-700">
+                <label htmlFor="is_active" className={`text-sm ${colorTokens.text.secondary}`}>
                   {t('status.active')}
                 </label>
               </div>
@@ -373,14 +375,14 @@ export function ServiceCategoryListPage() {
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className={`rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page}`}
                 >
                   {t('actions.cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={createMutation.isPending || updateMutation.isPending}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50`}
                 >
                   <Check className="h-4 w-4" />
                   {editingCategory ? t('actions.save') : t('actions.create')}

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { colors, textColors, borderColors } from '@/lib/designTokens'
 import type { CashierPerformance } from '../../api/analyticsApi'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface CashierComparisonChartProps {
   data: CashierPerformance[]
@@ -45,7 +46,7 @@ export function CashierComparisonChart({ data }: CashierComparisonChartProps) {
         <>
           <ReactECharts option={option} style={{ height: Math.max(250, sorted.length * 50) }} />
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
+            <DataTable className="w-full text-sm">
               <thead>
                 <tr className={cn('border-b text-left', borderColors.light, textColors.tertiary)}>
                   <th className="py-2 pr-4">{t('pos:analytics.cashier')}</th>
@@ -64,7 +65,7 @@ export function CashierComparisonChart({ data }: CashierComparisonChartProps) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         </>
       )}

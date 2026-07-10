@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { tokens, textColors } from '@/lib/designTokens'
-import { Checkbox } from '@/components/atoms'
+import { Checkbox , Button, Input, Select } from '@/components/atoms'
 import { getErrorMessage } from '@/lib/api'
 import { useCreateAttribute } from '../hooks/useVariants'
 import type { AttributeDataType, CreateAttributePayload } from '../api/variantApi'
@@ -81,10 +81,9 @@ export function AttributeForm({ onCreated, onCancel }: AttributeFormProps) {
             {t('catalog:attributes.code')}
             <span className={tokens.label.required}> *</span>
           </label>
-          <input
+          <Input
             id="attr-code"
             type="text"
-            className={tokens.input.base}
             {...register('code', { required: true, maxLength: 100 })}
           />
           {errors.code ? (
@@ -99,10 +98,9 @@ export function AttributeForm({ onCreated, onCancel }: AttributeFormProps) {
             {t('catalog:attributes.name')}
             <span className={tokens.label.required}> *</span>
           </label>
-          <input
+          <Input
             id="attr-name"
             type="text"
-            className={tokens.input.base}
             {...register('name', { required: true, maxLength: 255 })}
           />
           {errors.name ? (
@@ -116,9 +114,8 @@ export function AttributeForm({ onCreated, onCancel }: AttributeFormProps) {
           <label htmlFor="attr-data-type" className={tokens.label.base}>
             {t('catalog:attributes.dataType')}
           </label>
-          <select
+          <Select
             id="attr-data-type"
-            className={tokens.select.base}
             {...register('data_type')}
           >
             {DATA_TYPES.map((type) => (
@@ -126,7 +123,7 @@ export function AttributeForm({ onCreated, onCancel }: AttributeFormProps) {
                 {t(`catalog:attributes.dataTypes.${type}`)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="flex items-center">
@@ -142,20 +139,18 @@ export function AttributeForm({ onCreated, onCancel }: AttributeFormProps) {
       </div>
 
       <div className="flex justify-end gap-3">
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={onCancel}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
         >
           {t('catalog:attributes.cancel')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="submit"
           disabled={createAttribute.isPending}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
         >
           {t('catalog:attributes.save')}
-        </button>
+        </Button>
       </div>
     </form>
   )

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useVariantsForProduct } from '../hooks/useVariants'
-import { textColors, borderColors, tokens } from '@/lib/designTokens'
+import { textColors, borderColors } from '@/lib/designTokens'
+import { Button } from '@/components/atoms'
 
 export interface ProductDetailVariantPickerProps {
   productId: string
@@ -51,7 +52,7 @@ export function ProductDetailVariantPicker({
         {active.map((variant) => {
           const isSelected = variant.id === value
           return (
-            <button
+            <Button
               key={variant.id}
               type="button"
               role="radio"
@@ -60,12 +61,12 @@ export function ProductDetailVariantPicker({
               className={[
                 'rounded-full border-2 px-4 py-2 text-sm font-medium transition-colors',
                 isSelected
-                  ? `${borderColors.primary} ${tokens.button.primary}`
+                  ? `${borderColors.primary} `
                   : `${borderColors.default} ${textColors.secondary} ${borderColors.hover}`,
               ].join(' ')}
             >
               {variant.name_suffix.trim() || variant.variant_code}
-            </button>
+            </Button>
           )
         })}
       </div>

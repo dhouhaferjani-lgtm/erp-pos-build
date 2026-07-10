@@ -3,16 +3,20 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Ticket, Ban, RefreshCw, Trash2 } from 'lucide-react'
 import { Button, Input, Select } from '@/components/atoms'
+import { StatusBadge, statusTone, type StatusTone } from '@/components/atoms/StatusBadge'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
 import { useCoupons, useRevokeCoupon, useReactivateCoupon, useDeleteCoupon } from '../hooks/useCoupons'
 import type { CouponData } from '../api/couponApi'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
-const STATUS_COLORS: Record<string, string> = {
-  active: 'bg-green-100 text-green-700',
-  exhausted: 'bg-gray-200 text-gray-500',
-  expired: 'bg-red-100 text-red-700',
-  revoked: 'bg-orange-100 text-orange-700',
+const couponToneOverrides: Record<string, StatusTone> = {
+  active: 'success',
+  exhausted: 'neutral',
+  expired: 'danger',
+  revoked: 'warning',
 }
 
 type ConfirmAction = {
@@ -91,10 +95,10 @@ export function CouponListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
             {t('coupons:title')}
-          </h1>
-          <p className="text-sm mt-1 text-gray-500">
+          </PageHeaderTitle>
+          <p className={`text-sm mt-1 ${colorTokens.text.subtle}`}>
             {t('coupons:subtitle')}
           </p>
         </div>
@@ -127,67 +131,67 @@ export function CouponListPage() {
 
       {/* Table */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500">{t('common:loading')}</div>
+        <div className={`text-center py-12 ${colorTokens.text.subtle}`}>{t('common:loading')}</div>
       ) : coupons.length === 0 ? (
         <div className="text-center py-12">
-          <Ticket className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500 font-medium">{t('coupons:noCoupons')}</p>
-          <p className="text-gray-400 text-sm mt-1">{t('coupons:noCouponsDescription')}</p>
+          <Ticket className={`w-12 h-12 mx-auto ${colorTokens.text.faint} mb-4`} />
+          <p className={`${colorTokens.text.subtle} font-medium`}>{t('coupons:noCoupons')}</p>
+          <p className={`${colorTokens.text.disabled} text-sm mt-1`}>{t('coupons:noCouponsDescription')}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={`${colorTokens.surface.page}`}>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('coupons:fields.code')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('coupons:fields.name')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('coupons:fields.status')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('coupons:fields.discountValue')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('coupons:fields.useCount')}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('coupons:fields.expiresAt')}
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                <th className={`px-4 py-3 text-right text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('common:actions')}
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className={`bg-white divide-y ${colorTokens.border.divider}`}>
               {coupons.map((coupon) => (
                 <tr
                   key={coupon.id}
-                  className="hover:bg-gray-50 cursor-pointer"
+                  className={`hover:${colorTokens.surface.page} cursor-pointer`}
                   onClick={() => navigate(`/pos/coupons/${coupon.id}/edit`)}
                 >
                   <td className="px-4 py-3">
-                    <span className="font-mono font-medium text-gray-900">{coupon.code}</span>
+                    <span className={`font-mono font-medium ${colorTokens.text.primary}`}>{coupon.code}</span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{coupon.name}</td>
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{coupon.name}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[coupon.status] ?? 'bg-gray-100 text-gray-700'}`}>
+                    <StatusBadge tone={statusTone(coupon.status, couponToneOverrides)}>
                       {t(`coupons:statuses.${coupon.status}`)}
-                    </span>
+                    </StatusBadge>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>
                     {coupon.discount_type === 'percentage'
                       ? `${coupon.discount_value}%`
                       : coupon.discount_value}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>
                     {coupon.use_count}
                     {coupon.max_uses !== null && ` / ${coupon.max_uses}`}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
+                  <td className={`px-4 py-3 text-sm ${colorTokens.text.subtle}`}>
                     {coupon.expires_at
                       ? new Date(coupon.expires_at).toLocaleDateString()
                       : '-'}
@@ -197,7 +201,7 @@ export function CouponListPage() {
                       {coupon.status === 'active' ? (
                         <button
                           onClick={() => { handleAction('revoke', coupon); }}
-                          className="p-1.5 rounded hover:bg-orange-50 text-orange-600"
+                          className={`p-1.5 rounded hover:${colorTokens.intent.notice.bgSubtle} ${colorTokens.intent.notice.text}`}
                           title={t('coupons:actions.revoke')}
                         >
                           <Ban className="w-4 h-4" />
@@ -206,7 +210,7 @@ export function CouponListPage() {
                       {coupon.status === 'revoked' || coupon.status === 'exhausted' ? (
                         <button
                           onClick={() => { handleAction('reactivate', coupon); }}
-                          className="p-1.5 rounded hover:bg-green-50 text-green-600"
+                          className={`p-1.5 rounded hover:${colorTokens.intent.success.bgSubtle} ${colorTokens.intent.success.text}`}
                           title={t('coupons:actions.reactivate')}
                         >
                           <RefreshCw className="w-4 h-4" />
@@ -215,7 +219,7 @@ export function CouponListPage() {
                       {coupon.status !== 'active' ? (
                         <button
                           onClick={() => { handleAction('delete', coupon); }}
-                          className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                          className={`p-1.5 rounded hover:${colorTokens.intent.danger.bgSubtle} ${colorTokens.intent.danger.textSubtle}`}
                           title={t('coupons:deleteCoupon')}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -226,7 +230,7 @@ export function CouponListPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
 

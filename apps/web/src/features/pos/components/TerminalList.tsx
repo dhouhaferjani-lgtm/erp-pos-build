@@ -5,6 +5,7 @@ import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { StatusBadge } from '@/components/atoms/StatusBadge'
 import { TerminalStatusBadge } from './TerminalStatusBadge'
 import type { Terminal } from '../hooks/useTerminals'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface TerminalListProps {
   terminals: Terminal[]
@@ -55,7 +56,7 @@ export function TerminalList({
 
   return (
     <div className="overflow-x-auto">
-      <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+      <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
         <thead className={tokens.table.header}>
           <tr>
             <th
@@ -198,7 +199,7 @@ export function TerminalList({
             </tr>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

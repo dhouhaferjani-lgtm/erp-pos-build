@@ -19,10 +19,11 @@ import { StickyFormFooter } from '../../../../components/molecules/StickyFormFoo
 import { tokens, textColors } from '../../../../lib/designTokens'
 import { bccomp } from '../../../../lib/decimal'
 import type { CreateExpenseDTO, Expense } from '../../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ExpenseFormFieldsProps {
   expense?: Expense
-  onSubmit: (data: CreateExpenseDTO) => void
+  onSave: (data: CreateExpenseDTO) => void
   onCancel?: () => void
   isSubmitting?: boolean
 }
@@ -35,7 +36,7 @@ interface ExpenseFormFieldsProps {
  */
 export function ExpenseFormFields({
   expense,
-  onSubmit,
+  onSave,
   onCancel,
   isSubmitting = false,
 }: ExpenseFormFieldsProps) {
@@ -116,7 +117,7 @@ export function ExpenseFormFields({
   const linkedInvoiceField = register('linked_invoice_id')
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSave)} className="space-y-6">
       {/* Vendor Information */}
       <div className="space-y-4">
         <h2 className={tokens.heading.section}>{t('expenses:form.vendorInfo')}</h2>
@@ -154,7 +155,7 @@ export function ExpenseFormFields({
         <h2 className={tokens.heading.section}>{t('expenses:form.classification')}</h2>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <label className="flex min-h-12 items-center gap-3 rounded-md border border-gray-200 px-3 py-2 text-sm">
+          <label className={`flex min-h-12 items-center gap-3 rounded-md border ${colorTokens.border.subtle} px-3 py-2 text-sm`}>
             <input
               type="radio"
               value="generic"
@@ -163,7 +164,7 @@ export function ExpenseFormFields({
             />
             <span>{t('expenses:form.kindGeneric')}</span>
           </label>
-          <label className="flex min-h-12 items-center gap-3 rounded-md border border-gray-200 px-3 py-2 text-sm">
+          <label className={`flex min-h-12 items-center gap-3 rounded-md border ${colorTokens.border.subtle} px-3 py-2 text-sm`}>
             <input
               type="radio"
               value="linked_cost"
@@ -175,7 +176,7 @@ export function ExpenseFormFields({
         </div>
 
         {isLinkedCost && (
-          <div className="space-y-4 rounded-md border border-gray-200 p-4">
+          <div className={`space-y-4 rounded-md border ${colorTokens.border.subtle} p-4`}>
             <FormField label={t('expenses:form.linkedInvoice')} htmlFor="linked_invoice_id">
               <Select
                 id="linked_invoice_id"
@@ -203,7 +204,7 @@ export function ExpenseFormFields({
               <div className={tokens.alert.base}>
                 <button
                   type="button"
-                  className="text-sm font-medium text-blue-700"
+                  className={`text-sm font-medium ${colorTokens.intent.primary.textStrong}`}
                   onClick={() => {
                     setValue('expense_kind', 'generic')
                     setValue('linked_invoice_id', undefined)
@@ -217,7 +218,7 @@ export function ExpenseFormFields({
             )}
 
             {selectedOperation && (
-              <div className="flex flex-wrap items-center gap-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              <div className={`flex flex-wrap items-center gap-2 rounded-md ${colorTokens.surface.page} px-3 py-2 text-sm ${colorTokens.text.secondary}`}>
                 <span className="font-medium">{t('expenses:form.linkedTo')}</span>
                 <span>{selectedOperation.number}</span>
                 <span>{selectedOperation.status}</span>

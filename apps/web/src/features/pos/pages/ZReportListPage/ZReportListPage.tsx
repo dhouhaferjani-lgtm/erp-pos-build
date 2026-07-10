@@ -10,6 +10,8 @@ import { toast } from 'sonner'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { POSButton } from '../../atoms/POSButton'
 import { usePosTenantScope } from '../../hooks/usePosTenantScope'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface Terminal {
   id: string
@@ -82,10 +84,10 @@ export function ZReportListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={`text-2xl font-bold ${textColors.primary} flex items-center gap-2`}>
+          <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary} flex items-center gap-2`}>
             <FileCheck className={`h-6 w-6 ${textColors.disabled}`} />
             {t('pos:zReports.title')}
-          </h1>
+          </PageHeaderTitle>
           <p className={textColors.tertiary}>{t('pos:zReports.description')}</p>
         </div>
 
@@ -218,7 +220,7 @@ export function ZReportListPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
+              <DataTable className={`min-w-full divide-y ${borderColors.divideDefault}`}>
                 <thead className={tokens.table.header}>
                   <tr>
                     <th className={`px-4 py-3 text-start text-xs font-medium ${textColors.tertiary} uppercase`}>{t('pos:zReports.zNumber')}</th>
@@ -279,7 +281,7 @@ export function ZReportListPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           )}
 

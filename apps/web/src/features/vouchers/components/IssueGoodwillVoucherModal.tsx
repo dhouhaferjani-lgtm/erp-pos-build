@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { AlertCircle, Info } from 'lucide-react'
 import { Button, Input, FormField, Select, Textarea, MoneyInput } from '@/components/atoms'
 import { Modal } from '@/components/organisms/Modal/Modal'
-import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { textColors, borderColors, colors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/pickers/PartnerPicker'
 import { UserPicker } from '@/components/ui/UserPicker'
 import { useTerminals } from '@/features/pos/hooks/useTerminals'
@@ -209,7 +209,7 @@ export function IssueGoodwillVoucherModal({ isOpen, onClose }: IssueGoodwillVouc
                     type="radio"
                     value={mode}
                     {...form.register('redemption_mode')}
-                    className={tokens.radio.base}
+                    className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                   />
                   <span className={`text-sm ${textColors.secondary}`}>{t(`vouchers:redemptionModes.${mode}`)}</span>
                 </label>

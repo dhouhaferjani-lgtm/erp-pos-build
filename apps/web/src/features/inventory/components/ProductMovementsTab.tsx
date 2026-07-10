@@ -21,6 +21,7 @@ import { Button } from '@/components/atoms/Button'
 import { EntityLink } from '@/components/molecules/EntityLink'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface StockMovement {
   id: string
@@ -234,7 +235,7 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
         </div>
       ) : (
         <div className={`overflow-hidden rounded-lg border ${borderColors.light} bg-white`}>
-          <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
+          <DataTable className={`min-w-full divide-y ${borderColors.divideDefault}`}>
             <thead className={tokens.table.header}>
               <tr>
                 <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
@@ -319,7 +320,7 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
                 )
               })}
             </tbody>
-          </table>
+          </DataTable>
           {data?.meta && data.meta.last_page > 1 && (
             <OffsetPagination
               currentPage={data.meta.current_page}

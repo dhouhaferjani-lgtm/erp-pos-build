@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -18,6 +19,8 @@ import {
 } from '../api/keyComponentApi';
 import { parapharmacyListInvalidationPredicate } from './tenantScope';
 import { toast } from 'sonner';
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 export function KeyComponentFormPage() {
   const { t } = useTranslation(['common', 'parapharmacy']);
@@ -27,6 +30,7 @@ export function KeyComponentFormPage() {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null);
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null);
   const isEdit = !!id && id !== 'new';
+  const { handleSubmit: handleFormSubmit } = useForm();
 
   const [slug, setSlug] = useState('');
   const [isAllergen, setIsAllergen] = useState(false);
@@ -89,9 +93,7 @@ export function KeyComponentFormPage() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const submitKeyComponent = () => {
     const data: CreateKeyComponentInput = {
       slug,
       is_allergen: isAllergen,
@@ -130,18 +132,18 @@ export function KeyComponentFormPage() {
           {t('common:back')}
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">
+          <PageHeaderTitle className="text-3xl font-bold">
             {isEdit
               ? t('parapharmacy:editKeyComponent')
               : t('parapharmacy:addKeyComponent')}
-          </h1>
+          </PageHeaderTitle>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">
+      <form onSubmit={(event) => { void handleFormSubmit(submitKeyComponent)(event) }} className="space-y-6">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white shadow-sm`}>
+          <div className={`border-b ${colorTokens.border.subtle} px-6 py-4`}>
+            <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
               {t('parapharmacy:basicInformation')}
             </h2>
           </div>
@@ -149,9 +151,9 @@ export function KeyComponentFormPage() {
             <div>
               <label
                 htmlFor="slug"
-                className="block text-sm font-medium text-gray-700 mb-1"
+                className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}
               >
-                {t('parapharmacy:slug')} <span className="text-red-600">*</span>
+                {t('parapharmacy:slug')} <span className={`${colorTokens.intent.danger.text}`}>*</span>
               </label>
               <Input
                 id="slug"
@@ -160,7 +162,7 @@ export function KeyComponentFormPage() {
                 required
                 placeholder="gelatin-capsule"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className={`text-xs ${colorTokens.text.subtle} mt-1`}>
                 {t('parapharmacy:slugHelp')}
               </p>
             </div>
@@ -171,18 +173,18 @@ export function KeyComponentFormPage() {
                 id="is_allergen"
                 checked={isAllergen}
                 onChange={(e) => { setIsAllergen(e.target.checked); }}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} focus:${colorTokens.intent.primary.ring}`}
               />
-              <label htmlFor="is_allergen" className="text-sm text-gray-700">
+              <label htmlFor="is_allergen" className={`text-sm ${colorTokens.text.secondary}`}>
                 {t('parapharmacy:isAllergen')}
               </label>
             </div>
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white shadow-sm`}>
+          <div className={`border-b ${colorTokens.border.subtle} px-6 py-4`}>
+            <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
               {t('parapharmacy:translations')}
             </h2>
           </div>

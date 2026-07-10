@@ -3,6 +3,7 @@ import { Button } from '@/components/atoms/Button/Button'
 import { Input } from '@/components/atoms/Input/Input'
 import { Textarea } from '@/components/atoms/Textarea/Textarea'
 import { Trash2, Plus } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface Translation {
   id?: string;
@@ -82,7 +83,7 @@ export function TranslationEditor({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <label className="text-base font-semibold text-gray-900">
+        <label className={`text-base font-semibold ${colorTokens.text.primary}`}>
           {t('parapharmacy:translations')}
         </label>
         {canAddMore && (
@@ -94,8 +95,8 @@ export function TranslationEditor({
       </div>
 
       {translations.length === 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-          <div className="px-6 py-8 text-center text-gray-500">
+        <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white shadow-sm`}>
+          <div className={`px-6 py-8 text-center ${colorTokens.text.subtle}`}>
             {t('parapharmacy:noTranslations')}
             <br />
             <Button
@@ -116,13 +117,13 @@ export function TranslationEditor({
         const locale = availableLocales.find((l) => l.code === translation.locale)
 
         return (
-          <div key={index} className="rounded-lg border border-gray-200 bg-white shadow-sm">
-            <div className="border-b border-gray-200 px-6 py-4">
+          <div key={translation.id ?? translation.locale} className={`rounded-lg border ${colorTokens.border.subtle} bg-white shadow-sm`}>
+            <div className={`border-b ${colorTokens.border.subtle} px-6 py-4`}>
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-900">
+                <h3 className={`text-sm font-medium ${colorTokens.text.primary}`}>
                   {locale?.name || translation.locale}
                   {translation.locale === 'en' && (
-                    <span className="ml-2 text-xs text-gray-500">
+                    <span className={`ml-2 text-xs ${colorTokens.text.subtle}`}>
                       ({t('parapharmacy:required')})
                     </span>
                   )}
@@ -147,11 +148,11 @@ export function TranslationEditor({
                 <div key={field.name}>
                   <label
                     htmlFor={`translation-${index}-${field.name}`}
-                    className="block text-sm font-medium text-gray-700 mb-1"
+                    className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1`}
                   >
                     {field.label}
                     {field.required && translation.locale === 'en' && (
-                      <span className="text-red-600 ml-1">*</span>
+                      <span className={`${colorTokens.intent.danger.text} ml-1`}>*</span>
                     )}
                   </label>
                   {field.multiline ? (

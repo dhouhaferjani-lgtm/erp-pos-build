@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useExpenseCategories } from '../../hooks/useExpenseCategories'
 import type { ExpenseCategory } from '../../types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ExpenseCategorySelectProps {
   value: string
@@ -61,14 +62,14 @@ export function ExpenseCategorySelect({
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+      <label className={`text-sm font-medium ${colorTokens.text.secondary} dark:${colorTokens.text.faint}`}>
         {t('expenses:form.category')}
       </label>
       <select
         value={value || ''}
         onChange={(e) => { onChange(e.target.value); }}
         disabled={disabled || isLoading || !hasCategories}
-        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:disabled:bg-gray-900"
+        className={`w-full rounded-md border ${colorTokens.border.default} bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:${colorTokens.surface.page} disabled:${colorTokens.text.subtle} dark:${colorTokens.border.inverse} dark:${colorTokens.surface.inverse} dark:${colorTokens.text.inverseFaint} dark:disabled:${colorTokens.surface.inverseStrong}`}
       >
         <option value="">
           {isLoading
@@ -80,12 +81,12 @@ export function ExpenseCategorySelect({
         {buildCategoryOptions(categories)}
       </select>
       {error && (
-        <p className="text-sm text-red-600 dark:text-red-400">
+        <p className={`text-sm ${colorTokens.intent.danger.text} dark:${colorTokens.intent.danger.textFaint}`}>
           {t('common:error')}
         </p>
       )}
       {!isLoading && !error && !hasCategories && (
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className={`text-sm ${colorTokens.text.subtle} dark:${colorTokens.text.disabled}`}>
           {t('expenses:categories.noCategoriesDescription')}{' '}
           <a
             href="/expenses/categories"

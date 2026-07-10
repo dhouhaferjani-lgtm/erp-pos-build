@@ -19,6 +19,8 @@ import {
   Loader2,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export interface Shift {
   id: string
@@ -157,7 +159,7 @@ export function ShiftDashboardPage({
       <div className={cn(colors.white, 'rounded-lg shadow-sm p-6 mb-6')}>
         <div className="flex items-center justify-between">
           <div>
-            <h1
+            <PageHeaderTitle
               className={cn(
                 'font-bold',
                 textColors.primary,
@@ -165,7 +167,7 @@ export function ShiftDashboardPage({
               )}
             >
               {terminal.code}
-            </h1>
+            </PageHeaderTitle>
             <p className={cn(textColors.tertiary, 'mt-1')}>{terminal.location_name}</p>
           </div>
 
@@ -509,7 +511,7 @@ export function ShiftDashboardPage({
             {xReportData.vat_breakdown.length > 0 && (
               <div>
                 <h4 className={cn('font-semibold mb-3', textColors.primary)}>{t('pos:xReport.vatBreakdown')}</h4>
-                <table className="w-full text-sm">
+                <DataTable className="w-full text-sm">
                   <thead>
                     <tr className={cn('text-left border-b', textColors.disabled)}>
                       <th className="pb-2 font-medium">{t('pos:xReport.rate')}</th>
@@ -528,7 +530,7 @@ export function ShiftDashboardPage({
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             )}
 
@@ -536,7 +538,7 @@ export function ShiftDashboardPage({
             {xReportData.payment_methods.length > 0 && (
               <div>
                 <h4 className={cn('font-semibold mb-3', textColors.primary)}>{t('pos:xReport.paymentMethods')}</h4>
-                <table className="w-full text-sm">
+                <DataTable className="w-full text-sm">
                   <thead>
                     <tr className={cn('text-left border-b', textColors.disabled)}>
                       <th className="pb-2 font-medium">{t('pos:xReport.method')}</th>
@@ -553,7 +555,7 @@ export function ShiftDashboardPage({
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             )}
           </div>

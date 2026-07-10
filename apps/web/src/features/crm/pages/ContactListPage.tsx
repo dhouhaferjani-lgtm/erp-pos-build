@@ -11,6 +11,9 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { Input } from '@/components/atoms/Input/Input'
 import { Button } from '@/components/atoms/Button/Button'
 import { Badge } from '@/components/atoms/Badge/Badge'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function ContactListPage() {
   const { t } = useTranslation(['crm', 'common'])
@@ -33,7 +36,7 @@ export function ContactListPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">{t('crm:contacts.title')}</h1>
+        <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{t('crm:contacts.title')}</PageHeaderTitle>
         <Link to="/crm/contacts/new">
           <Button variant="primary">
             <UserPlus className="h-4 w-4 me-2" />
@@ -45,7 +48,7 @@ export function ContactListPage() {
       {/* Search */}
       <div className="flex gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${colorTokens.text.disabled}`} />
           <Input
             type="text"
             value={search}
@@ -57,37 +60,37 @@ export function ContactListPage() {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} bg-white`}>
+        <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+          <thead className={`${colorTokens.surface.page}`}>
             <tr>
-              <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('crm:contacts.fullName')}
               </th>
-              <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('crm:contacts.phone')}
               </th>
-              <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('crm:contacts.email')}
               </th>
-              <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('crm:contacts.company')}
               </th>
-              <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('crm:contacts.isActive')}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className={`divide-y ${colorTokens.border.divider}`}>
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">
+                <td colSpan={5} className={`px-6 py-12 text-center text-sm ${colorTokens.text.subtle}`}>
                   {t('common:common.loading')}
                 </td>
               </tr>
             ) : contacts.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">
+                <td colSpan={5} className={`px-6 py-12 text-center text-sm ${colorTokens.text.subtle}`}>
                   {t('crm:contacts.noContacts')}
                 </td>
               </tr>
@@ -95,19 +98,19 @@ export function ContactListPage() {
               contacts.map((contact) => (
                 <tr
                   key={contact.id}
-                  className="cursor-pointer hover:bg-gray-50"
+                  className={`cursor-pointer hover:${colorTokens.surface.page}`}
                   onClick={() => { void navigate(`/crm/contacts/${contact.id}`) }}
                 >
-                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium ${colorTokens.text.primary}`}>
                     {contact.full_name}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                     {contact.phone ?? '\u2014'}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                     {contact.email ?? '\u2014'}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                     {contact.parties?.[0]?.name ?? '\u2014'}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm">
@@ -119,13 +122,13 @@ export function ContactListPage() {
               ))
             )}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {/* Pagination */}
       {meta && meta.last_page > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-700">
+          <p className={`text-sm ${colorTokens.text.secondary}`}>
             {t('common:pagination.showing', {
               from: ((meta.current_page - 1) * meta.per_page) + 1,
               to: Math.min(meta.current_page * meta.per_page, meta.total),

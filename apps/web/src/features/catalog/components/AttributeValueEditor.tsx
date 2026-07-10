@@ -6,6 +6,7 @@ import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { getErrorMessage } from '@/lib/api'
 import { useAttributeValues, useAddAttributeValue } from '../hooks/useVariants'
 import type { ProductAttribute } from '../api/variantApi'
+import { Button, Input } from '@/components/atoms'
 
 interface AttributeValueEditorProps {
   attribute: ProductAttribute
@@ -88,12 +89,11 @@ export function AttributeValueEditor({ attribute, canEdit }: AttributeValueEdito
             >
               {t('catalog:attributes.valueCode')}
             </label>
-            <input
+            <Input
               id={`value-code-${attribute.id}`}
               type="text"
               value={code}
               onChange={(e) => { setCode(e.target.value) }}
-              className={tokens.input.base}
             />
           </div>
           <div>
@@ -103,12 +103,11 @@ export function AttributeValueEditor({ attribute, canEdit }: AttributeValueEdito
             >
               {t('catalog:attributes.valueLabel')}
             </label>
-            <input
+            <Input
               id={`value-label-${attribute.id}`}
               type="text"
               value={label}
               onChange={(e) => { setLabel(e.target.value) }}
-              className={tokens.input.base}
             />
           </div>
           {isColor ? (
@@ -128,15 +127,14 @@ export function AttributeValueEditor({ attribute, canEdit }: AttributeValueEdito
               />
             </div>
           ) : null}
-          <button
+          <Button variant="secondary"
             type="button"
             onClick={() => { void handleAdd() }}
             disabled={addValue.isPending}
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
           >
             <Plus className="mr-1 h-4 w-4" />
             {t('catalog:attributes.addValue')}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

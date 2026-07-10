@@ -7,6 +7,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { Monitor, MapPin, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { tokens, colors, textColors, borderColors } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 interface Terminal {
   id: string
@@ -72,9 +73,9 @@ export function TerminalSelector({ onSelect, lastUsedCode }: TerminalSelectorPro
     <div className={cn('flex items-center justify-center min-h-screen p-6', colors.neutral[50])}>
       <div className="max-w-3xl w-full">
         <div className="text-center mb-8">
-          <h1 className={cn('text-2xl font-bold', textColors.primary)}>
+          <PageHeaderTitle className={cn('text-2xl font-bold', textColors.primary)}>
             {t('pos:terminal.selectTitle')}
-          </h1>
+          </PageHeaderTitle>
           <p className={cn('mt-1', textColors.tertiary)}>
             {t('pos:terminal.selectDescription')}
           </p>

@@ -8,6 +8,8 @@ import { VatBreakdownTable } from '../components/VatBreakdownTable'
 import { VatSpecialItems } from '../components/VatSpecialItems'
 import { VatPeriodStatusBadge } from '../components/VatPeriodStatusBadge'
 import { VatExportMenu } from '../components/VatExportMenu'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 export function VatReportPage() {
   const { t } = useTranslation(['finance'])
@@ -22,7 +24,7 @@ export function VatReportPage() {
       <button
         type="button"
         onClick={() => { void navigate('/finance/vat-periods'); }}
-        className="mb-4 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
+        className={`mb-4 flex items-center gap-1.5 text-sm ${colorTokens.text.subtle} hover:${colorTokens.text.secondary}`}
       >
         <ArrowLeft className="h-4 w-4" />
         {t('finance:vatReporting.detail.backToList')}
@@ -30,7 +32,7 @@ export function VatReportPage() {
 
       {/* Loading */}
       {isLoading ? (
-        <div className="py-12 text-center text-gray-500">
+        <div className={`py-12 text-center ${colorTokens.text.subtle}`}>
           {t('finance:reports.common.loading')}
         </div>
       ) : error ? (
@@ -44,7 +46,7 @@ export function VatReportPage() {
           {/* Header */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{report.period.label}</h1>
+              <PageHeaderTitle className="text-2xl font-bold">{report.period.label}</PageHeaderTitle>
               <VatPeriodStatusBadge status={report.period.status} />
             </div>
             <VatExportMenu periodId={report.period.id} />
@@ -61,10 +63,10 @@ export function VatReportPage() {
           {/* Output VAT Breakdown */}
           {report.output_vat.breakdowns.length > 0 && (
             <div>
-              <h2 className="mb-3 text-lg font-semibold text-gray-900">
+              <h2 className={`mb-3 text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('finance:vatReporting.detail.outputBreakdown')}
               </h2>
-              <p className="mb-2 text-sm text-gray-500">
+              <p className={`mb-2 text-sm ${colorTokens.text.subtle}`}>
                 {t('finance:vatReporting.detail.vatCollected')}
               </p>
               <VatBreakdownTable breakdowns={report.output_vat.breakdowns} />
@@ -74,10 +76,10 @@ export function VatReportPage() {
           {/* Input VAT Breakdown */}
           {report.input_vat.breakdowns.length > 0 && (
             <div>
-              <h2 className="mb-3 text-lg font-semibold text-gray-900">
+              <h2 className={`mb-3 text-lg font-semibold ${colorTokens.text.primary}`}>
                 {t('finance:vatReporting.detail.inputBreakdown')}
               </h2>
-              <p className="mb-2 text-sm text-gray-500">
+              <p className={`mb-2 text-sm ${colorTokens.text.subtle}`}>
                 {t('finance:vatReporting.detail.vatOnPurchases')}
               </p>
               <VatBreakdownTable
@@ -94,19 +96,19 @@ export function VatReportPage() {
           />
 
           {/* Bottom summary */}
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4`}>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">{t('finance:vatReporting.detail.creditBroughtForward')}</span>
+                <span className={`${colorTokens.text.muted}`}>{t('finance:vatReporting.detail.creditBroughtForward')}</span>
                 <span className="font-medium">{formatAmount(report.credit_brought_forward)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">{t('finance:vatReporting.detail.fromPreviousPeriod')}</span>
+                <span className={`${colorTokens.text.muted}`}>{t('finance:vatReporting.detail.fromPreviousPeriod')}</span>
                 <span className="font-medium">{formatAmount(report.credit_carried_forward)}</span>
               </div>
-              <div className="flex justify-between border-t border-gray-300 pt-2 text-base font-bold">
+              <div className={`flex justify-between border-t ${colorTokens.border.default} pt-2 text-base font-bold`}>
                 <span>{t('finance:vatReporting.detail.amountPayable')}</span>
-                <span className={parseFloat(report.amount_payable) > 0 ? 'text-red-600' : 'text-green-600'}>
+                <span className={parseFloat(report.amount_payable) > 0 ? `${colorTokens.intent.danger.text}` : `${colorTokens.intent.success.text}`}>
                   {formatAmount(report.amount_payable)}
                 </span>
               </div>

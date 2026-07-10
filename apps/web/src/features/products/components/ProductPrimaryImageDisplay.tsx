@@ -7,6 +7,7 @@ import { ImageGalleryModal } from './ImageGalleryModal'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 interface ProductPrimaryImageDisplayProps {
   productId: string
 }
@@ -61,10 +62,10 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
   if (isLoading) {
     return (
       <div className="space-y-3">
-        <div className="aspect-square w-full animate-pulse rounded-lg bg-gray-200" />
+        <div className={`aspect-square w-full animate-pulse rounded-lg ${colorTokens.surface.subdued}`} />
         <div className="grid grid-cols-4 gap-2">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="aspect-square animate-pulse rounded bg-gray-200" />
+            <div key={i} className={`aspect-square animate-pulse rounded ${colorTokens.surface.subdued}`} />
           ))}
         </div>
       </div>
@@ -75,9 +76,9 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
   if (validImages.length === 0) {
     return (
       <div className="space-y-3">
-        <div className="flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-100">
-          <ImageOff className="h-12 w-12 text-gray-400" />
-          <p className="mt-2 text-sm text-gray-500">{t('images.noImage')}</p>
+        <div className={`flex aspect-square w-full flex-col items-center justify-center rounded-lg border-2 border-dashed ${colorTokens.border.default} ${colorTokens.surface.muted}`}>
+          <ImageOff className={`h-12 w-12 ${colorTokens.text.disabled}`} />
+          <p className={`mt-2 text-sm ${colorTokens.text.subtle}`}>{t('images.noImage')}</p>
         </div>
       </div>
     )
@@ -86,7 +87,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
   return (
     <div className="space-y-3">
       {/* Primary Image */}
-      <div className="group relative aspect-square w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+      <div className={`group relative aspect-square w-full overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.muted}`}>
         <img
           src={primaryImage.url ?? undefined}
           alt={primaryImage.alt ?? ''}
@@ -105,7 +106,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
 
         {/* Primary Badge */}
         {primaryImage.is_primary && (
-          <div className="absolute top-2 left-2 rounded bg-yellow-500 px-2 py-1 text-xs font-medium text-white">
+          <div className={`absolute top-2 left-2 rounded ${colorTokens.intent.warning.bg} px-2 py-1 text-xs font-medium text-white`}>
             {t('images.primary')}
           </div>
         )}
@@ -120,8 +121,8 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
               onClick={() => { handleThumbnailClick(image.id); }}
               className={`group relative aspect-square overflow-hidden rounded border-2 transition-all hover:scale-105 ${
                 image.id === primaryImage.id
-                  ? 'border-blue-500 ring-2 ring-blue-200'
-                  : 'border-transparent hover:border-gray-300'
+                  ? `${colorTokens.intent.primary.borderFocus} ring-2 ${colorTokens.intent.primary.ringSoft}`
+                  : `border-transparent hover:${colorTokens.border.default}`
               }`}
             >
               <img
@@ -132,7 +133,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
               />
               {image.is_primary && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-all group-hover:bg-black/20">
-                  <div className="rounded bg-yellow-500 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 group-hover:opacity-100">
+                  <div className={`rounded ${colorTokens.intent.warning.bg} px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 group-hover:opacity-100`}>
                     {t('images.primary')}
                   </div>
                 </div>
@@ -145,7 +146,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
       {/* View Gallery Button */}
       <button
         onClick={handleViewGalleryClick}
-        className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+        className={`flex w-full items-center justify-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} transition-colors hover:${colorTokens.surface.page}`}
       >
         <Images className="h-4 w-4" />
         {t('images.viewGallery', { count: validImages.length })}

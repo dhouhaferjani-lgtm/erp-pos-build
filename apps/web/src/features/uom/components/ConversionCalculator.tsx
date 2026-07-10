@@ -9,6 +9,7 @@ import { FormField } from '../../../components/atoms/FormField'
 import { Button } from '../../../components/atoms/Button'
 import { UnitDropdown } from './UnitDropdown'
 import { useConversion } from '../hooks/useConversion'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Validation schema for conversion form
@@ -155,11 +156,11 @@ export function ConversionCalculator({
     <div className={`bg-white rounded-lg shadow p-6 ${className}`}>
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+        <div className={`flex items-center gap-2 text-lg font-semibold ${colorTokens.text.primary}`}>
           <Calculator className="h-5 w-5" />
           {t('uom:conversionCalculator')}
         </div>
-        <p className="mt-1 text-sm text-gray-600">{t('uom:conversionCalculatorHelp')}</p>
+        <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>{t('uom:conversionCalculatorHelp')}</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -192,7 +193,7 @@ export function ConversionCalculator({
             <button
               type="button"
               onClick={handleSwapUnits}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+              className={`p-2 ${colorTokens.text.muted} hover:${colorTokens.surface.muted} rounded-full transition-colors`}
               title={t('uom:swapUnits')}
               disabled={!fromUnitId || !toUnitId}
             >
@@ -213,20 +214,20 @@ export function ConversionCalculator({
 
         {/* Conversion Error */}
         {conversionError && (
-          <div className="rounded-md bg-red-50 p-4">
-            <p className="text-sm text-red-800">{conversionError}</p>
+          <div className={`rounded-md ${colorTokens.intent.danger.bgSubtle} p-4`}>
+            <p className={`text-sm ${colorTokens.intent.danger.textStronger}`}>{conversionError}</p>
           </div>
         )}
 
         {/* Result Display */}
         {result !== null && !conversionError && (
-          <div className="rounded-md bg-blue-50 p-4 border border-blue-200">
+          <div className={`rounded-md ${colorTokens.intent.primary.bgSubtle} p-4 border ${colorTokens.intent.primary.borderSubtle}`}>
             <div className="flex items-baseline gap-2">
-              <span className="text-sm text-blue-700">{t('uom:result')}:</span>
-              <span className="text-2xl font-semibold text-blue-900">{result}</span>
+              <span className={`text-sm ${colorTokens.intent.primary.textStrong}`}>{t('uom:result')}:</span>
+              <span className={`text-2xl font-semibold ${colorTokens.intent.primary.textStrongest}`}>{result}</span>
             </div>
             {conversionFactor && (
-              <div className="mt-2 text-sm text-blue-700">
+              <div className={`mt-2 text-sm ${colorTokens.intent.primary.textStrong}`}>
                 {t('uom:conversionFactorDisplay')}: {conversionFactor}
               </div>
             )}

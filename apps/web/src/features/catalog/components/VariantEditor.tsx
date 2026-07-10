@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Input, Button, Checkbox, Select, MoneyInput, QuantityInput, DraftMoneyInput, DraftQuantityInput } from '@/components/atoms'
-import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { tokens, textColors, borderColors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useCompanyConfig } from '@/contexts'
 import type { CompositeItemVariantData, PriceAdjustmentType } from '../types/compositeItem'
 import { useCreateVariant, useUpdateVariant, useDeleteVariant } from '../hooks/useRecipes'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface VariantEditorProps {
   compositeItemId: string
@@ -66,7 +67,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto">
-        <table className={`min-w-full divide-y ${borderColors.default}`}>
+        <DataTable className={`min-w-full divide-y ${borderColors.default}`}>
           <thead>
             <tr>
               <th className={`px-3 py-3.5 text-left text-sm font-semibold ${textColors.primary}`}>{t('catalog:code')}</th>
@@ -125,7 +126,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
                     name="default_variant"
                     checked={variant.is_default}
                     onChange={() => { handleUpdate(variant.id, 'is_default', true); }}
-                    className={tokens.radio.base}
+                    className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-sm">
@@ -209,7 +210,7 @@ export function VariantEditor({ compositeItemId, variants }: VariantEditorProps)
               </td>
             </tr>
           </tbody>
-        </table>
+        </DataTable>
       </div>
     </div>
   )

@@ -18,6 +18,9 @@ import { formatAmount } from '@/hooks/useCurrency'
 import { fetchPriceList, deletePriceList, removePriceListItem, removePriceListFromPartner } from './api'
 import { priceListsInvalidationPredicate } from './_invalidation'
 import type { PriceListItem, PriceListPartner } from './types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function PriceListDetailPage() {
   const { t } = useTranslation(['common', 'pricing'])
@@ -94,14 +97,14 @@ export function PriceListDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-500">{t('common:status.loading')}</div>
+        <div className={`${colorTokens.text.subtle}`}>{t('common:status.loading')}</div>
       </div>
     )
   }
 
   if (error || !priceList) {
     return (
-      <div className="rounded-lg bg-red-50 p-4 text-red-700">
+      <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4 ${colorTokens.intent.danger.textStrong}`}>
         {t('common:errors.loadingFailed')}
       </div>
     )
@@ -124,36 +127,36 @@ export function PriceListDetailPage() {
         <div className="flex items-center gap-4">
           <Link
             to="/pricing/price-lists"
-            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} hover:${colorTokens.text.primary}`}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('common:actions.back')}
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-gray-900">{priceList.name}</h1>
+              <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{priceList.name}</PageHeaderTitle>
               {priceList.is_default && (
-                <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                <span className={`inline-flex rounded-full ${colorTokens.intent.primary.bgSoft} px-2 py-0.5 text-xs font-medium ${colorTokens.intent.primary.textStronger}`}>
                   {t('pricing:priceLists.fields.default')}
                 </span>
               )}
               <span
                 className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                   priceList.is_active
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-gray-100 text-gray-800'
+                    ? `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStronger}`
+                    : `${colorTokens.surface.muted} ${colorTokens.text.strong}`
                 }`}
               >
                 {priceList.is_active ? t('common:filters.active') : t('common:filters.inactive')}
               </span>
             </div>
-            <p className="text-gray-500 font-mono">{priceList.code}</p>
+            <p className={`${colorTokens.text.subtle} font-mono`}>{priceList.code}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Link
             to={`/pricing/price-lists/${id}/edit`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page}`}
           >
             <Edit className="h-4 w-4" />
             {t('common:actions.edit')}
@@ -161,7 +164,7 @@ export function PriceListDetailPage() {
           <button
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
-            className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.border} bg-white px-4 py-2 text-sm font-medium ${colorTokens.intent.danger.textStrong} hover:${colorTokens.intent.danger.bgSubtle} disabled:opacity-50`}
           >
             <Trash2 className="h-4 w-4" />
             {t('common:actions.delete')}
@@ -170,49 +173,49 @@ export function PriceListDetailPage() {
       </div>
 
       {/* Details Card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white p-6`}>
+        <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
           {t('pricing:priceLists.details', 'Details')}
         </h2>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <dt className="text-sm text-gray-500">{t('pricing:priceLists.fields.currency', 'Currency')}</dt>
-            <dd className="mt-1 text-sm font-medium text-gray-900">{priceList.currency}</dd>
+            <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('pricing:priceLists.fields.currency', 'Currency')}</dt>
+            <dd className={`mt-1 text-sm font-medium ${colorTokens.text.primary}`}>{priceList.currency}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500">{t('pricing:priceLists.fields.validFrom', 'Valid From')}</dt>
-            <dd className="mt-1 text-sm font-medium text-gray-900">{formatDate(priceList.valid_from)}</dd>
+            <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('pricing:priceLists.fields.validFrom', 'Valid From')}</dt>
+            <dd className={`mt-1 text-sm font-medium ${colorTokens.text.primary}`}>{formatDate(priceList.valid_from)}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500">{t('pricing:priceLists.fields.validUntil', 'Valid Until')}</dt>
-            <dd className="mt-1 text-sm font-medium text-gray-900">{formatDate(priceList.valid_until)}</dd>
+            <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('pricing:priceLists.fields.validUntil', 'Valid Until')}</dt>
+            <dd className={`mt-1 text-sm font-medium ${colorTokens.text.primary}`}>{formatDate(priceList.valid_until)}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-500">{t('common:fields.created', 'Created')}</dt>
-            <dd className="mt-1 text-sm font-medium text-gray-900">{formatDate(priceList.created_at)}</dd>
+            <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('common:fields.created', 'Created')}</dt>
+            <dd className={`mt-1 text-sm font-medium ${colorTokens.text.primary}`}>{formatDate(priceList.created_at)}</dd>
           </div>
         </dl>
         {priceList.description && (
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <dt className="text-sm text-gray-500">{t('pricing:priceLists.fields.description', 'Description')}</dt>
-            <dd className="mt-1 text-sm text-gray-900">{priceList.description}</dd>
+          <div className={`mt-4 pt-4 border-t ${colorTokens.border.subtle}`}>
+            <dt className={`text-sm ${colorTokens.text.subtle}`}>{t('pricing:priceLists.fields.description', 'Description')}</dt>
+            <dd className={`mt-1 text-sm ${colorTokens.text.primary}`}>{priceList.description}</dd>
           </div>
         )}
       </div>
 
       {/* Items Section */}
-      <div className="rounded-lg border border-gray-200 bg-white">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white`}>
+        <div className={`flex items-center justify-between px-6 py-4 border-b ${colorTokens.border.subtle}`}>
           <div className="flex items-center gap-2">
-            <Package className="h-5 w-5 text-gray-400" />
-            <h2 className="text-lg font-semibold text-gray-900">
+            <Package className={`h-5 w-5 ${colorTokens.text.disabled}`} />
+            <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
               {t('pricing:priceLists.items', 'Price List Items')}
             </h2>
-            <span className="text-sm text-gray-500">({priceList.items.length})</span>
+            <span className={`text-sm ${colorTokens.text.subtle}`}>({priceList.items.length})</span>
           </div>
           <button
             onClick={() => { setShowAddItemModal(true); }}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-3 py-1.5 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover}`}
           >
             <Plus className="h-4 w-4" />
             {t('pricing:priceLists.addItem', 'Add Item')}
@@ -221,53 +224,53 @@ export function PriceListDetailPage() {
 
         {priceList.items.length === 0 ? (
           <div className="p-12 text-center">
-            <Package className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-semibold text-gray-900">
+            <Package className={`mx-auto h-12 w-12 ${colorTokens.text.disabled}`} />
+            <h3 className={`mt-2 text-sm font-semibold ${colorTokens.text.primary}`}>
               {t('pricing:priceLists.noItems', 'No items')}
             </h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
               {t('pricing:priceLists.noItemsDescription', 'Add products to this price list.')}
             </p>
           </div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+            <thead className={`${colorTokens.surface.page}`}>
               <tr>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('pricing:priceLists.fields.product', 'Product')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('pricing:priceLists.fields.price', 'Price')}
                 </th>
-                <th className="px-6 py-3 text-start text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('pricing:priceLists.fields.quantityRange', 'Quantity Range')}
                 </th>
-                <th className="px-6 py-3 text-end text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className={`px-6 py-3 text-end text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('common:table.actionsColumn')}
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className={`divide-y ${colorTokens.border.divider} bg-white`}>
               {Object.entries(itemsByProduct).map(([_productId, items]) =>
                 items.map((item, index) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
+                  <tr key={item.id} className={`hover:${colorTokens.surface.page}`}>
                     {index === 0 && (
                       <td
                         className="whitespace-nowrap px-6 py-4"
                         rowSpan={items.length}
                       >
                         <div>
-                          <p className="font-medium text-gray-900">{item.product_name}</p>
-                          <p className="text-sm text-gray-500 font-mono">{item.product_sku}</p>
+                          <p className={`font-medium ${colorTokens.text.primary}`}>{item.product_name}</p>
+                          <p className={`text-sm ${colorTokens.text.subtle} font-mono`}>{item.product_sku}</p>
                         </div>
                       </td>
                     )}
                     <td className="whitespace-nowrap px-6 py-4 text-end">
-                      <span className="font-medium text-gray-900">
+                      <span className={`font-medium ${colorTokens.text.primary}`}>
                         {formatCurrency(item.price)}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
                       {item.min_quantity}
                       {item.max_quantity ? ` - ${item.max_quantity}` : '+'}
                     </td>
@@ -275,7 +278,7 @@ export function PriceListDetailPage() {
                       <button
                         onClick={() => { handleRemoveItem(item); }}
                         disabled={removeItemMutation.isPending}
-                        className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                        className={`${colorTokens.intent.danger.text} hover:${colorTokens.intent.danger.textStronger} disabled:opacity-50`}
                         title={t('common:actions.delete')}
                       >
                         <X className="h-4 w-4" />
@@ -285,23 +288,23 @@ export function PriceListDetailPage() {
                 ))
               )}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
 
       {/* Partners Section */}
-      <div className="rounded-lg border border-gray-200 bg-white">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+      <div className={`rounded-lg border ${colorTokens.border.subtle} bg-white`}>
+        <div className={`flex items-center justify-between px-6 py-4 border-b ${colorTokens.border.subtle}`}>
           <div className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-gray-400" />
-            <h2 className="text-lg font-semibold text-gray-900">
+            <Users className={`h-5 w-5 ${colorTokens.text.disabled}`} />
+            <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>
               {t('pricing:priceLists.assignedPartners', 'Assigned Partners')}
             </h2>
-            <span className="text-sm text-gray-500">({priceList.partners.length})</span>
+            <span className={`text-sm ${colorTokens.text.subtle}`}>({priceList.partners.length})</span>
           </div>
           <button
             onClick={() => { setShowAssignPartnerModal(true); }}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-3 py-1.5 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover}`}
           >
             <Plus className="h-4 w-4" />
             {t('pricing:priceLists.assignPartner', 'Assign Partner')}
@@ -310,22 +313,22 @@ export function PriceListDetailPage() {
 
         {priceList.partners.length === 0 ? (
           <div className="p-12 text-center">
-            <Users className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-semibold text-gray-900">
+            <Users className={`mx-auto h-12 w-12 ${colorTokens.text.disabled}`} />
+            <h3 className={`mt-2 text-sm font-semibold ${colorTokens.text.primary}`}>
               {t('pricing:priceLists.noPartners', 'No partners assigned')}
             </h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
               {t('pricing:priceLists.noPartnersDescription', 'Assign customers or suppliers to use this price list.')}
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-gray-200">
+          <ul className={`divide-y ${colorTokens.border.divider}`}>
             {priceList.partners.map((partner) => (
-              <li key={partner.id} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50">
+              <li key={partner.id} className={`flex items-center justify-between px-6 py-4 hover:${colorTokens.surface.page}`}>
                 <div>
-                  <p className="font-medium text-gray-900">{partner.name}</p>
+                  <p className={`font-medium ${colorTokens.text.primary}`}>{partner.name}</p>
                   {(partner.valid_from || partner.valid_until) && (
-                    <p className="text-sm text-gray-500">
+                    <p className={`text-sm ${colorTokens.text.subtle}`}>
                       {formatDate(partner.valid_from)} - {formatDate(partner.valid_until)}
                     </p>
                   )}
@@ -333,7 +336,7 @@ export function PriceListDetailPage() {
                 <button
                   onClick={() => { handleRemovePartner(partner); }}
                   disabled={removePartnerMutation.isPending}
-                  className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                  className={`${colorTokens.intent.danger.text} hover:${colorTokens.intent.danger.textStronger} disabled:opacity-50`}
                   title={t('common:actions.delete')}
                 >
                   <X className="h-4 w-4" />
@@ -348,13 +351,13 @@ export function PriceListDetailPage() {
       {showAddItemModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-md rounded-lg bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            <h3 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
               {t('pricing:priceLists.addItem', 'Add Item')}
             </h3>
-            <p className="text-gray-500 mb-4">{t('pricing:priceLists.addItemComingSoon')}</p>
+            <p className={`${colorTokens.text.subtle} mb-4`}>{t('pricing:priceLists.addItemComingSoon')}</p>
             <button
               onClick={() => { setShowAddItemModal(false); }}
-              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              className={`rounded-lg ${colorTokens.surface.muted} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.subdued}`}
             >
               {t('common:actions.close')}
             </button>
@@ -365,13 +368,13 @@ export function PriceListDetailPage() {
       {showAssignPartnerModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-md rounded-lg bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            <h3 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>
               {t('pricing:priceLists.assignPartner', 'Assign Partner')}
             </h3>
-            <p className="text-gray-500 mb-4">{t('pricing:priceLists.assignPartnerComingSoon')}</p>
+            <p className={`${colorTokens.text.subtle} mb-4`}>{t('pricing:priceLists.assignPartnerComingSoon')}</p>
             <button
               onClick={() => { setShowAssignPartnerModal(false); }}
-              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+              className={`rounded-lg ${colorTokens.surface.muted} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.subdued}`}
             >
               {t('common:actions.close')}
             </button>

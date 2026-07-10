@@ -19,6 +19,8 @@ import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { POSButton } from '../../atoms/POSButton'
 import { useCurrency } from '@/hooks/useCurrency'
 import { usePosTenantScope } from '../../hooks/usePosTenantScope'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function ZReportDetailPage() {
   const { t } = useTranslation(['pos', 'common'])
@@ -109,10 +111,10 @@ export function ZReportDetailPage() {
             {t('common:back')}
           </button>
           <div>
-            <h1 className={`text-2xl font-bold ${textColors.primary} flex items-center gap-2`}>
+            <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary} flex items-center gap-2`}>
               <FileCheck className={`h-6 w-6 ${textColors.disabled}`} />
               {t('pos:zReports.detailTitle', { zNumber: report.formatted_z_number })}
-            </h1>
+            </PageHeaderTitle>
             <p className={textColors.tertiary}>
               {new Date(report.generated_at).toLocaleString()}
               {report.generated_by_user && ` — ${report.generated_by_user.name}`}
@@ -278,7 +280,7 @@ function VatBreakdownCard({
   return (
     <div className={tokens.card.base}>
       <h3 className={`text-lg font-semibold ${textColors.primary} mb-4`}>{t('pos:zReports.detail.vatBreakdown')}</h3>
-      <table className="w-full text-sm">
+      <DataTable className="w-full text-sm">
         <thead>
           <tr className={`text-left ${textColors.tertiary} border-b`}>
             <th className="pb-2 font-medium">{t('pos:xReport.rate')}</th>
@@ -297,7 +299,7 @@ function VatBreakdownCard({
             </tr>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }
@@ -312,7 +314,7 @@ function PaymentMethodsCard({
   return (
     <div className={tokens.card.base}>
       <h3 className={`text-lg font-semibold ${textColors.primary} mb-4`}>{t('pos:zReports.detail.paymentMethods')}</h3>
-      <table className="w-full text-sm">
+      <DataTable className="w-full text-sm">
         <thead>
           <tr className={`text-left ${textColors.tertiary} border-b`}>
             <th className="pb-2 font-medium">{t('pos:xReport.method')}</th>
@@ -329,7 +331,7 @@ function PaymentMethodsCard({
             </tr>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

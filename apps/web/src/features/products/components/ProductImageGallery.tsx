@@ -11,6 +11,7 @@ import { getErrorMessage } from '@/lib/api'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ProductImageGalleryProps {
   productId: string
@@ -86,8 +87,8 @@ export function ProductImageGallery({
 
   if (images.length === 0) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center">
-        <p className="text-sm text-gray-500">{t('products:images.noImages')}</p>
+      <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-8 text-center`}>
+        <p className={`text-sm ${colorTokens.text.subtle}`}>{t('products:images.noImages')}</p>
       </div>
     )
   }
@@ -100,7 +101,7 @@ export function ProductImageGallery({
       {sortedImages.map((image) => (
         <div key={image.id} className="group relative">
           {/* Image Container */}
-          <div className="relative aspect-square overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+          <div className={`relative aspect-square overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.muted}`}>
             <img
               src={image.url ?? undefined}
               alt={image.alt ?? ''}
@@ -111,7 +112,7 @@ export function ProductImageGallery({
             {/* Primary Badge */}
             {image.is_primary && (
               <div className="absolute left-2 top-2">
-                <div className="flex items-center gap-1 rounded-full bg-yellow-500 px-2 py-1 text-xs font-medium text-white shadow-sm">
+                <div className={`flex items-center gap-1 rounded-full ${colorTokens.intent.warning.bg} px-2 py-1 text-xs font-medium text-white shadow-sm`}>
                   <Star className="h-3 w-3 fill-white" />
                   {t('products:images.primary')}
                 </div>
@@ -125,7 +126,7 @@ export function ProductImageGallery({
                   <button
                     onClick={() => { handleSetPrimary(image.id); }}
                     disabled={settingPrimaryId === image.id}
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`flex h-8 w-8 items-center justify-center rounded-full bg-white ${colorTokens.text.secondary} shadow-sm transition-colors hover:${colorTokens.surface.muted} disabled:cursor-not-allowed disabled:opacity-50`}
                     title={t('products:images.setPrimary')}
                   >
                     {settingPrimaryId === image.id ? (
@@ -139,7 +140,7 @@ export function ProductImageGallery({
                 <button
                   onClick={() => { handleDelete(image.id); }}
                   disabled={deletingId === image.id}
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-red-600 shadow-sm transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`flex h-8 w-8 items-center justify-center rounded-full bg-white ${colorTokens.intent.danger.text} shadow-sm transition-colors hover:${colorTokens.intent.danger.bgSubtle} disabled:cursor-not-allowed disabled:opacity-50`}
                   title={t('common:delete')}
                 >
                   {deletingId === image.id ? (
@@ -154,7 +155,7 @@ export function ProductImageGallery({
 
           {/* Image Info */}
           <div className="mt-1 px-1">
-            <p className="truncate text-xs text-gray-600" title={image.alt ?? ''}>
+            <p className={`truncate text-xs ${colorTokens.text.muted}`} title={image.alt ?? ''}>
               {image.alt ?? ''}
             </p>
           </div>

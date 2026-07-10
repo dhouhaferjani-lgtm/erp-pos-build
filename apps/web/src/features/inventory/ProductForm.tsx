@@ -49,6 +49,7 @@ import { inventoryProductsInvalidationPredicate } from './_invalidation'
 import { buildProductPayload } from './productPayload'
 import { LoyaltyPointsDisplay } from './LoyaltyPointsDisplay'
 import { SaveSplitButton } from '@/components/molecules/SaveSplitButton'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { ProductEditHero, type EditorHeroEnrichmentState } from '../products/editor/components/ProductEditHero'
 import { SectionNav } from '../products/editor/components/SectionNav'
 import type { EditorSection } from '../products/editor/components/SectionNav'
@@ -63,6 +64,7 @@ import { UnitDropdown } from '../uom/components/UnitDropdown'
 import { useUnits } from '../uom/hooks/useUnits'
 import { getQuantityDecimals } from '../../lib/quantityScale'
 import type { ProductType } from '../products/types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import {
   marginFromCost,
   priceHtFromMargin,
@@ -840,7 +842,7 @@ export function ProductForm() {
     'identity.barcode': () => null,
     'enrichment.chips': () => null,
     'stock.openingQty': () => (
-      <div key="stock.openingQty" className="rounded-md border border-gray-200 bg-white px-3 py-2">
+      <div key="stock.openingQty" className={`rounded-md border ${colorTokens.border.subtle} bg-white px-3 py-2`}>
         <label htmlFor="opening_qty" className={cn('block text-start text-xs', textColors.tertiary)}>
           {t('inventory:products.openingQtyShort')}
         </label>
@@ -867,7 +869,7 @@ export function ProductForm() {
             )}
           />
         ) : (
-          <div className="mt-1 space-y-1 text-sm font-semibold text-gray-900">
+          <div className={`mt-1 space-y-1 text-sm font-semibold ${colorTokens.text.primary}`}>
             <div>{t('inventory:products.onHandShort')}: {product?.stock_quantity ?? '0.0000'}</div>
             {isOpeningLocked && canResetOpening && !showResetConfirm && (
               <button
@@ -912,12 +914,12 @@ export function ProductForm() {
       </div>
     ),
     'pricing.cost': () => canViewCostPrices ? (
-      <div key="pricing.cost" className="rounded-md border border-gray-200 bg-white px-3 py-2">
+      <div key="pricing.cost" className={`rounded-md border ${colorTokens.border.subtle} bg-white px-3 py-2`}>
         <label htmlFor="ready_cost_ht" className={cn('block text-start text-xs', textColors.tertiary)}>
           {isOpeningLocked ? t('inventory:products.costWac') : t('inventory:products.costHt')}
         </label>
         {isOpeningLocked ? (
-          <div id="ready_cost_ht" className="mt-2 text-sm font-semibold tabular-nums text-gray-900">
+          <div id="ready_cost_ht" className={`mt-2 text-sm font-semibold tabular-nums ${colorTokens.text.primary}`}>
             {product?.cost_price ?? '0.000'}
           </div>
         ) : (
@@ -934,7 +936,7 @@ export function ProductForm() {
       </div>
     ) : null,
     'pricing.margin': () => canViewCostPrices ? (
-      <div key="pricing.margin" className="rounded-md border border-gray-200 bg-white px-3 py-2">
+      <div key="pricing.margin" className={`rounded-md border ${colorTokens.border.subtle} bg-white px-3 py-2`}>
         <label htmlFor="ready_margin_percent" className={cn('block text-start text-xs', textColors.tertiary)}>
           {t('inventory:products.marginPercent')}
         </label>
@@ -949,7 +951,7 @@ export function ProductForm() {
       </div>
     ) : null,
     'pricing.priceHt': () => (
-      <div key="pricing.priceHt" className="rounded-md border border-gray-200 bg-white px-3 py-2">
+      <div key="pricing.priceHt" className={`rounded-md border ${colorTokens.border.subtle} bg-white px-3 py-2`}>
         <label htmlFor="ready_price_ht" className={cn('block text-start text-xs', textColors.tertiary)}>
           {t('inventory:products.priceHt')}
         </label>
@@ -964,13 +966,13 @@ export function ProductForm() {
       </div>
     ),
     'pricing.priceTtc': () => (
-      <div key="pricing.priceTtc" className="rounded-md border border-gray-200 bg-white px-3 py-2">
+      <div key="pricing.priceTtc" className={`rounded-md border ${colorTokens.border.subtle} bg-white px-3 py-2`}>
         <div className="flex items-center justify-between gap-2">
           <label htmlFor="ready_price_ttc" className={cn('block text-start text-xs', textColors.tertiary)}>
             {t('inventory:products.priceTtc')}
           </label>
           {!hasTax && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+            <span className={`rounded-full ${colorTokens.intent.caution.bgSoft} px-2 py-0.5 text-[10px] font-medium ${colorTokens.intent.caution.textStronger}`}>
               {t('inventory:products.selectTaxHint')}
             </span>
           )}
@@ -1005,7 +1007,7 @@ export function ProductForm() {
 
   return (
     <div className="flex min-h-full flex-col gap-[18px]">
-      {/* Page header — breadcrumb, single <h1> (Montserrat 800 26px navy) +
+      {/* Page header — breadcrumb, single <PageHeaderTitle> (Montserrat 800 26px navy) +
           subtitle on the left, action buttons on the right. The buttons live
           OUTSIDE the <form> below but target it via `form=` so they submit.
           Save draft + Publish both submit for now (Publish = primary); the
@@ -1018,14 +1020,14 @@ export function ProductForm() {
         </div>
         <div className="flex flex-wrap items-start gap-4">
           <div className="min-w-0 flex-1">
-            <h1
+            <PageHeaderTitle
               className={cn(
                 'font-[family-name:var(--font-display)] text-[26px] font-extrabold tracking-[-0.02em]',
                 textColors.primary,
               )}
             >
               {isEditing ? t('inventory:products.edit') : t('inventory:products.new')}
-            </h1>
+            </PageHeaderTitle>
             <p className={cn('mt-1.5 text-sm', textColors.tertiary)}>{t('catalog:editor.subtitle')}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2.5">

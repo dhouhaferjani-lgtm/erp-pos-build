@@ -12,6 +12,24 @@ export interface StockBadgeProps {
 
 type StockStatus = 'in-stock' | 'low-stock' | 'out-of-stock'
 
+const stockBadgeMeta: Record<StockStatus, { label: string; badgeColor: string; dotColor: string }> = {
+  'in-stock': {
+    label: 'In Stock',
+    badgeColor: tokens.badge.green,
+    dotColor: colors.success[600],
+  },
+  'low-stock': {
+    label: 'Low Stock',
+    badgeColor: tokens.badge.yellow,
+    dotColor: colors.warning[600],
+  },
+  'out-of-stock': {
+    label: 'Out of Stock',
+    badgeColor: tokens.badge.red,
+    dotColor: colors.error[600],
+  },
+}
+
 export function StockBadge({
   quantity,
   threshold = 10,
@@ -28,27 +46,7 @@ export function StockBadge({
   }
 
   const status = getStockStatus()
-
-  // Status configuration — semantic tokens (badge bg+text, dot fill)
-  const statusConfig = {
-    'in-stock': {
-      label: 'In Stock',
-      badgeColor: tokens.badge.green,
-      dotColor: colors.success[600],
-    },
-    'low-stock': {
-      label: 'Low Stock',
-      badgeColor: tokens.badge.yellow,
-      dotColor: colors.warning[600],
-    },
-    'out-of-stock': {
-      label: 'Out of Stock',
-      badgeColor: tokens.badge.red,
-      dotColor: colors.error[600],
-    },
-  }
-
-  const config = statusConfig[status]
+  const config = stockBadgeMeta[status]
 
   // Size styles
   const sizeClasses = {

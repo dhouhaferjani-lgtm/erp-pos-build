@@ -6,13 +6,16 @@ import { toast } from 'sonner'
 import { Button } from '@/components/atoms/Button'
 import { EntityLink } from '@/components/molecules/EntityLink'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { textColors, borderColors, tokens } from '@/lib/designTokens'
+import { textColors, borderColors, tokens , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import {
   useCancelStockTransfer,
   useCompleteStockTransfer,
   useStockTransfer,
 } from '../api/queries'
 import { StockTransferStatusBadge } from '../components/StockTransferStatusBadge'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { Textarea } from '@/components/atoms'
 
 export function StockTransferDetailPage() {
   const { t } = useTranslation('stock-transfers')
@@ -81,9 +84,9 @@ export function StockTransferDetailPage() {
         </Link>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className={`text-2xl font-semibold ${textColors.primary}`}>
+            <PageHeaderTitle className={`text-2xl font-semibold ${textColors.primary}`}>
               {transfer.transfer_number}
-            </h1>
+            </PageHeaderTitle>
             <div className="mt-1">
               <StockTransferStatusBadge status={transfer.status} />
             </div>
@@ -177,7 +180,7 @@ export function StockTransferDetailPage() {
           </h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
             <thead className={tokens.badge.gray}>
               <tr>
                 <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${textColors.tertiary}`}>
@@ -197,7 +200,7 @@ export function StockTransferDetailPage() {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className={`divide-y ${colorTokens.border.divider}`}>
               {(transfer.lines ?? []).map((line) => (
                 <tr key={line.id}>
                   <td className={`px-6 py-3 text-sm ${textColors.primary}`}>
@@ -226,7 +229,7 @@ export function StockTransferDetailPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </section>
 
@@ -253,13 +256,12 @@ export function StockTransferDetailPage() {
               <label className={tokens.label.base}>
                 {t('detail.confirmCancel.reasonLabel')}
               </label>
-              <textarea
+              <Textarea
                 rows={2}
                 value={cancelReason}
                 onChange={(e) => {
                   setCancelReason(e.target.value)
                 }}
-                className={tokens.textarea.base}
               />
             </div>
             <div className={tokens.modal.footer}>

@@ -16,6 +16,7 @@ import { AccountStep } from './components/AccountStep'
 import { BusinessStep } from './components/BusinessStep'
 import { CompanyStep } from './components/CompanyStep'
 import { ReviewStep } from './components/ReviewStep'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface RegisterResponseUser {
   id: string
@@ -123,9 +124,9 @@ export function RegisterPage() {
       {/* Form panel */}
       <div className="flex flex-1 flex-col">
         {/* Mobile header — visible only on mobile */}
-        <div className="bg-slate-900 px-6 py-4 md:hidden">
-          <h1 className="text-lg font-bold text-white">{productName}</h1>
-          <p className="text-sm text-slate-400">
+        <div className={`${colorTokens.intent.ledger.bgInverse} px-6 py-4 md:hidden`}>
+          <h1 className={`text-lg font-bold ${colorTokens.text.inverse}`}>{productName}</h1>
+          <p className={`text-sm ${colorTokens.intent.ledger.textSubtle}`}>
             {t(`auth:brandPanel.${product}.tagline` as const)}
           </p>
         </div>
@@ -133,8 +134,8 @@ export function RegisterPage() {
         <div ref={formContainerRef} className="mx-auto w-full max-w-lg px-6 py-8 md:py-12">
           <RegisterProgress currentStep={currentStep} totalSteps={TOTAL_STEPS} />
 
-          <h2 className="text-xl font-semibold text-gray-900">{t(stepTitleKey)}</h2>
-          <p className="mt-1 mb-6 text-sm text-gray-500">{t(stepSubtitleKey)}</p>
+          <h2 className={`text-xl font-semibold ${colorTokens.text.primary}`}>{t(stepTitleKey)}</h2>
+          <p className={`mt-1 mb-6 text-sm ${colorTokens.text.subtle}`}>{t(stepSubtitleKey)}</p>
 
           {currentStep === 1 && (
             <AccountStep
@@ -175,7 +176,7 @@ export function RegisterPage() {
                 <button
                   type="button"
                   onClick={goBack}
-                  className="flex items-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  className={`flex items-center rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2`}
                 >
                   <ChevronLeft className="mr-1 h-4 w-4" />
                   {t('auth:register.back')}
@@ -186,7 +187,7 @@ export function RegisterPage() {
               <button
                 type="button"
                 onClick={handleNext}
-                className="flex items-center rounded-lg bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className={`flex items-center rounded-lg ${colorTokens.intent.primary.bgStrong} px-6 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2`}
               >
                 {t('auth:register.next')}
                 <ChevronRight className="ml-1 h-4 w-4" />
@@ -199,7 +200,7 @@ export function RegisterPage() {
               <button
                 type="button"
                 onClick={goBack}
-                className="flex items-center text-sm text-gray-500 hover:text-gray-700"
+                className={`flex items-center text-sm ${colorTokens.text.subtle} ${colorTokens.intent.neutral.textHoverStrong}`}
               >
                 <ChevronLeft className="mr-1 h-4 w-4" />
                 {t('auth:register.back')}
@@ -208,9 +209,9 @@ export function RegisterPage() {
           )}
 
           {/* Sign in link */}
-          <p className="mt-6 text-center text-sm text-gray-600">
+          <p className={`mt-6 text-center text-sm ${colorTokens.text.muted}`}>
             {t('auth:register.alreadyHaveAccount')}{' '}
-            <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
+            <Link to="/login" className={`font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverSubtle}`}>
               {t('auth:register.signIn')}
             </Link>
           </p>

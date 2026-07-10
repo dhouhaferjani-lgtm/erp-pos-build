@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Modal, ModalContent, ModalFooter, ModalHeader } from '@/components/organisms/Modal'
 import { FilterTabs } from '@/components/molecules/FilterTabs/FilterTabs'
 import { cn } from '@/lib/utils'
-import { tokens, textColors, colors, borderColors } from '@/lib/designTokens'
+import { tokens, textColors, colors, borderColors, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 import { bcadd, bccomp } from '@/lib/decimal'
 import { POSButton } from '../../atoms'
@@ -285,7 +285,7 @@ function ModifierGroupSection({
                   name={`modifier-group-${group.id}`}
                   checked={isSelected}
                   onChange={() => { onSelect(group.id, mod.id, group.selection_type); }}
-                  className={group.selection_type === 'single' ? tokens.radio.base : tokens.checkbox.base}
+                  className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
                 />
                 <span className={cn('text-sm', isSelected ? cn('font-medium', textColors.primary) : textColors.secondary)}>
                   {mod.name}

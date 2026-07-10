@@ -23,6 +23,7 @@ import { CustomerInsightsPanel } from '../../organisms/Analytics/CustomerInsight
 import { FnbMetricsPanel } from '../../organisms/Analytics/FnbMetricsPanel'
 import { cn } from '@/lib/utils'
 import { textColors, borderColors } from '@/lib/designTokens'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 type Tab = 'summary' | 'products' | 'cashiers' | 'discounts' | 'customers' | 'fnb'
 
@@ -107,7 +108,7 @@ export function AnalyticsDashboardPage() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">{t('pos:analytics.title')}</h1>
+        <PageHeaderTitle className="text-2xl font-bold">{t('pos:analytics.title')}</PageHeaderTitle>
         <AnalyticsDateFilter filters={filters} onChange={setFilters} />
       </div>
 
