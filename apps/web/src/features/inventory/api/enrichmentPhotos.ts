@@ -1,9 +1,7 @@
 import { apiPost } from '@/lib/api'
+import type { UploadedPhoto } from '@/features/products/enrichmentCaptureTypes'
 
-export interface UploadedPhoto {
-  photoId: string
-  filename: string
-}
+export type { UploadedPhoto } from '@/features/products/enrichmentCaptureTypes'
 
 interface UploadUrlResponse {
   photo_id: string

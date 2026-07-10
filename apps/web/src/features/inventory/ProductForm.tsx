@@ -63,6 +63,10 @@ import { UnitDropdown } from '../uom/components/UnitDropdown'
 import { useUnits } from '../uom/hooks/useUnits'
 import { getQuantityDecimals } from '../../lib/quantityScale'
 import type { ProductType } from '../products/types'
+import type {
+  ParapharmacySectionFormData,
+  ProductSectionFormData,
+} from '../products/sections'
 import {
   marginFromCost,
   priceHtFromMargin,
@@ -115,19 +119,7 @@ interface ProductResponse {
   data: Product
 }
 
-interface ParapharmacyMetadata {
-  category: string
-  dosage_form: string | null
-  active_ingredients: Array<{ name: string; concentration: string }>
-  usage_instructions: string | null
-  warnings: string | null
-  contraindications: string | null
-  minimum_age: number | null
-  age_restriction: string | null
-  requires_consultation: boolean
-  regulatory_code: string | null
-  storage_requirements: string | null
-}
+type ParapharmacyMetadata = ParapharmacySectionFormData
 
 type EditorSectionKey =
   | 'general'
@@ -197,35 +189,7 @@ const HERO_BLOCKS: HeroBlockDef[] = [
   { id: 'pricing.priceTtc', component: 'pricing.priceTtc', slot: 'strip' },
 ]
 
-export interface ProductFormData {
-  name: string
-  sku: string
-  is_physical: boolean
-  is_active_for_ecommerce: boolean
-  unit_id: string | null
-  category_id: number | null
-  description: string
-  sale_price: string
-  purchase_price: string
-  tax_rate: string
-  tax_configuration_id: string | null
-  unit: string
-  barcode: string
-  is_active: boolean
-  oem_numbers: string[]
-  cross_references: Array<{ brand: string; reference: string }>
-  parapharmacy_metadata: ParapharmacyMetadata
-  requires_batch_tracking: boolean
-  default_shelf_life_days: number | null
-  units_per_pack: number | null
-  shelf_location: string
-  reorder_point: string
-  reorder_quantity: string
-  /** Opening balance quantity (decimal string). Submitted only when > 0. */
-  opening_qty: string
-  /** Opening balance unit cost (decimal string). Required when opening_qty > 0. */
-  opening_unit_cost: string
-}
+export type ProductFormData = ProductSectionFormData
 
 function findCategoryName(nodes: CategoryTreeNode[], id: number): string | null {
   for (const node of nodes) {
