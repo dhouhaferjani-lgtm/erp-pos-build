@@ -36,6 +36,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentLineEditor.test.tsx` failed because a Workshop service carrying `tax_rate: "19.00"` still created a line with `tax_rate: "0"`, `tax_configuration_id: null`, and untaxed total.
   - GREEN: `ServicePicker` now carries service `tax_rate` and `default_tax_configuration_id`; `DocumentLineEditor` uses those values when adding service lines.
   - Verification: `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentLineEditor.test.tsx src/components/molecules/pickers/ServicePicker.test.tsx` passed: 28 tests; `pnpm --filter @autoerp/web typecheck` passed.
+- MJ-4 line-entry overlay close:
+  - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/line-items/LineItemEntryBar.test.tsx` failed because product suggestions stayed open after pointerdown outside the entry bar.
+  - GREEN: `LineItemEntryBar` now closes the listbox on outside `pointerdown` while preserving inside selection behavior.
+  - Verification: `pnpm --filter @autoerp/web test -- src/components/molecules/line-items/LineItemEntryBar.test.tsx` passed: 8 tests; `pnpm --filter @autoerp/web typecheck` passed.
 
 ## Wave 0 — Tooling & Guardrails
 

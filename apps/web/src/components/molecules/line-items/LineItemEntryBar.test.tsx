@@ -166,6 +166,27 @@ describe('LineItemEntryBar', () => {
     expect(apiClientGetMock).toHaveBeenCalledWith('/products', { params: undefined })
   })
 
+  it('closes product suggestions on pointerdown outside', async () => {
+    const user = userEvent.setup()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(
+      <>
+        <LineItemEntryBar onAddProduct={vi.fn()} />
+        <button type="button">Outside</button>
+      </>,
+      { wrapper: wrapper() },
+    )
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+    expect(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i })).toBeInTheDocument()
+
+    await user.pointer({ keys: '[MouseLeft]', target: screen.getByRole('button', { name: 'Outside' }) })
+
+    expect(screen.queryByRole('option', { name: /CS-050 Crème solaire SPF50/i })).not.toBeInTheDocument()
+  })
+
   it('does not fire the product search without tenant/company state', async () => {
     resetTenant()
     const user = userEvent.setup()

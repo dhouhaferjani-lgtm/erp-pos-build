@@ -1,4 +1,4 @@
-import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -59,6 +59,7 @@ export function LineItemEntryBar({
   const [isOpen, setIsOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listboxId = useId()
   const { enqueueScan } = useProductLineLookup()
@@ -79,6 +80,19 @@ export function LineItemEntryBar({
   })
 
   const products = productsData?.data ?? []
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (containerRef.current !== null && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+    }
+  }, [])
 
   const focusInput = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -199,7 +213,7 @@ export function LineItemEntryBar({
   }
 
   return (
-    <div className="relative w-full">
+    <div ref={containerRef} className="relative w-full">
       <div className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colors.white} px-3 py-2`}>
         <Search className={`h-4 w-4 shrink-0 ${textColors.disabled}`} aria-hidden="true" />
         <input
