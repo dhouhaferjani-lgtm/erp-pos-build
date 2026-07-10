@@ -13,7 +13,12 @@ export interface ProductCellProps {
   product: ProductCellProduct
   barcode?: string | null
   stockLabel?: string | null
-  size?: 'sm' | 'md'
+  /**
+   * `xs` (20px thumbnail) is for tightly-constrained inline chips (e.g. a
+   * picker's selected-value trigger) — it is opt-in and does not change the
+   * `sm`/`md` sizes any other consumer already relies on.
+   */
+  size?: 'xs' | 'sm' | 'md'
 }
 
 export function ProductCell({
@@ -23,7 +28,7 @@ export function ProductCell({
   size = 'md',
 }: ProductCellProps) {
   const { t } = useTranslation(['sales'])
-  const imageSize = size === 'sm' ? 'h-8 w-8' : 'h-10 w-10'
+  const imageSize = size === 'xs' ? 'h-5 w-5' : size === 'sm' ? 'h-8 w-8' : 'h-10 w-10'
 
   return (
     <div className="flex min-w-0 items-center gap-3 text-start">
@@ -43,7 +48,7 @@ export function ProductCell({
       )}
 
       <span className="min-w-0 flex-1">
-        <span className={`block truncate text-sm font-medium ${textColors.primary}`}>
+        <span className={`block truncate text-sm font-medium ${textColors.primary}`} title={product.name}>
           {product.name}
         </span>
         <span className="mt-1 flex flex-wrap items-center gap-1.5">
