@@ -106,6 +106,15 @@ describe('StandaloneReceiptPage', () => {
     })
   })
 
+  it('renders a scan-instead link with the locked supplier_delivery_note kind', () => {
+    renderWithProviders(<StandaloneReceiptPage />)
+
+    expect(screen.getByRole('link', { name: 'documentIngestions:actions.scanInstead' })).toHaveAttribute(
+      'href',
+      '/purchases/scans/new?kind=supplier_delivery_note',
+    )
+  })
+
   it('submits string qty and money values to the standalone receipt endpoint', async () => {
     const user = userEvent.setup()
     renderWithProviders(<StandaloneReceiptPage />)

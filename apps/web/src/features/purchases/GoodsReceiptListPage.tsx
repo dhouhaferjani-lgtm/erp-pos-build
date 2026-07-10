@@ -14,6 +14,7 @@ import {
   Truck,
   ReceiptText,
   Printer,
+  ScanLine,
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -127,7 +128,7 @@ function scopedNamespacePredicate(
 }
 
 export function GoodsReceiptListPage() {
-  const { t } = useTranslation(['common', 'sales', 'inventory', 'purchases'])
+  const { t } = useTranslation(['common', 'sales', 'inventory', 'purchases', 'documentIngestions'])
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { hasPermission } = usePermissions()
@@ -429,6 +430,16 @@ export function GoodsReceiptListPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-start justify-end gap-2">
+          {hasPermission('document-ingestions.view') && (
+            <button
+              type="button"
+              onClick={() => { void navigate('/purchases/scans/new?kind=supplier_delivery_note') }}
+              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
+            >
+              <ScanLine className="h-4 w-4" />
+              {t('documentIngestions:actions.scanDeliveryNote')}
+            </button>
+          )}
           {hasPermission('goods-receipt.create-standalone') && (
             <button
               type="button"

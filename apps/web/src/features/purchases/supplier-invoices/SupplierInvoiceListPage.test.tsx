@@ -48,14 +48,14 @@ vi.mock('sonner', () => ({
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function setTenant(tenantId = 'tenant-1', companyId = 'company-1') {
+function setTenant(tenantId = 'tenant-1', companyId = 'company-1', roles: string[] = []) {
   useAuthStore.setState({
     user: {
       id: 'user-1',
       name: 'Test User',
       email: 'test@example.com',
       tenant_id: tenantId,
-      roles: [],
+      roles,
       email_verified_at: null,
     },
     token: 'test-token',
@@ -270,5 +270,28 @@ describe('SupplierInvoiceListPage — tenant scope', () => {
     resetTenant()
     renderWithProviders(<SupplierInvoiceListPage />)
     expect(mockApiGet).not.toHaveBeenCalled()
+  })
+})
+
+describe('SupplierInvoiceListPage — scan entry point', () => {
+  it('renders a scan-invoice link with the locked kind when the user has document-ingestions.view', async () => {
+    setTenant('tenant-1', 'company-1', ['purchases'])
+    renderWithProviders(<SupplierInvoiceListPage />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'documentIngestions:actions.scanInvoice' })).toHaveAttribute(
+        'href',
+        '/purchases/scans/new?kind=supplier_invoice',
+      )
+    })
+  })
+
+  it('hides the scan-invoice link when the user lacks document-ingestions.view', async () => {
+    setTenant('tenant-1', 'company-1', [])
+    renderWithProviders(<SupplierInvoiceListPage />)
+
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: 'documentIngestions:actions.scanInvoice' })).not.toBeInTheDocument()
+    })
   })
 })

@@ -10,11 +10,13 @@ import {
   AlertTriangle,
   ChevronRight,
   Link2,
+  ScanLine,
 } from 'lucide-react'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { SearchInput } from '../../../components/molecules/SearchInput/SearchInput'
 import { formatCurrency } from '../../../lib/decimal'
 import { formatDate } from '../../../lib/format'
+import { usePermissions } from '../../../hooks/usePermissions'
 import type { SupplierInvoiceListParams, SupplierInvoiceMatchStatus, SupplierInvoiceStatus } from './types'
 import { useSupplierInvoiceList } from './api'
 
@@ -88,7 +90,8 @@ function InvoiceStatusBadge({ status }: { status: SupplierInvoiceStatus }) {
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export function SupplierInvoiceListPage() {
-  const { t } = useTranslation(['common', 'purchases'])
+  const { t } = useTranslation(['common', 'purchases', 'documentIngestions'])
+  const { hasPermission } = usePermissions()
 
   const [params, setParams] = useState<SupplierInvoiceListParams>({})
 
@@ -127,13 +130,24 @@ export function SupplierInvoiceListPage() {
             {t('purchases:supplierInvoices.description')}
           </p>
         </div>
-        <Link
-          to="/purchases/supplier-invoices/new"
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
-        >
-          <Plus className="me-2 h-4 w-4" />
-          {t('purchases:supplierInvoices.new')}
-        </Link>
+        <div className="flex items-center gap-2">
+          {hasPermission('document-ingestions.view') && (
+            <Link
+              to="/purchases/scans/new?kind=supplier_invoice"
+              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+            >
+              <ScanLine className="me-2 h-4 w-4" />
+              {t('documentIngestions:actions.scanInvoice')}
+            </Link>
+          )}
+          <Link
+            to="/purchases/supplier-invoices/new"
+            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+          >
+            <Plus className="me-2 h-4 w-4" />
+            {t('purchases:supplierInvoices.new')}
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}

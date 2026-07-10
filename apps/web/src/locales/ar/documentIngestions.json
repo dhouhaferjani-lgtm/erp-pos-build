@@ -6,6 +6,9 @@
     "reExtract": "إعادة الاستخراج",
     "reject": "رفض",
     "review": "مراجعة",
+    "scanDeliveryNote": "مسح وصل تسليم",
+    "scanInstead": "أو امسح مستندا بدلا من ذلك",
+    "scanInvoice": "مسح فاتورة",
     "startScan": "بدء المسح",
     "upload": "رفع مسح"
   },

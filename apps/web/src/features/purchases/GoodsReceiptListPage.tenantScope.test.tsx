@@ -304,6 +304,14 @@ describe('GoodsReceiptListPage tenant scope', () => {
     expect(screen.getByText(/6\/28\/2026|06\/28\/2026/)).toBeInTheDocument()
   })
 
+  it('renders a scan-delivery-note affordance that navigates with the locked kind', async () => {
+    renderWithProviders(<GoodsReceiptListPage />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'documentIngestions:actions.scanDeliveryNote' }))
+
+    expect(mockNavigate).toHaveBeenCalledWith('/purchases/scans/new?kind=supplier_delivery_note')
+  })
+
   it('links purchase orders, suppliers, and product previews from receipt rows', async () => {
     renderWithProviders(<GoodsReceiptListPage />)
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ClipboardList, PackagePlus, Plus, Save, Send, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -11,6 +11,7 @@ import { getDecimals } from '../../lib/currencyMeta'
 import { formatQuantity } from '../../lib/decimal'
 import { borderColors, colors, textColors, tokens, typography } from '../../lib/designTokens'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
+import { usePermissions } from '../../hooks/usePermissions'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 
@@ -61,8 +62,9 @@ function idempotencyKey(): string {
 }
 
 export function StandaloneReceiptPage() {
-  const { t } = useTranslation(['purchases', 'common'])
+  const { t } = useTranslation(['purchases', 'common', 'documentIngestions'])
   const navigate = useNavigate()
+  const { hasPermission } = usePermissions()
   const queryClient = useQueryClient()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
@@ -179,6 +181,14 @@ export function StandaloneReceiptPage() {
         <div>
           <h1 className={`${typography.fontSize['2xl']} ${typography.fontWeight.bold} ${textColors.primary}`}>{t('purchases:standaloneReceipt.title')}</h1>
           <p className={`mt-1 ${typography.fontSize.sm} ${textColors.tertiary}`}>{t('purchases:standaloneReceipt.description')}</p>
+          {hasPermission('document-ingestions.view') && (
+            <Link
+              to="/purchases/scans/new?kind=supplier_delivery_note"
+              className={`mt-1 inline-block ${typography.fontSize.sm} ${textColors.brand} hover:underline`}
+            >
+              {t('documentIngestions:actions.scanInstead')}
+            </Link>
+          )}
         </div>
         {!receiptFirstDisabled && <div className="flex items-center gap-2">
           <button
