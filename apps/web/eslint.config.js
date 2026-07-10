@@ -190,6 +190,32 @@ export default tseslint.config(
           selector: 'Literal[value=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-(\\d{2,3})\\b/]',
           message: 'Avoid hardcoded Tailwind color classes. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
         },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-(\\d{2,3})\\b/]',
+          message: 'Avoid hardcoded Tailwind color classes. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/features/documents/**/*.{ts,tsx}',
+      'src/features/admin/**/*.{ts,tsx}',
+      'src/lib/designTokens.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/designTokens', '@/lib/designTokens'],
+              importNames: ['colorClasses'],
+              message: 'colorClasses is quarantined for the Wave 5 documents/admin sweep. Use semantic design tokens instead.',
+            },
+          ],
+        },
       ],
     },
   },
@@ -231,6 +257,10 @@ export default tseslint.config(
           selector: 'Literal[value=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-(\\d{2,3})\\b/]',
           message: 'Hardcoded Tailwind color classes are not allowed in new features. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
         },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in new features. Use design tokens from lib/designTokens.ts instead. Example: tokens.input.base, tokens.button.primary',
+        },
       ],
     },
   },
@@ -247,6 +277,10 @@ export default tseslint.config(
         'error',
         {
           selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in scheduling. Use design tokens from lib/designTokens.ts (tokens.statusBadge.*, tokens.utilizationBar.*, tokens.toggleButton.*).',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
           message: 'Hardcoded Tailwind color classes are not allowed in scheduling. Use design tokens from lib/designTokens.ts (tokens.statusBadge.*, tokens.utilizationBar.*, tokens.toggleButton.*).',
         },
       ],
@@ -268,6 +302,10 @@ export default tseslint.config(
           selector: 'Literal[value=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
           message: 'Hardcoded Tailwind color classes are not allowed in workshop-*. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*).',
         },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring)-(red|blue|green|yellow|gray|purple|pink|indigo|slate|sky|amber|violet|emerald|stone|rose|zinc|teal|cyan|lime|orange|fuchsia|neutral)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in workshop-*. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*).',
+        },
       ],
     },
   },
@@ -286,7 +324,11 @@ export default tseslint.config(
         'error',
         {
           selector: 'Literal[value=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone|sky|violet|teal|cyan|lime|fuchsia)-(\\d{2,3})\\b/]',
-          message: 'Hardcoded Tailwind color classes are not allowed in documents/admin. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*, colorClasses.*).',
+          message: 'Hardcoded Tailwind color classes are not allowed in documents/admin. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*).',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone|sky|violet|teal|cyan|lime|fuchsia)-(\\d{2,3})\\b/]',
+          message: 'Hardcoded Tailwind color classes are not allowed in documents/admin. Use design tokens from lib/designTokens.ts (StatusBadge/statusTone, tokens.*, colors.*, textColors.*, borderColors.*).',
         },
       ],
     },

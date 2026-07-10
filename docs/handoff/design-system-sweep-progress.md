@@ -122,6 +122,36 @@ Status: complete.
   - `pnpm --filter @autoerp/web test -- src/components/molecules/line-items/LineItemEntryBar.test.tsx src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx src/features/documents/components/__tests__/DocumentLineEditor.test.tsx src/features/purchases/StandaloneReceiptPage.test.tsx` passed: 5 files, 63 tests. Existing LineItemEntryBar act-warning noise remains.
   - `pnpm --filter @autoerp/web typecheck` passed.
 
+## Gate 3 Review Fixes
+
+Status: complete.
+
+- G3-1 color ratchet integrity: the hardcoded Tailwind color ESLint guards now check both string literals and template-literal chunks, including the Wave 5 documents/admin ERROR override. Deliberate probe result: a temporary `` `bg-red-500` `` in `src/features/documents/ReturnNoteListPage.tsx` failed `cd apps/web && pnpm exec eslint src/features/documents/ReturnNoteListPage.tsx` with the expected `no-restricted-syntax` error, then the probe was removed.
+- G3-2 `colorClasses` quarantine:
+  - Marked `colorClasses` as `@deprecated` and fenced its import to `src/features/documents`, `src/features/admin`, and `src/lib/designTokens.ts`.
+  - Removed `colorClasses.*` from the documents/admin hardcoded-color lint message so new work is directed to real semantic tokens/components.
+  - Burn-down target: replace all remaining documents/admin `colorClasses` uses with semantic tokens, `StatusBadge`, form/table atoms, or local typed semantic maps, then delete the alias table.
+- G3-3 C1 scanner evasion:
+  - `audit-design-system.mjs` now detects bespoke `<h1>` headers using `text-[1.5rem]` and `text-[1.875rem]`.
+  - The baseline was manually increased from 480 to 495 entries by adding only the 15 newly visible C1 headers; `--write-baseline` was not used.
+  - Explicit PageHeader deferral pending owner visual sign-off: `src/features/admin/pages/AdminDashboardPage.tsx`, `src/features/admin/pages/AuditLogsPage.tsx`, `src/features/admin/pages/BillingDashboardPage.tsx`, `src/features/admin/pages/CompanyOwnersPage.tsx`, `src/features/admin/pages/InvoicesPage.tsx`, `src/features/admin/pages/MonitoringPage.tsx`, `src/features/admin/pages/PaymentsPage.tsx`, `src/features/admin/pages/SubscriptionsPage.tsx`, `src/features/admin/pages/TenantsPage.tsx`, `src/features/admin/pages/VerticalsPage.tsx`, `src/features/documents/ReturnNoteListPage.tsx`, `src/features/documents/components/DocumentHeader.tsx`, `src/features/documents/credit-notes/CreditNoteDetailPage.tsx`, `src/features/documents/delivery-notes/DeliveryNoteDetailPage.tsx`, `src/features/documents/return-notes/ReturnNoteDetailPage.tsx`.
+- G3-4 MonitoringPage status badges: restored per-status icons as children of `StatusBadge`.
+- G3-5 DataTable children mode: documented the compatibility passthrough as a legacy migration shim and added unit coverage.
+- G3-6 MonitoringPage composite keys: alert and event row keys now append the map index to avoid collisions when backend fields repeat.
+- G3-7 intentional visual change: `VerticalConfigModal` close-button restyle from the Gate 2 sweep is accepted as an intentional visual change and should be included in owner visual review.
+- G3-8 LineItemEntryBar: suggestions now close on focus leaving the entry bar; Tab still does not commit empty-query suggestions.
+- G3-9 SupplierInvoiceCreatePage: zod schema emit sites now use `REQUIRED_VALIDATION_KEY` instead of raw duplicated validation-key strings.
+- G3-10 Wave 6 cleanup debt: remove dead `default_tax_configuration_id` service DTO reads from `features/services/types.ts:28`, `features/services/types.ts:66`, `features/services/ServiceDetailPage.tsx:72`, and `features/services/ServiceForm.tsx:103`.
+- G3-11 review docs: include `docs/handoff/CODEX-continuation-gate2-2026-07-10.md` and `docs/handoff/CODEX-continuation-gate3-2026-07-10.md` in the Gate 3 fix commit.
+- Verification:
+  - `pnpm --filter @autoerp/web test -- tools/__tests__/audit-design-system.test.mjs src/components/molecules/DataTable/DataTable.test.tsx src/components/molecules/line-items/LineItemEntryBar.test.tsx src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` passed: 4 files, 57 tests. Existing LineItemEntryBar act-warning noise remains.
+  - `node apps/web/tools/audit-design-system.mjs` passed: 495 acknowledged, 0 new, 0 stale.
+  - `pnpm --filter @autoerp/web audit:keys` passed: 0 violations.
+  - `pnpm --filter @autoerp/web typecheck` passed.
+  - `pnpm --filter @autoerp/web lint` passed with 0 errors and 9,613 warnings; chained TanStack and design-system audits passed.
+  - `cd apps/web && pnpm exec eslint src/features/admin/pages/MonitoringPage.tsx` passed with 0 errors and 254 warnings after the duplicate-aware key adjustment.
+  - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed with no issues after replacing raw array-index key suffixes with duplicate-aware occurrence suffixes.
+
 ## Wave 0 — Tooling & Guardrails
 
 Status: complete.

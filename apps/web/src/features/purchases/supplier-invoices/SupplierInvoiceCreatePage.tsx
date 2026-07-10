@@ -88,7 +88,7 @@ const supplierInvoiceCreateBaseSchema = z.object({
   invoiceFirstExternalDate: z.string(),
   invoiceFirstExternalReference: z.string(),
   invoiceFirstLocationId: z.string(),
-  issueDate: z.string().trim().min(1, 'validation.required'),
+  issueDate: z.string().trim().min(1, REQUIRED_VALIDATION_KEY),
   notes: z.string(),
   supplierReference: z.string(),
 })
@@ -100,7 +100,7 @@ function createSupplierInvoiceCreateSchema(entryMode: SupplierInvoiceEntryMode) 
     if (entryMode === 'invoiceFirstDelivered' && values.invoiceFirstLocationId.trim() === '') {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'validation.required',
+        message: REQUIRED_VALIDATION_KEY,
         path: ['invoiceFirstLocationId'],
       })
     }

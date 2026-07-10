@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ComponentType, type ReactNode } from 'react'
 import {
   Activity,
   Server,
@@ -42,6 +42,36 @@ function monitoringStatusTone(status: string): StatusTone {
   return monitoringStatusTones[status] ?? 'neutral'
 }
 
+function duplicateAwareMonitoringKey(baseKey: string, seenCounts: Map<string, number>): string {
+  const nextCount = (seenCounts.get(baseKey) ?? 0) + 1
+  seenCounts.set(baseKey, nextCount)
+  return `${baseKey}:${nextCount}`
+}
+
+const monitoringStatusIcons: Record<string, ComponentType<{ className?: string }>> = {
+  healthy: CheckCircle,
+  connected: CheckCircle,
+  available: CheckCircle,
+  degraded: AlertTriangle,
+  warning: AlertTriangle,
+  backlogged: AlertTriangle,
+  critical: XCircle,
+  error: XCircle,
+  unhealthy: XCircle,
+  not_configured: AlertCircle,
+}
+
+function MonitoringStatusBadge({ status, children }: { status: string; children?: ReactNode }) {
+  const Icon = monitoringStatusIcons[status] ?? AlertCircle
+
+  return (
+    <StatusBadge tone={monitoringStatusTone(status)}>
+      <Icon className="h-3 w-3" />
+      {children ?? status}
+    </StatusBadge>
+  )
+}
+
 function MetricCard({
   title,
   value,
@@ -52,7 +82,7 @@ function MetricCard({
   title: string
   value: string | number
   subtitle?: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: ComponentType<{ className?: string }>
   trend?: 'up' | 'down' | 'neutral'
 }) {
   return (
@@ -176,6 +206,8 @@ export function MonitoringPage() {
   }
 
   const { health, performance, critical, queues } = data!
+  const alertKeyCounts = new Map<string, number>()
+  const recentEventKeyCounts = new Map<string, number>()
 
   return (
     <div className="p-8">
@@ -189,7 +221,7 @@ export function MonitoringPage() {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <StatusBadge tone={monitoringStatusTone(health.status)}>{health.status}</StatusBadge>
+          <MonitoringStatusBadge status={health.status}>{health.status}</MonitoringStatusBadge>
           <button
             onClick={() => refetch()}
             className={`flex items-center gap-2 px-4 py-2 ${colorClasses.bgGray100} ${colorClasses.textGray700} rounded-lg ${colorClasses.hoverBgGray200}`}
@@ -242,7 +274,7 @@ export function MonitoringPage() {
                     <Database className={`h-5 w-5 ${colorClasses.textBlue600}`} />
                     <span className="font-medium">Database</span>
                   </div>
-                  <StatusBadge tone={monitoringStatusTone(health.database.status)}>{health.database.status}</StatusBadge>
+                  <MonitoringStatusBadge status={health.database.status}>{health.database.status}</MonitoringStatusBadge>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
@@ -266,7 +298,7 @@ export function MonitoringPage() {
                     <Zap className={`h-5 w-5 ${colorClasses.textPurple600}`} />
                     <span className="font-medium">Cache</span>
                   </div>
-                  <StatusBadge tone={monitoringStatusTone(health.cache.status)}>{health.cache.status}</StatusBadge>
+                  <MonitoringStatusBadge status={health.cache.status}>{health.cache.status}</MonitoringStatusBadge>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
@@ -286,7 +318,7 @@ export function MonitoringPage() {
                     <Clock className={`h-5 w-5 ${colorClasses.textOrange600}`} />
                     <span className="font-medium">Queue</span>
                   </div>
-                  <StatusBadge tone={monitoringStatusTone(health.queue.status)}>{health.queue.status}</StatusBadge>
+                  <MonitoringStatusBadge status={health.queue.status}>{health.queue.status}</MonitoringStatusBadge>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
@@ -384,7 +416,7 @@ export function MonitoringPage() {
                 <div key={name} className={`bg-white rounded-lg border ${colorClasses.borderGray200} p-4`}>
                   <div className="flex items-center justify-between">
                     <span className="font-medium capitalize">{name}</span>
-                    <StatusBadge tone={monitoringStatusTone(service.status)}>{service.status}</StatusBadge>
+                    <MonitoringStatusBadge status={service.status}>{service.status}</MonitoringStatusBadge>
                   </div>
                   {service.driver && (
                     <p className={`text-sm ${colorClasses.textGray500} mt-1`}>Driver: {service.driver}</p>
@@ -574,9 +606,12 @@ export function MonitoringPage() {
             <h2 className={`text-lg font-semibold ${colorClasses.textGray900} mb-4`}>Active Alerts</h2>
             {critical.alerts.length > 0 ? (
               <div className="space-y-4">
-                {critical.alerts.map((alert) => (
-                  <AlertCard key={`${alert.type}:${alert.category}:${alert.message}`} alert={alert} />
-                ))}
+                {critical.alerts.map((alert) => {
+                  const baseKey = `${alert.type}:${alert.category}:${alert.message}`
+                  return (
+                    <AlertCard key={duplicateAwareMonitoringKey(baseKey, alertKeyCounts)} alert={alert} />
+                  )
+                })}
               </div>
             ) : (
               <div className={`${colorClasses.bgGreen50} border ${colorClasses.borderGreen200} rounded-lg p-8 text-center`}>
@@ -601,18 +636,21 @@ export function MonitoringPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {critical.recent_events.map((event) => (
-                      <tr key={`${event.timestamp}:${event.type}:${event.message}`} className={`border-b ${colorClasses.borderGray100}`}>
-                        <td className={`py-3 px-4 text-sm ${colorClasses.textGray500}`}>
-                          {new Date(event.timestamp).toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 text-sm font-medium">{event.type}</td>
-                        <td className="py-3 px-4 text-sm">{event.message}</td>
-                        <td className="py-3 px-4">
-                          <StatusBadge tone={monitoringStatusTone(event.severity)}>{event.severity}</StatusBadge>
-                        </td>
-                      </tr>
-                    ))}
+                    {critical.recent_events.map((event) => {
+                      const baseKey = `${event.timestamp}:${event.type}:${event.message}`
+                      return (
+                        <tr key={duplicateAwareMonitoringKey(baseKey, recentEventKeyCounts)} className={`border-b ${colorClasses.borderGray100}`}>
+                          <td className={`py-3 px-4 text-sm ${colorClasses.textGray500}`}>
+                            {new Date(event.timestamp).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 text-sm font-medium">{event.type}</td>
+                          <td className="py-3 px-4 text-sm">{event.message}</td>
+                          <td className="py-3 px-4">
+                            <MonitoringStatusBadge status={event.severity}>{event.severity}</MonitoringStatusBadge>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </DataTable>
               </div>

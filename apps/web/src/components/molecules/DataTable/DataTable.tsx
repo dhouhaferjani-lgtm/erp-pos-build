@@ -76,6 +76,10 @@ export interface DataTableProps<T> {
 }
 
 type DataTableMarkupProps = React.TableHTMLAttributes<HTMLTableElement> & {
+  /**
+   * Legacy markup passthrough for swept pages that already own table semantics.
+   * Prefer the typed column/data API for new DataTable call sites.
+   */
   children: React.ReactNode
   columns?: never
   data?: never

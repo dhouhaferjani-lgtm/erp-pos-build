@@ -90,6 +90,21 @@ describe('DataTable', () => {
     expect(screen.getByText('Nothing here')).toBeInTheDocument()
   })
 
+  it('passes through legacy table markup in children mode', () => {
+    render(
+      <DataTable className="legacy-table" aria-label="Legacy table">
+        <tbody>
+          <tr>
+            <td>Legacy cell</td>
+          </tr>
+        </tbody>
+      </DataTable>,
+    )
+
+    expect(screen.getByRole('table', { name: 'Legacy table' })).toHaveClass('legacy-table')
+    expect(screen.getByRole('cell', { name: 'Legacy cell' })).toBeInTheDocument()
+  })
+
   it('fires onRowClick when a row is clicked', () => {
     const onRowClick = vi.fn()
     setup({ onRowClick })

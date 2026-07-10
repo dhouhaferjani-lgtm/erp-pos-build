@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -217,8 +217,14 @@ export function LineItemEntryBar({
     resolveScan(trimmedQuery)
   }
 
+  const handleContainerBlur = (event: FocusEvent<HTMLDivElement>) => {
+    const nextTarget = event.relatedTarget
+    if (nextTarget instanceof Node && containerRef.current?.contains(nextTarget)) return
+    setIsOpen(false)
+  }
+
   return (
-    <div ref={containerRef} className="relative w-full">
+    <div ref={containerRef} className="relative w-full" onBlur={handleContainerBlur}>
       <div className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colors.white} px-3 py-2`}>
         <Search className={`h-4 w-4 shrink-0 ${textColors.disabled}`} aria-hidden="true" />
         <input

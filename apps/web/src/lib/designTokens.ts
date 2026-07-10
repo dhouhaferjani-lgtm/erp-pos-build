@@ -120,9 +120,9 @@ export const borderColors = {
 }
 
 /**
- * Exact Tailwind color utility tokens used while ratcheting legacy feature
- * directories to the design system. Feature code should reference these
- * properties instead of embedding palette literals directly.
+ * @deprecated Pixel-preservation quarantine for the Wave 5 documents/admin
+ * sweep. Do not add entries and do not import outside those directories; burn
+ * this table down by replacing each alias with semantic tokens/components.
  */
 export const colorClasses = {
   bgAmber100: 'bg-amber-100',

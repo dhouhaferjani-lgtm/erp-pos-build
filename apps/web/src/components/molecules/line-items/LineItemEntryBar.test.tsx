@@ -205,6 +205,10 @@ describe('LineItemEntryBar', () => {
 
     expect(onAddProduct).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Next field' })).toHaveFocus()
+    await waitFor(() => {
+      expect(input).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByRole('option', { name: /CS-050 Crème solaire SPF50/i })).not.toBeInTheDocument()
+    })
   })
 
   it('closes product suggestions on pointerdown outside', async () => {

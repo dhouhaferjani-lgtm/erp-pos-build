@@ -19,6 +19,17 @@ describe('design-system audit scanner', () => {
     expect(violations[0].category).toBe('C1')
   })
 
+  it('flags arbitrary-size page h1 headers that evade text-2xl detection', () => {
+    const violations = scanCode(`
+      export function ExamplePage() {
+        return <h1 className="text-[1.875rem] leading-9 font-bold">Title</h1>
+      }
+    `, 'src/features/example/ExamplePage.tsx')
+
+    expect(violations).toHaveLength(1)
+    expect(violations[0].category).toBe('C1')
+  })
+
   it('flags raw form controls that use design token classes', () => {
     const violations = scanCode(`
       export function ExampleForm() {
