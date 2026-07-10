@@ -126,7 +126,7 @@ export function ProgramListPage() {
       ) : (
         <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
           <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-            <thead className={`${colorTokens.surface.page}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
                 <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>
                   {t('loyalty:fields.name')}

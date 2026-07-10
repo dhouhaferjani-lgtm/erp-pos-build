@@ -45,7 +45,7 @@ export function BatchPreview({ preview, batchType }: BatchPreviewProps) {
         <div className={`rounded-lg border ${colorTokens.border.subtle} overflow-hidden`}>
           <div className="overflow-x-auto">
             <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-              <thead className={`${colorTokens.surface.page}`}>
+              <thead className={colorTokens.surface.page}>
                 <tr>
                   <th className={`px-4 py-2 text-left text-xs font-medium ${colorTokens.text.subtle}`}>
                     {t('openingBalances.preview.accountCode')}
@@ -78,7 +78,7 @@ export function BatchPreview({ preview, batchType }: BatchPreviewProps) {
                 ))}
                 {/* OBE offset */}
                 {preview.obe_offset && (
-                  <tr className={`${colorTokens.intent.primary.bgSubtle}`}>
+                  <tr className={colorTokens.intent.primary.bgSubtle}>
                     <td className={`px-4 py-2 text-sm font-mono font-medium ${colorTokens.intent.primary.textStrongest}`}>
                       {preview.obe_offset.account_code}
                     </td>
@@ -94,7 +94,7 @@ export function BatchPreview({ preview, batchType }: BatchPreviewProps) {
                   </tr>
                 )}
               </tbody>
-              <tfoot className={`${colorTokens.surface.muted}`}>
+              <tfoot className={colorTokens.surface.muted}>
                 <tr>
                   <td colSpan={2} className={`px-4 py-2 text-sm font-medium ${colorTokens.text.primary}`}>
                     {t('openingBalances.preview.total')}
@@ -137,7 +137,7 @@ export function BatchPreview({ preview, batchType }: BatchPreviewProps) {
 
       {/* GL Entry */}
       {preview.gl_entry && (
-        <div className={`rounded-lg ${colorTokens.intent.primary.bgSubtle} border ${colorTokens.intent.primary.borderSubtleSoft} p-4`}>
+        <div className={`rounded-lg ${colorTokens.intent.primary.bgSubtle} border ${colorTokens.intent.primary.borderSubtle} p-4`}>
           <h3 className={`font-medium ${colorTokens.intent.primary.textStronger} mb-2`}>
             {t('openingBalances.preview.glEntryCreated')}
           </h3>
@@ -156,7 +156,7 @@ export function BatchPreview({ preview, batchType }: BatchPreviewProps) {
         <div className={`rounded-lg border ${colorTokens.border.subtle} overflow-hidden`}>
           <div className="overflow-x-auto">
             <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-              <thead className={`${colorTokens.surface.page}`}>
+              <thead className={colorTokens.surface.page}>
                 <tr>
                   <th className={`px-4 py-2 text-left text-xs font-medium ${colorTokens.text.subtle}`}>
                     {t('openingBalances.preview.sku')}
@@ -229,7 +229,7 @@ export function BatchPreview({ preview, batchType }: BatchPreviewProps) {
 
       {/* Note about GL */}
       {preview.note && (
-        <div className={`rounded-lg ${colorTokens.intent.primary.bgSubtle} border ${colorTokens.intent.primary.borderSubtleSoft} p-4`}>
+        <div className={`rounded-lg ${colorTokens.intent.primary.bgSubtle} border ${colorTokens.intent.primary.borderSubtle} p-4`}>
           <p className={`text-sm ${colorTokens.intent.primary.textStrong}`}>{preview.note}</p>
         </div>
       )}
@@ -239,7 +239,7 @@ export function BatchPreview({ preview, batchType }: BatchPreviewProps) {
         <div className={`rounded-lg border ${colorTokens.border.subtle} overflow-hidden`}>
           <div className="overflow-x-auto">
             <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-              <thead className={`${colorTokens.surface.page}`}>
+              <thead className={colorTokens.surface.page}>
                 <tr>
                   <th className={`px-4 py-2 text-left text-xs font-medium ${colorTokens.text.subtle}`}>
                     {t('openingBalances.preview.partner')}
@@ -298,11 +298,11 @@ export function BatchPreview({ preview, batchType }: BatchPreviewProps) {
       <div className={`mb-6 rounded-lg ${colorTokens.surface.page} p-4`}>
         <dl className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <dt className={`${colorTokens.text.subtle}`}>{t('openingBalances.preview.cutoverDate')}</dt>
+            <dt className={colorTokens.text.subtle}>{t('openingBalances.preview.cutoverDate')}</dt>
             <dd className={`font-medium ${colorTokens.text.primary}`}>{preview.batch.cutover_date}</dd>
           </div>
           <div>
-            <dt className={`${colorTokens.text.subtle}`}>{t('openingBalances.preview.description')}</dt>
+            <dt className={colorTokens.text.subtle}>{t('openingBalances.preview.description')}</dt>
             <dd className={`font-medium ${colorTokens.text.primary}`}>{preview.batch.description}</dd>
           </div>
         </dl>

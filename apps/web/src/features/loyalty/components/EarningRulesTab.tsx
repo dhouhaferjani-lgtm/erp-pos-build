@@ -83,13 +83,13 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
 
       {rulesList.length === 0 ? (
         <div className="text-center py-8">
-          <p className={`${colorTokens.text.subtle}`}>{t('loyalty:earningRules.noRules')}</p>
+          <p className={colorTokens.text.subtle}>{t('loyalty:earningRules.noRules')}</p>
           <p className={`${colorTokens.text.disabled} text-sm mt-1`}>{t('loyalty:earningRules.noRulesDescription')}</p>
         </div>
       ) : (
         <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
           <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-            <thead className={`${colorTokens.surface.page}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
                 <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.name')}</th>
                 <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.ruleType')}</th>
@@ -101,7 +101,7 @@ export function EarningRulesTab({ programId }: EarningRulesTabProps) {
             </thead>
             <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
               {rulesList.map((rule) => (
-                <tr key={rule.id} className={`${colorTokens.intent.neutral.bgHover}`}>
+                <tr key={rule.id} className={colorTokens.intent.neutral.bgHover}>
                   <td className={`px-4 py-3 font-medium ${colorTokens.text.primary}`}>{rule.name}</td>
                   <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{t(`loyalty:ruleTypes.${rule.rule_type}`)}</td>
                   <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{rule.reward_value}</td>

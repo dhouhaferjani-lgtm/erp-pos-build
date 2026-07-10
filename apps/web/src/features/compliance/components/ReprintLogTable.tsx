@@ -106,7 +106,7 @@ export function ReprintLogTable() {
         <>
           <div className="overflow-x-auto">
             <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-              <thead className={`${colorTokens.surface.page}`}>
+              <thead className={colorTokens.surface.page}>
                 <tr>
                   <th className={`px-4 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('reprintLog.receiptNumber')}

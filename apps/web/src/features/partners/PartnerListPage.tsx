@@ -202,7 +202,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
       <div className="flex items-center justify-between">
         <div>
           <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{pageTitle}</PageHeaderTitle>
-          <p className={`${colorTokens.text.subtle}`}>
+          <p className={colorTokens.text.subtle}>
             {t('sales:partners.totalSummary', { count: total, entity: entityCountLabel })}
           </p>
         </div>
@@ -249,7 +249,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
       {/* Content */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className={`${colorTokens.text.subtle}`}>{t('status.loading')}</div>
+          <div className={colorTokens.text.subtle}>{t('status.loading')}</div>
         </div>
       ) : error ? (
         <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-4 ${colorTokens.intent.danger.textStrong}`}>
@@ -281,7 +281,7 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
       ) : (
         <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
           <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-            <thead className={`${colorTokens.surface.page}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
                 <SortableTableHeader
                   column="name"
@@ -326,11 +326,11 @@ export function PartnerListPage({ partnerType }: PartnerListPageProps) {
                     ? `${colorTokens.intent.danger.text} font-medium`
                     : balanceComparison < 0
                       ? `${colorTokens.intent.success.text} font-medium`
-                      : `${colorTokens.text.disabled}`
+                      : colorTokens.text.disabled
                 const displayBalance = balance.startsWith('-') ? balance.slice(1) : balance
 
                 return (
-                  <tr key={partner.id} className={`${colorTokens.intent.neutral.bgHover}`}>
+                  <tr key={partner.id} className={colorTokens.intent.neutral.bgHover}>
                     <td className="whitespace-nowrap px-4 py-4">
                       <Link
                         to={`${basePath}/${partner.id}`}

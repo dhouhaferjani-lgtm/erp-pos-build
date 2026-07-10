@@ -60,7 +60,7 @@ export function PartNumberSearch({ onArticleSelected, className }: PartNumberSea
         {!searchQuery && !data && (
           <div className="mt-4 flex flex-col items-center text-center py-8">
             <Search className={`h-12 w-12 ${colorTokens.text.faint} mb-3`} />
-            <div className="flex items-start gap-2 rounded-lg ${colorTokens.intent.primary.bgSubtleAlphaStrong} px-3 py-2.5 mt-2">
+            <div className={`mt-2 flex items-start gap-2 rounded-lg ${colorTokens.intent.primary.bgSubtleAlphaStrong} px-3 py-2.5`}>
               <Info className={`h-4 w-4 ${colorTokens.intent.primary.textSubtle} mt-0.5 shrink-0`} />
               <p className={`text-xs ${colorTokens.intent.primary.text} leading-relaxed`}>
                 {t('parts-catalog:partNumber.hint')}
@@ -72,11 +72,11 @@ export function PartNumberSearch({ onArticleSelected, className }: PartNumberSea
 
       {/* Detected brand notice */}
       {data?.detected_brand && (
-        <div className="mt-4 flex items-center gap-2 rounded-lg ${colorTokens.intent.available.bgSubtleAlphaStrong} px-3 py-2">
+        <div className={`mt-4 flex items-center gap-2 rounded-lg ${colorTokens.intent.available.bgSubtleAlphaStrong} px-3 py-2`}>
           <span className={`inline-flex items-center rounded-md ${colorTokens.intent.available.bgSoft} px-2 py-0.5 text-xs font-semibold ${colorTokens.intent.available.textStrong} uppercase tracking-wide`}>
             {data.detected_brand}
           </span>
-          <span className={`text-xs ${colorTokens.intent.available.textMid}`}>
+          <span className={`text-xs ${colorTokens.intent.available.text}`}>
             {t('parts-catalog:partNumber.detectedBrand', { brand: data.detected_brand })}
           </span>
         </div>

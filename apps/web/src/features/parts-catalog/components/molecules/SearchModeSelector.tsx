@@ -44,7 +44,7 @@ export function SearchModeSelector({
               className={cn(
                 'flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-all duration-200',
                 isActive
-                  ? `${colorTokens.surface.base} ${colorTokens.text.primary} shadow-sm ring-1 ${colorTokens.intent.neutral.ringLight}`
+                  ? `${colorTokens.surface.base} ${colorTokens.text.primary} shadow-sm ring-1 ${colorTokens.intent.neutral.ringSoft}`
                   : `${colorTokens.text.subtle} ${colorTokens.intent.neutral.textHoverStrong} ${colorTokens.intent.neutral.bgHover}`
               )}
             >

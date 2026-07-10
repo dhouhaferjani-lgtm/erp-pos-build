@@ -127,7 +127,7 @@ export function CategoryBrowser({
               className={cn(
                 'w-full flex items-center justify-between text-start transition-colors',
                 isRootLevel
-                  ? `rounded-lg border ${colorTokens.border.hairline} ${colorTokens.surface.base} ${colorTokens.intent.primary.hoverBorderSoft} ${colorTokens.intent.primary.bgHoverSubtleAlpha} px-4 py-3`
+                  ? `rounded-lg border ${colorTokens.border.hairline} ${colorTokens.surface.base} ${colorTokens.intent.primary.borderHoverSubtle} ${colorTokens.intent.primary.bgHoverSubtleAlpha} px-4 py-3`
                   : `px-4 py-3 ${colorTokens.intent.neutral.bgHover}`
               )}
             >

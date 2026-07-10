@@ -645,7 +645,7 @@ export function ImportWizardPage() {
             )}
 
             {isPreviewError && (
-              <div className={`flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.borderSubtleSoft} ${colorTokens.intent.danger.bgSubtle} px-4 py-3 text-sm ${colorTokens.intent.danger.textStrong}`}>
+              <div className={`flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle} px-4 py-3 text-sm ${colorTokens.intent.danger.textStrong}`}>
                 <XCircle className="h-5 w-5" />
                 <span>{t('preview.loadError')}</span>
               </div>
@@ -769,8 +769,8 @@ export function ImportWizardPage() {
                 {jobData.processed_rows !== undefined && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className={`${colorTokens.text.subtle}`}>{t('wizard.execute.progress')}</span>
-                      <span className={`${colorTokens.text.primary}`}>
+                      <span className={colorTokens.text.subtle}>{t('wizard.execute.progress')}</span>
+                      <span className={colorTokens.text.primary}>
                         {jobData.processed_rows} / {jobData.total_rows}
                       </span>
                     </div>
@@ -934,7 +934,7 @@ export function ImportWizardPage() {
           <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
             {t(`types.${importType}.title`)}
           </PageHeaderTitle>
-          <p className={`${colorTokens.text.subtle}`}>
+          <p className={colorTokens.text.subtle}>
             {t(`types.${importType}.description`)}
           </p>
         </div>

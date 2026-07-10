@@ -79,7 +79,7 @@ export function CountingDashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <PageHeaderTitle className="text-2xl font-bold">{t('counting.title')}</PageHeaderTitle>
-          <p className={`${colorTokens.text.subtle}`}>{t('counting.description')}</p>
+          <p className={colorTokens.text.subtle}>{t('counting.description')}</p>
         </div>
         <Link
           to="/inventory/counting/create"
@@ -97,28 +97,28 @@ export function CountingDashboardPage() {
           label={t('counting.summary.active')}
           value={summary.active}
           href="/inventory/counting/list?status=active"
-          iconClassName={`${colorTokens.intent.primary.text}`}
+          iconClassName={colorTokens.intent.primary.text}
         />
         <SummaryCard
           icon={Clock}
           label={t('counting.summary.pendingReview')}
           value={summary.pending_review}
           href="/inventory/counting/list?status=pending_review"
-          iconClassName={`${colorTokens.intent.caution.text}`}
+          iconClassName={colorTokens.intent.caution.text}
         />
         <SummaryCard
           icon={CheckCircle}
           label={t('counting.summary.completedThisMonth')}
           value={summary.completed_this_month}
           href="/inventory/counting/list?status=finalized"
-          iconClassName={`${colorTokens.intent.success.text}`}
+          iconClassName={colorTokens.intent.success.text}
         />
         <SummaryCard
           icon={AlertTriangle}
           label={t('counting.summary.overdue')}
           value={summary.overdue}
           href="/inventory/counting/list?overdue=true"
-          iconClassName={`${colorTokens.intent.danger.text}`}
+          iconClassName={colorTokens.intent.danger.text}
           highlight={summary.overdue > 0}
         />
       </div>

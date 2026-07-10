@@ -213,7 +213,7 @@ export function CountingDetailPage() {
             </h2>
 
             {(counting.assignments ?? []).length === 0 ? (
-              <p className={`${colorTokens.text.subtle}`}>{t('counting.detail.noAssignments')}</p>
+              <p className={colorTokens.text.subtle}>{t('counting.detail.noAssignments')}</p>
             ) : (
               <div className="space-y-3">
                 {(counting.assignments ?? []).map((assignment) => (
@@ -258,19 +258,19 @@ export function CountingDetailPage() {
 
             <dl className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <dt className={`${colorTokens.text.subtle}`}>{t('counting.detail.scope')}</dt>
+                <dt className={colorTokens.text.subtle}>{t('counting.detail.scope')}</dt>
                 <dd className="font-medium">
                   {t(`counting.scopeTypes.${counting.scope_type}`)}
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className={`${colorTokens.text.subtle}`}>{t('counting.detail.mode')}</dt>
+                <dt className={colorTokens.text.subtle}>{t('counting.detail.mode')}</dt>
                 <dd className="font-medium">
                   {t(`counting.executionModes.${counting.execution_mode}`)}
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className={`${colorTokens.text.subtle}`}>{t('counting.detail.countsRequired')}</dt>
+                <dt className={colorTokens.text.subtle}>{t('counting.detail.countsRequired')}</dt>
                 <dd className="font-medium">
                   {1 +
                     (counting.requires_count_2 ? 1 : 0) +
@@ -278,7 +278,7 @@ export function CountingDetailPage() {
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className={`${colorTokens.text.subtle}`}>
+                <dt className={colorTokens.text.subtle}>
                   {t('counting.detail.allowUnexpected')}
                 </dt>
                 <dd className="font-medium">
@@ -298,14 +298,14 @@ export function CountingDetailPage() {
 
             <dl className="space-y-3 text-sm">
               <div>
-                <dt className={`${colorTokens.text.subtle}`}>{t('counting.detail.created')}</dt>
+                <dt className={colorTokens.text.subtle}>{t('counting.detail.created')}</dt>
                 <dd className="font-medium">
                   {format(new Date(counting.created_at), 'MMM d, yyyy h:mm a')}
                 </dd>
               </div>
               {counting.scheduled_start && (
                 <div>
-                  <dt className={`${colorTokens.text.subtle}`}>
+                  <dt className={colorTokens.text.subtle}>
                     {t('counting.detail.scheduledStart')}
                   </dt>
                   <dd className="font-medium">
@@ -318,7 +318,7 @@ export function CountingDetailPage() {
               )}
               {counting.scheduled_end && (
                 <div>
-                  <dt className={`${colorTokens.text.subtle}`}>
+                  <dt className={colorTokens.text.subtle}>
                     {t('counting.detail.scheduledEnd')}
                   </dt>
                   <dd className="font-medium">
@@ -331,7 +331,7 @@ export function CountingDetailPage() {
               )}
               {counting.activated_at && (
                 <div>
-                  <dt className={`${colorTokens.text.subtle}`}>
+                  <dt className={colorTokens.text.subtle}>
                     {t('counting.detail.activated')}
                   </dt>
                   <dd className="font-medium">
@@ -344,7 +344,7 @@ export function CountingDetailPage() {
               )}
               {counting.finalized_at && (
                 <div>
-                  <dt className={`${colorTokens.text.subtle}`}>
+                  <dt className={colorTokens.text.subtle}>
                     {t('counting.detail.finalized')}
                   </dt>
                   <dd className="font-medium">
@@ -357,7 +357,7 @@ export function CountingDetailPage() {
               )}
               {counting.cancelled_at && (
                 <div>
-                  <dt className={`${colorTokens.text.subtle}`}>
+                  <dt className={colorTokens.text.subtle}>
                     {t('counting.detail.cancelled')}
                   </dt>
                   <dd className={`font-medium ${colorTokens.intent.danger.text}`}>
@@ -426,7 +426,7 @@ function CounterProgressRow({ label, user, progress }: CounterProgressRowProps) 
           <span className="text-sm font-medium">{user?.name || label}</span>
           <span
             className={`text-sm font-medium ${
-              isComplete ? `${colorTokens.intent.success.text}` : `${colorTokens.text.muted}`
+              isComplete ? colorTokens.intent.success.text : colorTokens.text.muted
             }`}
           >
             {progress.counted} / {progress.total} ({progress.percentage}%)
@@ -435,7 +435,7 @@ function CounterProgressRow({ label, user, progress }: CounterProgressRowProps) 
         <div className={`w-full ${colorTokens.surface.subdued} rounded-full h-2`}>
           <div
             className={`h-2 rounded-full transition-all ${
-              isComplete ? `${colorTokens.intent.success.bg}` : `${colorTokens.intent.primary.bg}`
+              isComplete ? colorTokens.intent.success.bg : colorTokens.intent.primary.bg
             }`}
             style={{ width: `${String(progress.percentage)}%` }}
           />

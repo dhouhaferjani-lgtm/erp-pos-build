@@ -40,14 +40,14 @@ export function CreditLimitWarning({
     <div
       className={`flex items-start gap-3 rounded-lg border p-4 ${
         severity === 'error'
-          ? `${colorTokens.intent.danger.borderSubtleSoft} ${colorTokens.intent.danger.bgSubtle} ${colorTokens.intent.danger.textStronger}`
+          ? `${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle} ${colorTokens.intent.danger.textStronger}`
           : `${colorTokens.intent.caution.borderSubtle} ${colorTokens.intent.caution.bgSubtle} ${colorTokens.intent.caution.textStronger}`
       }`}
       role="alert"
     >
       <AlertTriangle
         className={`h-5 w-5 flex-shrink-0 ${
-          severity === 'error' ? `${colorTokens.intent.danger.textSubtle}` : `${colorTokens.intent.caution.textSubtle}`
+          severity === 'error' ? colorTokens.intent.danger.textSubtle : colorTokens.intent.caution.textSubtle
         }`}
       />
       <div>

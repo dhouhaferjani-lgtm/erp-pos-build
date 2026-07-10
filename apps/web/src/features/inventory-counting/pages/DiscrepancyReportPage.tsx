@@ -68,7 +68,7 @@ export function DiscrepancyReportPage() {
               {t('counting.report.title')}
               <CountingStatusBadge status={report.counting.status} />
             </PageHeaderTitle>
-            <p className={`${colorTokens.text.subtle}`}>
+            <p className={colorTokens.text.subtle}>
               {t('counting.report.generatedAt', {
                 date: format(new Date(report.generated_at), 'MMM d, yyyy h:mm a'),
               })}
@@ -104,19 +104,19 @@ export function DiscrepancyReportPage() {
           icon={CheckCircle}
           label={t('counting.report.totalItemsCounted')}
           value={report.summary.total_items_counted.toString()}
-          iconClassName={`${colorTokens.intent.primary.text}`}
+          iconClassName={colorTokens.intent.primary.text}
         />
         <SummaryCard
           icon={CheckCircle}
           label={t('counting.report.itemsNoVariance')}
           value={report.summary.items_no_variance.toString()}
-          iconClassName={`${colorTokens.intent.success.text}`}
+          iconClassName={colorTokens.intent.success.text}
         />
         <SummaryCard
           icon={AlertTriangle}
           label={t('counting.report.itemsWithVariance')}
           value={report.summary.items_with_variance.toString()}
-          iconClassName={`${colorTokens.intent.caution.text}`}
+          iconClassName={colorTokens.intent.caution.text}
         />
         <SummaryCard
           icon={
@@ -126,8 +126,8 @@ export function DiscrepancyReportPage() {
           value={formatTND(report.summary.total_variance_value.net)}
           iconClassName={
             report.summary.total_variance_value.net >= 0
-              ? `${colorTokens.intent.success.text}`
-              : `${colorTokens.intent.danger.text}`
+              ? colorTokens.intent.success.text
+              : colorTokens.intent.danger.text
           }
           highlight={report.summary.total_variance_value.net !== 0}
         />
@@ -173,25 +173,25 @@ export function DiscrepancyReportPage() {
               label={t('counting.reconciliation.allMatch')}
               count={report.summary.variance_breakdown.auto_all_match}
               total={report.summary.total_items_counted}
-              color={`${colorTokens.intent.success.bg}`}
+              color={colorTokens.intent.success.bg}
             />
             <ResolutionMethodRow
               label={t('counting.reconciliation.variance')}
               count={report.summary.variance_breakdown.auto_counters_agree}
               total={report.summary.total_items_counted}
-              color={`${colorTokens.intent.warning.bg}`}
+              color={colorTokens.intent.warning.bg}
             />
             <ResolutionMethodRow
               label={t('counting.reconciliation.thirdDecisive')}
               count={report.summary.variance_breakdown.third_count_decisive}
               total={report.summary.total_items_counted}
-              color={`${colorTokens.intent.primary.bg}`}
+              color={colorTokens.intent.primary.bg}
             />
             <ResolutionMethodRow
               label={t('counting.reconciliation.override')}
               count={report.summary.variance_breakdown.manual_override}
               total={report.summary.total_items_counted}
-              color={`${colorTokens.intent.accent.bg}`}
+              color={colorTokens.intent.accent.bg}
             />
           </div>
         </div>
@@ -222,28 +222,28 @@ export function DiscrepancyReportPage() {
                 </div>
 
                 <dl className="grid grid-cols-2 gap-2 text-sm">
-                  <dt className={`${colorTokens.text.subtle}`}>
+                  <dt className={colorTokens.text.subtle}>
                     {t('counting.report.accuracyRate')}
                   </dt>
                   <dd
                     className={cn(
                       'font-medium text-end',
                       counter.accuracy_rate >= 95
-                        ? `${colorTokens.intent.success.text}`
+                        ? colorTokens.intent.success.text
                         : counter.accuracy_rate >= 80
-                          ? `${colorTokens.intent.warning.text}`
-                          : `${colorTokens.intent.danger.text}`
+                          ? colorTokens.intent.warning.text
+                          : colorTokens.intent.danger.text
                     )}
                   >
                     {counter.accuracy_rate.toFixed(1)}%
                   </dd>
-                  <dt className={`${colorTokens.text.subtle}`}>
+                  <dt className={colorTokens.text.subtle}>
                     {t('counting.report.matchedOther')}
                   </dt>
                   <dd className="font-medium text-end">
                     {counter.matched_other_counter}
                   </dd>
-                  <dt className={`${colorTokens.text.subtle}`}>
+                  <dt className={colorTokens.text.subtle}>
                     {t('counting.report.matchedTheoretical')}
                   </dt>
                   <dd className="font-medium text-end">
@@ -251,7 +251,7 @@ export function DiscrepancyReportPage() {
                   </dd>
                   {counter.times_proven_wrong_by_3rd > 0 && (
                     <>
-                      <dt className={`${colorTokens.text.subtle}`}>
+                      <dt className={colorTokens.text.subtle}>
                         {t('counting.report.provenWrong')}
                       </dt>
                       <dd className={`font-medium text-end ${colorTokens.intent.danger.text}`}>
@@ -300,7 +300,7 @@ export function DiscrepancyReportPage() {
               </thead>
               <tbody className={`divide-y ${colorTokens.border.divider}`}>
                 {report.flagged_items.map((item) => (
-                  <tr key={item.id} className={`${colorTokens.intent.caution.bgSubtleAlpha}`}>
+                  <tr key={item.id} className={colorTokens.intent.caution.bgSubtleAlpha}>
                     <td className="px-4 py-3">
                       <div className="font-medium">{item.product.name}</div>
                       <div className={`text-sm ${colorTokens.text.subtle}`}>
@@ -319,8 +319,8 @@ export function DiscrepancyReportPage() {
                         <span
                           className={cn(
                             'font-mono font-medium',
-                            item.variance > 0 && `${colorTokens.intent.success.text}`,
-                            item.variance < 0 && `${colorTokens.intent.danger.text}`
+                            item.variance > 0 && colorTokens.intent.success.text,
+                            item.variance < 0 && colorTokens.intent.danger.text
                           )}
                         >
                           {item.variance > 0 ? '+' : ''}

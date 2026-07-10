@@ -200,7 +200,7 @@ export function scanCode(code, filename) {
 
   if (isFeatureOrPageFile(file)) {
     for (const match of matches(TAG_RE.h1, code)) {
-      if (/\btext-(2xl|3xl)\b/.test(match.text) || /\btext-\[(?:1\.5rem|1\.875rem)\]/.test(match.text)) {
+      if (/\btext-(2xl|3xl)\b/.test(match.text) || /\btext-\[[^\]]+\]/.test(match.text)) {
         pushViolation(
           violations,
           'C1',

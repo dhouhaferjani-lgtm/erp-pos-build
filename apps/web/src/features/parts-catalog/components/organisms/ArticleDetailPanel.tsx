@@ -92,7 +92,7 @@ export function ArticleDetailPanel({
             aria-label={t('parts-catalog:article.copyArticleNumber')}
           >
             {copied ? (
-              <Check className={`h-4 w-4 ${colorTokens.intent.available.text}`} />
+              <Check className={`h-4 w-4 ${colorTokens.intent.available.textSubtle}`} />
             ) : (
               <Copy className="h-4 w-4" />
             )}
@@ -104,20 +104,20 @@ export function ArticleDetailPanel({
       {article.local_inventory?.in_stock && article.local_inventory?.product_id && (
         <div className={`rounded-lg border ${colorTokens.intent.available.borderSubtle} ${colorTokens.intent.available.bgSubtleAlpha} p-4 mb-6`}>
           <div className="flex items-center gap-2 mb-2">
-            <Package className={`h-4 w-4 ${colorTokens.intent.available.textMid}`} />
+            <Package className={`h-4 w-4 ${colorTokens.intent.available.text}`} />
             <h3 className={`text-sm font-semibold ${colorTokens.intent.available.textStronger}`}>
               {t('parts-catalog:article.yourInventory')}
             </h3>
           </div>
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <p className={`${colorTokens.intent.available.textStrong}`}>
+            <p className={colorTokens.intent.available.textStrong}>
               {t('parts-catalog:inventory.quantity', {
                 available: article.local_inventory.available_quantity,
                 total: article.local_inventory.total_quantity,
               })}
             </p>
             {article.local_inventory.sale_price && (
-              <p className={`${colorTokens.intent.available.textStrong}`}>
+              <p className={colorTokens.intent.available.textStrong}>
                 {t('parts-catalog:inventory.salePrice', {
                   price: article.local_inventory.sale_price,
                 })}
@@ -126,7 +126,7 @@ export function ArticleDetailPanel({
           </div>
           <a
             href={`/products/${article.local_inventory.product_id}`}
-            className={`inline-flex items-center gap-1 mt-2 text-xs ${colorTokens.intent.available.textMid} ${colorTokens.intent.available.textHoverStrong} transition-colors`}
+            className={`inline-flex items-center gap-1 mt-2 text-xs ${colorTokens.intent.available.text} ${colorTokens.intent.available.textHoverStrong} transition-colors`}
           >
             {t('parts-catalog:inventory.editProduct')}
             <ExternalLink className="h-3 w-3" />

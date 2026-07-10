@@ -30,7 +30,7 @@ function CounterProgress({ label, user, progress }: CounterProgressProps) {
         <div className="flex items-center justify-between text-xs">
           <span className="truncate">{user?.name || label}</span>
           <span
-            className={cn('font-medium', isComplete && `${colorTokens.intent.success.text}`)}
+            className={cn('font-medium', isComplete && colorTokens.intent.success.text)}
           >
             {progress.percentage}%
             {isComplete && ' \u2713'}
@@ -40,7 +40,7 @@ function CounterProgress({ label, user, progress }: CounterProgressProps) {
           <div
             className={cn(
               'h-1.5 rounded-full transition-all',
-              isComplete ? `${colorTokens.intent.success.bg}` : `${colorTokens.intent.primary.bg}`
+              isComplete ? colorTokens.intent.success.bg : colorTokens.intent.primary.bg
             )}
             style={{ width: `${String(progress.percentage)}%` }}
           />

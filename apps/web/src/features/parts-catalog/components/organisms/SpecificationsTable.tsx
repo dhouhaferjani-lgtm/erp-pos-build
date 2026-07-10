@@ -23,7 +23,7 @@ export function SpecificationsTable({ criteria, className }: SpecificationsTable
         <DataTable className="w-full text-sm">
           <tbody className={`divide-y ${colorTokens.border.dividerSubtle}`}>
             {criteria.map((c, i) => (
-              <tr key={c.criteria_id} className={i % 2 === 0 ? `${colorTokens.surface.base}` : '${colorTokens.surface.pageAlpha}'}>
+              <tr key={c.criteria_id} className={i % 2 === 0 ? colorTokens.surface.base : colorTokens.surface.pageAlpha}>
                 <td className={`px-4 py-2.5 ${colorTokens.text.subtle} font-medium whitespace-nowrap w-2/5`}>
                   {c.label}
                 </td>

@@ -16,11 +16,11 @@ export function FraudAlertDetailModal({ alert, onClose }: Props) {
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'critical':
-        return `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger} ${colorTokens.intent.danger.borderSubtleSoft}`
+        return `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger} ${colorTokens.intent.danger.borderSubtle}`
       case 'warning':
         return `${colorTokens.intent.caution.bgSoft} ${colorTokens.intent.caution.textStronger} ${colorTokens.intent.caution.borderSubtle}`
       case 'info':
-        return `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger} ${colorTokens.intent.primary.borderSubtleSoft}`
+        return `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStronger} ${colorTokens.intent.primary.borderSubtle}`
       default:
         return `${colorTokens.surface.muted} ${colorTokens.text.strong} ${colorTokens.border.subtle}`
     }
@@ -88,8 +88,8 @@ export function FraudAlertDetailModal({ alert, onClose }: Props) {
             <div className={`${colorTokens.surface.page} rounded-lg p-3 space-y-2`}>
               {alert.flagged_products.map((product, index) => (
                 <div key={index} className="flex items-center justify-between text-sm">
-                  <span className={`${colorTokens.text.primary}`}>{product.product_name}</span>
-                  <span className={`${colorTokens.text.subtle}`}>
+                  <span className={colorTokens.text.primary}>{product.product_name}</span>
+                  <span className={colorTokens.text.subtle}>
                     {t('compliance:fraudAlerts.detail.occurrenceCount', { count: product.count })}
                   </span>
                 </div>

@@ -69,13 +69,13 @@ export function StampCardsTab({ programId }: StampCardsTabProps) {
 
       {cardsList.length === 0 ? (
         <div className="text-center py-8">
-          <p className={`${colorTokens.text.subtle}`}>{t('loyalty:stampCards.noCards')}</p>
+          <p className={colorTokens.text.subtle}>{t('loyalty:stampCards.noCards')}</p>
           <p className={`${colorTokens.text.disabled} text-sm mt-1`}>{t('loyalty:stampCards.noCardsDescription')}</p>
         </div>
       ) : (
         <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
           <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-            <thead className={`${colorTokens.surface.page}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
                 <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.name')}</th>
                 <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.stampsRequired')}</th>
@@ -86,7 +86,7 @@ export function StampCardsTab({ programId }: StampCardsTabProps) {
             </thead>
             <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
               {cardsList.map((card) => (
-                <tr key={card.id} className={`${colorTokens.intent.neutral.bgHover}`}>
+                <tr key={card.id} className={colorTokens.intent.neutral.bgHover}>
                   <td className={`px-4 py-3 font-medium ${colorTokens.text.primary}`}>{card.name}</td>
                   <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{card.stamps_required}</td>
                   <td className={`px-4 py-3 text-sm ${colorTokens.text.secondary}`}>{card.stamps_per_item}</td>

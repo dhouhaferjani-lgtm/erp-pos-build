@@ -230,7 +230,7 @@ export function VehicleNavigator({
               key={vehicle.id}
               type="button"
               onClick={() => { handleSelectVehicle(vehicle) }}
-              className={`w-full rounded-lg border ${colorTokens.border.subtle} px-4 py-3 text-start transition-all ${colorTokens.intent.primary.hoverBorderSoft} hover:${colorTokens.intent.primary.bgSubtleAlpha} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing}`}
+              className={`w-full rounded-lg border ${colorTokens.border.subtle} px-4 py-3 text-start transition-all ${colorTokens.intent.primary.borderHoverSubtle} ${colorTokens.intent.primary.bgHoverSubtleAlpha} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing}`}
             >
               <p className={`text-sm font-medium ${colorTokens.text.primary}`}>{vehicle.display}</p>
               <div className={`mt-1 flex flex-wrap items-center gap-3 text-xs ${colorTokens.text.subtle}`}>

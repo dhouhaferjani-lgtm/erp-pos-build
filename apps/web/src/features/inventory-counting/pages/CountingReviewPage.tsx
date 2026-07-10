@@ -86,7 +86,7 @@ export function CountingReviewPage() {
               {t('counting.review.title')} #{counting.id.slice(0, 8)}
               <CountingStatusBadge status={counting.status} />
             </PageHeaderTitle>
-            <p className={`${colorTokens.text.subtle}`}>{t('counting.review.description')}</p>
+            <p className={colorTokens.text.subtle}>{t('counting.review.description')}</p>
           </div>
         </div>
 
@@ -130,7 +130,7 @@ export function CountingReviewPage() {
 
       {/* Late-sale flags captured during the block window */}
       {lateSalesFlags.length > 0 && (
-        <div className={`flex items-start gap-3 p-4 ${colorTokens.intent.primary.bgSubtle} border ${colorTokens.intent.primary.borderSubtleSoft} rounded-lg`}>
+        <div className={`flex items-start gap-3 p-4 ${colorTokens.intent.primary.bgSubtle} border ${colorTokens.intent.primary.borderSubtle} rounded-lg`}>
           <AlertTriangle className={`w-5 h-5 ${colorTokens.intent.primary.text} flex-shrink-0 mt-0.5`} />
           <div>
             <p className={`font-medium ${colorTokens.intent.primary.textStronger}`}>

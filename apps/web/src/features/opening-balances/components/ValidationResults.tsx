@@ -71,7 +71,7 @@ function ValidationErrorRow({ row }: { row: OpeningBalanceImportRow }) {
             .slice(0, 3)
             .map(([key, value]) => (
               <span key={key} className="me-3">
-                <span className={`${colorTokens.text.subtle}`}>{key}:</span>{' '}
+                <span className={colorTokens.text.subtle}>{key}:</span>{' '}
                 <span className="font-medium">{String(value)}</span>
               </span>
             ))}
@@ -94,7 +94,7 @@ function ValidationErrorRow({ row }: { row: OpeningBalanceImportRow }) {
             {Object.entries(row.validation_errors).map(([field, errors]) => (
               <li key={field} className="text-sm">
                 <span className={`font-medium ${colorTokens.intent.danger.textStronger}`}>{field}:</span>{' '}
-                <span className={`${colorTokens.intent.danger.textStrong}`}>
+                <span className={colorTokens.intent.danger.textStrong}>
                   {Array.isArray(errors) ? errors.join(', ') : errors}
                 </span>
               </li>
@@ -137,14 +137,14 @@ export function ValidationResults({ rows, validationResult }: ValidationResultsP
             )}
             <div>
               <h3
-                className={`font-medium ${validationResult.valid ? `${colorTokens.intent.success.textStronger}` : `${colorTokens.intent.caution.textStronger}`}`}
+                className={`font-medium ${validationResult.valid ? colorTokens.intent.success.textStronger : colorTokens.intent.caution.textStronger}`}
               >
                 {validationResult.valid
                   ? t('openingBalances.validation.allValid')
                   : t('openingBalances.validation.hasErrors')}
               </h3>
               <p
-                className={`text-sm ${validationResult.valid ? `${colorTokens.intent.success.textStrong}` : `${colorTokens.intent.caution.textStrong}`}`}
+                className={`text-sm ${validationResult.valid ? colorTokens.intent.success.textStrong : colorTokens.intent.caution.textStrong}`}
               >
                 {t('openingBalances.validation.summary', {
                   valid: validationResult.valid_rows,

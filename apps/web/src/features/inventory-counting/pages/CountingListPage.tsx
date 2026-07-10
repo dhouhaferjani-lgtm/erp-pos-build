@@ -73,7 +73,7 @@ export function CountingListPage() {
       <div className="flex items-center justify-between">
         <div>
           <PageHeaderTitle className="text-2xl font-bold">{t('counting.list.title')}</PageHeaderTitle>
-          <p className={`${colorTokens.text.subtle}`}>{t('counting.list.description')}</p>
+          <p className={colorTokens.text.subtle}>{t('counting.list.description')}</p>
         </div>
         <Link
           to="/inventory/counting/create"
@@ -158,7 +158,7 @@ export function CountingListPage() {
         <>
           <div className="border rounded-lg overflow-hidden">
             <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-              <thead className={`${colorTokens.surface.page}`}>
+              <thead className={colorTokens.surface.page}>
                 <tr>
                   <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                     {t('counting.list.columns.id')}
@@ -182,7 +182,7 @@ export function CountingListPage() {
               </thead>
               <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
                 {data.data.map((counting) => (
-                  <tr key={counting.id} className={`${colorTokens.intent.neutral.bgHover}`}>
+                  <tr key={counting.id} className={colorTokens.intent.neutral.bgHover}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`text-sm font-mono ${colorTokens.text.primary}`}>
                         #{counting.id.slice(0, 8)}

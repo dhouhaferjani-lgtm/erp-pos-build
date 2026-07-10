@@ -24,11 +24,14 @@ const importStateGlyphs: Record<ImportStatus, ReactNode> = {
 const importStateTone: Record<ImportStatus, string> = {
   pending: `${colorTokens.surface.muted} ${colorTokens.text.secondary}`,
   validating: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStrong}`,
-  validated: `${colorTokens.intent.indigo.bgSoft} ${colorTokens.intent.indigo.textStrong}`,
+  validated: `${colorTokens.intent.verified.bgSoft} ${colorTokens.intent.verified.textStrong}`,
   importing: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStrong}`,
   completed: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStrong}`,
   failed: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStrong}`,
 }
+
+const defaultImportStateGlyph = <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />
+const defaultImportStateTone = `${colorTokens.surface.muted} ${colorTokens.text.secondary}`
 
 export function ImportHistoryPage() {
   const { t } = useTranslation('import')
@@ -41,15 +44,17 @@ export function ImportHistoryPage() {
     return job.status === statusFilter
   })
 
-  const renderImportStatePill = (value: ImportStatus) => {
+  const renderImportStatePill = (value: ImportStatus | string) => {
+    const status = value as ImportStatus
+
     return (
       <span
         className={cn(
           'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-          importStateTone[value]
+          importStateTone[status] ?? defaultImportStateTone
         )}
       >
-        {importStateGlyphs[value]}
+        {importStateGlyphs[status] ?? defaultImportStateGlyph}
         {t(`status.${value}`)}
       </span>
     )
@@ -73,7 +78,7 @@ export function ImportHistoryPage() {
           </Link>
           <div>
             <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>{t('history.title')}</PageHeaderTitle>
-            <p className={`${colorTokens.text.subtle}`}>{t('history.description')}</p>
+            <p className={colorTokens.text.subtle}>{t('history.description')}</p>
           </div>
         </div>
       </div>
@@ -108,7 +113,7 @@ export function ImportHistoryPage() {
       ) : filteredJobs && filteredJobs.length > 0 ? (
         <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
           <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-            <thead className={`${colorTokens.surface.page}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
                 <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                   {t('history.columns.type')}
@@ -132,7 +137,7 @@ export function ImportHistoryPage() {
             </thead>
             <tbody className={`divide-y ${colorTokens.border.divider}`}>
               {filteredJobs.map((job: ImportJob) => (
-                <tr key={job.id} className={`${colorTokens.intent.neutral.bgHover}`}>
+                <tr key={job.id} className={colorTokens.intent.neutral.bgHover}>
                   <td className="whitespace-nowrap px-6 py-4">
                     <div className="flex items-center gap-2">
                       <FileText className={`h-4 w-4 ${colorTokens.text.disabled}`} />
@@ -150,11 +155,11 @@ export function ImportHistoryPage() {
                   <td className="whitespace-nowrap px-6 py-4">
                     {job.status === 'completed' || job.status === 'failed' ? (
                       <div className="text-sm">
-                        <span className={`${colorTokens.intent.success.text}`}>{job.successful_rows ?? 0}</span>
-                        <span className={`${colorTokens.text.disabled}`}> / </span>
-                        <span className={`${colorTokens.intent.danger.text}`}>{job.failed_rows ?? 0}</span>
-                        <span className={`${colorTokens.text.disabled}`}> / </span>
-                        <span className={`${colorTokens.text.muted}`}>{job.total_rows ?? 0}</span>
+                        <span className={colorTokens.intent.success.text}>{job.successful_rows ?? 0}</span>
+                        <span className={colorTokens.text.disabled}> / </span>
+                        <span className={colorTokens.intent.danger.text}>{job.failed_rows ?? 0}</span>
+                        <span className={colorTokens.text.disabled}> / </span>
+                        <span className={colorTokens.text.muted}>{job.total_rows ?? 0}</span>
                       </div>
                     ) : job.status === 'importing' ? (
                       <div className="flex items-center gap-2">

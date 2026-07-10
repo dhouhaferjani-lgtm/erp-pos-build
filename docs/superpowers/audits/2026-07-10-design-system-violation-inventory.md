@@ -121,7 +121,8 @@ Not enforced anywhere: PageHeader usage, raw form elements, RHF requirement, raw
 
 ```bash
 # C1
-rg -n --pcre2 '<h1[^>]*(text-2xl|text-3xl)' src/features src/pages -g '!**/*.test.tsx' -g '!**/__tests__/**' -g '!**/*.stories.tsx' -c
+rg -n --pcre2 '<h1[^>]*(text-2xl|text-3xl|text-\[[^]]+\])' src/features src/pages -g '!**/*.test.tsx' -g '!**/__tests__/**' -g '!**/*.stories.tsx' -c
+# Includes text-[1.5rem]/text-[1.875rem] and other arbitrary text sizes on <h1>.
 
 # C2/C3 (tag-scoped; plain line-grep mismatches multiline JSX)
 # NOTE 2026-07-10 gate-1 fix: `(?:=>|[^>])*?` instead of `[^>]*?` — the naive form truncates
@@ -157,7 +158,7 @@ rg -n --pcre2 '(status|state)\w*(Colors?|Classes?|Map|Styles?)\s*:\s*Record<' sr
 rg -n --pcre2 'switch\s*\(\s*\w*[Ss]tatus\w*\s*\)' src/features -g '!**/*.test.tsx' -g '!**/__tests__/**'
 rg -n --pcre2 'const\s+\w*(status|state)\w*(Colors?|Classes?|Styles?|Config|Maps?|Badge\w*)\s*[:=]' src/features -i -g '!**/*.test.tsx' -g '!**/__tests__/**'
 # (gate-1 fix: added Maps? — untyped `const statusMap = {...}` was previously missed)
-# Known shared spec limit: C1 command only matches text-2xl/3xl headers; a bespoke text-xl <h1> evades. Accepted.
+# Known shared spec limit: C1 command now matches text-2xl/3xl and arbitrary text-[...] headers; a bespoke text-xl <h1> still evades. Accepted.
 
 # C7 (full palette)
 rg -n --pcre2 '(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-[0-9]{2,3}\b' src/features -g '!**/*.test.tsx' -g '!**/__tests__/**' -g '!**/*.stories.tsx' -c

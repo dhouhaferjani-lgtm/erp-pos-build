@@ -95,7 +95,7 @@ export function ColumnMapper({
       {/* Mapping Table */}
       <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle}`}>
         <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-          <thead className={`${colorTokens.surface.page}`}>
+          <thead className={colorTokens.surface.page}>
             <tr>
               <th className={`px-4 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('mapping.sourceColumn')}
@@ -118,7 +118,7 @@ export function ColumnMapper({
               const suggested = hasSuggestion(sourceCol)
 
               return (
-                <tr key={sourceCol} className={`${colorTokens.intent.neutral.bgHover}`}>
+                <tr key={sourceCol} className={colorTokens.intent.neutral.bgHover}>
                   <td className="whitespace-nowrap px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span className={`font-medium ${colorTokens.text.primary}`}>{sourceCol}</span>
@@ -139,8 +139,8 @@ export function ColumnMapper({
                       className={cn(
                         `block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`,
                         isMapped
-                          ? `${colorTokens.intent.success.borderSoft} ${colorTokens.intent.success.bgSubtle}`
-                          : `${colorTokens.border.default}`
+                          ? `${colorTokens.intent.success.border} ${colorTokens.intent.success.bgSubtle}`
+                          : colorTokens.border.default
                       )}
                     >
                       <option value="">{t('mapping.skipColumn')}</option>
@@ -221,7 +221,7 @@ export function ColumnMapper({
           {t('mapping.legendSkipped')}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className={`${colorTokens.intent.danger.text}`}>*</span>
+          <span className={colorTokens.intent.danger.text}>*</span>
           {t('mapping.legendRequired')}
         </div>
       </div>

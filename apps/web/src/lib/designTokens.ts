@@ -120,8 +120,18 @@ export const borderColors = {
 }
 
 /**
- * Semantic color utility bundles for feature sweeps that need pixel-preserving
- * Tailwind classes without embedding palette literals in feature source.
+ * Canonical semantic color utility vocabulary for feature sweeps.
+ *
+ * Suffix ladder:
+ * - backgrounds: Subtle = 50, Soft = 100, SoftStrong = 200,
+ *   SoftStronger = 300, base = 500, Strong = 600.
+ * - borders: Subtle = 200, base = 300, Active = 400,
+ *   Focus = 500, Strong = 600.
+ * - text: Subtle = 500, base = 600, Strong = 700,
+ *   Stronger = 800, Strongest = 900.
+ *
+ * Extend this table when a sweep needs an exact class; do not substitute a
+ * neighboring shade to fit the existing vocabulary.
  */
 export const semanticColorTokens = {
   surface: {
@@ -173,24 +183,27 @@ export const semanticColorTokens = {
   intent: {
     primary: {
       bgSubtle: 'bg-blue-50',
+      bgSubtleAlphaMuted: 'bg-blue-50/30',
       bgSubtleAlpha: 'bg-blue-50/50',
-      bgSubtleAlphaSoft: 'bg-blue-50/30',
       bgSubtleAlphaStrong: 'bg-blue-50/60',
       bgSoft: 'bg-blue-100',
-      bgSoftHover: 'hover:bg-blue-100',
+      bgSoftStrong: 'bg-blue-200',
+      bgSoftStronger: 'bg-blue-300',
       bg: 'bg-blue-500',
       bgStrong: 'bg-blue-600',
       bgHover: 'hover:bg-blue-50',
-      bgHoverSubtleAlpha: 'hover:bg-blue-50/30',
+      bgHoverSubtleAlphaMuted: 'hover:bg-blue-50/30',
+      bgHoverSubtleAlpha: 'hover:bg-blue-50/50',
+      bgHoverSoft: 'hover:bg-blue-100',
       bgStrongHover: 'hover:bg-blue-700',
-      groupBgSoftHover: 'group-hover:bg-blue-100',
-      borderSubtleSoft: 'border-blue-200',
-      borderSubtle: 'border-blue-300',
-      borderMid: 'border-blue-400',
-      border: 'border-blue-500',
+      groupBgHoverSoft: 'group-hover:bg-blue-100',
+      borderSubtle: 'border-blue-200',
+      border: 'border-blue-300',
+      borderActive: 'border-blue-400',
+      borderFocus: 'border-blue-500',
       borderStrong: 'border-blue-600',
-      hoverBorderSoft: 'hover:border-blue-200',
-      hoverBorderSubtle: 'hover:border-blue-300',
+      borderHoverSubtle: 'hover:border-blue-200',
+      borderHover: 'hover:border-blue-300',
       ring: 'ring-blue-500',
       ringSubtle: 'ring-blue-600/20',
       accent: 'accent-blue-600',
@@ -220,8 +233,8 @@ export const semanticColorTokens = {
       bgHover: 'hover:bg-green-50',
       bgStrongHover: 'hover:bg-green-700',
       borderSubtle: 'border-green-200',
-      borderSoft: 'border-green-300',
-      border: 'border-green-500',
+      border: 'border-green-300',
+      borderFocus: 'border-green-500',
       ring: 'ring-green-600/20',
       textSubtle: 'text-green-500',
       text: 'text-green-600',
@@ -272,11 +285,11 @@ export const semanticColorTokens = {
       bgStrong: 'bg-red-600',
       bgHover: 'hover:bg-red-50',
       bgStrongHover: 'hover:bg-red-700',
-      borderSubtleSoft: 'border-red-200',
-      borderSubtle: 'border-red-300',
-      border: 'border-red-500',
+      borderSubtle: 'border-red-200',
+      border: 'border-red-300',
+      borderFocus: 'border-red-500',
       ring: 'ring-red-500',
-      textMuted: 'text-red-400',
+      textFaint: 'text-red-400',
       textSubtle: 'text-red-500',
       text: 'text-red-600',
       textStrong: 'text-red-700',
@@ -321,21 +334,21 @@ export const semanticColorTokens = {
       bgSoft: 'bg-emerald-100',
       borderSubtle: 'border-emerald-200',
       ring: 'ring-emerald-600/20',
-      text: 'text-emerald-500',
-      textMid: 'text-emerald-600',
+      textSubtle: 'text-emerald-500',
+      text: 'text-emerald-600',
       textStrong: 'text-emerald-700',
       textStronger: 'text-emerald-800',
       textHoverStrong: 'hover:text-emerald-700',
     },
-    infoAlt: {
+    info: {
       bgSoft: 'bg-sky-100',
       textStrong: 'text-sky-700',
     },
-    slate: {
+    ledger: {
       bgSoft: 'bg-slate-100',
       text: 'text-slate-600',
     },
-    indigo: {
+    verified: {
       bgSoft: 'bg-indigo-100',
       textStrong: 'text-indigo-700',
     },
@@ -350,7 +363,7 @@ export const semanticColorTokens = {
       bgStrongHover: 'hover:bg-gray-700',
       borderSubtle: 'border-gray-200',
       border: 'border-gray-300',
-      ringLight: 'ring-gray-200',
+      ringSoft: 'ring-gray-200',
       ring: 'ring-gray-300',
       ringSubtle: 'ring-gray-500/10',
       text: 'text-gray-500',

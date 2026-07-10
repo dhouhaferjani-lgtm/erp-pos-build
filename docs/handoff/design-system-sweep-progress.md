@@ -310,6 +310,16 @@ Status: in progress.
   - GREEN: bespoke `<h1>` headings in the swept directories now render through `PageHeaderTitle`; full `PageHeader` composition remains a previously logged follow-up for complex page shells that need owner visual sign-off.
   - Intentional visual-change note: raw token-backed buttons, selects, and inputs touched by C2/C3 cleanup now use canonical atom components, so focus rings, disabled treatment, and border radius follow the shared atom contract instead of bespoke per-page class compositions.
   - Test maintenance: `PartnerDetailPage` tenant-scope expectations were updated to the live paginated document/payment query-key contract (`page`, `per_page`) after the scoped suite exposed the stale assertion.
+- 5.8 Gate 4 continuation — pre-leg-3 fixes:
+  - GREEN: `semanticColorTokens` is the canonical sweep color vocabulary. The token docblock now records the shade ladder, palette-named intents were folded into semantic intents, and the opening-balance wizard restored its exact previous step-indicator pixels by extending the vocabulary with blue-200 and blue-300 entries instead of shade-substituting.
+  - Checklist update: when a needed color utility is absent from the vocabulary, extend `semanticColorTokens` with the exact class before using it; do not silently choose a neighboring shade.
+  - Warning-attribution correction: the Gate 3 → Gate 4 lint-warning delta was driven by `no-deprecated` from the `colorClasses` quarantine (+1,923) net of leg-2 removals (-1,677); the TemplateElement selector added only +37 warnings.
+  - GREEN: leg-2 `@typescript-eslint/no-unnecessary-template-expression` cleanup removed the single-expression template wrappers introduced during the sweep.
+  - GREEN: the C1 scanner now catches all arbitrary `text-[...]` page `<h1>` sizes; the inventory manifest command was updated accordingly.
+  - GREEN: `ImportHistoryPage` status rendering once again has a default Clock glyph/tone for out-of-contract runtime statuses.
+  - GREEN: `FraudSettingsPage` save action was restored to `Button` `size="md"`, avoiding the unlisted `px-6 py-2 text-sm` → `px-6 py-3 text-base` growth.
+  - Visual-preservation notes for owner review: six inventory-counting `<h1>` conversions now inherit explicit `text-gray-900` via `PageHeaderTitle`; atom-button conversions should receive an IziPOS 9px radius check because bespoke `rounded-[var(--radius-button)]` classes now use the shared atom radius.
+  - Post-sweep task: fold older `textColors` and `borderColors` into `semanticColorTokens` so the codebase ends with one color vocabulary.
 - Verification:
   - Gate 3 fixes before Wave 5 leg 2: `pnpm --filter @autoerp/web test -- tools/__tests__/audit-design-system.test.mjs src/components/molecules/DataTable/DataTable.test.tsx src/components/molecules/line-items/LineItemEntryBar.test.tsx src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` passed: 4 files, 57 tests. Existing LineItemEntryBar act-warning noise remains.
   - Wave 5 leg 2 scoped suite: `pnpm --filter @autoerp/web test -- --reporter=dot ...` across the 44 existing tests under `import/`, `inventory-counting/`, `opening-balances/`, `partners/`, `compliance/`, `loyalty/`, and `parts-catalog/` passed: 44 files, 287 tests. Existing act-warning and localstorage-file warning noise remains.

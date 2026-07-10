@@ -69,13 +69,13 @@ export function TiersTab({ programId }: TiersTabProps) {
 
       {tiersList.length === 0 ? (
         <div className="text-center py-8">
-          <p className={`${colorTokens.text.subtle}`}>{t('loyalty:tiers.noTiers')}</p>
+          <p className={colorTokens.text.subtle}>{t('loyalty:tiers.noTiers')}</p>
           <p className={`${colorTokens.text.disabled} text-sm mt-1`}>{t('loyalty:tiers.noTiersDescription')}</p>
         </div>
       ) : (
         <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
           <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-            <thead className={`${colorTokens.surface.page}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
                 <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.level')}</th>
                 <th className={`px-4 py-3 text-left text-xs font-medium ${colorTokens.text.subtle} uppercase`}>{t('loyalty:fields.name')}</th>
@@ -87,7 +87,7 @@ export function TiersTab({ programId }: TiersTabProps) {
             </thead>
             <tbody className={`${colorTokens.surface.base} divide-y ${colorTokens.border.divider}`}>
               {tiersList.map((tier) => (
-                <tr key={tier.id} className={`${colorTokens.intent.neutral.bgHover}`}>
+                <tr key={tier.id} className={colorTokens.intent.neutral.bgHover}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {tier.color ? (

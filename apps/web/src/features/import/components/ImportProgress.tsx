@@ -46,7 +46,7 @@ export function ImportProgress({
                   <div
                     className={cn(
                       'h-0.5 w-full',
-                      isPast || isCompleted ? `${colorTokens.intent.primary.bgStrong}` : `${colorTokens.surface.subdued}`
+                      isPast || isCompleted ? colorTokens.intent.primary.bgStrong : colorTokens.surface.subdued
                     )}
                   />
                 </div>
@@ -71,7 +71,7 @@ export function ImportProgress({
                 <span
                   className={cn(
                     'mt-2 text-xs font-medium',
-                    isCurrent ? `${colorTokens.intent.primary.text}` : `${colorTokens.text.subtle}`
+                    isCurrent ? colorTokens.intent.primary.text : colorTokens.text.subtle
                   )}
                 >
                   {step.label}

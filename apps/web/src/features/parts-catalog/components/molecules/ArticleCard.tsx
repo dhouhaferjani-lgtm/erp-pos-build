@@ -28,7 +28,7 @@ export function ArticleCard({ article, onSelect, viewMode = 'list', className }:
         onClick={() => { onSelect(article) }}
         className={cn(
           `group w-full text-start rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-4`,
-          `transition-all duration-200 ${colorTokens.intent.primary.hoverBorderSubtle} hover:shadow-md`,
+          `transition-all duration-200 ${colorTokens.intent.primary.borderHover} hover:shadow-md`,
           `focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-1`,
           'flex flex-col h-full',
           className

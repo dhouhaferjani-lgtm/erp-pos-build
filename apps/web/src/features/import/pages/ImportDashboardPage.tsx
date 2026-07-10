@@ -34,7 +34,7 @@ const PRIMARY_IMPORT_TYPES: ImportTypeConfig[] = [
   {
     type: 'parties',
     icon: <Users className="h-6 w-6" />,
-    colorClass: `${colorTokens.intent.infoAlt.bgSoft} ${colorTokens.intent.infoAlt.textStrong}`,
+    colorClass: `${colorTokens.intent.info.bgSoft} ${colorTokens.intent.info.textStrong}`,
   },
   {
     type: 'products',
@@ -76,7 +76,7 @@ const ADVANCED_LINKS: AdvancedLinkConfig[] = [
     key: 'accountingOpeningBalances',
     to: '/settings/opening-balances',
     icon: <Landmark className="h-6 w-6" />,
-    colorClass: `${colorTokens.intent.slate.bgSoft} ${colorTokens.intent.slate.text}`,
+    colorClass: `${colorTokens.intent.ledger.bgSoft} ${colorTokens.intent.ledger.text}`,
   },
 ]
 
@@ -89,7 +89,7 @@ export function ImportDashboardPage() {
     <Link
       key={card.type}
       to={`/settings/import/${card.type}`}
-      className={`group block rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 shadow-sm transition-all ${colorTokens.intent.primary.hoverBorderSubtle} hover:shadow-md`}
+      className={`group block rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 shadow-sm transition-all ${colorTokens.intent.primary.borderHover} hover:shadow-md`}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
@@ -114,7 +114,7 @@ export function ImportDashboardPage() {
     <Link
       key={link.key}
       to={link.to}
-      className={`group block rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 shadow-sm transition-all ${colorTokens.intent.primary.hoverBorderSubtle} hover:shadow-md`}
+      className={`group block rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 shadow-sm transition-all ${colorTokens.intent.primary.borderHover} hover:shadow-md`}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
@@ -152,7 +152,7 @@ export function ImportDashboardPage() {
               <Upload className={`h-6 w-6 ${colorTokens.intent.primary.textSubtle}`} />
               {t('dashboard.title')}
             </PageHeaderTitle>
-            <p className={`${colorTokens.text.subtle}`}>{t('dashboard.description')}</p>
+            <p className={colorTokens.text.subtle}>{t('dashboard.description')}</p>
           </div>
         </div>
 

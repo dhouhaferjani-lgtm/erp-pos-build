@@ -198,7 +198,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
         onDrop={handleDrop}
         className={`relative rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
           dragActive
-            ? `${colorTokens.intent.primary.border} ${colorTokens.intent.primary.bgSubtle}`
+            ? `${colorTokens.intent.primary.borderFocus} ${colorTokens.intent.primary.bgSubtle}`
             : `${colorTokens.border.default} ${colorTokens.border.hoverStrong}`
         }`}
       >
@@ -221,7 +221,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
       {selectedFile && (
         <div
           className={`rounded-lg p-4 ${
-            parseError ? `${colorTokens.intent.danger.bgSubtle} border ${colorTokens.intent.danger.borderSubtleSoft}` : `${colorTokens.intent.success.bgSubtle} border ${colorTokens.intent.success.borderSubtle}`
+            parseError ? `${colorTokens.intent.danger.bgSubtle} border ${colorTokens.intent.danger.borderSubtle}` : `${colorTokens.intent.success.bgSubtle} border ${colorTokens.intent.success.borderSubtle}`
           }`}
         >
           <div className="flex items-start gap-3">
@@ -252,7 +252,7 @@ export function FileUpload({ batchType, onUpload, isUploading }: FileUploadProps
         <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle}`}>
           <div className="overflow-x-auto">
             <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-              <thead className={`${colorTokens.surface.page}`}>
+              <thead className={colorTokens.surface.page}>
                 <tr>
                   <th className={`px-3 py-2 text-left text-xs font-medium ${colorTokens.text.subtle}`}>#</th>
                   {parsedData.headers.map((header) => (

@@ -68,14 +68,14 @@ function StepIndicator({
                     : isCurrent
                       ? `${colorTokens.intent.primary.bg} ${colorTokens.text.inverse}`
                       : isPast
-                        ? `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStrong}`
+                        ? `${colorTokens.intent.primary.bgSoftStrong} ${colorTokens.intent.primary.textStrong}`
                         : `${colorTokens.surface.subdued} ${colorTokens.text.subtle}`
                 }`}
               >
                 {isCompleted ? <CheckCircle className="h-4 w-4" /> : index + 1}
               </div>
               <span
-                className={`mt-1 text-xs ${isCurrent ? `font-medium ${colorTokens.intent.primary.text}` : `${colorTokens.text.subtle}`}`}
+                className={`mt-1 text-xs ${isCurrent ? `font-medium ${colorTokens.intent.primary.text}` : colorTokens.text.subtle}`}
               >
                 {t(step.labelKey)}
               </span>
@@ -83,7 +83,7 @@ function StepIndicator({
             {index < steps.length - 1 && (
               <div
                 className={`mx-2 h-0.5 w-12 ${
-                  isPast || isCompleted ? `${colorTokens.intent.primary.bg}` : `${colorTokens.surface.subdued}`
+                  isPast || isCompleted ? colorTokens.intent.primary.bgSoftStronger : colorTokens.surface.subdued
                 }`}
               />
             )}
@@ -489,20 +489,20 @@ export function OpeningBalanceWizardPage() {
                 </h3>
                 <dl className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <dt className={`${colorTokens.text.subtle}`}>{t('openingBalances.wizard.post.totalRows')}</dt>
+                    <dt className={colorTokens.text.subtle}>{t('openingBalances.wizard.post.totalRows')}</dt>
                     <dd className={`font-medium ${colorTokens.text.primary}`}>
                       {previewData.totals.total_lines ?? previewData.totals.total_documents ?? 0}
                     </dd>
                   </div>
                   {previewData.totals.total_value && (
                     <div className="flex justify-between">
-                      <dt className={`${colorTokens.text.subtle}`}>{t('openingBalances.wizard.post.totalValue')}</dt>
+                      <dt className={colorTokens.text.subtle}>{t('openingBalances.wizard.post.totalValue')}</dt>
                       <dd className={`font-medium ${colorTokens.text.primary}`}>{previewData.totals.total_value}</dd>
                     </div>
                   )}
                   {previewData.totals.total_debit && (
                     <div className="flex justify-between">
-                      <dt className={`${colorTokens.text.subtle}`}>{t('openingBalances.wizard.post.totalDebit')}</dt>
+                      <dt className={colorTokens.text.subtle}>{t('openingBalances.wizard.post.totalDebit')}</dt>
                       <dd className={`font-medium ${colorTokens.text.primary}`}>{previewData.totals.total_debit}</dd>
                     </div>
                   )}
@@ -558,7 +558,7 @@ export function OpeningBalanceWizardPage() {
             <h2 className={`text-2xl font-bold ${colorTokens.text.primary}`}>
               {t('openingBalances.wizard.complete.title')}
             </h2>
-            <p className={`${colorTokens.text.muted}`}>
+            <p className={colorTokens.text.muted}>
               {t('openingBalances.wizard.complete.description')}
             </p>
 
@@ -593,7 +593,7 @@ export function OpeningBalanceWizardPage() {
           <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
             {t(`openingBalances.types.${typeKey}.title`)}
           </PageHeaderTitle>
-          <p className={`${colorTokens.text.subtle}`}>{t(`openingBalances.types.${typeKey}.description`)}</p>
+          <p className={colorTokens.text.subtle}>{t(`openingBalances.types.${typeKey}.description`)}</p>
         </div>
       </div>
 

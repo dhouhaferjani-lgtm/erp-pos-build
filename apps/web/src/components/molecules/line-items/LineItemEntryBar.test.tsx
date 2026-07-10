@@ -211,6 +211,22 @@ describe('LineItemEntryBar', () => {
     })
   })
 
+  it('commits a focus suggestion on mouse click', async () => {
+    const user = userEvent.setup()
+    const onAddProduct = vi.fn()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(<LineItemEntryBar onAddProduct={onAddProduct} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+    await user.click(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i }))
+
+    expect(onAddProduct).toHaveBeenCalledWith(product, expect.objectContaining({ source: 'search', incrementBy: 1 }))
+    expect(input).toHaveValue('')
+    expect(input).toHaveAttribute('aria-expanded', 'false')
+  })
+
   it('closes product suggestions on pointerdown outside', async () => {
     const user = userEvent.setup()
     apiClientGetMock.mockResolvedValue({ data: { data: [product] } })

@@ -32,7 +32,7 @@ export function StickyVehicleBar({ onChangeVehicle, className }: StickyVehicleBa
 
   return (
     <div className={cn('relative', className)}>
-      <div className={`rounded-lg border ${colorTokens.intent.primary.borderSubtleSoft} ${colorTokens.intent.primary.bgSubtleAlpha} px-4 py-3`}>
+      <div className={`rounded-lg border ${colorTokens.intent.primary.borderSubtle} ${colorTokens.intent.primary.bgSubtleAlpha} px-4 py-3`}>
         <div className="flex items-center justify-between gap-4">
           {/* Vehicle info */}
           <div className="flex items-center gap-3 min-w-0">
@@ -90,7 +90,7 @@ export function StickyVehicleBar({ onChangeVehicle, className }: StickyVehicleBa
             <button
               type="button"
               onClick={onChangeVehicle}
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${colorTokens.intent.primary.textStrong} ${colorTokens.intent.primary.bgSoftHover} transition-colors`}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${colorTokens.intent.primary.textStrong} ${colorTokens.intent.primary.bgHoverSoft} transition-colors`}
             >
               <RefreshCw className="h-3.5 w-3.5" />
               {t('parts-catalog:stickyBar.change')}

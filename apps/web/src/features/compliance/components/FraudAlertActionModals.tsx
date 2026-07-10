@@ -66,7 +66,7 @@ export function AssignAlertModal({ alert, onClose }: AssignModalProps) {
     <Modal isOpen onClose={onClose} size="md">
       <ModalHeader onClose={onClose} className={`border-b ${colorTokens.border.subtle} pb-4`}>
         <div className="flex items-center gap-3">
-          <div className={`rounded-lg p-2 ${colorTokens.intent.primary.bgSoft} border ${colorTokens.intent.primary.borderSubtleSoft}`}>
+          <div className={`rounded-lg p-2 ${colorTokens.intent.primary.bgSoft} border ${colorTokens.intent.primary.borderSubtle}`}>
             <UserPlus className={`h-5 w-5 ${colorTokens.intent.primary.text}`} />
           </div>
           <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>

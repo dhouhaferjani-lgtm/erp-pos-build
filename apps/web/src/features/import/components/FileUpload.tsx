@@ -116,7 +116,7 @@ export function FileUpload({
         onDrop={handleDrop}
         className={cn(
           'relative rounded-lg border-2 border-dashed p-8 text-center transition-colors',
-          isDragOver && !disabled && `${colorTokens.intent.primary.borderMid} ${colorTokens.intent.primary.bgSubtle}`,
+          isDragOver && !disabled && `${colorTokens.intent.primary.borderActive} ${colorTokens.intent.primary.bgSubtle}`,
           !isDragOver && !disabled && `${colorTokens.border.default} ${colorTokens.border.hoverStrong}`,
           disabled && `cursor-not-allowed ${colorTokens.border.subtle} ${colorTokens.surface.page}`,
           error && `${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle}`
@@ -155,7 +155,7 @@ export function FileUpload({
             <Upload
               className={cn(
                 'mx-auto h-12 w-12',
-                error ? `${colorTokens.intent.danger.textMuted}` : `${colorTokens.text.disabled}`
+                error ? colorTokens.intent.danger.textFaint : colorTokens.text.disabled
               )}
             />
             <p className={`mt-2 text-sm font-medium ${colorTokens.text.primary}`}>

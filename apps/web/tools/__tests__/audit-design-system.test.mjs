@@ -22,12 +22,17 @@ describe('design-system audit scanner', () => {
   it('flags arbitrary-size page h1 headers that evade text-2xl detection', () => {
     const violations = scanCode(`
       export function ExamplePage() {
-        return <h1 className="text-[1.875rem] leading-9 font-bold">Title</h1>
+        return (
+          <>
+            <h1 className="text-[1.875rem] leading-9 font-bold">Title</h1>
+            <h1 className="text-[2rem] leading-10 font-bold">Other title</h1>
+          </>
+        )
       }
     `, 'src/features/example/ExamplePage.tsx')
 
-    expect(violations).toHaveLength(1)
-    expect(violations[0].category).toBe('C1')
+    expect(violations).toHaveLength(2)
+    expect(violations.every((violation) => violation.category === 'C1')).toBe(true)
   })
 
   it('flags raw form controls that use design token classes', () => {

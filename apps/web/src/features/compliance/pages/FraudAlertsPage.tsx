@@ -223,7 +223,7 @@ export function FraudAlertsPage() {
       <div className={`${colorTokens.surface.base} rounded-lg border ${colorTokens.border.subtle} overflow-hidden`}>
         <div className="overflow-x-auto">
           <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-            <thead className={`${colorTokens.surface.page}`}>
+            <thead className={colorTokens.surface.page}>
               <tr>
                 <th className={`px-6 py-3 text-start text-xs font-medium ${colorTokens.text.subtle} uppercase tracking-wider`}>
                   {t('compliance:fraudAlerts.table.user')}
@@ -260,7 +260,7 @@ export function FraudAlertsPage() {
                 </tr>
               ) : (
                 alerts.map((alert) => (
-                  <tr key={alert.id} className={`${colorTokens.intent.neutral.bgHover}`}>
+                  <tr key={alert.id} className={colorTokens.intent.neutral.bgHover}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className={`text-sm font-medium ${colorTokens.text.primary}`}>{alert.user?.name}</div>
                       <div className={`text-sm ${colorTokens.text.subtle}`}>{alert.user?.email}</div>
@@ -419,7 +419,7 @@ export function FraudAlertsPage() {
                           onClick={() => { setCurrentPage(page); }}
                           className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
                             currentPage === page
-                              ? `z-10 ${colorTokens.intent.primary.bgSubtle} ${colorTokens.intent.primary.border} ${colorTokens.intent.primary.text}`
+                              ? `z-10 ${colorTokens.intent.primary.bgSubtle} ${colorTokens.intent.primary.borderFocus} ${colorTokens.intent.primary.text}`
                               : `${colorTokens.surface.base} ${colorTokens.border.default} ${colorTokens.text.subtle} ${colorTokens.intent.neutral.bgHover}`
                           }`}
                         >

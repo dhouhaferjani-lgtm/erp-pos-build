@@ -25,7 +25,7 @@ export function InventoryBadge({ inventory, showQuantity = false, className }: I
         <Package className="h-3 w-3" />
         {t('parts-catalog:inventory.inStock')}
         {showQuantity && inventory.available_quantity > 0 && (
-          <span className={`${colorTokens.intent.available.text}`}>({inventory.available_quantity})</span>
+          <span className={colorTokens.intent.available.textSubtle}>({inventory.available_quantity})</span>
         )}
       </span>
     )

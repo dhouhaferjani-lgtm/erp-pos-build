@@ -253,7 +253,7 @@ export function PartnerDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={`${colorTokens.text.subtle}`}>{t('status.loading')}</div>
+        <div className={colorTokens.text.subtle}>{t('status.loading')}</div>
       </div>
     )
   }
@@ -469,7 +469,7 @@ export function PartnerDetailPage() {
                     <Mail className={`mt-0.5 h-5 w-5 ${colorTokens.text.disabled}`} />
                     <div>
                       <dt className={`text-sm font-medium ${colorTokens.text.subtle}`}>{t('fields.email')}</dt>
-                      <dd className={`${colorTokens.text.primary}`}>{partner.email}</dd>
+                      <dd className={colorTokens.text.primary}>{partner.email}</dd>
                     </div>
                   </div>
                 )}
@@ -478,7 +478,7 @@ export function PartnerDetailPage() {
                     <Phone className={`mt-0.5 h-5 w-5 ${colorTokens.text.disabled}`} />
                     <div>
                       <dt className={`text-sm font-medium ${colorTokens.text.subtle}`}>{t('fields.phone')}</dt>
-                      <dd className={`${colorTokens.text.primary}`}>{partner.phone}</dd>
+                      <dd className={colorTokens.text.primary}>{partner.phone}</dd>
                     </div>
                   </div>
                 )}
@@ -487,7 +487,7 @@ export function PartnerDetailPage() {
                     <Building2 className={`mt-0.5 h-5 w-5 ${colorTokens.text.disabled}`} />
                     <div>
                       <dt className={`text-sm font-medium ${colorTokens.text.subtle}`}>{t('fields.address')}</dt>
-                      <dd className={`${colorTokens.text.primary}`}>
+                      <dd className={colorTokens.text.primary}>
                         {addressLines.map((line) => (
                           <div key={line}>{line}</div>
                         ))}
@@ -507,14 +507,14 @@ export function PartnerDetailPage() {
                 {partner.vat_number && (
                   <div>
                     <dt className={`text-sm font-medium ${colorTokens.text.subtle}`}>{t('fields.taxId')}</dt>
-                    <dd className={`${colorTokens.text.primary}`}>{partner.vat_number}</dd>
+                    <dd className={colorTokens.text.primary}>{partner.vat_number}</dd>
                   </div>
                 )}
                 <div className="flex items-start gap-3">
                   <Calendar className={`mt-0.5 h-5 w-5 ${colorTokens.text.disabled}`} />
                   <div>
                     <dt className={`text-sm font-medium ${colorTokens.text.subtle}`}>{t('fields.created')}</dt>
-                    <dd className={`${colorTokens.text.primary}`}>
+                    <dd className={colorTokens.text.primary}>
                       {new Date(partner.created_at).toLocaleDateString()}
                     </dd>
                   </div>
@@ -576,7 +576,7 @@ export function PartnerDetailPage() {
             ) : (
               <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
                 <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-                  <thead className={`${colorTokens.surface.page}`}>
+                  <thead className={colorTokens.surface.page}>
                     <tr>
                       <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                         {t('fields.documentNumber')}
@@ -612,7 +612,7 @@ export function PartnerDetailPage() {
                       }
 
                       return (
-                        <tr key={doc.id} className={`${colorTokens.intent.neutral.bgHover}`}>
+                        <tr key={doc.id} className={colorTokens.intent.neutral.bgHover}>
                           <td className="whitespace-nowrap px-6 py-4">
                             <Link
                               to={getDocumentPath()}
@@ -679,7 +679,7 @@ export function PartnerDetailPage() {
           ) : (
             <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
               <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-                <thead className={`${colorTokens.surface.page}`}>
+                <thead className={colorTokens.surface.page}>
                   <tr>
                     <th className={`px-6 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                       {t('fields.paymentNumber')}
@@ -700,7 +700,7 @@ export function PartnerDetailPage() {
                 </thead>
                 <tbody className={`divide-y ${colorTokens.border.divider} ${colorTokens.surface.base}`}>
                   {payments.map((payment) => (
-                    <tr key={payment.id} className={`${colorTokens.intent.neutral.bgHover}`}>
+                    <tr key={payment.id} className={colorTokens.intent.neutral.bgHover}>
                       <td className="whitespace-nowrap px-6 py-4">
                         <Link
                           to={`/treasury/payments/${payment.id}`}
@@ -800,7 +800,7 @@ export function PartnerDetailPage() {
             ) : (
               <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
                 <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-                  <thead className={`${colorTokens.surface.page}`}>
+                  <thead className={colorTokens.surface.page}>
                     <tr>
                       <th className={`px-4 py-2 text-left text-xs font-medium uppercase ${colorTokens.text.subtle}`}>{t('deposits:history.date')}</th>
                       <th className={`px-4 py-2 text-left text-xs font-medium uppercase ${colorTokens.text.subtle}`}>{t('deposits:history.amount')}</th>

@@ -79,7 +79,7 @@ export function ValidationGrid({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm">
           <AlertCircle className={`h-4 w-4 ${colorTokens.intent.caution.textSubtle}`} />
-          <span className={`${colorTokens.text.muted}`}>
+          <span className={colorTokens.text.muted}>
             {t('validation.rowsWithErrors', { count: filteredRows.length })}
           </span>
         </div>
@@ -88,7 +88,7 @@ export function ValidationGrid({
       {/* Table */}
       <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
         <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-          <thead className={`${colorTokens.surface.page}`}>
+          <thead className={colorTokens.surface.page}>
             <tr>
               <th className={`sticky left-0 ${colorTokens.surface.page} px-4 py-3 text-start text-xs font-medium uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('validation.row')}
@@ -108,8 +108,8 @@ export function ValidationGrid({
               <tr
                 key={row.row_number}
                 className={cn(
-                  `${colorTokens.intent.neutral.bgHover}`,
-                  (!row.is_valid || row.import_error) && `${colorTokens.intent.danger.bgSubtleAlpha}`
+                  colorTokens.intent.neutral.bgHover,
+                  (!row.is_valid || row.import_error) && colorTokens.intent.danger.bgSubtleAlpha
                 )}
               >
                 <td className={`sticky left-0 ${colorTokens.surface.base} whitespace-nowrap px-4 py-3 text-sm font-medium ${colorTokens.text.subtle}`}>
@@ -134,7 +134,7 @@ export function ValidationGrid({
                       key={col}
                       className={cn(
                         'px-4 py-3',
-                        error && `${colorTokens.intent.danger.bgSubtle}`
+                        error && colorTokens.intent.danger.bgSubtle
                       )}
                     >
                       {onRowUpdate ? (
@@ -155,7 +155,7 @@ export function ValidationGrid({
                         <span
                           className={cn(
                             'text-sm',
-                            error ? `${colorTokens.intent.danger.textStrong}` : `${colorTokens.text.primary}`
+                            error ? colorTokens.intent.danger.textStrong : colorTokens.text.primary
                           )}
                         >
                           {value || '-'}

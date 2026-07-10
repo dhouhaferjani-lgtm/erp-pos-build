@@ -38,6 +38,7 @@
     "C1|src/features/documents/return-notes/ReturnNoteDetailPage.tsx|<h1 className={`text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>|#1",
     "C1|src/features/enrichment/pages/EnrichmentQueuePage.tsx|<h1 className={`text-2xl font-semibold ${textColors.primary}`}>|#1",
     "C1|src/features/expenses/pages/ExpenseCategoryPage.tsx|<h1 className=\"text-3xl font-bold text-gray-900 dark:text-gray-100\">|#1",
+    "C1|src/features/inventory/ProductForm.tsx|<h1 className={cn( 'font-[family-name:var(--font-display)] text-[26px] font-extrabold tracking-[-0.02em]', textColors.primary, )} >|#1",
     "C1|src/features/parapharmacy/pages/CertificationFormPage.tsx|<h1 className=\"text-3xl font-bold\">|#1",
     "C1|src/features/parapharmacy/pages/CertificationListPage.tsx|<h1 className=\"text-3xl font-bold\">|#1",
     "C1|src/features/parapharmacy/pages/HealthClaimFormPage.tsx|<h1 className=\"text-3xl font-bold\">|#1",

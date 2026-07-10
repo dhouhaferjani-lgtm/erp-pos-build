@@ -182,7 +182,7 @@ export function EarningRuleFormModal({
         <Modal.Content>
           <div className="space-y-4">
             {parsedServerError !== null && (
-              <div className={`rounded-md border ${colorTokens.intent.danger.borderSubtleSoft} ${colorTokens.intent.danger.bgSubtle} px-3 py-2 text-sm ${colorTokens.intent.danger.textStrong}`} role="alert">
+              <div className={`rounded-md border ${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle} px-3 py-2 text-sm ${colorTokens.intent.danger.textStrong}`} role="alert">
                 {parsedServerError.message}
               </div>
             )}

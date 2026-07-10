@@ -67,13 +67,13 @@ export function ImportTypeCard({
           <div
             className={cn(
               'rounded-lg p-3',
-              isCompleted ? `${colorTokens.intent.success.bgSoft}` : `${colorTokens.intent.primary.bgSoft}`
+              isCompleted ? colorTokens.intent.success.bgSoft : colorTokens.intent.primary.bgSoft
             )}
           >
             <Icon
               className={cn(
                 'h-6 w-6',
-                isCompleted ? `${colorTokens.intent.success.text}` : `${colorTokens.intent.primary.text}`
+                isCompleted ? colorTokens.intent.success.text : colorTokens.intent.primary.text
               )}
             />
           </div>
@@ -95,7 +95,7 @@ export function ImportTypeCard({
       {/* Status */}
       {status && (
         <div className="mt-4 flex items-center gap-2 text-sm">
-          <span className={`${colorTokens.text.subtle}`}>{t('status.imported')}:</span>
+          <span className={colorTokens.text.subtle}>{t('status.imported')}:</span>
           <span className={`font-medium ${colorTokens.text.primary}`}>
             {status.imported.toLocaleString()}
           </span>

@@ -29,26 +29,26 @@ const BATCH_TYPE_CONFIG: BatchTypeConfig[] = [
   {
     type: 'ACCOUNTING',
     icon: <Calculator className="h-6 w-6" />,
-    colorClass: `${colorTokens.intent.primary.text}`,
-    bgClass: `${colorTokens.intent.primary.bgSoft}`,
+    colorClass: colorTokens.intent.primary.text,
+    bgClass: colorTokens.intent.primary.bgSoft,
   },
   {
     type: 'INVENTORY',
     icon: <Package className="h-6 w-6" />,
-    colorClass: `${colorTokens.intent.success.text}`,
-    bgClass: `${colorTokens.intent.success.bgSoft}`,
+    colorClass: colorTokens.intent.success.text,
+    bgClass: colorTokens.intent.success.bgSoft,
   },
   {
     type: 'AR_OPEN_ITEMS',
     icon: <Users className="h-6 w-6" />,
-    colorClass: `${colorTokens.intent.caution.text}`,
-    bgClass: `${colorTokens.intent.caution.bgSoft}`,
+    colorClass: colorTokens.intent.caution.text,
+    bgClass: colorTokens.intent.caution.bgSoft,
   },
   {
     type: 'AP_OPEN_ITEMS',
     icon: <Truck className="h-6 w-6" />,
-    colorClass: `${colorTokens.intent.accent.text}`,
-    bgClass: `${colorTokens.intent.accent.bgSoft}`,
+    colorClass: colorTokens.intent.accent.text,
+    bgClass: colorTokens.intent.accent.bgSoft,
   },
 ]
 
@@ -106,7 +106,7 @@ function BatchTypeCard({
   return (
     <Link
       to={`/settings/opening-balances/${config.type.toLowerCase()}`}
-      className={`group block rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 shadow-sm transition-all ${colorTokens.intent.primary.hoverBorderSubtle} hover:shadow-md`}
+      className={`group block rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 shadow-sm transition-all ${colorTokens.intent.primary.borderHover} hover:shadow-md`}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
@@ -171,7 +171,7 @@ export function OpeningBalancesPage() {
               <Calculator className={`h-6 w-6 ${colorTokens.intent.primary.textSubtle}`} />
               {t('openingBalances.title')}
             </PageHeaderTitle>
-            <p className={`${colorTokens.text.subtle}`}>{t('openingBalances.description')}</p>
+            <p className={colorTokens.text.subtle}>{t('openingBalances.description')}</p>
           </div>
         </div>
       </div>

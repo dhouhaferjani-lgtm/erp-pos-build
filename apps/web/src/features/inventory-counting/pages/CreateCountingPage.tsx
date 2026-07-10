@@ -158,7 +158,7 @@ export function CreateCountingPage() {
           {t('back')}
         </Link>
         <PageHeaderTitle className="text-2xl font-bold">{t('counting.create.title')}</PageHeaderTitle>
-        <p className={`${colorTokens.text.subtle}`}>{t('counting.create.description')}</p>
+        <p className={colorTokens.text.subtle}>{t('counting.create.description')}</p>
       </div>
 
       {/* Progress Steps */}
@@ -182,9 +182,9 @@ export function CreateCountingPage() {
                 <span
                   className={cn(
                     'ms-2 text-sm font-medium',
-                    isActive && `${colorTokens.intent.primary.text}`,
-                    isCompleted && `${colorTokens.intent.success.text}`,
-                    !isActive && !isCompleted && `${colorTokens.text.subtle}`
+                    isActive && colorTokens.intent.primary.text,
+                    isCompleted && colorTokens.intent.success.text,
+                    !isActive && !isCompleted && colorTokens.text.subtle
                   )}
                 >
                   {t(`counting.create.steps.${step}`)}
@@ -193,7 +193,7 @@ export function CreateCountingPage() {
                   <div
                     className={cn(
                       'flex-1 h-0.5 mx-4',
-                      isCompleted ? `${colorTokens.intent.success.bgStrong}` : `${colorTokens.surface.subdued}`
+                      isCompleted ? colorTokens.intent.success.bgStrong : colorTokens.surface.subdued
                     )}
                   />
                 )}
@@ -542,7 +542,7 @@ function ZoneScopeSelection({ data, onChange }: ZoneScopeSelectionProps) {
                     key={zone.id}
                     className={cn(
                       'flex cursor-pointer items-center gap-2 rounded-md border-2 p-3 transition-colors',
-                      selected ? `${colorTokens.intent.primary.borderStrong} ${colorTokens.intent.primary.bgSubtle}` : cn(borderColors.default, `${colorTokens.border.hover}`),
+                      selected ? `${colorTokens.intent.primary.borderStrong} ${colorTokens.intent.primary.bgSubtle}` : cn(borderColors.default, colorTokens.border.hover),
                     )}
                   >
                     <input
@@ -716,7 +716,7 @@ function ConfigurationStep({ data, onChange }: ConfigurationStepProps) {
             className={cn(
               `w-full rounded-md border px-3 py-2 focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing}`,
               borderColors.default,
-              `${colorTokens.focus.primaryBorder}`,
+              colorTokens.focus.primaryBorder,
             )}
           />
           <p className={cn('mt-1 text-sm', textColors.tertiary)}>
@@ -867,7 +867,7 @@ function ReviewStep({ data }: ReviewStepProps) {
         <div className={`${colorTokens.surface.page} rounded-lg p-4`}>
           <h3 className="font-medium mb-3">{t('counting.create.steps.scope')}</h3>
           <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.scopeType')}</dt>
+            <dt className={colorTokens.text.subtle}>{t('counting.create.scopeType')}</dt>
             <dd>{t(`counting.scopeTypes.${data.scope_type ?? 'full_inventory'}`)}</dd>
           </dl>
         </div>
@@ -877,13 +877,13 @@ function ReviewStep({ data }: ReviewStepProps) {
             {t('counting.create.steps.configuration')}
           </h3>
           <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.executionMode')}</dt>
+            <dt className={colorTokens.text.subtle}>{t('counting.create.executionMode')}</dt>
             <dd>{t(`counting.executionModes.${data.execution_mode ?? 'parallel'}`)}</dd>
-            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.requiresCount2')}</dt>
+            <dt className={colorTokens.text.subtle}>{t('counting.create.requiresCount2')}</dt>
             <dd>{data.requires_count_2 ? t('yes') : t('no')}</dd>
-            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.requiresCount3')}</dt>
+            <dt className={colorTokens.text.subtle}>{t('counting.create.requiresCount3')}</dt>
             <dd>{data.requires_count_3 ? t('yes') : t('no')}</dd>
-            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.allowUnexpectedItems')}</dt>
+            <dt className={colorTokens.text.subtle}>{t('counting.create.allowUnexpectedItems')}</dt>
             <dd>
               {data.allow_unexpected_items ? t('yes') : t('no')}
             </dd>
@@ -895,17 +895,17 @@ function ReviewStep({ data }: ReviewStepProps) {
             {t('counting.create.steps.assignment')}
           </h3>
           <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.counter1')}</dt>
+            <dt className={colorTokens.text.subtle}>{t('counting.create.counter1')}</dt>
             <dd>{getUserName(data.count_1_user_id)}</dd>
             {data.requires_count_2 && (
               <>
-                <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.counter2')}</dt>
+                <dt className={colorTokens.text.subtle}>{t('counting.create.counter2')}</dt>
                 <dd>{getUserName(data.count_2_user_id)}</dd>
               </>
             )}
             {data.requires_count_3 && (
               <>
-                <dt className={`${colorTokens.text.subtle}`}>{t('counting.create.counter3')}</dt>
+                <dt className={colorTokens.text.subtle}>{t('counting.create.counter3')}</dt>
                 <dd>{getUserName(data.count_3_user_id)}</dd>
               </>
             )}

@@ -23,7 +23,7 @@ export function LockConfirmation({ onLock, onBack, isLocking }: LockConfirmation
       </div>
 
       {/* Warning box */}
-      <div className={`rounded-lg border ${colorTokens.intent.danger.borderSubtleSoft} ${colorTokens.intent.danger.bgSubtle} p-6`}>
+      <div className={`rounded-lg border ${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle} p-6`}>
         <div className="flex items-start gap-4">
           <div className={`rounded-full ${colorTokens.intent.danger.bgSoft} p-3`}>
             <AlertTriangle className={`h-6 w-6 ${colorTokens.intent.danger.text}`} />

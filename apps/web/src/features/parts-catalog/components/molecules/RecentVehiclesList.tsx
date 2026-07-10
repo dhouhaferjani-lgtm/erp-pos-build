@@ -55,7 +55,7 @@ export function RecentVehiclesList({ className }: RecentVehiclesListProps) {
               onClick={() => { selectFromHistory(vehicle.id) }}
               className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start ${colorTokens.intent.neutral.bgHover} transition-colors group`}
             >
-              <div className={`flex items-center justify-center h-8 w-8 rounded-md ${colorTokens.surface.muted} ${colorTokens.intent.primary.groupBgSoftHover} transition-colors shrink-0`}>
+              <div className={`flex items-center justify-center h-8 w-8 rounded-md ${colorTokens.surface.muted} ${colorTokens.intent.primary.groupBgHoverSoft} transition-colors shrink-0`}>
                 <Car className={`h-4 w-4 ${colorTokens.text.disabled} ${colorTokens.intent.primary.groupTextHover} transition-colors`} />
               </div>
               <div className="min-w-0 flex-1">

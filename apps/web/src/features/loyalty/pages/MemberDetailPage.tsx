@@ -84,7 +84,7 @@ function TransactionHistorySection({ memberId, enrollment }: { memberId: string;
                 </Badge>
               </td>
               <td className="py-2 pr-4 text-right font-medium">
-                <span className={parseFloat(tx.amount) >= 0 ? `${colorTokens.intent.success.text}` : `${colorTokens.intent.danger.text}`}>
+                <span className={parseFloat(tx.amount) >= 0 ? colorTokens.intent.success.text : colorTokens.intent.danger.text}>
                   {parseFloat(tx.amount) >= 0 ? '+' : ''}{tx.amount}
                 </span>
               </td>
@@ -248,7 +248,7 @@ export function MemberDetailPage() {
         <h2 className={`text-lg font-semibold ${colorTokens.text.primary} mb-4`}>{t('loyalty:members.enrollments')}</h2>
         {enrollmentsList.length === 0 ? (
           <div className={`text-center py-8 ${colorTokens.surface.base} rounded-lg border ${colorTokens.border.subtle}`}>
-            <p className={`${colorTokens.text.subtle}`}>{t('loyalty:members.noEnrollments')}</p>
+            <p className={colorTokens.text.subtle}>{t('loyalty:members.noEnrollments')}</p>
           </div>
         ) : (
           <div className="space-y-4">

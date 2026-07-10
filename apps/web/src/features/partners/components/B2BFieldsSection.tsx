@@ -39,7 +39,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
   }
 
   return (
-    <div className={`rounded-lg border ${colorTokens.intent.primary.borderSubtleSoft} ${colorTokens.intent.primary.bgSubtleAlphaSoft} p-6`}>
+    <div className={`rounded-lg border ${colorTokens.intent.primary.borderSubtle} ${colorTokens.intent.primary.bgSubtleAlphaMuted} p-6`}>
       <h3 className={`mb-4 text-lg font-semibold ${colorTokens.text.primary}`}>
         {t('partners.b2b.title')}
       </h3>
@@ -94,7 +94,7 @@ export function B2BFieldsSection({ register, watch, setValue, partnerId }: B2BFi
           {taxIdValidation.isSuccess && (
             <div
               className={`mt-1 flex items-center gap-1 text-sm ${
-                taxIdValidation.data.is_valid ? `${colorTokens.intent.success.text}` : `${colorTokens.intent.danger.text}`
+                taxIdValidation.data.is_valid ? colorTokens.intent.success.text : colorTokens.intent.danger.text
               }`}
             >
               {taxIdValidation.data.is_valid ? (

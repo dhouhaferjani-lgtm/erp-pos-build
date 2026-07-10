@@ -39,7 +39,7 @@ export function ImportPreviewTable({ preview }: ImportPreviewTableProps) {
       {/* Preview table */}
       <div className={`overflow-x-auto rounded-lg border ${colorTokens.border.subtle}`}>
         <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-          <thead className={`${colorTokens.surface.page}`}>
+          <thead className={colorTokens.surface.page}>
             <tr>
               <th
                 scope="col"
@@ -69,8 +69,8 @@ export function ImportPreviewTable({ preview }: ImportPreviewTableProps) {
               <Fragment key={row.row_number}>
                 <tr
                   className={cn(
-                    `${colorTokens.intent.neutral.bgHover}`,
-                    !row.is_valid && `${colorTokens.intent.danger.bgSubtleAlpha}`
+                    colorTokens.intent.neutral.bgHover,
+                    !row.is_valid && colorTokens.intent.danger.bgSubtleAlpha
                   )}
                 >
                   <td className={`whitespace-nowrap px-3 py-2 text-sm ${colorTokens.text.subtle}`}>
@@ -100,7 +100,7 @@ export function ImportPreviewTable({ preview }: ImportPreviewTableProps) {
                 </tr>
                 {/* Inline error details row */}
                 {!row.is_valid && row.errors && Object.keys(row.errors).length > 0 && (
-                  <tr className={`${colorTokens.intent.danger.bgSubtle}`}>
+                  <tr className={colorTokens.intent.danger.bgSubtle}>
                     <td colSpan={headers.length + 2} className="px-3 py-2">
                       <div className={`flex flex-wrap gap-x-4 gap-y-1 text-xs ${colorTokens.intent.danger.textStrong}`}>
                         {Object.entries(row.errors).map(([field, msgs]) => (

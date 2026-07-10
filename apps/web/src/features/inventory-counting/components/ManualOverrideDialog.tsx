@@ -64,23 +64,23 @@ function ManualOverrideDialogContent({
           {/* Current counts */}
           <div className="grid grid-cols-4 gap-2 mb-4 text-sm">
             <div className={`${colorTokens.surface.muted} rounded p-2 text-center`}>
-              <div className={`${colorTokens.text.subtle}`}>{t('counting.reconciliation.theoretical')}</div>
+              <div className={colorTokens.text.subtle}>{t('counting.reconciliation.theoretical')}</div>
               <div className="font-mono font-medium">{formatQuantity(item.theoretical_qty)}</div>
             </div>
             <div className={`${colorTokens.surface.muted} rounded p-2 text-center`}>
-              <div className={`${colorTokens.text.subtle}`}>{t('counting.count1')}</div>
+              <div className={colorTokens.text.subtle}>{t('counting.count1')}</div>
               <div className="font-mono font-medium">
                 {item.count_1 ? formatQuantity(item.count_1.qty) : '-'}
               </div>
             </div>
             <div className={`${colorTokens.surface.muted} rounded p-2 text-center`}>
-              <div className={`${colorTokens.text.subtle}`}>{t('counting.count2')}</div>
+              <div className={colorTokens.text.subtle}>{t('counting.count2')}</div>
               <div className="font-mono font-medium">
                 {item.count_2 ? formatQuantity(item.count_2.qty) : '-'}
               </div>
             </div>
             <div className={`${colorTokens.surface.muted} rounded p-2 text-center`}>
-              <div className={`${colorTokens.text.subtle}`}>{t('counting.count3')}</div>
+              <div className={colorTokens.text.subtle}>{t('counting.count3')}</div>
               <div className="font-mono font-medium">
                 {item.count_3 ? formatQuantity(item.count_3.qty) : '-'}
               </div>

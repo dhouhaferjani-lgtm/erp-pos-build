@@ -101,13 +101,13 @@ interface CountCellProps {
 
 function CountCell({ count, matchesTheoretical }: CountCellProps) {
   if (!count) {
-    return <span className={`${colorTokens.text.disabled}`}>-</span>
+    return <span className={colorTokens.text.disabled}>-</span>
   }
 
   return (
     <div className="group relative">
       <span
-        className={cn('font-mono', matchesTheoretical && `${colorTokens.intent.success.text}`)}
+        className={cn('font-mono', matchesTheoretical && colorTokens.intent.success.text)}
       >
         {formatQuantity(count.qty)}
       </span>
@@ -300,7 +300,7 @@ export function ReconciliationTable({ countingId }: Props) {
       return colorTokens.intent.warning.bgSubtleAlpha
     }
     if (item.is_flagged && item.final_qty === null) {
-      return `${colorTokens.intent.danger.bgSubtleAlpha}`
+      return colorTokens.intent.danger.bgSubtleAlpha
     }
     return ''
   }
@@ -355,7 +355,7 @@ export function ReconciliationTable({ countingId }: Props) {
       {/* Table */}
       <div className="border rounded-lg overflow-hidden">
         <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
-          <thead className={`${colorTokens.surface.page}`}>
+          <thead className={colorTokens.surface.page}>
             <tr>
               <th className="w-12 px-4 py-3">
                 <input
@@ -491,8 +491,8 @@ export function ReconciliationTable({ countingId }: Props) {
                     <span
                       className={cn(
                         'font-mono',
-                        item.variance > 0 && `${colorTokens.intent.success.text}`,
-                        item.variance < 0 && `${colorTokens.intent.danger.text}`
+                        item.variance > 0 && colorTokens.intent.success.text,
+                        item.variance < 0 && colorTokens.intent.danger.text
                       )}
                     >
                       {item.variance > 0 ? '+' : ''}

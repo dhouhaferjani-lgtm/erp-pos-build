@@ -243,7 +243,7 @@ export function FraudSettingsPage() {
                 value={formData.abandoned_draft_threshold || 5}
                 onChange={(e) => { setFormData({ ...formData, abandoned_draft_threshold: parseInt(e.target.value) }); }}
               />
-              <p className={`${tokens.helperText.base}`}>
+              <p className={tokens.helperText.base}>
                 {t('compliance:fraudSettings.fields.threshold.hint')}
               </p>
               {errors['abandoned_draft_threshold'] && (
@@ -332,7 +332,7 @@ export function FraudSettingsPage() {
                     <button
                       type="button"
                       onClick={() => { handleRemoveEmail(email); }}
-                      className={`${colorTokens.intent.primary.textHoverStrongest}`}
+                      className={colorTokens.intent.primary.textHoverStrongest}
                     >
                       ×
                     </button>
@@ -409,7 +409,7 @@ export function FraudSettingsPage() {
           <Button
             type="submit"
             disabled={updateMutation.isPending}
-            size="lg"
+            size="md"
             className="gap-2"
           >
             <Save className="h-4 w-4" />

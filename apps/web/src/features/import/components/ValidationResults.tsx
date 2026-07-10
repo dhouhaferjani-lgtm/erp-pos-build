@@ -42,7 +42,7 @@ export function ValidationResults({
               <h3
                 className={cn(
                   'text-lg font-semibold',
-                  hasErrors ? `${colorTokens.intent.caution.textStrongest}` : `${colorTokens.intent.success.textStrongest}`
+                  hasErrors ? colorTokens.intent.caution.textStrongest : colorTokens.intent.success.textStrongest
                 )}
               >
                 {hasErrors
@@ -52,7 +52,7 @@ export function ValidationResults({
               <p
                 className={cn(
                   'mt-1 text-sm',
-                  hasErrors ? `${colorTokens.intent.caution.textStrong}` : `${colorTokens.intent.success.textStrong}`
+                  hasErrors ? colorTokens.intent.caution.textStrong : colorTokens.intent.success.textStrong
                 )}
               >
                 {hasErrors
@@ -65,7 +65,7 @@ export function ValidationResults({
 
               {/* Job-level Error Message */}
               {summary.job_error_message && (
-                <div className={`mt-3 rounded-md ${colorTokens.intent.danger.bgSubtle} border ${colorTokens.intent.danger.borderSubtleSoft} p-3`}>
+                <div className={`mt-3 rounded-md ${colorTokens.intent.danger.bgSubtle} border ${colorTokens.intent.danger.borderSubtle} p-3`}>
                   <div className="flex items-start gap-2">
                     <XCircle className={`h-4 w-4 ${colorTokens.intent.danger.text} flex-shrink-0 mt-0.5`} />
                     <p className={`text-sm ${colorTokens.intent.danger.textStronger}`}>

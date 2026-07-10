@@ -54,7 +54,7 @@ export function ErrorViewer({ jobId, totalRows }: ErrorViewerProps) {
 
   if (!summaryData) {
     return (
-      <div className={`rounded-lg border ${colorTokens.intent.danger.borderSubtleSoft} ${colorTokens.intent.danger.bgSubtle} p-6`}>
+      <div className={`rounded-lg border ${colorTokens.intent.danger.borderSubtle} ${colorTokens.intent.danger.bgSubtle} p-6`}>
         <div className="flex items-start gap-3">
           <AlertCircle className={`h-5 w-5 ${colorTokens.intent.danger.text} flex-shrink-0`} />
           <p className={`text-sm ${colorTokens.intent.danger.textStronger}`}>
