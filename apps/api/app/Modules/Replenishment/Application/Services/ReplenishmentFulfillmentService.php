@@ -28,7 +28,7 @@ final class ReplenishmentFulfillmentService
     ) {}
 
     /**
-     * @param list<array{request_id: string, quantity: numeric-string}> $lines
+     * @param  list<array{request_id: string, quantity: numeric-string}>  $lines
      * @return list<string>
      */
     public function createTransfers(
@@ -78,7 +78,7 @@ final class ReplenishmentFulfillmentService
     }
 
     /**
-     * @param list<array{request_id: string, quantity: numeric-string}> $lines
+     * @param  list<array{request_id: string, quantity: numeric-string}>  $lines
      */
     public function createPurchaseOrder(
         string $tenantId,
@@ -187,7 +187,7 @@ final class ReplenishmentFulfillmentService
     }
 
     /**
-     * @param list<string> $requestIds
+     * @param  list<string>  $requestIds
      * @return Collection<int, ReplenishmentRequest>
      */
     private function openRequests(string $companyId, array $requestIds): Collection
@@ -199,8 +199,10 @@ final class ReplenishmentFulfillmentService
             ->whereIn('status', [ReplenishmentStatus::Pending, ReplenishmentStatus::InProgress])
             ->get();
         if ($requests->count() !== count($uniqueIds)) {
+            $openIds = $requests->pluck('id')->all();
+            $offendingIds = array_values(array_diff($uniqueIds, $openIds));
             throw ValidationException::withMessages([
-                'request_ids' => 'Every selected replenishment request must be open and belong to the active company.',
+                'request_ids' => $offendingIds,
             ]);
         }
 

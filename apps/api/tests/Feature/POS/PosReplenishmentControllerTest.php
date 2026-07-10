@@ -12,12 +12,14 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Replenishment\Application\DTOs\CaptureRequestData;
 use App\Modules\Replenishment\Application\Services\ReplenishmentCaptureService;
+use App\Modules\Replenishment\Application\Services\ReplenishmentQueryService;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentChannel;
 use App\Modules\Replenishment\Domain\ReplenishmentRequest;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -63,7 +65,9 @@ final class PosReplenishmentControllerTest extends TestCase
             'role' => 'cashier',
             'status' => 'active',
         ]);
-        Gate::before(static fn (User $user, string $ability): ?bool => $ability === 'pos.operate_terminal' ? true : null);
+        $cashierId = $this->cashier->id;
+        Gate::before(static fn (User $user, string $ability): ?bool => $ability === 'pos.operate_terminal'
+            && $user->id === $cashierId ? true : null);
         Sanctum::actingAs($this->cashier);
     }
 
@@ -208,6 +212,37 @@ final class PosReplenishmentControllerTest extends TestCase
         $this->assertCount(200, $response->json('data'));
     }
 
+    public function test_user_without_terminal_permission_gets_403_for_store_and_index(): void
+    {
+        $unauthorized = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create([
+            'user_id' => $unauthorized->id,
+            'company_id' => $this->company->id,
+            'role' => 'cashier',
+            'status' => 'active',
+        ]);
+        Sanctum::actingAs($unauthorized);
+
+        $this->postCapture($this->payload(Str::uuid()->toString()))->assertForbidden();
+        $this->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/replenishment-requests?terminal_id='.$this->terminal->id)
+            ->assertForbidden();
+    }
+
+    public function test_query_service_reads_one_response_row_by_company(): void
+    {
+        $captured = $this->captureAt($this->shop);
+
+        $row = app(ReplenishmentQueryService::class)->findForCompany(
+            $this->tenant->id,
+            $this->company->id,
+            $captured->id,
+        );
+
+        $this->assertSame($captured->id, $row->id);
+        $this->assertSame($this->product->name, $row->product_name);
+    }
+
     /** @return array<string, string> */
     private function payload(string $uuid, string $quantity = '1'): array
     {
@@ -219,7 +254,7 @@ final class PosReplenishmentControllerTest extends TestCase
         ];
     }
 
-    private function postCapture(array $payload): \Illuminate\Testing\TestResponse
+    private function postCapture(array $payload): TestResponse
     {
         return $this->withHeader('X-Company-Id', $this->company->id)
             ->postJson('/api/v1/pos/replenishment-requests', $payload);

@@ -9,6 +9,7 @@ use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Replenishment\Domain\ReplenishmentRequest;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -110,6 +111,13 @@ final class ReplenishmentSchemaTest extends TestCase
             'id' => Str::uuid()->toString(),
             'variant_id' => $variantA->id,
         ]);
+    }
+
+    public function test_open_scope_qualifies_status_for_joined_queries(): void
+    {
+        $sql = ReplenishmentRequest::query()->open()->toSql();
+
+        $this->assertStringContainsString('"replenishment_requests"."status"', $sql);
     }
 
     /** @return array<string, int|string|null> */

@@ -14,6 +14,7 @@ use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
 use App\Modules\POS\Domain\Exceptions\ManagerOverrideRequiredException;
 use App\Modules\POS\Domain\Exceptions\RefundDestinationNotAllowedException;
 use App\Modules\POS\Domain\Exceptions\RefundWindowClosedException;
+use App\Modules\Replenishment\Domain\Exceptions\CrossCompanyReplayException;
 use App\Modules\Scheduling\Infrastructure\Http\Middleware\VerifyCaptcha;
 use App\Modules\Voucher\Domain\Exceptions\VoucherDuplicateInTransactionException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherExpiredException;
@@ -208,6 +209,17 @@ return Application::configure(basePath: dirname(__DIR__))
                         'errors' => $e->errors(),
                     ],
                 ], 422);
+            }
+        });
+
+        $exceptions->render(function (CrossCompanyReplayException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'REPLENISHMENT_UUID_COMPANY_CONFLICT',
+                        'message' => $e->getMessage(),
+                    ],
+                ], 409);
             }
         });
 

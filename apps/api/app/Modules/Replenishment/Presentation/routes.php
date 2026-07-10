@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
-use App\Modules\Replenishment\Presentation\Controllers\ReplenishmentRequestController;
 use App\Modules\Replenishment\Presentation\Controllers\ReplenishmentActionController;
+use App\Modules\Replenishment\Presentation\Controllers\ReplenishmentRequestController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('api/v1')
@@ -27,7 +27,6 @@ Route::prefix('api/v1')
             ->middleware('can:replenishment.process')
             ->name('replenishment-requests.actions.reject');
         Route::post('/replenishment-requests/{id}/cancel', [ReplenishmentRequestController::class, 'cancel'])
-            ->middleware('can:replenishment.create')
             ->whereUuid('id')
             ->name('replenishment-requests.cancel');
     });

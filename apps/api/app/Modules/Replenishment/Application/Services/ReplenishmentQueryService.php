@@ -6,6 +6,7 @@ namespace App\Modules\Replenishment\Application\Services;
 
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentStatus;
 use App\Modules\Replenishment\Domain\ReplenishmentRequest;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 final class ReplenishmentQueryService
@@ -20,16 +21,7 @@ final class ReplenishmentQueryService
         int $closedWithinDays = 14,
         int $cap = 200,
     ): array {
-        $rows = ReplenishmentRequest::query()
-            ->leftJoin('locations', 'locations.id', '=', 'replenishment_requests.location_id')
-            ->leftJoin('products', 'products.id', '=', 'replenishment_requests.product_id')
-            ->leftJoin('product_variants', 'product_variants.id', '=', 'replenishment_requests.variant_id')
-            ->select([
-                'replenishment_requests.*',
-                'locations.name as location_name',
-                'products.name as product_name',
-                'product_variants.name_suffix as variant_name',
-            ])
+        $rows = $this->responseQuery()
             ->where('replenishment_requests.tenant_id', $tenantId)
             ->where('replenishment_requests.company_id', $companyId)
             ->where('replenishment_requests.location_id', $locationId)
@@ -57,5 +49,32 @@ final class ReplenishmentQueryService
             'rows' => $rows->take($cap)->values(),
             'truncated' => $rows->count() > $cap,
         ];
+    }
+
+    public function findForCompany(
+        string $tenantId,
+        string $companyId,
+        string $requestId,
+    ): ReplenishmentRequest {
+        return $this->responseQuery()
+            ->where('replenishment_requests.tenant_id', $tenantId)
+            ->where('replenishment_requests.company_id', $companyId)
+            ->where('replenishment_requests.id', $requestId)
+            ->firstOrFail();
+    }
+
+    /** @return Builder<ReplenishmentRequest> */
+    private function responseQuery(): Builder
+    {
+        return ReplenishmentRequest::query()
+            ->leftJoin('locations', 'locations.id', '=', 'replenishment_requests.location_id')
+            ->leftJoin('products', 'products.id', '=', 'replenishment_requests.product_id')
+            ->leftJoin('product_variants', 'product_variants.id', '=', 'replenishment_requests.variant_id')
+            ->select([
+                'replenishment_requests.*',
+                'locations.name as location_name',
+                'products.name as product_name',
+                'product_variants.name_suffix as variant_name',
+            ]);
     }
 }

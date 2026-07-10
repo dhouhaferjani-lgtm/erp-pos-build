@@ -14,10 +14,12 @@ use App\Modules\Replenishment\Application\DTOs\CaptureRequestData;
 use App\Modules\Replenishment\Application\Services\ReplenishmentCaptureService;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentChannel;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentStatus;
+use App\Modules\Replenishment\Domain\Exceptions\CrossCompanyReplayException;
 use App\Modules\Replenishment\Domain\ReplenishmentRequest;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -190,6 +192,30 @@ final class ReplenishmentRequestEndpointsTest extends TestCase
         $this->actingAs($this->processor)
             ->postJson("/api/v1/replenishment-requests/{$other->id}/cancel")
             ->assertOk();
+    }
+
+    public function test_process_only_user_can_cancel_pending_line(): void
+    {
+        $processOnly = $this->userWithMembership('process-only@example.test', null, [
+            'replenishment.process',
+        ]);
+        $request = $this->capture($this->shopA, $this->creator);
+
+        $this->actingAs($processOnly)
+            ->postJson("/api/v1/replenishment-requests/{$request->id}/cancel")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'cancelled');
+    }
+
+    public function test_cross_company_replay_exception_has_global_conflict_mapping(): void
+    {
+        Route::get('/api/_test/replenishment-conflict', static function (): never {
+            throw new CrossCompanyReplayException('00000000-0000-4000-8000-000000000000');
+        });
+
+        $this->getJson('/api/_test/replenishment-conflict')
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'REPLENISHMENT_UUID_COMPANY_CONFLICT');
     }
 
     public function test_view_requires_permission_for_cashier_role(): void

@@ -35,8 +35,28 @@ final class ReplenishmentCaptureService
                 return $replay;
             }
 
+            $requestReplay = $this->findRequestReplay($data);
+            if ($requestReplay !== null) {
+                $this->recordReceipt($data, $requestReplay);
+
+                return $requestReplay;
+            }
+
             return $this->insertOrBump($data);
         }
+    }
+
+    private function findRequestReplay(CaptureRequestData $data): ?ReplenishmentRequest
+    {
+        if ($data->clientRequestUuid === null) {
+            return null;
+        }
+
+        return ReplenishmentRequest::query()
+            ->where('tenant_id', $data->tenantId)
+            ->where('company_id', $data->companyId)
+            ->where('client_request_uuid', $data->clientRequestUuid)
+            ->first();
     }
 
     private function findReplay(CaptureRequestData $data): ?ReplenishmentRequest
@@ -165,8 +185,10 @@ final class ReplenishmentCaptureService
             return false;
         }
 
-        return str_contains($exception->getMessage(), 'replenishment_open_')
+        return str_contains($exception->getMessage(), 'replenishment_open_non_variant')
+            || str_contains($exception->getMessage(), 'replenishment_open_with_variant')
             || str_contains($exception->getMessage(), 'replenishment_receipt_uuid_unique')
+            || str_contains($exception->getMessage(), 'replenishment_client_uuid_unique')
             || str_contains($exception->getMessage(), 'replenishment_requests.company_id')
             || str_contains($exception->getMessage(), 'replenishment_capture_receipts.tenant_id');
     }

@@ -74,13 +74,11 @@ final class PosReplenishmentController extends Controller
             ], 409);
         }
 
-        $feed = $this->queryService->feedForLocation(
+        $responseRow = $this->queryService->findForCompany(
             $tenantId,
             $companyId,
-            $terminal->location_id,
+            $row->id,
         );
-        $responseRow = $feed['rows']->firstWhere('id', $row->id);
-        abort_if($responseRow === null, 500, 'Captured replenishment row was not readable.');
 
         return (new ReplenishmentRequestResource($responseRow))
             ->response()

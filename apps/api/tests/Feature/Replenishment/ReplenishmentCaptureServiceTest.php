@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Replenishment;
 
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Product\Domain\Product;
-use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Replenishment\Application\DTOs\CaptureRequestData;
 use App\Modules\Replenishment\Application\Services\ReplenishmentCaptureService;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentChannel;
@@ -16,6 +16,7 @@ use App\Modules\Replenishment\Domain\Enums\ReplenishmentStatus;
 use App\Modules\Replenishment\Domain\Events\ReplenishmentRequestBumped;
 use App\Modules\Replenishment\Domain\Events\ReplenishmentRequested;
 use App\Modules\Replenishment\Domain\Exceptions\CrossCompanyReplayException;
+use App\Modules\Replenishment\Domain\ReplenishmentCaptureReceipt;
 use App\Modules\Replenishment\Domain\ReplenishmentRequest;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -109,6 +110,26 @@ final class ReplenishmentCaptureServiceTest extends TestCase
         $this->assertSame(1, $replayed->request_count);
     }
 
+    public function test_client_uuid_unique_violation_resolves_to_existing_row(): void
+    {
+        $uuid = Str::uuid()->toString();
+        $existing = $this->service->capture($this->data(clientRequestUuid: $uuid));
+        ReplenishmentCaptureReceipt::query()->where('client_request_uuid', $uuid)->delete();
+        $existing->update(['status' => ReplenishmentStatus::Fulfilled]);
+        $otherProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        $replayed = $this->service->capture($this->data(
+            clientRequestUuid: $uuid,
+            productId: $otherProduct->id,
+        ));
+
+        $this->assertSame($existing->id, $replayed->id);
+        $this->assertSame(1, ReplenishmentRequest::query()->count());
+    }
+
     public function test_bump_path_uuid_replay_is_idempotent(): void
     {
         $this->service->capture($this->data(requestedQty: '2', clientRequestUuid: Str::uuid()->toString()));
@@ -187,12 +208,13 @@ final class ReplenishmentCaptureServiceTest extends TestCase
         ?string $note = null,
         ?string $clientRequestUuid = null,
         ?string $variantId = null,
+        ?string $productId = null,
     ): CaptureRequestData {
         return new CaptureRequestData(
             tenantId: $this->tenant->id,
             companyId: $this->company->id,
             locationId: $this->location->id,
-            productId: $this->product->id,
+            productId: $productId ?? $this->product->id,
             variantId: $variantId,
             requestedQty: $requestedQty,
             note: $note,

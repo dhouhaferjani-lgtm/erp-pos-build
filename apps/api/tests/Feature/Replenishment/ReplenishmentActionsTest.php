@@ -25,6 +25,7 @@ use App\Modules\Replenishment\Domain\ReplenishmentRequest;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -264,7 +265,8 @@ final class ReplenishmentActionsTest extends TestCase
         $closed = $this->capture($this->shopA, $this->productA);
         $closed->update(['status' => ReplenishmentStatus::Cancelled]);
         $this->action('reject', ['request_ids' => [$closed->id], 'reason' => 'No'])
-            ->assertUnprocessable();
+            ->assertUnprocessable()
+            ->assertJsonPath('error.errors.request_ids.0', $closed->id);
 
         $otherCompany = Company::factory()->for($this->tenant)->create();
         $otherLocation = Location::factory()->create(['company_id' => $otherCompany->id]);
@@ -284,7 +286,8 @@ final class ReplenishmentActionsTest extends TestCase
             channel: ReplenishmentChannel::Web,
         ));
         $this->action('reject', ['request_ids' => [$foreign->id], 'reason' => 'No'])
-            ->assertUnprocessable();
+            ->assertUnprocessable()
+            ->assertJsonPath('error.errors.request_ids.0', $foreign->id);
     }
 
     private function product(string $suffix, string $purchasePrice): Product
@@ -350,7 +353,7 @@ final class ReplenishmentActionsTest extends TestCase
         ];
     }
 
-    private function action(string $action, array $payload, ?User $user = null): \Illuminate\Testing\TestResponse
+    private function action(string $action, array $payload, ?User $user = null): TestResponse
     {
         return $this->actingAs($user ?? $this->reviewer)
             ->withHeader('X-Company-Id', $this->company->id)

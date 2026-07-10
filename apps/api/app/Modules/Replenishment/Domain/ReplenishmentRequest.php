@@ -86,7 +86,7 @@ final class ReplenishmentRequest extends Model
     /** @param Builder<ReplenishmentRequest> $query */
     public function scopeOpen(Builder $query): void
     {
-        $query->whereIn('status', [
+        $query->whereIn('replenishment_requests.status', [
             ReplenishmentStatus::Pending,
             ReplenishmentStatus::InProgress,
         ]);

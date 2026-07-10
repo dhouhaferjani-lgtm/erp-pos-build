@@ -560,6 +560,8 @@ test_actions_reject_non_open_or_foreign_company_lines_422()
 
 ### Task 10: POS push/pull sync services + API client + audit type
 
+> Wire guardrail: POS must use the hand-written snake_case `ServerReplenishmentRow` below, never the generated camelCase `ReplenishmentRequestData` DTO.
+
 **Files:**
 - Create: `apps/pos/src/api/replenishmentApi.ts`:
 ```ts
@@ -618,6 +620,8 @@ Behavior: uses `Modal` from `@/components/pos/Modal` (size `sm`, title = t('repl
 - [ ] Steps: failing component tests → implement → targeted vitest → PASS → commit: `feat(pos): request-refill sheet in product drawer`
 
 ### Task 12: Web feature scaffold — types, api, queries, i18n, routes
+
+> Wire guardrail: web must use the hand-written snake_case `ReplenishmentLine` below, never the generated camelCase `ReplenishmentRequestData` DTO.
 
 **Files:**
 - Create: `apps/web/src/features/replenishment/types/index.ts`:

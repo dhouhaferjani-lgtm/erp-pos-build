@@ -8,6 +8,11 @@ use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 #[TypeScript]
+/**
+ * Frontend guardrail: this generated camelCase DTO is not the HTTP wire contract.
+ * POS and web clients must use the hand-written snake_case ServerReplenishmentRow
+ * and ReplenishmentLine types that match ReplenishmentRequestResource.
+ */
 final class ReplenishmentRequestData extends Data
 {
     /** @param numeric-string|null $requestedQty */
