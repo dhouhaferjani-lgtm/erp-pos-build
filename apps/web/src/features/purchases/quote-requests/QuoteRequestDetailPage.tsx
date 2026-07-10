@@ -4,7 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Send, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { MoneyInput, QuantityInput } from '@/components/atoms'
+import { Button } from '@/components/atoms/Button/Button'
+import { Input } from '@/components/atoms/Input/Input'
+import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
+import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
+import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { formatCurrency, formatQuantity } from '@/lib/decimal'
 
@@ -49,6 +53,10 @@ function toPayloadLine(line: EditableLine): QuoteRequestLinePayload {
     quantity: line.quantity,
     unit_price: line.unitPrice,
   }
+}
+
+function statusTone(isLostSibling: boolean): StatusTone {
+  return isLostSibling ? 'neutral' : 'success'
 }
 
 export function QuoteRequestDetailPage() {
@@ -149,38 +157,37 @@ export function QuoteRequestDetailPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <span className={`${tokens.badge.base} ${isLostSibling ? tokens.badge.gray : tokens.badge.green}`}>
+            <StatusBadge tone={statusTone(isLostSibling)}>
               {t(statusLabelKey)}
-            </span>
+            </StatusBadge>
             {!isLostSibling && (
               <>
-                <button
+                <Button
                   type="button"
                   data-testid="send-rfq"
-                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+                  variant="secondary"
                   onClick={() => { void sendRfq() }}
                 >
                   <Send className="me-2 h-4 w-4" />
                   {t('purchases:quoteRequests.actions.send')}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   data-testid="edit-response"
-                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+                  variant="secondary"
                   onClick={startEditing}
                 >
                   {t('purchases:quoteRequests.actions.recordResponse')}
-                </button>
+                </Button>
                 {canConvert && (
-                  <button
+                  <Button
                     type="button"
                     data-testid="convert-rfq"
-                    className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
                     onClick={() => { void convertToPurchaseOrder() }}
                   >
                     <ShoppingCart className="me-2 h-4 w-4" />
                     {t('purchases:quoteRequests.actions.convert')}
-                  </button>
+                  </Button>
                 )}
               </>
             )}
@@ -225,11 +232,10 @@ export function QuoteRequestDetailPage() {
               <label className={tokens.label.base} htmlFor="response-validity-date">
                 {t('purchases:quoteRequests.fields.validityDate')}
               </label>
-              <input
+              <Input
                 id="response-validity-date"
                 data-testid="response-validity-date"
                 type="date"
-                className={tokens.input.base}
                 value={validityDate}
                 onChange={(event) => { setValidityDate(event.target.value) }}
               />
@@ -238,10 +244,9 @@ export function QuoteRequestDetailPage() {
               <label className={tokens.label.base} htmlFor="response-supplier-reference">
                 {t('purchases:quoteRequests.fields.supplierReference')}
               </label>
-              <input
+              <Input
                 id="response-supplier-reference"
                 data-testid="response-supplier-reference"
-                className={tokens.input.base}
                 value={supplierReference}
                 onChange={(event) => { setSupplierReference(event.target.value) }}
               />
@@ -250,11 +255,10 @@ export function QuoteRequestDetailPage() {
               <label className={tokens.label.base} htmlFor="response-lead-time">
                 {t('purchases:quoteRequests.fields.leadTimeDays')}
               </label>
-              <input
+              <Input
                 id="response-lead-time"
                 data-testid="response-lead-time"
                 type="number"
-                className={tokens.input.base}
                 value={leadTimeDays}
                 onChange={(event) => { setLeadTimeDays(event.target.value) }}
               />
@@ -298,14 +302,13 @@ export function QuoteRequestDetailPage() {
         ))}
         {editingResponse && (
           <div className="flex justify-end">
-            <button
+            <Button
               type="button"
               data-testid="save-response"
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
               onClick={() => { void saveResponse() }}
             >
               {t('purchases:quoteRequests.actions.saveResponse')}
-            </button>
+            </Button>
           </div>
         )}
       </section>
