@@ -356,7 +356,6 @@ describe('DocumentLineEditor — designation cells', () => {
             base_price: '80.000',
             hourly_rate: null,
             tax_rate: '19.00',
-            default_tax_configuration_id: 'tax-standard',
             currency: 'TND',
           },
         ],
@@ -382,7 +381,7 @@ describe('DocumentLineEditor — designation cells', () => {
         is_service: true,
         unit_price: '80.000',
         tax_rate: '19.00',
-        tax_configuration_id: 'tax-standard',
+        tax_configuration_id: null,
         line_total: '95.200',
       }),
     ])

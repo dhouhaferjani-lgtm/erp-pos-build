@@ -109,6 +109,19 @@ Status: complete.
   - `npx react-doctor@latest --verbose --scope changed --base HEAD` passed for the uncommitted diff with score 98.
   - `npx react-doctor@latest --staged --blocking warning --verbose` reports only the structural large-component warnings for `GoodsReceiptListPage` and `SupplierInvoiceCreatePage` with score 94; the local chained-iteration warning was fixed. Splitting those two large pages is deferred because it is broader than the Gate 1 minor cleanup.
 
+## Gate 2 Review Fixes
+
+Status: complete.
+
+- G2-1 `LineItemEntryBar`: Tab no longer commits the highlighted focus suggestion when the query is empty. Enter still commits the empty-query highlight. Added a regression test proving Tab leaves the field without adding a line.
+- G2-2 purchase create validation: Supplier Invoice and Quote Request create pages now translate zod validation message keys before passing them to `FormField`; notes max-length validation includes the `max: 2000` interpolation. Tests now assert translated text instead of raw keys.
+- G2-3 service picker ride-along: removed the dead `default_tax_configuration_id` field from `ServicePicker` value/list mapping because the backend service DTO does not serve it. Service-line creation still preserves served `tax_rate`; `tax_configuration_id` is now `null` for service picks.
+- G2-4 standalone receipt ride-along: dirty-line detection now compares against a fresh `newLine()` instance instead of duplicating the default quantity/price sentinels.
+- G2-5 review docs: committed `docs/handoff/CODEX-fixlist-gate1-2026-07-10.md` and the existing modified `docs/superpowers/audits/2026-07-10-design-system-violation-inventory.md` unchanged with the fix commit.
+- Verification:
+  - `pnpm --filter @autoerp/web test -- src/components/molecules/line-items/LineItemEntryBar.test.tsx src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx src/features/documents/components/__tests__/DocumentLineEditor.test.tsx src/features/purchases/StandaloneReceiptPage.test.tsx` passed: 5 files, 63 tests. Existing LineItemEntryBar act-warning noise remains.
+  - `pnpm --filter @autoerp/web typecheck` passed.
+
 ## Wave 0 — Tooling & Guardrails
 
 Status: complete.

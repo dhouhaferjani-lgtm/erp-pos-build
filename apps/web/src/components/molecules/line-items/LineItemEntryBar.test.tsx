@@ -184,6 +184,29 @@ describe('LineItemEntryBar', () => {
     expect(input).toHaveFocus()
   })
 
+  it('does not commit a focus suggestion with Tab when the query is empty', async () => {
+    const user = userEvent.setup()
+    const onAddProduct = vi.fn()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(
+      <>
+        <LineItemEntryBar onAddProduct={onAddProduct} />
+        <button type="button">Next field</button>
+      </>,
+      { wrapper: wrapper() },
+    )
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+    expect(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i })).toHaveAttribute('aria-selected', 'true')
+
+    await user.tab()
+
+    expect(onAddProduct).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Next field' })).toHaveFocus()
+  })
+
   it('closes product suggestions on pointerdown outside', async () => {
     const user = userEvent.setup()
     apiClientGetMock.mockResolvedValue({ data: { data: [product] } })

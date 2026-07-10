@@ -70,7 +70,10 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, params?: Record<string, unknown>) => {
+      if (key === 'common:validation.maxLength') return `Must be at most ${String(params?.['max'])} characters`
+      return key
+    },
   }),
 }))
 
@@ -161,7 +164,7 @@ describe('QuoteRequestCreatePage', () => {
     })
     fireEvent.click(getCreateButton())
 
-    expect(await screen.findByText('validation.maxLength')).toBeInTheDocument()
+    expect(await screen.findByText('Must be at most 2000 characters')).toBeInTheDocument()
     expect(mutateAsync).not.toHaveBeenCalled()
   })
 

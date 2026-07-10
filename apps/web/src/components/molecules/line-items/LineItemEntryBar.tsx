@@ -199,7 +199,7 @@ export function LineItemEntryBar({
 
     if (event.key !== 'Enter' && event.key !== 'Tab') return
 
-    if (isOpen && products.length > 0) {
+    if (isOpen && products.length > 0 && (event.key === 'Enter' || trimmedQuery !== '')) {
       event.preventDefault()
       event.stopPropagation()
       commitSearchAdd(products[highlightedIndex] ?? products[0])
@@ -280,6 +280,7 @@ export function LineItemEntryBar({
                   <button
                     type="button"
                     role="option"
+                    tabIndex={-1}
                     aria-selected={index === highlightedIndex}
                     aria-label={`${product.sku ?? ''} ${product.name}`.trim()}
                     onMouseEnter={() => {

@@ -81,6 +81,7 @@ interface ProcurementPolicyResponse {
 }
 
 const SUPPLIER_INVOICE_CREATE_FORM_ID = 'supplier-invoice-create-form'
+const REQUIRED_VALIDATION_KEY = 'validation.required'
 
 const supplierInvoiceCreateBaseSchema = z.object({
   dueDate: z.string(),
@@ -104,6 +105,12 @@ function createSupplierInvoiceCreateSchema(entryMode: SupplierInvoiceEntryMode) 
       })
     }
   })
+}
+
+function supplierInvoiceValidationError(message: string | undefined, requiredMessage: string): string | undefined {
+  if (message === undefined) return undefined
+  if (message === REQUIRED_VALIDATION_KEY) return requiredMessage
+  return message
 }
 
 function todayIso(): string {
@@ -755,7 +762,7 @@ export function SupplierInvoiceCreatePage() {
         <FormField
           label={t('purchases:supplierInvoices.create.issueDate')}
           htmlFor="issue-date"
-          error={errors.issueDate?.message}
+          error={supplierInvoiceValidationError(errors.issueDate?.message, t('common:validation.required'))}
         >
           <Input
             id="issue-date"
@@ -866,7 +873,7 @@ export function SupplierInvoiceCreatePage() {
             <FormField
               label={t('purchases:supplierInvoices.create.invoiceFirst.location')}
               htmlFor="invoice-first-location-id"
-              error={errors.invoiceFirstLocationId?.message}
+              error={supplierInvoiceValidationError(errors.invoiceFirstLocationId?.message, t('common:validation.required'))}
             >
               <Select
                 id="invoice-first-location-id"

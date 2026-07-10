@@ -396,7 +396,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
         discount_percent: null,
         discount_amount: null,
         tax_rate: taxRate,
-        tax_configuration_id: service.default_tax_configuration_id ?? null,
+        tax_configuration_id: null,
         line_total: calculateLineTotal('1', unitPrice, taxRate, null, null),
         free_quantity: '0',
         price_entry_mode: 'unit',

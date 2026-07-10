@@ -156,6 +156,7 @@ vi.mock('react-router-dom', async () => {
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, string>) => {
+      if (key === 'common:validation.required') return 'This field is required'
       if (params !== undefined) return `${key}:${JSON.stringify(params)}`
       return key
     },
@@ -432,7 +433,7 @@ describe('SupplierInvoiceCreatePage', () => {
     })
     fireEvent.click(getSaveButton())
 
-    expect(await screen.findByText('validation.required')).toBeInTheDocument()
+    expect(await screen.findByText('This field is required')).toBeInTheDocument()
     expect(mutateAsync).not.toHaveBeenCalled()
   })
 

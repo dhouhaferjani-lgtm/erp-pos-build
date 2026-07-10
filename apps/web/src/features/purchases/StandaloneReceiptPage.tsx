@@ -65,6 +65,16 @@ function idempotencyKey(): string {
   return crypto.randomUUID?.() ?? String(Date.now())
 }
 
+function lineMatchesNewLineDefaults(line: ReceiptLineState): boolean {
+  const defaultLine = newLine()
+  return (
+    line.productId === defaultLine.productId &&
+    line.quantity === defaultLine.quantity &&
+    line.freeQuantity === defaultLine.freeQuantity &&
+    line.unitPrice === defaultLine.unitPrice
+  )
+}
+
 export function StandaloneReceiptPage() {
   const { t } = useTranslation(['purchases', 'common', 'documentIngestions'])
   const navigate = useNavigate()
@@ -130,12 +140,7 @@ export function StandaloneReceiptPage() {
   const canSubmit = supplierId !== '' && locationId !== '' && lines.every((line) =>
     line.productId !== '' && line.quantity !== '' && line.unitPrice !== '',
   )
-  const linesDirty = lines.length !== 1 || lines.some((line) => (
-    line.productId !== '' ||
-    line.quantity !== '1.0000' ||
-    line.freeQuantity !== '0.0000' ||
-    line.unitPrice !== '0.000'
-  ))
+  const linesDirty = lines.length !== 1 || lines.some((line) => !lineMatchesNewLineDefaults(line))
   const isDirty =
     supplierId !== '' ||
     locationId !== '' ||

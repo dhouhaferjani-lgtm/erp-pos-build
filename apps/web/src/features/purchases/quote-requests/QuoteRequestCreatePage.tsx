@@ -39,9 +39,11 @@ interface LineFormState {
 }
 
 const QUOTE_REQUEST_CREATE_FORM_ID = 'quote-request-create-form'
+const MAX_LENGTH_VALIDATION_KEY = 'validation.maxLength'
+const NOTES_MAX_LENGTH = 2000
 
 const quoteRequestCreateSchema = z.object({
-  notes: z.string().max(2000, 'validation.maxLength'),
+  notes: z.string().max(NOTES_MAX_LENGTH, MAX_LENGTH_VALIDATION_KEY),
   validityDate: z.string(),
 })
 
@@ -76,6 +78,12 @@ function toPayloadLine(line: LineFormState): QuoteRequestLinePayload {
     quantity: line.quantity,
     unit_price: line.unitPrice,
   }
+}
+
+function quoteRequestValidationError(message: string | undefined, maxLengthMessage: string): string | undefined {
+  if (message === undefined) return undefined
+  if (message === MAX_LENGTH_VALIDATION_KEY) return maxLengthMessage
+  return message
 }
 
 export function QuoteRequestCreatePage() {
@@ -312,7 +320,7 @@ export function QuoteRequestCreatePage() {
         <FormField
           label={t('purchases:quoteRequests.fields.notes')}
           htmlFor="rfq-notes"
-          error={errors.notes?.message}
+          error={quoteRequestValidationError(errors.notes?.message, t('common:validation.maxLength', { max: NOTES_MAX_LENGTH }))}
         >
           <Input
             id="rfq-notes"

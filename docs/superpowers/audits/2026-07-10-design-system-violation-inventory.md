@@ -124,9 +124,11 @@ Not enforced anywhere: PageHeader usage, raw form elements, RHF requirement, raw
 rg -n --pcre2 '<h1[^>]*(text-2xl|text-3xl)' src/features src/pages -g '!**/*.test.tsx' -g '!**/__tests__/**' -g '!**/*.stories.tsx' -c
 
 # C2/C3 (tag-scoped; plain line-grep mismatches multiline JSX)
+# NOTE 2026-07-10 gate-1 fix: `(?:=>|[^>])*?` instead of `[^>]*?` — the naive form truncates
+# at the `>` of arrow-function props (`onChange={(e) => ...}`) and missed ~105 real violations.
 python3 - <<'PY'
 import re, os
-tag_re = {t: re.compile(rf'<{t}\b[^>]*?/?>', re.DOTALL) for t in ('input','select','textarea','button')}
+tag_re = {t: re.compile(rf'<{t}\b(?:=>|[^>])*?/?>', re.DOTALL) for t in ('input','select','textarea','button')}
 for root, _, files in os.walk('src/features'):
     for f in files:
         if not f.endswith('.tsx') or '.test.' in f or '.stories.' in f or '__tests__' in root: continue
@@ -153,7 +155,9 @@ rg -n '<table\b' src/features -g '!**/*.test.tsx' -g '!**/__tests__/**' -g '!**/
 # C6
 rg -n --pcre2 '(status|state)\w*(Colors?|Classes?|Map|Styles?)\s*:\s*Record<' src/features -i -g '!**/*.test.tsx' -g '!**/__tests__/**'
 rg -n --pcre2 'switch\s*\(\s*\w*[Ss]tatus\w*\s*\)' src/features -g '!**/*.test.tsx' -g '!**/__tests__/**'
-rg -n --pcre2 'const\s+\w*(status|state)\w*(Colors?|Classes?|Styles?|Config|Badge\w*)\s*[:=]' src/features -i -g '!**/*.test.tsx' -g '!**/__tests__/**'
+rg -n --pcre2 'const\s+\w*(status|state)\w*(Colors?|Classes?|Styles?|Config|Maps?|Badge\w*)\s*[:=]' src/features -i -g '!**/*.test.tsx' -g '!**/__tests__/**'
+# (gate-1 fix: added Maps? — untyped `const statusMap = {...}` was previously missed)
+# Known shared spec limit: C1 command only matches text-2xl/3xl headers; a bespoke text-xl <h1> evades. Accepted.
 
 # C7 (full palette)
 rg -n --pcre2 '(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-[0-9]{2,3}\b' src/features -g '!**/*.test.tsx' -g '!**/__tests__/**' -g '!**/*.stories.tsx' -c
