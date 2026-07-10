@@ -136,6 +136,20 @@ describe('QuoteRequestCreatePage', () => {
     expect(navigate).toHaveBeenCalledWith('/purchases/quote-requests/groups/group-1')
   })
 
+  it('blocks submit and renders an inline error when notes exceed the field limit', async () => {
+    renderWithProviders(<QuoteRequestCreatePage />)
+
+    fireEvent.change(screen.getByTestId('supplier-picker'), { target: { value: 'supplier-1' } })
+    fireEvent.change(screen.getByTestId('line-product-select'), { target: { value: 'product-1' } })
+    fireEvent.change(screen.getByLabelText('purchases:quoteRequests.fields.notes'), {
+      target: { value: 'x'.repeat(2001) },
+    })
+    fireEvent.click(getCreateButton())
+
+    expect(await screen.findByText('validation.maxLength')).toBeInTheDocument()
+    expect(mutateAsync).not.toHaveBeenCalled()
+  })
+
   it('routes a single-supplier fan-out to the detail page', async () => {
     mutateAsync.mockResolvedValue({ group_id: 'group-1', siblings: [{ id: 'rfq-1' }] })
     renderWithProviders(<QuoteRequestCreatePage />)

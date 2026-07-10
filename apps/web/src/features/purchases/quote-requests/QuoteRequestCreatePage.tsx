@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { Button } from '@/components/atoms/Button/Button'
+import { FormField } from '@/components/atoms/FormField/FormField'
 import { Input } from '@/components/atoms/Input/Input'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
@@ -40,7 +41,7 @@ interface LineFormState {
 const QUOTE_REQUEST_CREATE_FORM_ID = 'quote-request-create-form'
 
 const quoteRequestCreateSchema = z.object({
-  notes: z.string(),
+  notes: z.string().max(2000, 'validation.maxLength'),
   validityDate: z.string(),
 })
 
@@ -92,6 +93,7 @@ export function QuoteRequestCreatePage() {
     },
     resolver: zodResolver(quoteRequestCreateSchema),
   })
+  const errors = form.formState.errors
 
   function updateSupplier(index: number, value: string) {
     setSuppliers((current) => current.map((supplier, i) => (i === index ? { ...supplier, supplierId: value } : supplier)))
@@ -265,25 +267,29 @@ export function QuoteRequestCreatePage() {
       </section>
 
       <section className={`${tokens.card.base} grid grid-cols-1 gap-4 md:grid-cols-2`}>
-        <div>
-          <label className={tokens.label.base} htmlFor="rfq-validity">
-            {t('purchases:quoteRequests.fields.validityDate')}
-          </label>
+        <FormField
+          label={t('purchases:quoteRequests.fields.validityDate')}
+          htmlFor="rfq-validity"
+          error={errors.validityDate?.message}
+        >
           <Input
             id="rfq-validity"
             type="date"
             {...form.register('validityDate')}
+            error={Boolean(errors.validityDate)}
           />
-        </div>
-        <div>
-          <label className={tokens.label.base} htmlFor="rfq-notes">
-            {t('purchases:quoteRequests.fields.notes')}
-          </label>
+        </FormField>
+        <FormField
+          label={t('purchases:quoteRequests.fields.notes')}
+          htmlFor="rfq-notes"
+          error={errors.notes?.message}
+        >
           <Input
             id="rfq-notes"
             {...form.register('notes')}
+            error={Boolean(errors.notes)}
           />
-        </div>
+        </FormField>
       </section>
 
         <StickyFormFooter>

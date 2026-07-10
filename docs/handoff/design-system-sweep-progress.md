@@ -5,7 +5,7 @@
 
 ## Gate 1 Fixlist — Blockers
 
-Status: blockers complete; MJ-1 through MJ-10 complete.
+Status: blockers complete; MJ-1 through MJ-11 complete.
 
 - BL-1 `PartnerPicker` empty-string value:
   - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/pickers/PartnerPicker.test.tsx` failed because `value=""` triggered a `/partners/` fetch and hid the search input behind a blank selected chip.
@@ -64,6 +64,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- src/lib/i18nRawKeyCoverage.test.tsx` failed in EN/FR/AR because `purchases:supplierInvoices.create.manualLine.add|remove|batchNumber` resolved to raw keys.
   - GREEN: added the three manual-line labels to `purchases.json` in EN/FR/AR and catalogued them in raw-key coverage.
   - Verification: `pnpm --filter @autoerp/web test -- src/lib/i18nRawKeyCoverage.test.tsx` passed: 5 tests; `pnpm --filter @autoerp/web typecheck` passed.
+- MJ-11 create-page form validation:
+  - RED: `pnpm --filter @autoerp/web test -- src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` failed because Quote Request overlong notes and Supplier Invoice empty issue dates still submitted with no inline errors.
+  - GREEN: Quote Request now validates notes length and renders `FormField` errors; Supplier Invoice now requires issue date, enforces delivered-mode location with `superRefine`, and renders inline `FormField` errors for issue date and receiving location.
+  - Verification: `pnpm --filter @autoerp/web test -- src/features/purchases/quote-requests/QuoteRequestCreatePage.test.tsx src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx` passed: 22 tests; `pnpm --filter @autoerp/web typecheck` passed.
 
 ## Wave 0 — Tooling & Guardrails
 

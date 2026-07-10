@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { Button } from '@/components/atoms/Button/Button'
+import { FormField } from '@/components/atoms/FormField/FormField'
 import { Input } from '@/components/atoms/Input/Input'
 import { MoneyInput } from '@/components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
@@ -76,17 +77,29 @@ interface ProcurementPolicyResponse {
 
 const SUPPLIER_INVOICE_CREATE_FORM_ID = 'supplier-invoice-create-form'
 
-const supplierInvoiceCreateSchema = z.object({
+const supplierInvoiceCreateBaseSchema = z.object({
   dueDate: z.string(),
   invoiceFirstExternalDate: z.string(),
   invoiceFirstExternalReference: z.string(),
   invoiceFirstLocationId: z.string(),
-  issueDate: z.string(),
+  issueDate: z.string().trim().min(1, 'validation.required'),
   notes: z.string(),
   supplierReference: z.string(),
 })
 
-type SupplierInvoiceCreateFormValues = z.infer<typeof supplierInvoiceCreateSchema>
+type SupplierInvoiceCreateFormValues = z.infer<typeof supplierInvoiceCreateBaseSchema>
+
+function createSupplierInvoiceCreateSchema(entryMode: SupplierInvoiceEntryMode) {
+  return supplierInvoiceCreateBaseSchema.superRefine((values, context) => {
+    if (entryMode === 'invoiceFirstDelivered' && values.invoiceFirstLocationId.trim() === '') {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'validation.required',
+        path: ['invoiceFirstLocationId'],
+      })
+    }
+  })
+}
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
@@ -136,6 +149,10 @@ export function SupplierInvoiceCreatePage() {
 
   const [selectedSupplier, setSelectedSupplier] = useState<PartnerPickerValue | null>(null)
   const [selectedPurchaseOrderIds, setSelectedPurchaseOrderIds] = useState<string[]>(initialPurchaseOrderIds)
+  const [entryMode, setEntryMode] = useState<SupplierInvoiceEntryMode>(
+    initialPurchaseOrderIds.length > 0 ? 'receipts' : 'invoiceFirstPending',
+  )
+  const supplierInvoiceCreateSchema = useMemo(() => createSupplierInvoiceCreateSchema(entryMode), [entryMode])
   const form = useForm<SupplierInvoiceCreateFormValues>({
     defaultValues: {
       dueDate: '',
@@ -148,6 +165,7 @@ export function SupplierInvoiceCreatePage() {
     },
     resolver: zodResolver(supplierInvoiceCreateSchema),
   })
+  const errors = form.formState.errors
   const [duplicateCheckReference, setDuplicateCheckReference] = useState('')
   const supplierReferenceField = form.register('supplierReference', {
     onChange: () => { setDuplicateCheckReference('') },
@@ -160,9 +178,6 @@ export function SupplierInvoiceCreatePage() {
   const invoiceFirstExternalReference = form.watch('invoiceFirstExternalReference')
   const invoiceFirstExternalDate = form.watch('invoiceFirstExternalDate')
   const [lineEdits, setLineEdits] = useState<Record<string, InvoiceLineEdits>>({})
-  const [entryMode, setEntryMode] = useState<SupplierInvoiceEntryMode>(
-    initialPurchaseOrderIds.length > 0 ? 'receipts' : 'invoiceFirstPending',
-  )
   const [manualLines, setManualLines] = useState<ManualInvoiceLineFormState[]>([
     {
       product: null,
@@ -686,16 +701,18 @@ export function SupplierInvoiceCreatePage() {
           </Select>
         </div>
 
-        <div>
-          <label className={tokens.label.base} htmlFor="issue-date">
-            {t('purchases:supplierInvoices.create.issueDate')}
-          </label>
+        <FormField
+          label={t('purchases:supplierInvoices.create.issueDate')}
+          htmlFor="issue-date"
+          error={errors.issueDate?.message}
+        >
           <Input
             id="issue-date"
             type="date"
             {...form.register('issueDate')}
+            error={Boolean(errors.issueDate)}
           />
-        </div>
+        </FormField>
 
         <div>
           <label className={tokens.label.base} htmlFor="due-date">
@@ -795,21 +812,23 @@ export function SupplierInvoiceCreatePage() {
 
         {isInvoiceFirstDelivered ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div>
-              <label className={tokens.label.base} htmlFor="invoice-first-location-id">
-                {t('purchases:supplierInvoices.create.invoiceFirst.location')}
-              </label>
+            <FormField
+              label={t('purchases:supplierInvoices.create.invoiceFirst.location')}
+              htmlFor="invoice-first-location-id"
+              error={errors.invoiceFirstLocationId?.message}
+            >
               <Select
                 id="invoice-first-location-id"
                 data-testid="invoice-first-location-id"
                 {...form.register('invoiceFirstLocationId')}
+                error={Boolean(errors.invoiceFirstLocationId)}
               >
                 <option value="">{t('purchases:supplierInvoices.create.invoiceFirst.location')}</option>
                 {(locationsQuery.data ?? []).map((location) => (
                   <option key={location.id} value={location.id}>{location.name}</option>
                 ))}
               </Select>
-            </div>
+            </FormField>
             <div>
               <label className={tokens.label.base} htmlFor="invoice-first-external-reference">
                 {t('purchases:supplierInvoices.create.invoiceFirst.externalReference')}

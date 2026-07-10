@@ -405,6 +405,20 @@ describe('SupplierInvoiceCreatePage', () => {
     expect(navigate).toHaveBeenCalledWith('/purchases/supplier-invoices/invoice-1')
   })
 
+  it('blocks submit and renders an inline error when issue date is missing', async () => {
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new?po=po-1',
+    })
+
+    fireEvent.change(await screen.findByLabelText('purchases:supplierInvoices.create.issueDate'), {
+      target: { value: '' },
+    })
+    fireEvent.click(getSaveButton())
+
+    expect(await screen.findByText('validation.required')).toBeInTheDocument()
+    expect(mutateAsync).not.toHaveBeenCalled()
+  })
+
   it('submits source_document_ids for receipt-prefilled invoices spanning multiple POs', async () => {
     receiptLines.splice(0, receiptLines.length,
       {
