@@ -44,6 +44,10 @@ Status: in progress.
   - RED: `pnpm --filter @autoerp/web test -- src/components/molecules/line-items/LineItemEntryBar.test.tsx` failed because Enter on a highlighted focus suggestion did nothing when the query was empty.
   - GREEN: `LineItemEntryBar` now commits highlighted open suggestions before the empty-query scanner bailout.
   - Verification: `pnpm --filter @autoerp/web test -- src/components/molecules/line-items/LineItemEntryBar.test.tsx` passed: 9 tests; `pnpm --filter @autoerp/web typecheck` passed.
+- MJ-6 read-only quantity formatting:
+  - RED: `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentLines.test.tsx` failed because `DocumentLines` rendered backend quantity scale (`2.0000`) directly.
+  - GREEN: `DocumentLines` now formats quantities with `formatQuantity(line.quantity, line.quantity_decimals ?? 4)`.
+  - Verification: `pnpm --filter @autoerp/web test -- src/features/documents/components/__tests__/DocumentLines.test.tsx src/features/documents/quotes/__tests__/QuoteDetailPage.tenantScope.test.tsx` passed: 5 tests; `pnpm --filter @autoerp/web typecheck` passed.
 
 ## Wave 0 — Tooling & Guardrails
 

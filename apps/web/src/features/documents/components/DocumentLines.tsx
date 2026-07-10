@@ -15,7 +15,7 @@ import { LineItemsTable, type LineItemsTableColumn } from '../../../components/m
 import { ProductCell } from '../../../components/molecules/line-items/ProductCell'
 import { textColors } from '../../../lib/designTokens'
 import { useLineDesignationFeature } from '../hooks/useLineDesignationFeature'
-import { formatPercent } from '../../../lib/format'
+import { formatPercent, formatQuantity } from '../../../lib/format'
 
 export interface DocumentLinesProps {
   /** Array of document lines to display */
@@ -107,7 +107,7 @@ export function DocumentLines({
       header: t('lineItems.quantity'),
       headerClassName: 'w-24 text-end',
       cellClassName: `whitespace-nowrap text-end text-sm ${textColors.primary}`,
-      Cell: ({ line }) => <>{line.quantity}</>,
+      Cell: ({ line }) => <>{formatQuantity(line.quantity, line.quantity_decimals ?? 4)}</>,
     },
     {
       id: 'unit-price',
