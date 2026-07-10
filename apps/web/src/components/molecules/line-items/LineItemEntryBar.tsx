@@ -74,7 +74,7 @@ export function LineItemEntryBar({
       })
       return response.data
     },
-    enabled: !disabled && isOpen && trimmedQuery !== '' && tenantId !== null && companyId !== null,
+    enabled: !disabled && isOpen && tenantId !== null && companyId !== null,
     staleTime: 30000,
   })
 
@@ -207,7 +207,7 @@ export function LineItemEntryBar({
           type="text"
           role="combobox"
           aria-expanded={isOpen}
-          aria-controls={isOpen && trimmedQuery !== '' ? listboxId : undefined}
+          aria-controls={isOpen ? listboxId : undefined}
           aria-label={t('sales:lineItems.entry.placeholder')}
           placeholder={t('sales:lineItems.entry.placeholder')}
           value={query}
@@ -244,14 +244,18 @@ export function LineItemEntryBar({
         <p className={tokens.helperText.base}>{message}</p>
       )}
 
-      {isOpen && trimmedQuery !== '' && (
-        <div className={`absolute start-0 top-full z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-md border ${borderColors.light} ${colors.white} shadow-lg`}>
+      {isOpen && (
+        <div
+          id={listboxId}
+          role="listbox"
+          className={`absolute start-0 top-full z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-md border ${borderColors.light} ${colors.white} shadow-lg`}
+        >
           {isLoading ? (
             <div className={`p-3 text-sm ${textColors.disabled}`}>{t('sales:lineItems.loading')}</div>
           ) : products.length === 0 ? (
             <div className={`p-3 text-sm ${textColors.disabled}`}>{t('sales:lineItems.noProductsFound')}</div>
           ) : (
-            <ul id={listboxId} className={`divide-y ${borderColors.divideLight}`}>
+            <ul className={`divide-y ${borderColors.divideLight}`}>
               {products.map((product, index) => (
                 <li key={product.id}>
                   <button

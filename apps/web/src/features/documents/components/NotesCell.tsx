@@ -14,16 +14,19 @@ import { textColors, borderColors } from '../../../lib/designTokens'
 export type NotesCellProps = {
   value: string | null
   readOnly?: boolean
+  className?: string
+  valueClassName?: string
   onCommit: (next: string | null) => void
 }
 
-export function NotesCell({ value, readOnly = false, onCommit }: NotesCellProps) {
+export function NotesCell({ value, readOnly = false, className = '', valueClassName, onCommit }: NotesCellProps) {
   const { t } = useTranslation(['documents'])
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value ?? '')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const hasValue = value !== null && value !== ''
+  const noteTextClassName = valueClassName ?? `text-xs ${textColors.tertiary}`
 
   useEffect(() => {
     if (editing && textareaRef.current) {
@@ -97,15 +100,15 @@ export function NotesCell({ value, readOnly = false, onCommit }: NotesCellProps)
   }
 
   return (
-    <div data-testid="notes-cell" className="group">
+    <div data-testid="notes-cell" className={`group ${className}`}>
       {hasValue ? (
         readOnly ? (
-          <span className={`text-xs ${textColors.tertiary}`}>{value}</span>
+          <span className={noteTextClassName}>{value}</span>
         ) : (
           <button
             type="button"
             onClick={enterEdit}
-            className={`text-start text-xs ${textColors.tertiary} hover:${textColors.secondary} cursor-pointer`}
+            className={`cursor-pointer text-start hover:${textColors.secondary} ${noteTextClassName}`}
           >
             {value}
           </button>

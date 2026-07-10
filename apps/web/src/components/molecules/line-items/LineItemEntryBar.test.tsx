@@ -153,6 +153,19 @@ describe('LineItemEntryBar', () => {
     })
   })
 
+  it('shows first-page product suggestions when focused with an empty query', async () => {
+    const user = userEvent.setup()
+    apiClientGetMock.mockResolvedValue({ data: { data: [product] } })
+
+    render(<LineItemEntryBar onAddProduct={vi.fn()} />, { wrapper: wrapper() })
+
+    const input = screen.getByRole('combobox', { name: 'Search or scan a product' })
+    await user.click(input)
+
+    expect(await screen.findByRole('option', { name: /CS-050 Crème solaire SPF50/i })).toBeInTheDocument()
+    expect(apiClientGetMock).toHaveBeenCalledWith('/products', { params: undefined })
+  })
+
   it('does not fire the product search without tenant/company state', async () => {
     resetTenant()
     const user = userEvent.setup()

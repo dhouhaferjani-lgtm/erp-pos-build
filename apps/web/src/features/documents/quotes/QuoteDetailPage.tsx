@@ -6,18 +6,23 @@ import { toast } from 'sonner'
 import { Calendar, Building2, FileText, Car } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
-import { formatCurrency, formatQuantity } from '../../../lib/format'
+import { formatCurrency } from '../../../lib/format'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
 import { RelatedDocumentsTab } from '../components/RelatedDocumentsTab'
 import { DocumentAttachments } from '../components/DocumentAttachments'
 import { DocumentTotals } from '../components/DocumentTotals'
 import { DocumentHeader } from '../components/DocumentHeader'
+import { DocumentLines } from '../components/DocumentLines'
 import type { QuoteExpiryInfo } from '../components/DocumentHeader'
-import { useDownloadPdf, usePreviewPdf, usePrintPdf, useRevertDocument, useSendDocumentEmail } from '../hooks'
+import { useSendDocumentEmail } from '../hooks/useDocumentEmail'
+import { useDownloadPdf, usePreviewPdf, usePrintPdf } from '../hooks/useDocumentPdf'
+import { useRevertDocument } from '../hooks/useRevertDocument'
 import { useRelatedDocuments } from '../hooks/useRelatedDocuments'
 import { DocumentActionBar } from '../components/DocumentActionBar'
 import { Modal } from '../../../components/organisms/Modal'
-import { Button, Input, Textarea } from '../../../components/atoms'
+import { Button } from '../../../components/atoms/Button/Button'
+import { Input } from '../../../components/atoms/Input/Input'
+import { Textarea } from '../../../components/atoms/Textarea/Textarea'
 import { EntityLink } from '../../../components/molecules/EntityLink'
 import { tokens } from '../../../lib/designTokens'
 import { useCompany } from '../../../hooks/useCompany'
@@ -326,51 +331,12 @@ export function QuoteDetailPage() {
           </div>
         </div>
 
-        {/* Lines Table */}
         <div className="border-t border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('documents.description')}
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('documents.quantity')}
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('documents.unitPrice')}
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('documents.total')}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {quote.lines?.map((line) => (
-                <tr key={line.id}>
-                  <td className="px-6 py-4 text-sm text-gray-900">
-                    <EntityLink
-                      type="product"
-                      id={line.product_id}
-                      label={line.description}
-                    />
-                    {line.notes && (
-                      <div className="text-xs text-gray-500 mt-1">{line.notes}</div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {formatQuantity(line.quantity)}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 text-right">
-                    {formatCurrency(line.unit_price, { currency: currentCompany?.currency ?? 'EUR' })}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900 text-right font-medium">
-                    {formatCurrency(line.line_total, { currency: currentCompany?.currency ?? 'EUR' })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DocumentLines
+            lines={quote.lines ?? []}
+            formatAmount={(amount) => formatCurrency(amount, { currency: currentCompany?.currency ?? 'EUR' })}
+            className="border-0"
+          />
         </div>
 
         {/* Totals */}

@@ -17,6 +17,7 @@ import { LineItemsTable, QuantityCell, type LineItemsTableColumn } from '../../.
 import { LineItemEntryBar, type LineItemEntryAddMeta } from '../../../components/molecules/line-items/LineItemEntryBar'
 import { ProductCell } from '../../../components/molecules/line-items/ProductCell'
 import type { ProductLineProduct } from '../../../components/molecules/line-items/useProductLineLookup'
+import { ServicePicker, type ServicePickerValue } from '../../../components/molecules/pickers/ServicePicker'
 import { useCompanyConfig } from '../../../contexts/CompanyConfigContext'
 import { DesignationCell } from './DesignationCell'
 import { NotesCell } from './NotesCell'
@@ -203,6 +204,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const designationFeatureEnabled = useLineDesignationFeature()
   const [showProductModal, setShowProductModal] = useState(false)
+  const [showServicePicker, setShowServicePicker] = useState(false)
   const [focusedPriceLineId, setFocusedPriceLineId] = useState<string | null>(null)
   const [openPricingLineId, setOpenPricingLineId] = useState<string | null>(null)
   const linesRef = useRef(lines)
@@ -376,6 +378,35 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     [onChange]
   )
 
+  const handleAddService = useCallback(
+    (service: ServicePickerValue) => {
+      const unitPrice = decimalValue(service.base_price ?? service.hourly_rate)
+      const newLine: DocumentLine = {
+        id: generateId(),
+        product_id: '',
+        service_id: service.id,
+        product_code: service.code,
+        product_name: service.name,
+        description: service.name,
+        designation_default_snapshot: service.name,
+        notes: null,
+        quantity: '1',
+        unit_price: unitPrice,
+        discount_percent: null,
+        discount_amount: null,
+        tax_rate: '0',
+        tax_configuration_id: null,
+        line_total: calculateLineTotal('1', unitPrice, '0', null, null),
+        free_quantity: '0',
+        price_entry_mode: 'unit',
+        is_service: true,
+      }
+      onChange([...linesRef.current, newLine])
+      setShowServicePicker(false)
+    },
+    [onChange]
+  )
+
   // Add blank line
   const handleAddBlankLine = useCallback(() => {
     const newLine: DocumentLine = {
@@ -480,9 +511,9 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     {
       id: 'article',
       header: t('sales:lineItems.article'),
-      headerClassName: 'min-w-56',
+      headerClassName: 'min-w-72',
       Cell: ({ line }) => (
-        <div className="min-w-56">
+        <div className="min-w-72 space-y-1">
           <ProductCell
             size="sm"
             product={{
@@ -492,41 +523,41 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
               primary_image_url: line.primary_image_url ?? null,
             }}
           />
+          <div className="max-w-xl">
+            {designationFeatureEnabled ? (
+              <DesignationCell
+                value={line.description || line.product_name}
+                originalSnapshot={line.designation_default_snapshot ?? null}
+                readOnly={readonly}
+                className="min-w-0"
+                valueClassName={`line-clamp-2 text-xs ${textColors.tertiary}`}
+                onCommit={(next) => {
+                  handleUpdateLine(line.id, { description: next })
+                }}
+              />
+            ) : (
+              <span className={`block line-clamp-2 text-xs ${textColors.tertiary}`}>
+                {line.description || line.product_name}
+              </span>
+            )}
+            {designationFeatureEnabled && (
+              <NotesCell
+                value={line.notes ?? null}
+                readOnly={readonly}
+                className="mt-0.5"
+                valueClassName={`line-clamp-2 text-xs ${textColors.tertiary}`}
+                onCommit={(next) => {
+                  handleUpdateLine(line.id, { notes: next })
+                }}
+              />
+            )}
+          </div>
           {line.is_service && (
             <span className={`mt-1 inline-flex rounded-full ${colors.neutral[100]} px-1.5 py-0.5 text-[10px] font-medium ${textColors.secondary}`}>
               {t('sales:lineItems.serviceBadge')}
             </span>
           )}
         </div>
-      ),
-    },
-    {
-      id: 'description',
-      header: t('sales:lineItems.description'),
-      Cell: ({ line }) => (
-        <>
-          {designationFeatureEnabled ? (
-            <DesignationCell
-              value={line.description || line.product_name}
-              originalSnapshot={line.designation_default_snapshot ?? null}
-              readOnly={readonly}
-              onCommit={(next) => {
-                handleUpdateLine(line.id, { description: next })
-              }}
-            />
-          ) : (
-            <span className={`text-sm ${textColors.primary}`}>{line.description || line.product_name}</span>
-          )}
-          {designationFeatureEnabled && (
-            <NotesCell
-              value={line.notes ?? null}
-              readOnly={readonly}
-              onCommit={(next) => {
-                handleUpdateLine(line.id, { notes: next })
-              }}
-            />
-          )}
-        </>
       ),
     },
     {
@@ -814,6 +845,29 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
     </div>
   )
 
+  const renderLineDetail = useCallback((line: DocumentLine) => {
+    const facts = purchaseBonusEnabled ? bonusFacts(line) : null
+    const showFullDescription =
+      line.description.trim().length > 80 &&
+      line.description.trim() !== (line.product_name || '').trim()
+    const showFullNotes = (line.notes ?? '').trim().length > 80
+
+    if (facts === null && !showFullDescription && !showFullNotes) return null
+
+    return (
+      <div className={`border-t ${borderColors.light} ${colors.neutral[50]} px-6 py-2 text-xs ${textColors.secondary}`}>
+        {showFullDescription ? <div>{line.description}</div> : null}
+        {showFullNotes ? <div>{line.notes}</div> : null}
+        {facts !== null ? (
+          <>
+            <div>{t('sales:lineItems.effectiveUnitCost', { amount: formatAmount(facts.effectiveUnitCost) })}</div>
+            <div>{t('sales:lineItems.bonusSavings', { amount: formatAmount(facts.savings) })}</div>
+          </>
+        ) : null}
+      </div>
+    )
+  }, [bonusFacts, formatAmount, purchaseBonusEnabled, t])
+
   return (
     <div className="space-y-4">
       <LineItemsTable
@@ -829,18 +883,7 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
           dragAriaLabel: t('sales:lineItems.actions.dragToReorder'),
           onReorder: handleReorderLines,
         }}
-        renderLineDetail={(line) => {
-              if (!purchaseBonusEnabled) return null
-              const facts = bonusFacts(line)
-              if (facts === null) return null
-
-              return (
-                <div className={`border-t ${borderColors.light} ${colors.neutral[50]} px-6 py-2 text-xs ${textColors.secondary}`}>
-                  <div>{t('sales:lineItems.effectiveUnitCost', { amount: formatAmount(facts.effectiveUnitCost) })}</div>
-                  <div>{t('sales:lineItems.bonusSavings', { amount: formatAmount(facts.savings) })}</div>
-                </div>
-              )
-            }}
+        renderLineDetail={renderLineDetail}
         addControls={(
           <div className="flex flex-col gap-2 md:flex-row md:items-start">
             <div className="min-w-0 flex-1">
@@ -857,6 +900,33 @@ export function DocumentLineEditor({ lines, onChange, readonly = false, document
                 }}
               />
             </div>
+            {hasModule('Workshop') ? (
+              <div className="w-full md:w-72">
+                {showServicePicker ? (
+                  <ServicePicker
+                    value={null}
+                    label=""
+                    placeholder={t('sales:lineItems.searchServicesPlaceholder')}
+                    onChange={(service) => {
+                      if (service !== null) {
+                        handleAddService(service)
+                      }
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowServicePicker(true)
+                    }}
+                    className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border ${borderColors.default} ${colors.white} px-4 py-2 text-sm font-medium ${textColors.secondary} ${colors.hover.gray50} transition-colors`}
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t('sales:lineItems.tabs.service')}
+                  </button>
+                )}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={handleAddBlankLine}

@@ -697,6 +697,7 @@ export function SupplierInvoiceCreatePage() {
                           })
                         }}
                         label={t('purchases:supplierInvoices.create.manualLine.productId')}
+                        productType="all"
                         testId={`manual-line-product-picker-${String(index)}`}
                       />
                       {isInvoiceFirstDelivered && line.product?.requires_batch_tracking === true ? (
@@ -810,9 +811,9 @@ export function SupplierInvoiceCreatePage() {
                   const preview = linePreview(line)
                   return (
                     <tr key={line.receiptLineId}>
-                      <td className={`px-4 py-3 text-sm ${textColors.primary}`}>
-                        <div className="font-medium">{line.description}</div>
-                        <div className={`text-xs ${textColors.tertiary}`}>
+                      <td className={`max-w-md px-4 py-3 text-sm ${textColors.primary}`}>
+                        <div className="line-clamp-2 font-medium">{line.description}</div>
+                        <div className={`line-clamp-2 text-xs ${textColors.tertiary}`}>
                           {[line.poNumber, line.receiptNumber].filter(Boolean).join(' · ')}
                         </div>
                       </td>

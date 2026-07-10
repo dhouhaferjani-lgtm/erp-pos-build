@@ -16,6 +16,8 @@ export type DesignationCellProps = {
   originalSnapshot: string | null
   productDeleted?: boolean
   readOnly?: boolean
+  className?: string
+  valueClassName?: string
   onCommit: (next: string) => void
 }
 
@@ -24,6 +26,8 @@ export function DesignationCell({
   originalSnapshot,
   productDeleted = false,
   readOnly = false,
+  className = '',
+  valueClassName,
   onCommit,
 }: DesignationCellProps) {
   const { t } = useTranslation(['documents'])
@@ -167,8 +171,8 @@ export function DesignationCell({
   }
 
   return (
-    <div className="group flex items-center gap-1.5">
-      <span className={`text-sm ${textColors.primary}`}>{value}</span>
+    <div className={`group flex items-center gap-1.5 ${className}`}>
+      <span className={valueClassName ?? `text-sm ${textColors.primary}`}>{value}</span>
       {isOverridden && (
         <span
           role="status"

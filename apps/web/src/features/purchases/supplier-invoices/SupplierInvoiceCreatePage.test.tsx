@@ -17,6 +17,7 @@ const uploadAttachmentMutateAsync = vi.hoisted(() => vi.fn())
 const navigate = vi.hoisted(() => vi.fn())
 const mockHasPermission = vi.hoisted(() => vi.fn(() => true))
 const mockPolicyAllowsInvoiceFirst = vi.hoisted(() => ({ value: true }))
+const productPickerProps = vi.hoisted(() => vi.fn())
 
 const receiptLines = vi.hoisted<PurchaseOrderReceiptLine[]>(() => [
   {
@@ -95,24 +96,29 @@ vi.mock('@/components/molecules/pickers', () => ({
   ProductPicker: ({
     onChange,
     testId,
+    productType,
   }: {
     onChange: (next: { id: string; sku: string; name: string; requires_batch_tracking?: boolean }) => void
     testId?: string
+    productType?: 'part' | 'consumable' | 'good' | 'all'
   }) => (
-    <button
-      type="button"
-      data-testid={testId ?? 'product-picker'}
-      onClick={() => {
-        onChange({
-          id: testId?.includes('1') === true ? 'product-manual-2' : 'product-manual-1',
-          sku: testId?.includes('1') === true ? 'SKU-2' : 'SKU-1',
-          name: testId?.includes('1') === true ? 'Second product' : 'First product',
-          requires_batch_tracking: testId?.includes('batch') === true,
-        })
-      }}
-    >
-      product-picker
-    </button>
+    <>
+      {productPickerProps({ testId, productType })}
+      <button
+        type="button"
+        data-testid={testId ?? 'product-picker'}
+        onClick={() => {
+          onChange({
+            id: testId?.includes('1') === true ? 'product-manual-2' : 'product-manual-1',
+            sku: testId?.includes('1') === true ? 'SKU-2' : 'SKU-1',
+            name: testId?.includes('1') === true ? 'Second product' : 'First product',
+            requires_batch_tracking: testId?.includes('batch') === true,
+          })
+        }}
+      >
+        product-picker
+      </button>
+    </>
   ),
 }))
 
@@ -247,6 +253,21 @@ describe('SupplierInvoiceCreatePage', () => {
           },
         ],
       })
+    })
+  })
+
+  it('uses an all-products picker for manual supplier-invoice lines', async () => {
+    renderWithProviders(<SupplierInvoiceCreatePage />, {
+      route: '/purchases/supplier-invoices/new',
+    })
+
+    await waitFor(() => {
+      expect(productPickerProps).toHaveBeenCalledWith(
+        expect.objectContaining({
+          testId: 'manual-line-product-picker-0',
+          productType: 'all',
+        }),
+      )
     })
   })
 

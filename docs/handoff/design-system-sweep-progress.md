@@ -38,3 +38,30 @@ Status: complete.
     `rg -n --pcre2 '(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone)-[0-9]{2,3}\b' src/features/vehicles -g '!**/*.test.tsx' -g '!**/__tests__/**' -g '!**/*.stories.tsx' -c`
 
 New shared-shape components: none.
+
+## Wave 1 — High-Impact UX Corrections
+
+Status: complete.
+
+- 1.1 `LineItemEntryBar` suggestions-on-focus:
+  - RED: `pnpm vitest run src/components/molecules/line-items/LineItemEntryBar.test.tsx` failed on an empty-query focus suggestion test.
+  - GREEN: the entry bar now opens and fetches first-page product suggestions on focus while keeping scanner Enter resolution unchanged.
+- 1.2 Workshop service affordance:
+  - RED: `pnpm vitest run src/features/documents/components/__tests__/DocumentLineEditor.test.tsx` failed because the Workshop-gated `Service` control was absent.
+  - GREEN: `DocumentLineEditor` now exposes a `ServicePicker` when Workshop is enabled and adds `is_service` document lines with service ids and service pricing.
+- 1.3 Supplier-invoice ProductPicker filter:
+  - RED: `pnpm vitest run src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx --testNamePattern "all-products picker"` failed with `productType: undefined`.
+  - GREEN: manual supplier-invoice lines now pass `productType="all"` so the picker does not inherit the `part` default.
+- 1.4 Table density:
+  - RED: focused density tests failed while `DocumentLineEditor` and `QuoteDetailPage` still exposed separate description tables/columns.
+  - GREEN: editable document lines, read-only `DocumentLines`, quote detail lines, and supplier-invoice receipt rows now use article-cell description/notes density with `line-clamp-2`; long text remains available through `LineItemsTable` detail rows.
+  - Baseline shrunk from 509 to 507 after removing two stale bespoke table fingerprints for `DocumentLines` and `QuoteDetailPage`.
+- Verification:
+  - `pnpm vitest run src/components/molecules/line-items/LineItemEntryBar.test.tsx src/features/documents/components/__tests__/DocumentLineEditor.test.tsx src/features/purchases/supplier-invoices/SupplierInvoiceCreatePage.test.tsx src/features/documents/quotes/__tests__/QuoteDetailPage.tenantScope.test.tsx` passed: 49 tests.
+  - `pnpm typecheck` passed.
+  - `pnpm lint` passed; existing warning count remains high, but 0 errors. The chained audits passed:
+    - TanStack query key audit: 0 violations.
+    - Design-system audit: 507 acknowledged, 0 new, 0 stale.
+  - `npx react-doctor@latest --verbose --scope changed --base origin/dev` passed with no issues after replacing changed-page barrel imports in `QuoteDetailPage`.
+
+New shared-shape components: `DocumentLines` now renders via `LineItemsTable`.
