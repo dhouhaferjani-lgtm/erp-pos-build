@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
@@ -61,7 +62,7 @@ import { AdvancedPaymentsModal } from '@/components/organisms/AdvancedPaymentsMo
 import { HeldTransactionsModal } from '@/components/organisms/HeldTransactionsModal';
 import { DiscountModal } from '@/components/organisms/DiscountModal';
 import { LineDiscountModal } from '@/components/organisms/LineDiscountModal';
-import { ModifierSelectionModal } from '@/components/organisms/ModifierSelectionModal';
+import { ModifierComposerSheet } from '@/components/organisms/ModifierSelectionModal';
 import { VariantPickerModal } from '@/components/pos/VariantPickerModal';
 import { QuantityNumpad } from '@/components/organisms/QuantityNumpad';
 import { useSmartPromptsStore } from '@/stores/smartPromptsStore';
@@ -1024,6 +1025,19 @@ export function HomePage() {
     (selectedModifiers: SelectedModifier[]) => {
       if (!modifierProduct) return;
       if (editingLineId) {
+        // Rev 2 (U3): the cart stays interactive while composing — the edited
+        // line can vanish under the composer (removal, recall, clear).
+        // updateLineModifiers silently no-ops on a missing id, so validate
+        // and toast instead of a silent nothing.
+        const lineStillExists = useCartStore
+          .getState()
+          .items.some((item) => item.id === editingLineId);
+        if (!lineStillExists) {
+          toast.error(t('modifiers.lineGone'));
+          setModifierProduct(null);
+          setEditingLineId(null);
+          return;
+        }
         // Editing modifiers on an EXISTING line never changes quantity — ungated.
         updateLineModifiers(editingLineId, selectedModifiers);
       } else {
@@ -1033,7 +1047,7 @@ export function HomePage() {
       setModifierProduct(null);
       setEditingLineId(null);
     },
-    [modifierProduct, editingLineId, updateLineModifiers],
+    [modifierProduct, editingLineId, updateLineModifiers, t],
   );
 
   // ── Task 2b: refund checkout interception ──────────────────────────────────
@@ -1532,7 +1546,7 @@ export function HomePage() {
       <div className="flex flex-[7] flex-col overflow-hidden bg-surface-canvas p-2">
         <ProductPaneHost
           detailProduct={detailProduct}
-          modifierProduct={null /* Task 4 flips this to modifierProduct + the extracted composer */}
+          modifierProduct={modifierProduct}
           onCloseDetail={() => setDetailProduct(null)}
           renderDetail={(product) => (
             <ProductDetailSheet
@@ -1545,7 +1559,16 @@ export function HomePage() {
               onTabChange={setDetailTab}
             />
           )}
-          renderCustomize={() => null /* Task 4 renders ModifierComposerSheet here */}
+          renderCustomize={(product) => (
+            <ModifierComposerSheet
+              product={product}
+              onConfirm={handleModifierConfirm}
+              onClose={() => {
+                setModifierProduct(null);
+                setEditingLineId(null);
+              }}
+            />
+          )}
         >
           {isFnB && consumptionMode === 'SUR_PLACE' && (
             <div className="mb-2">
@@ -1662,14 +1685,6 @@ export function HomePage() {
         }
         approvalContext={approvalContext}
         lineReferenceId={discountItemId}
-      />
-
-      {/* Modifier selection modal */}
-      <ModifierSelectionModal
-        isOpen={modifierProduct !== null}
-        onClose={() => { setModifierProduct(null); setEditingLineId(null); }}
-        product={modifierProduct}
-        onConfirm={handleModifierConfirm}
       />
 
       {/* T2 — variant picker: cashier taps a variant-bearing product, picks the

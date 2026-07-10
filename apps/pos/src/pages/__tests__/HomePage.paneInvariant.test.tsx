@@ -27,6 +27,13 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+// Task 4 (Rev 2 U3): the vanished-line confirm guard toasts via sonner.
+// HomePage does not mount <Toaster> (that lives in App.tsx:440), so mocking
+// only `toast` is safe.
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+}));
+
 vi.mock('@/lib/api', () => ({
   apiGet: vi.fn().mockResolvedValue([]),
   apiPost: vi.fn().mockResolvedValue({}),
@@ -159,9 +166,21 @@ vi.mock('@/components/organisms/ProductDetailDrawer', () => ({
 vi.mock('@/components/organisms/TransactionCart', () => ({
   // The customer control is now rendered inside the cart header via the
   // `customerControl` prop, so the stub must surface it for the trigger to
-  // be findable.
-  TransactionCart: ({ customerControl }: { customerControl?: ReactNode }) => (
-    <div data-testid="transaction-cart">{customerControl}</div>
+  // be findable. Task 4 (Rev 2 U3): also surface onEditModifiers so tests can
+  // drive handleEditModifiers → the customize-EDIT path.
+  TransactionCart: ({
+    customerControl,
+    onEditModifiers,
+  }: {
+    customerControl?: ReactNode;
+    onEditModifiers?: (itemId: string) => void;
+  }) => (
+    <div data-testid="transaction-cart">
+      {customerControl}
+      <button data-testid="edit-line-trigger" onClick={() => onEditModifiers?.('line-1')}>
+        edit line
+      </button>
+    </div>
   ),
 }));
 
@@ -202,9 +221,23 @@ vi.mock('@/components/organisms/LineDiscountModal', () => ({
   LineDiscountModal: () => null,
 }));
 
-// Change (3): kept as-is — Task 4 updates it.
+// Change (3) (Task 4, Rev 2 U3): the composer stub surfaces the confirm
+// callback so the customize-EDIT guard tests can drive onConfirm.
 vi.mock('@/components/organisms/ModifierSelectionModal', () => ({
-  ModifierSelectionModal: () => null,
+  ModifierComposerSheet: ({
+    product,
+    onConfirm,
+  }: {
+    product: { name: string };
+    onConfirm: (selectedModifiers: unknown[]) => void;
+  }) => (
+    <div data-testid="modifier-composer-stub">
+      {product.name}
+      <button data-testid="composer-confirm-trigger" onClick={() => onConfirm([])}>
+        confirm
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('@/components/organisms/QuantityNumpad', () => ({
@@ -511,5 +544,76 @@ describe('HomePage — pane invariant (cart always foreground)', () => {
       fireEvent.click(screen.getByTestId('recall-trigger'));
     });
     expect(screen.getByTestId('product-detail-sheet-stub')).toBeInTheDocument();
+  });
+
+  it('hosts customize as an in-pane view (no fixed-inset overlay) and detail↔customize stay exclusive', async () => {
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-customize-trigger'));
+    });
+
+    expect(screen.getByTestId('modifier-composer-stub')).toHaveTextContent('Gadget');
+    expect(screen.getByTestId('product-pane-customize')).toBeInTheDocument();
+    const fixedInsetOverlays = Array.from(document.querySelectorAll('[class]')).filter(
+      (el) => el.classList.contains('fixed') && el.classList.contains('inset-0'),
+    );
+    expect(fixedInsetOverlays).toHaveLength(0);
+    expect(screen.getByTestId('transaction-cart')).toBeInTheDocument();
+    expect(screen.getByTestId('product-pane-grid')).toHaveClass('hidden');
+
+    // Opening detail closes customize (mutual exclusion, the other direction).
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-detail-trigger'));
+    });
+    expect(screen.queryByTestId('modifier-composer-stub')).toBeNull();
+    expect(screen.getByTestId('product-detail-sheet-stub')).toBeInTheDocument();
+  });
+
+  it('recall clears the CUSTOMIZE pane (cart replacement invalidates the in-flight edit, Rev 2 U3/U4)', async () => {
+    useHoldStore.setState({
+      recallTransaction: vi
+        .fn()
+        .mockResolvedValue({ items: [], transactionDiscount: undefined }) as never,
+    } as never);
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-customize-trigger'));
+    });
+    expect(screen.getByTestId('modifier-composer-stub')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('recall-trigger'));
+    });
+    expect(screen.queryByTestId('modifier-composer-stub')).toBeNull();
+  });
+
+  it('customize-EDIT confirm on a vanished line toasts and closes — never a silent no-op (Rev 2, U3)', async () => {
+    const { toast } = await import('sonner');
+    // Seed a cart line + its matching product so handleEditModifiers
+    // (HomePage.tsx:996-1006) can open the composer in EDIT mode.
+    const gadget = { id: 'p2', name: 'Gadget', sku: 'G1', sale_price: '5.000', stock_quantity: 3 };
+    useProductStore.setState({ products: [gadget] } as never);
+    useCartStore.setState({
+      items: [{ id: 'line-1', product: { id: 'p2', name: 'Gadget' }, quantity: 1 }] as never,
+    } as never);
+
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('edit-line-trigger'));
+    });
+    expect(screen.getByTestId('modifier-composer-stub')).toBeInTheDocument();
+
+    // The cart stays interactive while composing — the edited line vanishes
+    // under the composer (removal / recall / clear).
+    act(() => {
+      useCartStore.setState({ items: [] } as never);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('composer-confirm-trigger'));
+    });
+    expect(vi.mocked(useCartStore.getState().updateLineModifiers)).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith('modifiers.lineGone');
+    expect(screen.queryByTestId('modifier-composer-stub')).toBeNull();
   });
 });
