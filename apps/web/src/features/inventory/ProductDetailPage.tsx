@@ -33,6 +33,7 @@ import { ProductHero } from '../products/editor/components/ProductHero'
 import { ProductGeneralSection } from '../products/sections/ProductGeneralSection'
 import { ProductPricingSection } from '../products/sections/ProductPricingSection'
 import { ProductInventorySection } from '../products/sections/ProductInventorySection'
+import { ProductSuppliersSection } from '../products/sections/ProductSuppliersSection'
 import type { DiscountPolicyVerdict, ProductSectionProduct } from '../products/sections/types'
 import {
   PRODUCT_DETAIL_SECTIONS,
@@ -273,6 +274,16 @@ export function ProductDetailPage() {
     ),
     metadata: () => metadataSection,
   }
+  const visibleDetailSections = PRODUCT_DETAIL_SECTIONS
+    .filter((section) => section.when?.(sectionGateCtx) ?? true)
+  const metadataSectionIndex = visibleDetailSections
+    .findIndex((section) => section.component === 'metadata')
+  const contextualDetailSections = metadataSectionIndex === -1
+    ? visibleDetailSections
+    : visibleDetailSections.slice(0, metadataSectionIndex)
+  const trailingDetailSections = metadataSectionIndex === -1
+    ? []
+    : visibleDetailSections.slice(metadataSectionIndex)
 
   const backLink = (
     <Link
@@ -370,8 +381,14 @@ export function ProductDetailPage() {
                   product: publicProduct,
                 }}
               />
-              {PRODUCT_DETAIL_SECTIONS
-                .filter((section) => section.when?.(sectionGateCtx) ?? true)
+              {contextualDetailSections
+                .map((section) => (
+                  <section key={section.id} id={section.id}>
+                    {sectionRenderers[section.component](sectionGateCtx)}
+                  </section>
+                ))}
+              <ProductSuppliersSection adapter={{ mode: 'view' }} />
+              {trailingDetailSections
                 .map((section) => (
                   <section key={section.id} id={section.id}>
                     {sectionRenderers[section.component](sectionGateCtx)}

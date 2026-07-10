@@ -60,6 +60,7 @@ import type {
 import { ProductGeneralSection } from '../products/sections/ProductGeneralSection'
 import { ProductPricingSection } from '../products/sections/ProductPricingSection'
 import { ProductInventorySection } from '../products/sections/ProductInventorySection'
+import { ProductSuppliersSection } from '../products/sections/ProductSuppliersSection'
 import { useProductPricingEditAdapter } from '../products/sections/useProductPricingEditAdapter'
 
 interface Product {
@@ -1065,24 +1066,7 @@ export function ProductForm() {
               </EditorSectionCard>
             )}
 
-            {/* Suppliers — no product-level supplier fields exist on this form;
-                suppliers are managed in Purchases. Render an informational card
-                with a link to the suppliers route (no new data fields). */}
-            <EditorSectionCard
-              id="section-suppliers"
-              title={t('catalog:editor.sectionLabels.suppliers')}
-              contentClassName="sm:grid-cols-1"
-            >
-              <p className={cn('text-sm', textColors.tertiary)}>
-                {t('catalog:editor.suppliers.managedHint')}
-              </p>
-              <Link
-                to="/purchases/suppliers"
-                className={cn('inline-flex items-center gap-1 text-sm', textColors.brand)}
-              >
-                {t('catalog:editor.suppliers.manageLink')}
-              </Link>
-            </EditorSectionCard>
+            <ProductSuppliersSection adapter={{ mode: 'edit' }} />
 
             {/* Media & Files — always rendered so the nav entry + scroll-spy
                 anchor exists in both create and edit mode. In create mode,
