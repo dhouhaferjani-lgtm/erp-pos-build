@@ -180,6 +180,7 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             ['code' => '4455', 'name' => 'TVA à décaisser', 'type' => 'liability', 'parent_code' => '44'],
             ['code' => '4456', 'name' => 'TVA déductible', 'type' => 'asset', 'parent_code' => '44',
                 'system_purpose' => SystemAccountPurpose::VatDeductible->value, 'is_system' => true],
+            ['code' => '43666', 'name' => 'TVA récupérable sur frais bancaires', 'type' => 'asset', 'parent_code' => '43'],
             ['code' => '4457', 'name' => 'TVA collectée', 'type' => 'liability', 'parent_code' => '44',
                 'system_purpose' => SystemAccountPurpose::VatCollected->value, 'is_system' => true],
             ['code' => '4375', 'name' => 'État - Droit de timbre à reverser', 'type' => 'liability', 'parent_code' => '44',
@@ -199,6 +200,9 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             ['code' => '53', 'name' => 'Caisse', 'type' => 'asset', 'parent_code' => '5',
                 'system_purpose' => SystemAccountPurpose::Cash->value, 'is_system' => true],
             ['code' => '531', 'name' => 'Caisse siège', 'type' => 'asset', 'parent_code' => '53'],
+            ['code' => '5312', 'name' => 'Chèques à encaisser', 'type' => 'asset', 'parent_code' => '531'],
+            ['code' => '5313', 'name' => 'Effets à l’encaissement', 'type' => 'asset', 'parent_code' => '531'],
+            ['code' => '5314', 'name' => 'Effets à l’escompte', 'type' => 'asset', 'parent_code' => '531'],
             ['code' => '54', 'name' => 'Régies d\'avances et accréditifs', 'type' => 'asset', 'parent_code' => '5'],
 
             // Class 6: Charges (Expenses)
@@ -224,6 +228,7 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             ['code' => '625', 'name' => 'Déplacements, missions et réceptions', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '626', 'name' => 'Frais postaux et frais de télécommunications', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '627', 'name' => 'Services bancaires et assimilés', 'type' => 'expense', 'parent_code' => '62'],
+            ['code' => '6275', 'name' => 'Frais sur effets et chèques', 'type' => 'expense', 'parent_code' => '627'],
             ['code' => '628', 'name' => 'Cotisations et divers', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '63', 'name' => 'Impôts, taxes et versements assimilés', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '6354', 'name' => 'Droits d\'enregistrement et de timbre', 'type' => 'expense', 'parent_code' => '63',

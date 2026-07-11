@@ -19,6 +19,7 @@ enum JournalCode: string
     case Purchase = 'AC';
     case Bank = 'BQ';
     case Cash = 'CA';
+    case Effets = 'EF';
     case Misc = 'OD';
 
     /**
@@ -35,6 +36,7 @@ enum JournalCode: string
             'supplier_invoice' => self::Purchase,
             'payment', 'customer_payment', 'supplier_payment', 'customer_payment_refund' => self::Bank,
             'pos_payment', 'pos_receipt', 'pos_receipt_refund' => self::Cash,
+            'instrument', 'instrument_remittance' => self::Effets,
             default => self::Misc,
         };
     }
