@@ -241,3 +241,13 @@
 - LOW recorded deferrals: manual web-registration idempotency is not a Task-11 interface contract and cannot be safely fixed by merely forwarding a header to the partial unique index — `receive()` needs semantic replay validation, which Task 16 introduces for fiscal-event keys; keep manual POST behavior unchanged until that reusable replay contract exists. PaymentForm's `parseFloat` validation is byte-pre-existing at `phase2-gate-1`, affects validation only, and remains outside this gate fix; money payloads remain strings.
 - Process deviation: the HIGH fix was drafted while the mandatory Fable RC1 escalation was still reading the committed RC1 diff. Fable explicitly observed and reviewed the dirty draft, judged the correction correct, and required it to be committed/verified as RC2. No tag or committed RC1 content was moved; this sequencing deviation is recorded and RC2 is escalated again under §3(c).
 - Money-path deviation: interim deviation from spec §8 existed in RC1 (unledgered custody 422); it is corrected in RC2. No repository money behavior changed: deferred customer remains movement-free, and immediate/supplier movements still require their repository GL account and go through the movement port.
+
+### RC2 pre-review verification
+
+- `./vendor/bin/phpunit tests/Feature/Treasury tests/Feature/Accounting` — PASS, 981 tests / 3,945 assertions / 26 environment-specific skips; 40 existing PHPUnit deprecations reported.
+- `./vendor/bin/phpstan --memory-limit=1G` — PASS, all 2,459 files, zero errors. The first run at the configured 512 MB ceiling exhausted memory in a parallel worker and produced an explicitly incomplete result; the identical configured analysis completed cleanly with only the CLI memory allowance raised.
+- `./vendor/bin/pint --dirty --test` — pass, no formatting changes required.
+- `pnpm typecheck && pnpm lint` — pass; ESLint emitted the existing warning inventory and the TanStack query-key audit reported zero new/stale violations.
+- `pnpm vitest run src/features/treasury src/features/finance` — PASS, 115 suites / 356 tests, zero failures (JSON reporter used to contain the existing jsdom warning stream).
+- `git diff --check` — pass; the worktree contained only this verification-entry update before the RC2 documentation commit.
+- RC2 review scope: all RC1 findings are addressed and committed in `698a75fc2`. Manual web-registration idempotency remains an explicit non-money-path deferral because Task 11 did not contract an idempotency header and safe replay requires the semantic replay contract assigned to Task 16; see the RC1 remediation entry above.
