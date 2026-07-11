@@ -2410,6 +2410,113 @@ final class GeneralLedgerService
         );
     }
 
+    /**
+     * Draft the clearing entry whose bank debit is exactly the repository
+     * movement amount. The lifecycle caller posts it synchronously before the
+     * movement port takes the repository-row lock.
+     *
+     * @param  numeric-string  $nominal
+     * @param  numeric-string  $net
+     * @param  numeric-string  $fee
+     * @param  numeric-string  $feeVat
+     */
+    public function createInstrumentClearingEntry(
+        string $companyId,
+        string $tenantId,
+        string $instrumentId,
+        string $bankAccountId,
+        string $portfolioAccountId,
+        string $feeAccountId,
+        string $vatAccountId,
+        string $nominal,
+        string $net,
+        string $fee,
+        string $feeVat,
+        int $scale,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('Instrument clearing entries require an enclosing transaction.');
+        }
+
+        $debits = bcadd(bcadd($net, $fee, $scale), $feeVat, $scale);
+        if (bccomp($debits, $nominal, $scale) !== 0) {
+            throw new \LogicException('Instrument clearing entry is not balanced at the currency scale.');
+        }
+
+        return DB::transaction(function () use (
+            $companyId,
+            $tenantId,
+            $instrumentId,
+            $bankAccountId,
+            $portfolioAccountId,
+            $feeAccountId,
+            $vatAccountId,
+            $nominal,
+            $net,
+            $fee,
+            $feeVat,
+            $scale,
+            $date,
+        ): JournalEntry {
+            $entry = JournalEntry::query()->create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => 'Instrument clearing',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'instrument',
+                'journal_code' => JournalCode::Effets,
+                'source_id' => $instrumentId,
+            ]);
+
+            $lineOrder = 0;
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $bankAccountId,
+                'partner_id' => null,
+                'debit' => $net,
+                'credit' => '0',
+                'description' => 'Instrument clearing net bank receipt',
+                'line_order' => $lineOrder++,
+            ]);
+            if (bccomp($fee, '0', $scale) > 0) {
+                JournalLine::query()->create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $feeAccountId,
+                    'partner_id' => null,
+                    'debit' => $fee,
+                    'credit' => '0',
+                    'description' => 'Instrument clearing bank fee',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+            if (bccomp($feeVat, '0', $scale) > 0) {
+                JournalLine::query()->create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $vatAccountId,
+                    'partner_id' => null,
+                    'debit' => $feeVat,
+                    'credit' => '0',
+                    'description' => 'Recoverable VAT on instrument clearing fee',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $portfolioAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $nominal,
+                'description' => 'Instrument portfolio cleared',
+                'line_order' => $lineOrder,
+            ]);
+
+            return $entry->load('lines');
+        });
+    }
+
     private function createInstrumentTransitEntry(
         string $companyId,
         string $tenantId,

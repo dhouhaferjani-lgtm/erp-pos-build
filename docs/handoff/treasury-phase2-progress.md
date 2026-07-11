@@ -86,3 +86,14 @@
 - Lock/money evidence: remit locks instrument ids in sorted order before slip rows and `postEntryNow`; effet slips post one `Dr 5313 / Cr 413` EF entry for the exact total; cheque slips post no JE; cheque re-presentation posts `Dr 5312 / Cr 411`; no remit/custody movement is written.
 - Rollback interpretation: a failed remit leaves the already-created draft/line intact but rolls back every mutation attempted by `remit()` (status, JE, event). This is the only coherent interpretation for a composition API whose draft exists before the remit call.
 - Money-path deviation: none. Every GL post is synchronous and occurs after id-sorted instrument locks; repository balances remain untouched.
+
+### Task 8 — Clearing with bank credit, fees, and movement-in
+
+- Status: complete.
+- Files touched: new clear DTO; lifecycle clearing transaction; GL clearing-entry builder; focused clearing test; this progress log.
+- RED: `./vendor/bin/phpunit tests/Feature/Treasury/InstrumentClearTest.php` — expected failure because `ClearInstrumentData` and `InstrumentLifecycleService::clear()` did not exist.
+- GREEN: task path — PASS, 5 tests / 24 assertions. Task + remittance + movement-port regressions — PASS, 23 tests / 76 assertions / 3 PostgreSQL-only skips.
+- Verification: in-test `treasury:reconcile --tenant=...` exits 0 and leaves the bank repository unfrozen; targeted PHPStan including `GeneralLedgerService` — zero errors; Pint — pass; `git diff --check` — pass.
+- Lock/money evidence: clear locks the instrument and its pending slip line before `postEntryNow`; the movement port is called only after the posted EF entry and owns the final repository-row lock. Zero-fee clearing creates two lines; fee/VAT clearing creates exact bank-net, 6275, 43666, and portfolio-credit lines. The movement amount and bank-account JE debit compare equal at scale 3, with no float conversion.
+- Atomicity/idempotency evidence: a second serialized clear is rejected and leaves one movement; a closed-period `postEntryNow` failure rolls back the draft JE, movement, repository balance, instrument status, and slip state. This pins the production concurrency outcome because the first operation's instrument `FOR UPDATE` lock serializes competing calls before the status guard.
+- Money-path deviation: none. Repository balance changes exclusively through `TreasuryMovementServiceInterface::record`, linked to the synchronously posted JE.

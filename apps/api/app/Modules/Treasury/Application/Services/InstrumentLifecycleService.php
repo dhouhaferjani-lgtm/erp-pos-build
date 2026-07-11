@@ -6,22 +6,33 @@ namespace App\Modules\Treasury\Application\Services;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Treasury\Application\DTOs\ClearInstrumentData;
 use App\Modules\Treasury\Application\DTOs\InstrumentEventPayload;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
 use App\Modules\Treasury\Domain\Enums\CancellationShape;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentEventType;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\RemittanceLineStatus;
+use App\Modules\Treasury\Domain\Enums\RemittanceStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceType;
+use App\Modules\Treasury\Domain\Events\InstrumentCleared;
 use App\Modules\Treasury\Domain\Events\InstrumentReceived;
 use App\Modules\Treasury\Domain\Events\InstrumentTransferred;
 use App\Modules\Treasury\Domain\InstrumentEvent;
+use App\Modules\Treasury\Domain\InstrumentRemittance;
+use App\Modules\Treasury\Domain\InstrumentRemittanceLine;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -32,6 +43,7 @@ final readonly class InstrumentLifecycleService
         private InstrumentAccountResolver $accountResolver,
         private CurrencyScaleResolverInterface $scaleResolver,
         private InstrumentRemittanceService $remittanceService,
+        private TreasuryMovementServiceInterface $movementService,
     ) {}
 
     /**
@@ -151,6 +163,130 @@ final readonly class InstrumentLifecycleService
             );
             $this->remittanceService->addLine($remittance->id, $instrument->id);
             $this->remittanceService->remit($remittance->id, $userId);
+        });
+    }
+
+    public function clear(ClearInstrumentData $data): PaymentInstrument
+    {
+        return DB::transaction(function () use ($data): PaymentInstrument {
+            // Global order starts with the instrument row. Line/slip reads and GL
+            // follow; the repository row is locked only inside the movement port.
+            $instrument = PaymentInstrument::query()->lockForUpdate()->findOrFail($data->instrumentId);
+            if (! $instrument->status->canClear()) {
+                throw new DomainException('Instrument cannot clear in its current status.');
+            }
+            if ($instrument->currency !== strtoupper($data->currency)) {
+                throw new DomainException('Clearing currency does not match the instrument.');
+            }
+
+            $line = InstrumentRemittanceLine::query()
+                ->where('instrument_id', $instrument->id)
+                ->where('line_status', RemittanceLineStatus::Pending)
+                ->lockForUpdate()
+                ->first();
+            if ($line === null) {
+                throw new DomainException('Instrument is not pending on a remitted slip.');
+            }
+            $remittance = InstrumentRemittance::query()->lockForUpdate()->findOrFail($line->remittance_id);
+            if ($remittance->status !== RemittanceStatus::Remitted) {
+                throw new DomainException('Instrument slip has not been remitted.');
+            }
+            $repository = PaymentRepository::query()->findOrFail($remittance->bank_repository_id);
+            if ($repository->gl_account_id === null) {
+                throw new DomainException('Bank repository has no GL account.');
+            }
+
+            $scale = $this->scaleResolver->getScale($data->currency);
+            $fee = CurrencyScale::bcformatStrict($data->feeAmount, $scale);
+            $feeVat = CurrencyScale::bcformatStrict($data->feeVatAmount, $scale);
+            if (bccomp($fee, '0', $scale) < 0 || bccomp($feeVat, '0', $scale) < 0) {
+                throw new DomainException('Clearing fees cannot be negative.');
+            }
+            $feeGross = bcadd($fee, $feeVat, $scale);
+            $net = bcsub($instrument->amount, $feeGross, $scale);
+            if (bccomp($net, '0', $scale) <= 0) {
+                throw new DomainException('Clearing net amount must be positive.');
+            }
+
+            $portfolioPurpose = $instrument->kind === InstrumentKind::Cheque
+                ? InstrumentAccountPurpose::ChecksToCollect
+                : InstrumentAccountPurpose::EffectsInCollection;
+            $entryDate = $data->valueDate !== null ? CarbonImmutable::parse($data->valueDate) : CarbonImmutable::now();
+            $entry = $this->generalLedger->createInstrumentClearingEntry(
+                companyId: $instrument->company_id,
+                tenantId: $instrument->tenant_id,
+                instrumentId: $instrument->id,
+                bankAccountId: $repository->gl_account_id,
+                portfolioAccountId: $this->accountResolver->resolveOrFail($portfolioPurpose, $instrument->company_id),
+                feeAccountId: $this->accountResolver->resolveOrFail(
+                    InstrumentAccountPurpose::InstrumentBankFees,
+                    $instrument->company_id,
+                ),
+                vatAccountId: $this->accountResolver->resolveOrFail(
+                    InstrumentAccountPurpose::VatRecoverableOnFees,
+                    $instrument->company_id,
+                ),
+                nominal: $instrument->amount,
+                net: $net,
+                fee: $fee,
+                feeVat: $feeVat,
+                scale: $scale,
+                date: $entryDate,
+            );
+            $this->generalLedger->postEntryNow($entry, User::query()->find($data->userId), $data->currency);
+
+            $movement = $this->movementService->record(new MovementIntent(
+                repositoryId: $repository->id,
+                tenantId: $instrument->tenant_id,
+                companyId: $instrument->company_id,
+                direction: MovementDirection::In,
+                amount: $net,
+                currency: $data->currency,
+                sourceType: MovementSourceType::Instrument,
+                sourceId: $instrument->id,
+                idempotencyLeg: "clear:{$line->id}",
+                journalEntryId: $entry->id,
+                occurredAt: $entryDate,
+                reasonCode: null,
+                reversesMovementId: null,
+                createdBy: $data->userId,
+                notes: null,
+                allowWhileFrozen: false,
+            ));
+
+            $instrument->update(['status' => InstrumentStatus::Cleared, 'cleared_at' => now()]);
+            $line->update(['line_status' => RemittanceLineStatus::Cleared, 'cleared_at' => now()]);
+            if (! InstrumentRemittanceLine::query()
+                ->where('remittance_id', $remittance->id)
+                ->where('line_status', RemittanceLineStatus::Pending)
+                ->exists()) {
+                $remittance->update(['status' => RemittanceStatus::Closed]);
+            }
+            InstrumentEvent::query()->create([
+                'tenant_id' => $instrument->tenant_id,
+                'company_id' => $instrument->company_id,
+                'instrument_id' => $instrument->id,
+                'event_type' => InstrumentEventType::Cleared,
+                'from_status' => InstrumentStatus::Deposited->value,
+                'to_status' => InstrumentStatus::Cleared->value,
+                'from_repository_id' => $instrument->repository_id,
+                'to_repository_id' => $repository->id,
+                'remittance_id' => $remittance->id,
+                'journal_entry_id' => $entry->id,
+                'movement_id' => $movement->movementId,
+                'payload' => (new InstrumentEventPayload(feeAmount: $fee, feeVatAmount: $feeVat))->toArray(),
+                'occurred_at' => now(),
+                'created_by' => $data->userId,
+            ]);
+            DB::afterCommit(fn () => event(new InstrumentCleared(
+                instrumentId: $instrument->id,
+                tenantId: $instrument->tenant_id,
+                companyId: $instrument->company_id,
+                amount: $instrument->amount,
+                clearedAt: now()->toIso8601String(),
+            )));
+
+            return $instrument->fresh() ?? $instrument;
         });
     }
 
