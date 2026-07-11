@@ -2,23 +2,13 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { tokens, textColors, colors } from '@/lib/designTokens'
+import { textColors, colors } from '@/lib/designTokens'
+import { Button, Select } from '@/components/atoms'
 import { usePermissions, type Permission } from '@/hooks/usePermissions'
 import { useEnrichmentResults, useBulkAcceptEnrichment } from '../api/enrichmentQueries'
 import { EnrichmentQueueTable } from '../components/EnrichmentQueueTable'
 import { EnrichmentReviewPanel } from '../components/EnrichmentReviewPanel'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
-
-const buttonTokens = tokens.button
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
-
 
 type QualityFilter = 'all' | 'high' | 'medium' | 'low'
 
@@ -130,29 +120,28 @@ export function EnrichmentQueuePage() {
 
         <div className="flex items-center gap-3">
           {/* Quality filter */}
-          <select
+          <Select
             value={qualityFilter}
             onChange={(e) => setQualityFilter(e.target.value as QualityFilter)}
-            className={formTokenClasses.select}
             style={{ width: 'auto', marginTop: 0 }}
           >
             <option value="all">{t('queue.filterAll')}</option>
             <option value="high">{t('quality.high')}</option>
             <option value="medium">{t('quality.medium')}</option>
             <option value="low">{t('quality.low')}</option>
-          </select>
+          </Select>
 
           {/* Bulk accept */}
           {canReview && selectedIds.size > 0 && (
-            <button
+            <Button
+              type="button"
               onClick={handleBulkAccept}
               disabled={bulkAcceptMutation.isPending}
-              className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
             >
               {bulkAcceptMutation.isPending
                 ? t('queue.bulkAccepting')
                 : t('queue.bulkAccept', { count: selectedIds.size })}
-            </button>
+            </Button>
           )}
         </div>
       </div>

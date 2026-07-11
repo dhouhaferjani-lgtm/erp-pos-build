@@ -48,7 +48,9 @@ Single-hit files (all under `src/features/` unless noted): `pages/legal/TermsOfS
 † duplicate page: `finance/pages/AgedReceivablesPage.tsx` exists and DOES use PageHeader — dedup before sweeping.
 ‡ `documents/` and `documents/return-notes/` both contain ReturnNote pages — dedup-check before sweeping.
 
-## C2 — Raw form elements with `tokens.*` (26 files, 98 occ)
+## C2 — Raw form elements (26 files, 98 occ at 2026-07-10 snapshot)
+
+> **Semantics hardened 2026-07-11 (gate 7, MAJOR-1b):** C2 now means **any raw form control** — every lowercase `<input>`/`<select>`/`<textarea>` in `src/features/**` and `src/pages/**`, regardless of what its className contains. The original `tokens.*`-substring definition was evadable via local aliases (`formTokenClasses.input`). The inventory below is the 2026-07-10 snapshot under the OLD definition; regenerate with the hardened C2/C3 command at the bottom.
 
 `<input>` (19 files, 72): settings/pages/PosRefundPoliciesPage 16; purchases/supplier-invoices/SupplierInvoiceCreatePage 12; scheduling/components/organisms/AppointmentFormDrawer 8; vehicles/VehicleForm 8; purchases/quote-requests/QuoteRequestDetailPage 3; purchases/quote-requests/QuoteRequestCreatePage 3; scheduling/components/organisms/AvailabilityFinderPanel 3; inventory/components/EnrichmentCapturePanel 3; purchases/supplier-invoices/SupplierInvoiceListPage 2; catalog/components/AttributeForm 2; workshop-technicians/pages/PayrollExportPage 2; pos/components/TerminalForm 2; document-ingestions/components/LineMappingTable 2; products/components/ParapharmacyMetadataFields 1; scheduling/pages/AppointmentDetailPage 1; scheduling/pages/CapacityReportPage 1; admin/components/VerticalConfigModal 1; vouchers/components/IssueGoodwillVoucherModal 1; document-ingestions/ReviewIngestionPage 1.
 
@@ -56,7 +58,9 @@ Single-hit files (all under `src/features/` unless noted): `pages/legal/TermsOfS
 
 `<textarea>` (2 files, 4): AppointmentFormDrawer 3; VehicleForm 1.
 
-## C3 — Raw `<button>` with `tokens.button` (49 files, 98 occ)
+## C3 — Raw `<button>` (49 files, 98 occ at 2026-07-10 snapshot)
+
+> **Semantics hardened 2026-07-11 (gate 7, MAJOR-1b):** C3 now means **any raw lowercase `<button>`** in `src/features/**` and `src/pages/**` EXCEPT those referencing the benign non-form-control token families `tokens.card` / `tokens.toggleButton` / `tokens.modal.closeButton` / `tokens.badge` (the 7 gate-7 survivors — card affordances, view toggles, modal close, badge chips). The old `tokens.button`-substring definition was alias-evadable. Inventory below = 2026-07-10 snapshot under the OLD definition; regenerate with the hardened command at the bottom.
 
 SupplierInvoiceCreatePage 6; SupplierInvoiceDetailPage 4; QuoteRequestDetailPage 4; QuoteRequestComparisonPage 4; QuoteRequestCreatePage 4; scheduling CalendarDayHeader 4; AppointmentDetailPage 4; AppointmentFormDrawer 3; admin VerticalConfigModal 3; compliance FraudSettingsPage 3; pos QuickAddCustomerModal 3; inventory EnrichmentCapturePanel 3; enrichment EnrichmentReviewPanel 3; document-ingestions UploadScanPage 3; document-ingestions CommitBar 3; PosRefundPoliciesPage 2; AttributeForm 2; QuarantineResolveAssistPage 2; HeldOrderCard 2; TableManagementPage 2; ProductInfoModal 2; OrderPanel 2; VehicleDetailPage 2; RecommendationCard 2; LineMappingTable 2; then 1 each: ProductCard, HeldOrdersList, CashTenderedModal, HoldOrderButton, POSLayout, POSPage, PartnerForm, StockLevelsPage, EnrichmentReadyCard, VehicleForm, TransferOwnershipModal, EnrichmentQueuePage, DocumentActionBar, ExpiryWriteOffPage, BundleForm, ReviewIngestionPage, SupplierPicker (document-ingestions), UnitDecimalSettings, GoodsReceiptListPage, AppointmentCard, AvailabilityFinderPanel, TimeEntriesTab, CertificationsTab, TimeOffTab.
 
@@ -127,27 +131,44 @@ rg -n --pcre2 '<h1[^>]*(text-2xl|text-3xl|text-\[[^]]+\])' src/features src/page
 # C2/C3 (tag-scoped; plain line-grep mismatches multiline JSX)
 # NOTE 2026-07-10 gate-1 fix: `(?:=>|[^>])*?` instead of `[^>]*?` — the naive form truncates
 # at the `>` of arrow-function props (`onChange={(e) => ...}`) and missed ~105 real violations.
+# NOTE 2026-07-11 gate-7 fix (MAJOR-1b): the old `'tokens.' in m` filter was evadable via local
+# aliases (`formTokenClasses.input`). Hardened semantics, mirroring tools/audit-design-system.mjs:
+#   - C2 = ANY raw lowercase <input>/<select>/<textarea> in src/features AND src/pages,
+#     REGARDLESS of className content ("any raw form control"). Legitimate raw controls
+#     (hidden/file inputs etc.) are held explicitly in the audit baseline, not silently exempted.
+#   - C3 = ANY raw lowercase <button> EXCEPT those whose attribute text references the benign
+#     non-form-control token families tokens.card / tokens.toggleButton / tokens.modal.closeButton
+#     / tokens.badge (the 7 gate-7 survivors). Lowercase-only tag matching is what exempts the
+#     atoms (<Input>, <Button>) from being counted as raw elements.
 python3 - <<'PY'
 import re, os
 tag_re = {t: re.compile(rf'<{t}\b(?:=>|[^>])*?/?>', re.DOTALL) for t in ('input','select','textarea','button')}
-for root, _, files in os.walk('src/features'):
-    for f in files:
-        if not f.endswith('.tsx') or '.test.' in f or '.stories.' in f or '__tests__' in root: continue
-        p = os.path.join(root, f); content = open(p, encoding='utf-8', errors='ignore').read()
-        for tag, rex in tag_re.items():
-            n = sum(1 for m in rex.findall(content) if 'tokens.' in m)
-            if n: print(f'{tag}\t{p}\t{n}')
+BENIGN_BUTTON = ('tokens.card', 'tokens.toggleButton', 'tokens.modal.closeButton', 'tokens.badge')
+for base in ('src/features', 'src/pages'):
+    for root, _, files in os.walk(base):
+        for f in files:
+            if not f.endswith('.tsx') or '.test.' in f or '.stories.' in f or '__tests__' in root: continue
+            p = os.path.join(root, f); content = open(p, encoding='utf-8', errors='ignore').read()
+            for tag, rex in tag_re.items():
+                ms = rex.findall(content)
+                if tag == 'button':
+                    ms = [m for m in ms if not any(b in m for b in BENIGN_BUTTON)]
+                if ms: print(f'{tag}\t{p}\t{len(ms)}')
 PY
 
 # C4
+# NOTE 2026-07-11 gate-7 fix (MAJOR-2): require a REAL react-hook-form IMPORT, not the bare
+# substring — a `// react-hook-form` comment used to silence the detector. Mirrors the scanner's
+# REACT_HOOK_FORM_IMPORT_RE (ESM `from 'react-hook-form'` or CJS `require('react-hook-form')`).
 python3 - <<'PY'
 import re, os
+RHF_IMPORT = re.compile(r'''(?:\bfrom|\brequire\(\s*)\s*['"]react-hook-form['"]''')
 for root, _, files in os.walk('src/features'):
     for f in files:
         if not f.endswith('.tsx') or not re.search(r'(Create|Edit|Form)', f): continue
         if '.test.' in f or '.stories.' in f or '__tests__' in root: continue
         p = os.path.join(root, f); c = open(p, encoding='utf-8', errors='ignore').read()
-        if ('<form' in c or re.search(r'onSubmit|handleSubmit', c)) and 'react-hook-form' not in c: print(p)
+        if ('<form' in c or re.search(r'onSubmit|handleSubmit', c)) and not RHF_IMPORT.search(c): print(p)
 PY
 
 # C5

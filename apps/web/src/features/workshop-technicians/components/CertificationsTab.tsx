@@ -9,8 +9,7 @@ import {
   useTechnicianCertifications,
 } from '../hooks/useAuthoring'
 import { CertificationFormModal } from './CertificationFormModal'
-
-const buttonTokens = tokens.button
+import { Button } from '@/components/atoms'
 
 interface CertificationsTabProps {
   technicianId: string
@@ -47,14 +46,16 @@ export function CertificationsTab({ technicianId }: CertificationsTabProps) {
         <h3 className={`text-sm font-semibold ${textColors.primary}`}>
           {t('authoring.certifications.title')}
         </h3>
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={handleAdd}
-          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm} inline-flex items-center gap-1`}
+          className="inline-flex items-center gap-1"
         >
           <Plus className="h-4 w-4" />
           {t('authoring.certifications.add')}
-        </button>
+        </Button>
       </div>
 
       {isLoading ? (
@@ -77,22 +78,25 @@ export function CertificationsTab({ technicianId }: CertificationsTabProps) {
                 </p>
               </div>
               <div className="flex items-center gap-1">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     handleEdit(row)
                   }}
-                  className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm}`}
                   aria-label={t('authoring.certifications.modal.editTitle')}
                 >
                   <Pencil className="h-4 w-4" />
-                </button>
+                </Button>
+                {/* Button atom has no `dangerOutline` variant (out-of-scope
+                    atom change) — kept raw with literal tokens for pixel parity. */}
                 <button
                   type="button"
                   onClick={() => {
                     handleDelete(row)
                   }}
-                  className={`${buttonTokens.base} ${buttonTokens.dangerOutline} ${buttonTokens.sizes.sm}`}
+                  className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.sm}`}
                   aria-label={t('authoring.certifications.confirmDelete')}
                 >
                   <Trash2 className="h-4 w-4" />

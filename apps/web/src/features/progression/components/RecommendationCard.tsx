@@ -1,11 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
+import { Button } from '@/components/atoms'
 import type { Recommendation, RecommendationPriority } from '../api/types'
 import { useAcceptRecommendation, useDismissRecommendation } from '../hooks/useRecommendations'
-
-const buttonTokens = tokens.button
-
 
 interface RecommendationCardProps {
   recommendation: Recommendation
@@ -55,22 +53,24 @@ export function RecommendationCard({ recommendation }: RecommendationCardProps) 
       <h4 className={`${textColors.primary} text-sm font-semibold`}>{recommendation.title}</h4>
       <p className={`${textColors.tertiary} text-sm mt-1`}>{recommendation.description}</p>
       <div className="mt-3 flex items-center gap-2">
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={handleAccept}
           disabled={acceptMutation.isPending}
-          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm}`}
         >
           {recommendation.action_label || t('recommendation.showMeHow')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={handleDismiss}
           disabled={dismissMutation.isPending}
-          className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm}`}
         >
           {t('recommendation.dismiss')}
-        </button>
+        </Button>
       </div>
     </div>
   )

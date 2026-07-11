@@ -22,14 +22,39 @@ const WEB_ROOT = path.resolve(__dirname, '..')
 const SRC_ROOT = path.join(WEB_ROOT, 'src')
 const BASELINE_PATH = path.join(__dirname, 'audit-design-system-baseline.json')
 
+// NOTE: These regexes are CASE-SENSITIVE (no `i` flag) on purpose. In JSX a
+// lowercase tag (`<input>`, `<button>`) is a raw DOM element while a capitalized
+// tag (`<Input>`, `<Button>`) is a React component — i.e. the canonical atom.
+// C2/C3 now flag EVERY raw form control regardless of className (gate-7 MAJOR-1b:
+// the old `tokens.` substring gate was evadable via local aliases like
+// `formTokenClasses.input`). Matching lowercase-only is what keeps atom usages
+// (`<Input>`) from being flagged as raw controls. The `(?:=>|[^>])*` mechanics
+// stay so multiline tags with arrow-function props aren't truncated at `=>`.
 const TAG_RE = {
-  h1: /<h1\b(?:=>|[^>])*>/gis,
-  input: /<input\b(?:=>|[^>])*\/?>/gis,
-  select: /<select\b(?:=>|[^>])*>/gis,
-  textarea: /<textarea\b(?:=>|[^>])*>/gis,
-  button: /<button\b(?:=>|[^>])*>/gis,
-  table: /<table\b(?:=>|[^>])*>/gis,
+  h1: /<h1\b(?:=>|[^>])*>/gs,
+  input: /<input\b(?:=>|[^>])*\/?>/gs,
+  select: /<select\b(?:=>|[^>])*>/gs,
+  textarea: /<textarea\b(?:=>|[^>])*>/gs,
+  button: /<button\b(?:=>|[^>])*>/gs,
+  table: /<table\b(?:=>|[^>])*>/gs,
 }
+
+// C3 carve-out: raw `<button>` elements whose attribute text references any of
+// these non-form-control token families are benign (gate 7 identified the 7
+// survivors as legitimate: card affordances, toggle buttons, modal close
+// buttons, badge chips — none are form-submit/text-entry controls that belong to
+// the `Button` atom). Everything else raw is a real C3 hit.
+const BENIGN_BUTTON_TOKEN_FAMILIES = [
+  'tokens.card',
+  'tokens.toggleButton',
+  'tokens.modal.closeButton',
+  'tokens.badge',
+]
+
+// C4 requires a REAL react-hook-form import, not a substring (gate-7 MAJOR-2:
+// a bare `// react-hook-form` comment silenced the detector). Matches both the
+// ESM `from 'react-hook-form'` and CJS `require('react-hook-form')` forms.
+const REACT_HOOK_FORM_IMPORT_RE = /(?:\bfrom|\brequire\(\s*)\s*['"]react-hook-form['"]/
 
 const STATUS_RE = [
   /(status|state)\w*(Colors?|Classes?|Maps?|Styles?)\s*:\s*Record</gi,
@@ -198,6 +223,7 @@ export function scanCode(code, filename) {
   /** @type {DesignSystemViolation[]} */
   const violations = []
 
+  // C1/C2/C3 apply to feature AND page source; C4/C5/C6 stay feature-scoped.
   if (isFeatureOrPageFile(file)) {
     for (const match of matches(TAG_RE.h1, code)) {
       if (/\btext-(2xl|3xl)\b/.test(match.text) || /\btext-\[[^\]]+\]/.test(match.text)) {
@@ -212,46 +238,50 @@ export function scanCode(code, filename) {
         )
       }
     }
-  }
 
-  if (!isFeatureFile(file)) {
-    return violations
-  }
-
-  for (const tag of ['input', 'select', 'textarea']) {
-    for (const match of matches(TAG_RE[tag], code)) {
-      if (match.text.includes('tokens.')) {
+    // C2: EVERY raw <input>/<select>/<textarea> in feature/page source, regardless
+    // of className (hardened against indirection — see TAG_RE comment). Legitimate
+    // raw controls (e.g. hidden/file inputs) are held explicitly by the baseline
+    // rather than silently exempted here.
+    for (const tag of ['input', 'select', 'textarea']) {
+      for (const match of matches(TAG_RE[tag], code)) {
         pushViolation(
           violations,
           'C2',
           file,
           code,
           match.index,
-          `Raw <${tag}> with token classes should use form atoms`,
+          `Raw <${tag}> should use the form atom (Input/Select/Textarea)`,
           match.text,
         )
       }
     }
-  }
 
-  for (const match of matches(TAG_RE.button, code)) {
-    if (match.text.includes('tokens.button')) {
+    // C3: EVERY raw <button> except the benign non-form-control token families.
+    for (const match of matches(TAG_RE.button, code)) {
+      if (BENIGN_BUTTON_TOKEN_FAMILIES.some((family) => match.text.includes(family))) {
+        continue
+      }
       pushViolation(
         violations,
         'C3',
         file,
         code,
         match.index,
-        'Raw <button> with tokens.button should use Button atom',
+        'Raw <button> should use the Button atom',
         match.text,
       )
     }
   }
 
+  if (!isFeatureFile(file)) {
+    return withDuplicateOrdinals(violations)
+  }
+
   if (
     /(Create|Edit|Form)/.test(path.basename(file)) &&
     (code.includes('<form') || /\bonSubmit\b|\bhandleSubmit\b/.test(code)) &&
-    !code.includes('react-hook-form')
+    !REACT_HOOK_FORM_IMPORT_RE.test(code)
   ) {
     pushViolation(
       violations,

@@ -6,6 +6,9 @@ import { ArrowLeft, ClipboardList, PackagePlus, Plus, Save, Send, Trash2 } from 
 import { toast } from 'sonner'
 
 
+import { Button } from '../../components/atoms/Button/Button'
+import { Input } from '../../components/atoms/Input/Input'
+import { Select } from '../../components/atoms/Select/Select'
 import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
 import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
@@ -19,16 +22,6 @@ import { usePermissions } from '../../hooks/usePermissions'
 import { confirmDiscard, useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-
-const buttonTokens = tokens.button
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
 
 interface OptionItem {
   id: string
@@ -219,17 +212,16 @@ export function StandaloneReceiptPage() {
       render: (line) => (
         <>
           <label className="sr-only">{t('purchases:standaloneReceipt.fields.product')}</label>
-          <select
+          <Select
             aria-label={t('purchases:standaloneReceipt.fields.product')}
             value={line.productId}
             onChange={(event) => { updateLine(line.id, { productId: event.target.value }) }}
-            className={formTokenClasses.input}
           >
             <option value="">{t('purchases:standaloneReceipt.placeholders.product')}</option>
             {(productsQuery.data ?? []).map((item) => (
               <option key={item.id} value={item.id}>{item.sku ? `${item.sku} - ${item.name}` : item.name}</option>
             ))}
-          </select>
+          </Select>
         </>
       ),
     },
@@ -337,24 +329,25 @@ export function StandaloneReceiptPage() {
             ) : null}
         {!receiptFirstDisabled ? (
           <>
-          <button
+          <Button
             type="button"
+            variant="secondary"
             disabled={!canSubmit || createMutation.isPending}
             onClick={() => { submit('draft') }}
-            className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.md} gap-2`}
+            className="gap-2"
           >
             <Save className="h-4 w-4" />
             {t('purchases:standaloneReceipt.actions.saveDraft')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             disabled={!canSubmit || createMutation.isPending}
             onClick={() => { submit('post') }}
-            className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md} gap-2`}
+            className="gap-2"
           >
             <Send className="h-4 w-4" />
             {t('purchases:standaloneReceipt.actions.postNow')}
-          </button>
+          </Button>
           </>
         ) : null}
           </div>
@@ -371,45 +364,41 @@ export function StandaloneReceiptPage() {
       <section className={`grid gap-4 border-b ${borderColors.light} pb-6 md:grid-cols-2 xl:grid-cols-4`}>
         <label className={`space-y-1 ${typography.fontSize.sm} ${typography.fontWeight.medium} ${textColors.secondary}`}>
           {t('purchases:standaloneReceipt.fields.supplier')}
-          <select
+          <Select
             value={supplierId}
             onChange={(event) => { setSupplierId(event.target.value) }}
-            className={formTokenClasses.input}
           >
             <option value="">{t('purchases:standaloneReceipt.placeholders.supplier')}</option>
             {(suppliersQuery.data ?? []).map((supplier) => (
               <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className={`space-y-1 ${typography.fontSize.sm} ${typography.fontWeight.medium} ${textColors.secondary}`}>
           {t('purchases:standaloneReceipt.fields.location')}
-          <select
+          <Select
             value={locationId}
             onChange={(event) => { setLocationId(event.target.value) }}
-            className={formTokenClasses.input}
           >
             <option value="">{t('purchases:standaloneReceipt.placeholders.location')}</option>
             {(locationsQuery.data ?? []).map((location) => (
               <option key={location.id} value={location.id}>{location.name}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className={`space-y-1 ${typography.fontSize.sm} ${typography.fontWeight.medium} ${textColors.secondary}`}>
           {t('purchases:standaloneReceipt.fields.blNumber')}
-          <input
+          <Input
             value={externalReference}
             onChange={(event) => { setExternalReference(event.target.value) }}
-            className={formTokenClasses.input}
           />
         </label>
         <label className={`space-y-1 ${typography.fontSize.sm} ${typography.fontWeight.medium} ${textColors.secondary}`}>
           {t('purchases:standaloneReceipt.fields.blDate')}
-          <input
+          <Input
             type="date"
             value={externalDate}
             onChange={(event) => { setExternalDate(event.target.value) }}
-            className={formTokenClasses.input}
           />
         </label>
       </section>
@@ -420,14 +409,16 @@ export function StandaloneReceiptPage() {
             <ClipboardList className={`h-4 w-4 ${textColors.brand}`} />
             {t('purchases:standaloneReceipt.lines.title')}
           </h2>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => { setLines((current) => [...current, newLine()]) }}
-            className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm} gap-2`}
+            className="gap-2"
           >
             <Plus className="h-4 w-4" />
             {t('purchases:standaloneReceipt.actions.addLine')}
-          </button>
+          </Button>
         </div>
 
         <div className={`${borderColors.light} rounded-lg border`}>

@@ -1,16 +1,8 @@
 import { CalendarDays, MapPin } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { borderColors, colors, textColors, tokens, semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { borderColors, colors, textColors, semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { Input, Select } from '@/components/atoms'
 import { useLocationStore } from '@/stores/locationStore'
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
-
 
 export interface OwnerDashboardFiltersValue {
   from: string
@@ -94,40 +86,40 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
       </div>
       <label className={`text-sm ${textColors.secondary}`}>
         {t('reports:ownerDashboard.filters.from')}
-        <input
+        <Input
           type="date"
           value={value.from}
           onChange={(event) => {
             handleDateChange('from', event.target.value)
           }}
-          className={`ms-2 ${formTokenClasses.input} w-auto`}
+          className="ms-2 w-auto"
         />
       </label>
       <label className={`text-sm ${textColors.secondary}`}>
         {t('reports:ownerDashboard.filters.to')}
-        <input
+        <Input
           type="date"
           value={value.to}
           onChange={(event) => {
             handleDateChange('to', event.target.value)
           }}
-          className={`ms-2 ${formTokenClasses.input} w-auto`}
+          className="ms-2 w-auto"
         />
       </label>
       <label className={`text-sm ${textColors.secondary}`}>
         {t('reports:ownerDashboard.filters.granularity')}
-        <select
+        <Select
           value={value.granularity}
           onChange={(event) => {
             onChange({ ...value, granularity: parseGranularity(event.target.value) })
           }}
-          className={`ms-2 ${formTokenClasses.select} w-auto`}
+          className="ms-2 w-auto"
         >
           <option value="hour">{t('reports:ownerDashboard.filters.hour')}</option>
           <option value="day">{t('reports:ownerDashboard.filters.day')}</option>
           <option value="week">{t('reports:ownerDashboard.filters.week')}</option>
           <option value="month">{t('reports:ownerDashboard.filters.month')}</option>
-        </select>
+        </Select>
       </label>
       {locations.length > 0 && (
         <div className={`flex items-center gap-2 border-s ${borderColors.light} ps-3`}>

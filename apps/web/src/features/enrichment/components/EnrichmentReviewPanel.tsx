@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
+import { Button, Textarea } from '@/components/atoms'
 import { usePermissions, type Permission } from '@/hooks/usePermissions'
 import {
 
@@ -17,16 +18,6 @@ import type {
   EnrichmentResult,
   ComparisonField,
 } from '../types/enrichment'
-
-const buttonTokens = tokens.button
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
 
 interface EnrichmentReviewPanelProps {
   resultId: string
@@ -296,6 +287,7 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
                       key={value}
                       className={`flex cursor-pointer items-center gap-2 rounded-md border ${borderColors.light} px-3 py-2 text-sm ${textColors.primary}`}
                     >
+                      {/* No Radio atom exists — inline tokens.radio.base preserves styling */}
                       <input
                         type="radio"
                         name="reject-reason"
@@ -304,7 +296,7 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
                         onChange={() => {
                           setRejectReason(value)
                         }}
-                        className={formTokenClasses.radio}
+                        className={tokens.radio.base}
                       />
                       <span>{label}</span>
                     </label>
@@ -315,38 +307,39 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
                 <span className={`text-sm font-medium ${textColors.secondary}`}>
                   {t('review.rejectNoteLabel')}
                 </span>
-                <textarea
+                <Textarea
                   value={rejectNotes}
                   onChange={(e) => {
                     setRejectNotes(e.target.value)
                   }}
                   placeholder={t('review.rejectNotePlaceholder')}
-                  className={`${formTokenClasses.textarea} min-h-20`}
+                  className="min-h-20"
                 />
               </label>
             </div>
           )}
           <div className="flex gap-3">
-            <button
+            <Button
               type="button"
+              variant="danger"
               onClick={handleReject}
               disabled={rejectMutation.isPending || (showRejectInput && !rejectReason)}
-              className={`${buttonTokens.base} ${buttonTokens.danger} ${buttonTokens.sizes.md} flex-1`}
+              className="flex-1"
             >
               {rejectMutation.isPending
                 ? t('review.rejecting')
                 : showRejectInput
                   ? t('review.confirmReject')
                   : t('review.reject')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={handleAccept}
               disabled={acceptMutation.isPending}
-              className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md} flex-1`}
+              className="flex-1"
             >
               {acceptMutation.isPending ? t('review.accepting') : t('review.accept')}
-            </button>
+            </Button>
           </div>
         </div>
       )}

@@ -1,10 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { Check, RotateCcw, X } from 'lucide-react'
+import { Button } from '@/components/atoms'
 import { cn } from '@/lib/utils'
 import { tokens } from '@/lib/designTokens'
-
-const buttonTokens = tokens.button
-
 
 interface CommitBarProps {
   canCommit: boolean
@@ -36,34 +34,34 @@ export function CommitBar({
       {refusalReason ? <p className={tokens.helperText.error}>{refusalReason}</p> : <span />}
       <div className="flex flex-wrap gap-2">
         {canReExtract && (
-          <button
+          <Button
             type="button"
-            className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.md}`}
+            variant="secondary"
             disabled={isReExtracting}
             onClick={onReExtract}
           >
             <RotateCcw className="me-2 h-4 w-4" aria-hidden="true" />
             {t('actions.reExtract')}
-          </button>
+          </Button>
         )}
+        {/* dangerOutline has no Button-atom variant — inline tokens preserve the outline treatment (pixel parity) */}
         <button
           type="button"
-          className={`${buttonTokens.base} ${buttonTokens.dangerOutline} ${buttonTokens.sizes.md}`}
+          className={cn(tokens.button.base, tokens.button.dangerOutline, tokens.button.sizes.md)}
           disabled={isRejecting}
           onClick={onReject}
         >
           <X className="me-2 h-4 w-4" aria-hidden="true" />
           {t('actions.reject')}
         </button>
-        <button
+        <Button
           type="button"
-          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
           disabled={!canCommit || isCommitting}
           onClick={onCommit}
         >
           <Check className="me-2 h-4 w-4" aria-hidden="true" />
           {t('actions.commit')}
-        </button>
+        </Button>
       </div>
     </div>
   )

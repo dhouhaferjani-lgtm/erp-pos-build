@@ -13,7 +13,6 @@ import {
   useCreateCertification,
   useUpdateCertification,
 } from '../hooks/useAuthoring'
-// react-hook-form migration marker: controlled certification payload remains covered by modal tests.
 
 interface CertificationFormModalProps {
   technicianId: string

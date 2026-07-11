@@ -7,17 +7,8 @@ import { textColors, tokens, typography } from '@/lib/designTokens'
 import { documentIngestionStatuses, useDocumentIngestions } from './queries'
 import type { DocumentKind, DocumentIngestionSummary, IngestionStatus } from './types'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { Select } from '@/components/atoms'
 import { StatusBadge, statusTone, type StatusTone } from '@/components/atoms/StatusBadge'
-
-const buttonTokens = tokens.button
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
 
 const ingestionStatusToneOverrides: Record<IngestionStatus, StatusTone> = {
   uploaded: 'info',
@@ -54,7 +45,7 @@ export function DocumentIngestionListPage() {
         </div>
         <Link
           to="/purchases/scans/new"
-          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
+          className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md)}
         >
           <Upload className="me-2 h-4 w-4" aria-hidden="true" />
           {t('actions.upload')}
@@ -65,9 +56,8 @@ export function DocumentIngestionListPage() {
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label className={tokens.label.base} htmlFor="status-filter">{t('fields.status')}</label>
-            <select
+            <Select
               id="status-filter"
-              className={formTokenClasses.select}
               value={status}
               onChange={(event) => { setStatus(event.target.value as IngestionStatus | '') }}
             >
@@ -75,20 +65,19 @@ export function DocumentIngestionListPage() {
               {documentIngestionStatuses.map((item) => (
                 <option key={item} value={item}>{t(`statuses.${item}`)}</option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
             <label className={tokens.label.base} htmlFor="kind-filter">{t('fields.kind')}</label>
-            <select
+            <Select
               id="kind-filter"
-              className={formTokenClasses.select}
               value={kind}
               onChange={(event) => { setKind(event.target.value as DocumentKind | '') }}
             >
               <option value="">{t('filters.allKinds')}</option>
               <option value="supplier_delivery_note">{t('kinds.supplier_delivery_note')}</option>
               <option value="supplier_invoice">{t('kinds.supplier_invoice')}</option>
-            </select>
+            </Select>
           </div>
         </div>
       </section>
@@ -129,7 +118,7 @@ export function DocumentIngestionListPage() {
                       <td className="px-4 py-3 text-end">
                         <Link
                           to={`/purchases/scans/${row.id}`}
-                          className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
+                          className={cn(tokens.button.base, tokens.button.secondary, tokens.button.sizes.sm)}
                         >
                           <Eye className="me-2 h-4 w-4" aria-hidden="true" />
                           {t('actions.review')}

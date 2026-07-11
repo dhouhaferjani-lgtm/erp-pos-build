@@ -46,6 +46,70 @@ describe('design-system audit scanner', () => {
     expect(violations[0].category).toBe('C2')
   })
 
+  it('flags raw form controls that hide tokens behind a local alias (indirection evasion)', () => {
+    const violations = scanCode(`
+      const formTokenClasses = { input: tokens.input.base }
+      export function ExampleForm() {
+        return <input className={formTokenClasses.input} />
+      }
+    `, 'src/features/example/ExampleForm.tsx')
+
+    expect(violations.filter((violation) => violation.category === 'C2')).toHaveLength(1)
+  })
+
+  it('flags raw form controls even with no token reference at all', () => {
+    const violations = scanCode(`
+      export function ExampleForm() {
+        return <textarea className="p-2 border" />
+      }
+    `, 'src/features/example/ExampleForm.tsx')
+
+    expect(violations.filter((violation) => violation.category === 'C2')).toHaveLength(1)
+  })
+
+  it('does not flag the Input atom component as a raw form control', () => {
+    const violations = scanCode(`
+      import { Input } from '@/components/atoms'
+      export function ExampleForm() {
+        return <Input value={value} onChange={onChange} />
+      }
+    `, 'src/features/example/ExampleForm.tsx')
+
+    expect(violations.filter((violation) => violation.category === 'C2')).toHaveLength(0)
+  })
+
+  it('flags a raw button that hides tokens behind a local alias', () => {
+    const violations = scanCode(`
+      const buttonTokens = tokens.button
+      export function ExampleForm() {
+        return <button className={buttonTokens.primary}>Save</button>
+      }
+    `, 'src/features/example/ExampleForm.tsx')
+
+    expect(violations.filter((violation) => violation.category === 'C3')).toHaveLength(1)
+  })
+
+  it('does not flag a benign card-styled raw button (C3 carve-out)', () => {
+    const violations = scanCode(`
+      export function ExampleCard() {
+        return <button className={tokens.card.interactive}>Open</button>
+      }
+    `, 'src/features/example/ExampleCard.tsx')
+
+    expect(violations.filter((violation) => violation.category === 'C3')).toHaveLength(0)
+  })
+
+  it('does not flag the Button atom component as a raw button', () => {
+    const violations = scanCode(`
+      import { Button } from '@/components/atoms'
+      export function ExampleForm() {
+        return <Button onClick={onClick}>Save</Button>
+      }
+    `, 'src/features/example/ExampleForm.tsx')
+
+    expect(violations.filter((violation) => violation.category === 'C3')).toHaveLength(0)
+  })
+
   it('does not truncate JSX tags at arrow functions inside attributes', () => {
     const violations = scanCode(`
       export function ExampleForm() {
@@ -70,6 +134,29 @@ describe('design-system audit scanner', () => {
     `, 'src/features/example/ExampleCreatePage.tsx')
 
     expect(violations.some((violation) => violation.category === 'C4')).toBe(true)
+  })
+
+  it('flags C4 when react-hook-form appears only in a comment (magic-comment evasion)', () => {
+    const violations = scanCode(`
+      // react-hook-form migration deferred
+      export function ExampleCreatePage() {
+        return <form onSubmit={handleSubmit}><button type="submit">Save</button></form>
+      }
+    `, 'src/features/example/ExampleCreatePage.tsx')
+
+    expect(violations.some((violation) => violation.category === 'C4')).toBe(true)
+  })
+
+  it('does not flag C4 when react-hook-form is actually imported', () => {
+    const violations = scanCode(`
+      import { useForm } from 'react-hook-form'
+      export function ExampleCreatePage() {
+        const { handleSubmit } = useForm()
+        return <form onSubmit={handleSubmit}><button type="submit">Save</button></form>
+      }
+    `, 'src/features/example/ExampleCreatePage.tsx')
+
+    expect(violations.some((violation) => violation.category === 'C4')).toBe(false)
   })
 
   it('separates baselined and new design-system violations', () => {

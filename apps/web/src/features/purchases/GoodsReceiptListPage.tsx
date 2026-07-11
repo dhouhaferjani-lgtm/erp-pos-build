@@ -28,19 +28,10 @@ import { usePermissions } from '../../hooks/usePermissions'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { Button } from '../../components/atoms/Button/Button'
+import { Checkbox } from '../../components/atoms/Checkbox/Checkbox'
 import { EntityLink } from '../../components/molecules/EntityLink'
 import { PageHeader } from '../../components/molecules/PageHeader/PageHeader'
 import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from './components/ReceiveGoodsDialog'
-
-const buttonTokens = tokens.button
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
 
 interface PurchaseOrderLine {
   id: string
@@ -644,24 +635,27 @@ export function GoodsReceiptListPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
+                    <Button
                       type="button"
+                      size="sm"
                       onClick={() => { handlePostDraftReceipt(receipt.id) }}
                       disabled={postDraftReceiptMutation.isPending && postDraftReceiptMutation.variables === receipt.id}
-                      className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm} gap-1`}
+                      className="gap-1"
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       {t('inventory:goodsReceipt.actions.postDraft')}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="danger"
+                      size="sm"
                       onClick={() => { handleDeleteDraftReceipt(receipt.id) }}
                       disabled={deleteDraftReceiptMutation.isPending && deleteDraftReceiptMutation.variables === receipt.id}
-                      className={`${buttonTokens.base} ${buttonTokens.danger} ${buttonTokens.sizes.sm} gap-1`}
+                      className="gap-1"
                     >
                       <Trash2 className="h-4 w-4" />
                       {t('inventory:goodsReceipt.actions.deleteDraft')}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -698,12 +692,10 @@ export function GoodsReceiptListPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
                       {activeTab === 'received' && (
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           aria-label={t('purchases:supplierInvoices.create.selectReceiptPo', { number: po.document_number })}
                           checked={selectedInvoicePoIdSet.has(po.id)}
                           onChange={() => { toggleInvoiceSelection(po.id) }}
-                          className={formTokenClasses.checkbox}
                         />
                       )}
                       <EntityLink
@@ -808,19 +800,21 @@ export function GoodsReceiptListPage() {
                       if (!receipt) return null
                       const receiptNumber = receipt.receipt_number ?? ''
                       return (
-                        <button
+                        <Button
                           type="button"
+                          variant="secondary"
+                          size="sm"
                           onClick={(e) => {
                             e.stopPropagation()
                             downloadGoodsReceiptPdfMutation.mutate(receipt)
                           }}
                           disabled={downloadGoodsReceiptPdfMutation.isPending}
                           aria-label={`${t('inventory:goodsReceipt.printGrn')} ${receiptNumber}`.trim()}
-                          className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm} gap-1`}
+                          className="gap-1"
                         >
                           <Printer className="h-4 w-4" />
                           {t('inventory:goodsReceipt.printGrn')}
-                        </button>
+                        </Button>
                       )
                     })()}
                     {activeTab === 'pending' && !isFullyReceived && (
@@ -847,7 +841,7 @@ export function GoodsReceiptListPage() {
                           <ChevronRight className="h-4 w-4" />
                         </>
                       )}
-                      className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm} gap-1`}
+                      className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm} gap-1`}
                     />
                   </div>
                 </div>

@@ -46,16 +46,6 @@ import {
   downloadAttachment,
 } from './api'
 
-const buttonTokens = tokens.button
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
-
 // ── Match status icon ──────────────────────────────────────────────────────
 
 const matchIconConfig: Record<SupplierInvoiceMatchStatus, { Icon: LucideIcon; className: string }> = {
@@ -374,7 +364,7 @@ export function SupplierInvoiceDetailPage() {
               <>
                 <Link
                   to={`/treasury/payments/new?supplier_invoice=${invoice.id}`}
-                  className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.md}`}
+                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
                 >
                   {t('purchases:supplierInvoices.actions.payInTreasury')}
                 </Link>
@@ -597,17 +587,18 @@ export function SupplierInvoiceDetailPage() {
           <h2 className={tokens.heading.section}>
             {t('purchases:supplierInvoices.detail.attachments')}
           </h2>
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => { fileInputRef.current?.click() }}
             disabled={uploadMutation.isPending}
-            className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
           >
             <Upload className="me-1.5 h-4 w-4" />
             {uploadMutation.isPending
               ? t('purchases:supplierInvoices.attachments.uploading')
               : t('purchases:supplierInvoices.actions.uploadAttachment')}
-          </button>
+          </Button>
           <input
             ref={fileInputRef}
             type="file"
@@ -642,19 +633,21 @@ export function SupplierInvoiceDetailPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => { handleDownload(att.id, att.filename) }}
-                    className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm}`}
                     aria-label={t('purchases:supplierInvoices.actions.downloadAttachment')}
                   >
                     <Download className="h-4 w-4" />
-                  </button>
+                  </Button>
+                  {/* dangerOutline has no Button-atom variant — inline tokens preserve the outline treatment (pixel parity) */}
                   <button
                     type="button"
                     onClick={() => { handleDeleteAttachment(att.id) }}
                     disabled={deleteMutation.isPending}
-                    className={`${buttonTokens.base} ${buttonTokens.dangerOutline} ${buttonTokens.sizes.sm}`}
+                    className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.sm}`}
                     aria-label={t('purchases:supplierInvoices.actions.deleteAttachment')}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -699,7 +692,7 @@ export function SupplierInvoiceDetailPage() {
               value={paymentAmount}
               onChange={setPaymentAmount}
               aria-label={t('purchases:supplierInvoices.paymentForm.amount')}
-              className={formTokenClasses.input}
+              className={tokens.input.base}
             />
           </FormField>
 

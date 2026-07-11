@@ -15,7 +15,6 @@ import { Input } from '../../../components/atoms/Input/Input'
 import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
 import { Select } from '../../../components/atoms/Select/Select'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
-// react-hook-form deferred: journal-entry payload logic is intentionally out of scope for this styling-only leg.
 
 interface JournalLineForm {
   id: string

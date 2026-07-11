@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/atoms/Button'
+import { Button, Checkbox, Select } from '@/components/atoms'
 import { Modal } from '@/components/organisms/Modal'
 import { AddPartnerModal } from '@/components/organisms'
 import { getErrorMessage } from '@/lib/api'
@@ -19,17 +19,6 @@ import { ProcessingState } from './components/ProcessingState'
 import { SourceViewer } from './components/SourceViewer'
 import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/pickers/PartnerPicker'
 import type { DocumentIngestionDetail, IngestionStatus, ReviewedLinePayload, ReviewedPayload } from './types'
-
-const buttonTokens = tokens.button
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
-
 
 function confidenceSummary(detail: DocumentIngestionDetail) {
   return detail.confidenceSummary ?? detail.confidence_summary ?? null
@@ -193,13 +182,12 @@ export function ReviewIngestionPage() {
       <div className={cn(tokens.card.base, 'space-y-4')}>
         <h1 className={tokens.heading.section}>{t('review.title')}</h1>
         <p>{detail.error?.message ?? t('review.extractionFailed')}</p>
-        <button
+        <Button
           type="button"
-          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
           onClick={() => { void reExtractMutation.mutateAsync().then(() => refetch()) }}
         >
           {t('actions.reExtract')}
-        </button>
+        </Button>
       </div>
     )
   }
@@ -328,10 +316,9 @@ export function ReviewIngestionPage() {
             {isDeliveryNote ? (
               <div>
                 <label htmlFor="ingestion-location" className={tokens.label.base}>{t('review.location')}</label>
-                <select
+                <Select
                   id="ingestion-location"
                   aria-label={t('review.location')}
-                  className={formTokenClasses.select}
                   value={locationId}
                   onChange={(event) => { setLocationId(event.target.value) }}
                 >
@@ -339,13 +326,11 @@ export function ReviewIngestionPage() {
                   {locationOptions.map((location) => (
                     <option key={location.id} value={location.id}>{location.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
             ) : (
               <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className={formTokenClasses.checkbox}
+                <Checkbox
                   checked={pendingReceipt}
                   onChange={(event) => { setPendingReceipt(event.target.checked) }}
                 />

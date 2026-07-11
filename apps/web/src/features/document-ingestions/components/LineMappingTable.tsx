@@ -1,24 +1,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, CheckCheck } from 'lucide-react'
-import { MoneyInput, QuantityInput } from '@/components/atoms'
+import { Button, Input, MoneyInput, QuantityInput, Select } from '@/components/atoms'
 import { cn } from '@/lib/utils'
 import { textColors, tokens, typography } from '@/lib/designTokens'
 import { ProductPicker, type ProductPickerValue } from '@/components/molecules/pickers'
 import { AddQuickProductModal } from '@/components/organisms'
 import { buildProductPrefill } from '../buildProductPrefill'
 import type { ExtractedLine, ProductCandidate, ReceiptLineCandidate } from '../types'
-
-const buttonTokens = tokens.button
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
-
 
 export interface ReviewedLineState {
   productId: string
@@ -170,13 +159,15 @@ export function LineMappingTable({
                     label={t('review.product')}
                     testId={`line-product-picker-${index}`}
                   />
-                  <button
+                  <Button
                     type="button"
-                    className={cn(buttonTokens.base, buttonTokens.secondary, buttonTokens.sizes.sm, 'mt-2')}
+                    variant="secondary"
+                    size="sm"
+                    className="mt-2"
                     onClick={() => { setCreateForIndex(index) }}
                   >
                     {t('review.newProduct')}
-                  </button>
+                  </Button>
                 </div>
                 <div className="lg:col-span-2">
                   <div className="flex items-center justify-between gap-2">
@@ -225,9 +216,8 @@ export function LineMappingTable({
                 {isInvoice && (
                   <div className="lg:col-span-2">
                     <label className={tokens.label.base} htmlFor={`source-line-${index}`}>{t('review.sourceLine')}</label>
-                    <select
+                    <Select
                       id={`source-line-${index}`}
-                      className={formTokenClasses.select}
                       value={value.sourceLineId}
                       onChange={(event) => { onChange(index, { ...value, sourceLineId: event.target.value }) }}
                     >
@@ -237,28 +227,26 @@ export function LineMappingTable({
                           {candidate.label ?? receiptSourceId(candidate)}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 )}
                 {batchRequired && (
                   <>
                     <div className="lg:col-span-3">
                       <label className={tokens.label.base} htmlFor={`batch-${index}`}>{t('review.batchNumber')}</label>
-                      <input
+                      <Input
                         id={`batch-${index}`}
                         aria-label={t('review.batchNumber')}
-                        className={formTokenClasses.input}
                         value={value.batchNumber}
                         onChange={(event) => { onChange(index, { ...value, batchNumber: event.target.value }) }}
                       />
                     </div>
                     <div className="lg:col-span-3">
                       <label className={tokens.label.base} htmlFor={`expiry-${index}`}>{t('review.expiryDate')}</label>
-                      <input
+                      <Input
                         id={`expiry-${index}`}
                         aria-label={t('review.expiryDate')}
                         type="date"
-                        className={formTokenClasses.input}
                         value={value.expiryDate}
                         onChange={(event) => { onChange(index, { ...value, expiryDate: event.target.value }) }}
                       />

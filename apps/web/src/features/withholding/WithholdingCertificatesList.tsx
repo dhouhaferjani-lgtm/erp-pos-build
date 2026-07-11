@@ -41,8 +41,6 @@ import type {
   CertificateStatus,
 } from './types'
 
-const buttonTokens = tokens.button
-
 /**
  * Certificate lifecycle statuses routed through the one sanctioned StatusBadge
  * palette. `draft` (pending) and `voided` aren't both in the built-in map, so
@@ -190,7 +188,7 @@ export function WithholdingCertificatesList() {
         <div className="flex items-center justify-center gap-1">
           <Link
             to={`/treasury/withholding-certificates/${cert.id}`}
-            className={cn('inline-flex items-center justify-center rounded p-1', textColors.tertiary, buttonTokens.ghost)}
+            className={cn('inline-flex items-center justify-center rounded p-1', textColors.tertiary, tokens.button.ghost)}
             title={t('certificates.actions.viewDetails')}
           >
             <Eye className="h-4 w-4" />

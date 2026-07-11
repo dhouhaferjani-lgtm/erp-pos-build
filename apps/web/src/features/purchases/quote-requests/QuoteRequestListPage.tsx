@@ -11,8 +11,6 @@ import { formatCurrency } from '@/lib/decimal'
 import { useQuoteRequests } from './api'
 import type { QuoteRequestListItem } from './types'
 
-const buttonTokens = tokens.button
-
 interface QuoteRequestGroupRow {
   groupId: string
   primary: QuoteRequestListItem
@@ -73,7 +71,7 @@ export function QuoteRequestListPage() {
         actions={
           <Link
             to="/purchases/quote-requests/new"
-            className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
+            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
           >
             <Plus className="me-2 h-4 w-4" />
             {t('purchases:quoteRequests.actions.new')}
@@ -136,7 +134,7 @@ export function QuoteRequestListPage() {
                   <div className={`text-sm font-medium ${textColors.primary}`}>
                     {formatCurrency(group.primary.total, true, group.primary.currency)}
                   </div>
-                  <Link className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`} to={href}>
+                  <Link className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`} to={href}>
                     {t('purchases:quoteRequests.actions.open')}
                   </Link>
                 </div>

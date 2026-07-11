@@ -2,20 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { tokens } from '../../../../lib/designTokens'
+import { Button, Input, Select, Textarea } from '@/components/atoms'
 import { useCreateBundle, useUpdateBundle } from '../../hooks/useBundles'
 import type { BundlePricingMode, ServiceBundleData } from '../../types'
-// react-hook-form migration marker: controlled bundle submit payload remains covered by authoring tests.
-
-const buttonTokens = tokens.button
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
-
 
 interface BundleFormProps {
   initial?: ServiceBundleData
@@ -97,25 +86,23 @@ export function BundleForm({
           <label className={tokens.label.base}>
             {t('form.code')}
           </label>
-          <input
+          <Input
             type="text"
             value={code}
             onChange={(e) => { setCode(e.target.value) }}
             required
             disabled={isUpdating}
-            className={formTokenClasses.input}
           />
         </div>
         <div>
           <label className={tokens.label.base}>
             {t('form.name')}
           </label>
-          <input
+          <Input
             type="text"
             value={name}
             onChange={(e) => { setName(e.target.value) }}
             required
-            className={formTokenClasses.input}
           />
         </div>
       </div>
@@ -124,11 +111,10 @@ export function BundleForm({
         <label className={tokens.label.base}>
           {t('form.description')}
         </label>
-        <textarea
+        <Textarea
           value={description}
           onChange={(e) => { setDescription(e.target.value) }}
           rows={2}
-          className={formTokenClasses.input}
         />
       </div>
 
@@ -137,38 +123,35 @@ export function BundleForm({
           <label className={tokens.label.base}>
             {t('form.pricingMode')}
           </label>
-          <select
+          <Select
             value={pricingMode}
             onChange={(e) => { setPricingMode(parsePricingMode(e.target.value)) }}
-            className={formTokenClasses.input}
           >
             <option value="standard">{t('form.pricingMode.standard')}</option>
             <option value="fixed_bundle">{t('form.pricingMode.fixedBundle')}</option>
-          </select>
+          </Select>
         </div>
         <div>
           <label className={tokens.label.base}>
             {t('form.basePrice')}
           </label>
-          <input
+          <Input
             type="text"
             value={basePrice}
             onChange={(e) => { setBasePrice(e.target.value) }}
             disabled={pricingMode === 'standard'}
-            className={formTokenClasses.input}
           />
         </div>
         <div>
           <label className={tokens.label.base}>
             {t('form.currency')}
           </label>
-          <input
+          <Input
             type="text"
             value={currency}
             onChange={(e) => { setCurrency(e.target.value.toUpperCase()) }}
             maxLength={3}
             required
-            className={formTokenClasses.input}
           />
         </div>
       </div>
@@ -178,22 +161,20 @@ export function BundleForm({
           <label className={tokens.label.base}>
             {t('form.taxRate')}
           </label>
-          <input
+          <Input
             type="text"
             value={taxRate}
             onChange={(e) => { setTaxRate(e.target.value) }}
-            className={formTokenClasses.input}
           />
         </div>
         <div>
           <label className={tokens.label.base}>
             {t('form.estimatedLaborHours')}
           </label>
-          <input
+          <Input
             type="text"
             value={estimatedLaborHours}
             onChange={(e) => { setEstimatedLaborHours(e.target.value) }}
-            className={formTokenClasses.input}
           />
         </div>
         <div />
@@ -204,45 +185,45 @@ export function BundleForm({
           <label className={tokens.label.base}>
             {t('form.serviceIntervalKm')}
           </label>
-          <input
+          <Input
             type="number"
             value={serviceIntervalKm}
             onChange={(e) => { setServiceIntervalKm(e.target.value) }}
-            className={formTokenClasses.input}
           />
         </div>
         <div>
           <label className={tokens.label.base}>
             {t('form.serviceIntervalMonths')}
           </label>
-          <input
+          <Input
             type="number"
             value={serviceIntervalMonths}
             onChange={(e) => { setServiceIntervalMonths(e.target.value) }}
-            className={formTokenClasses.input}
           />
         </div>
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => { void navigate(-1) }}
-          className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
         >
           {t('form.cancel')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="submit"
+          variant="primary"
+          size="sm"
           disabled={mutation.isPending}
-          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm}`}
         >
           {mutation.isPending
             ? t('form.saving')
             : isUpdating
               ? t('form.save')
               : t('form.create')}
-        </button>
+        </Button>
       </div>
     </form>
   )

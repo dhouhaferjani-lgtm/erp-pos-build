@@ -6,15 +6,7 @@ import { BayBadge } from '../components/atoms/BayBadge'
 import { useBays, useDayView } from '../hooks/useScheduling'
 import type { BookedEntryDTO } from '../types'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
-
+import { Input } from '@/components/atoms'
 
 function formatDate(d: Date): string {
   const pad = (n: number): string => (n < 10 ? `0${String(n)}` : String(n))
@@ -106,9 +98,9 @@ export function CapacityReportPage() {
           <span className={`text-sm font-medium ${textColors.secondary}`}>
             {t('scheduler.viewDay')}
           </span>
-          <input
+          <Input
             type="date"
-            className={`${formTokenClasses.input} w-48`}
+            className="w-48"
             value={date}
             onChange={(e) => { setDate(e.target.value) }}
           />

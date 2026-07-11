@@ -11,9 +11,6 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { fetchChannels } from '../api'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
-const buttonTokens = tokens.button
-
-
 const thClass = cn('px-6 py-3 text-start text-xs font-medium uppercase', textColors.tertiary)
 const tdClass = cn('px-6 py-4 text-sm', textColors.secondary)
 
@@ -38,7 +35,7 @@ export function ChannelListPage() {
         actions={
           <Link
             to="/channels/new"
-            className={cn(buttonTokens.base, buttonTokens.primary, buttonTokens.sizes.md, 'gap-2')}
+            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md, 'gap-2')}
           >
             <Plus className="h-4 w-4" />
             {t('channels:create.action')}

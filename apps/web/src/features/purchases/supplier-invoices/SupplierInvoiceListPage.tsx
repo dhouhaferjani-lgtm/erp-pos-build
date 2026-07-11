@@ -27,8 +27,6 @@ import { usePermissions } from '../../../hooks/usePermissions'
 import type { SupplierInvoiceListItem, SupplierInvoiceListParams, SupplierInvoiceMatchStatus, SupplierInvoiceStatus } from './types'
 import { useSupplierInvoiceList } from './api'
 
-const buttonTokens = tokens.button
-
 const matchTone: Record<SupplierInvoiceMatchStatus, StatusTone> = {
   matched: 'success',
   price_variance: 'warning',
@@ -189,7 +187,7 @@ export function SupplierInvoiceListPage() {
             {hasPermission('document-ingestions.view') && (
               <Link
                 to="/purchases/scans/new?kind=supplier_invoice"
-                className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.md}`}
+                className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
               >
                 <ScanLine className="me-2 h-4 w-4" />
                 {t('documentIngestions:actions.scanInvoice')}
@@ -197,7 +195,7 @@ export function SupplierInvoiceListPage() {
             )}
             <Link
               to="/purchases/supplier-invoices/new"
-              className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
+              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
             >
               <Plus className="me-2 h-4 w-4" />
               {t('purchases:supplierInvoices.new')}

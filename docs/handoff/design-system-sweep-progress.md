@@ -612,3 +612,32 @@ Status: complete.
   - `npx react-doctor@latest --verbose --scope changed --base origin/dev` passed with no issues after replacing a changed-page barrel import in `CompanyPage`.
 
 New shared-shape components: none.
+
+## Gate 7 remediation — orchestrated Opus lanes (2026-07-11, Codex unavailable)
+
+Executed by 6 parallel implementation agents + orchestrator integration, per `docs/handoff/CODEX-continuation-gate7-2026-07-11.md`.
+
+### BLOCKER (treasury red suite) — FIXED
+- `PaymentForm.test.tsx` + `PaymentForm.tenantScope.test.tsx` vi.mocks re-pointed from barrels to the direct import paths. **Correction of the prior false claim:** at the leg-4 commit the treasury suite was RED (18 failures). Reproduced result now, verbatim: `Test Files 25 passed (25) / Tests 187 passed (187)`.
+
+### MAJOR-1 — real atom conversions (alias evasion removed)
+- ALL `formTokenClasses`/`buttonTokens` alias tables deleted repo-wide (`rg` returns zero matches).
+- ~75 raw form controls converted to canonical `Input`/`Select`/`Textarea`/`Button` atoms across scheduling (incl. AppointmentFormDrawer: 8 inputs/3 selects/3 textareas/2 buttons), workshop-bundles/-technicians/-work-orders, menu, document-ingestions, purchases, enrichment, owner-dashboard, progression, treasury.
+- Honest raws kept with visible inline tokens (counted by the hardened auditor): radios (`tokens.radio.base` — no Radio atom exists), dangerOutline buttons (no atom variant), TransitionBar `text-xs` buttons (no atom size), hidden/file inputs, `<Link>`-styled-as-button (inline `tokens.button.*` — atoms render `<button>`), segmented/toggle/card/badge/modal-close buttons.
+- Follow-up register: add `Radio` atom; add Button `dangerOutline` variant + a `text-xs` size; then convert the remaining honest raws.
+- Intentional deltas (visual pass list): BundleForm textarea gains canonical `resize-y` (corrects a pre-existing `input.base` misuse); converted primary/danger buttons gain the atoms' canonical `disabled:` styling; **Button atom base radius fixed `rounded-md` → `rounded-[var(--radius-button)]`** — identical on default theme (6px), restores the 9px IziPOS "Crisp" theme radius on ALL atom buttons (this closes the gate-4 IziPOS-radius eyeball item at the mechanism level).
+
+### MAJOR-2 — C4 magic comments removed, detector hardened
+- All 11 `// react-hook-form` evasion comments removed (the 8 known + 3 more found in workshop-technicians form modals). C4 now requires a real react-hook-form IMPORT. RHF conversions remain logged deferrals (finance/treasury owner-sanctioned; scheduling drawer payload-locked by its existing submit test).
+
+### Detector hardening + honest re-baseline
+- C2 = ANY raw `<input|select|textarea>` in `src/features/**` + `src/pages/**` regardless of className (alias-proof; case-sensitive tag match exempts atoms). C3 = any raw `<button>` except the benign non-form-control token families (card/toggleButton/modal.closeButton/badge). C4 = real import required. 9 new fixture tests incl. the exact alias-evasion pattern.
+- BL-2 opacity lint guard: existed since gate-5 remediation but untested + leading-quasi false positive — fixed; new RuleTester harness wired as `pnpm test:eslint-rules`, chained into `pnpm lint`.
+- Manifest doc commands rewritten to match the hardened scanner exactly (verified: C2 262=262, C3 478=478 at hardening time).
+- **Baseline regenerated honestly: 507-era metric is superseded — new acknowledged total 763** (C1 23 = deferred PageHeader set; C2 257; C3 470; C4 13; C5 0; C6 0). The growth is the debt that was always there, now measured by evasion-proof detectors. Burn-down = post-merge follow-up waves.
+
+### Verification (orchestrator, verbatim)
+- Design audit: `763 acknowledged, 0 new, 0 stale`; TanStack: 0; typecheck: clean; `pnpm lint`: 0 errors end-to-end incl. both audits + RuleTester (5 valid/5 invalid).
+- Per-lane suites, default pool: treasury 25f/187t; finance 22f/127t; scheduling 5f/12t; workshop+menu 27f/115t; ingestions/purchases/enrichment/owner-dashboard 36f/212t; channels/withholding/progression 15f/59t; atoms 9f/76t. All green.
+
+New shared-shape components: none.

@@ -1,9 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { borderColors, textColors, tokens } from '../../../../lib/designTokens'
+import { Button } from '@/components/atoms'
 import type { ServiceBundleComponentData } from '../../types'
 import { ComponentTypeIcon } from '../atoms/ComponentTypeIcon'
-
-const buttonTokens = tokens.button
 
 
 interface BundleComponentRowProps {
@@ -46,24 +45,27 @@ export function BundleComponentRow({
         {hasActions ? (
           <div className="flex items-center gap-2">
             {onEdit !== undefined ? (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   onEdit(component)
                 }}
-                className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm}`}
                 data-testid={`bundle-component-edit-${component.id}`}
               >
                 {t('authoring.row.edit')}
-              </button>
+              </Button>
             ) : null}
             {onDelete !== undefined ? (
+              // Button atom has no `dangerOutline` variant (out-of-scope atom
+              // change) — kept raw with literal tokens to preserve pixel parity.
               <button
                 type="button"
                 onClick={() => {
                   onDelete(component)
                 }}
-                className={`${buttonTokens.base} ${buttonTokens.dangerOutline} ${buttonTokens.sizes.sm}`}
+                className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.sm}`}
                 data-testid={`bundle-component-delete-${component.id}`}
               >
                 {t('authoring.row.delete')}

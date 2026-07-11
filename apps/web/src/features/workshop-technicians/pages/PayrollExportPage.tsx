@@ -3,19 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { Download } from 'lucide-react'
 import { api } from '@/lib/api'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { Button, Input } from '@/components/atoms'
 import { useTechnicians } from '../hooks/useTechnicians'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
-
-const buttonTokens = tokens.button
-
-const formTokenClasses = {
-  input: tokens.input.base,
-  select: tokens.select.base,
-  textarea: tokens.textarea.base,
-  checkbox: tokens.checkbox.base,
-  radio: tokens.radio.base,
-}
-
 
 function defaultPeriodStart(): string {
   const d = new Date()
@@ -96,9 +86,8 @@ export function PayrollExportPage() {
             <label className={tokens.label.base}>
               {t('authoring.timeOff.fields.startsAt')}
             </label>
-            <input
+            <Input
               type="date"
-              className={formTokenClasses.input}
               value={start}
               onChange={(e) => {
                 setStart(e.target.value)
@@ -109,9 +98,8 @@ export function PayrollExportPage() {
             <label className={tokens.label.base}>
               {t('authoring.timeOff.fields.endsAt')}
             </label>
-            <input
+            <Input
               type="date"
-              className={formTokenClasses.input}
               value={end}
               onChange={(e) => {
                 setEnd(e.target.value)
@@ -161,20 +149,22 @@ export function PayrollExportPage() {
         ) : null}
 
         <div className="flex items-center justify-end">
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="md"
             onClick={() => {
               void handleGenerate()
             }}
             disabled={isGenerating}
-            className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md} inline-flex items-center gap-2`}
+            className="inline-flex items-center gap-2"
             data-testid="payroll-generate-button"
           >
             <Download className="h-4 w-4" />
             {isGenerating
               ? t('authoring.certifications.modal.saving')
               : t('navigation.payrollExports')}
-          </button>
+          </Button>
         </div>
       </section>
     </div>

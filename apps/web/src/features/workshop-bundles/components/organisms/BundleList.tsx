@@ -8,9 +8,6 @@ import { ServiceIntervalBadge } from '../atoms/ServiceIntervalBadge'
 import { VehicleApplicabilityChip } from '../atoms/VehicleApplicabilityChip'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
-const buttonTokens = tokens.button
-
-
 export function BundleList() {
   const { t } = useTranslation('workshop-bundles')
   const { data, isLoading, error } = useBundles()
@@ -29,7 +26,7 @@ export function BundleList() {
         <PageHeaderTitle className={`text-2xl font-semibold ${textColors.primary}`}>{t('list.title')}</PageHeaderTitle>
         <Link
           to="/workshop/bundles/new"
-          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm} gap-1.5`}
+          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} gap-1.5`}
         >
           <Plus className="h-4 w-4" />
           {t('list.createCta')}

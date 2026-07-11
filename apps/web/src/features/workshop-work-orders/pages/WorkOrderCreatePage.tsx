@@ -19,9 +19,6 @@ import {
 } from '@/components/molecules/pickers'
 import { useCreateWorkOrder } from '../hooks/useWorkOrders'
 import type { CreateWorkOrderInput, WorkOrderType } from '../types'
-// react-hook-form migration marker: controlled work-order payload remains covered by create-page tests.
-
-const buttonTokens = tokens.button
 
 const WORK_ORDER_TYPES: WorkOrderType[] = [
   'repair',
@@ -179,7 +176,7 @@ export function WorkOrderCreatePage() {
         <div className="flex justify-end gap-2">
           <Link
             to="/workshop/work-orders"
-            className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.md}`}
+            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
           >
             {t('actions.cancel')}
           </Link>
