@@ -355,6 +355,14 @@ routes:
     component: ProductForm
     module_gate: null
     permission: inventory.create
+  - path: /inventory/replenishment
+    component: ReplenishmentQueuePage
+    module_gate: null
+    permission: replenishment.view
+  - path: /inventory/replenishment/new
+    component: ReplenishmentCapturePage
+    module_gate: null
+    permission: replenishment.create
   - path: /inventory/return-notes
     component: DocumentListPage
     module_gate: inventory
@@ -637,6 +645,10 @@ routes:
     permission: document-ingestions.view
   - path: /purchases/scans/:id
     component: ReviewIngestionPage
+    module_gate: null
+    permission: document-ingestions.view
+  - path: /purchases/scans/new
+    component: UploadScanPage
     module_gate: null
     permission: document-ingestions.view
   - path: /purchases/supplier-invoices

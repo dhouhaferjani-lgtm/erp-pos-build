@@ -94,7 +94,7 @@ final class ReplenishmentActionController extends Controller
     }
 
     /**
-     * @param array<array-key, array<array-key, scalar|null>> $value
+     * @param  array<array-key, array<array-key, scalar|null>>  $value
      * @return list<array{request_id: string, quantity: numeric-string}>
      */
     private function actionLines(array $value): array
@@ -114,7 +114,7 @@ final class ReplenishmentActionController extends Controller
     }
 
     /**
-     * @param array<array-key, scalar|null> $value
+     * @param  array<array-key, scalar|null>  $value
      * @return list<string>
      */
     private function requestIds(array $value): array

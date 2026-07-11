@@ -31,6 +31,11 @@ echo ""
 #       Runs the entire PHPUnit suite via `php artisan test`.
 #       Example:
 #         PREFLIGHT_SCOPE=full ./scripts/preflight.sh
+#
+# Optional additive scopes (unset preserves the existing full checks):
+#   PREFLIGHT_PINT_PATHS='app/Modules/Foo tests/Feature/Foo'
+#   PREFLIGHT_PHPSTAN_PATHS='app/Modules/Foo app/Shared/DTOs/FooData.php'
+#   PREFLIGHT_VITEST_PATHS='src/features/foo src/components/Foo.test.tsx'
 # -----------------------------------------------------------------------------
 PREFLIGHT_SCOPE="${PREFLIGHT_SCOPE:-paths}"
 PHPUNIT_SKIPPED=0
@@ -46,11 +51,21 @@ echo "=================================="
 cd "$ROOT_DIR/apps/api"
 
 echo -e "\n${YELLOW}Running Pint (code style)...${NC}"
-./vendor/bin/pint --test
+if [ -n "${PREFLIGHT_PINT_PATHS:-}" ]; then
+    # shellcheck disable=SC2086
+    ./vendor/bin/pint --test ${PREFLIGHT_PINT_PATHS}
+else
+    ./vendor/bin/pint --test
+fi
 echo -e "${GREEN}✓ Pint passed${NC}"
 
 echo -e "\n${YELLOW}Running PHPStan (static analysis)...${NC}"
-./vendor/bin/phpstan analyse --level=8 --memory-limit=2G
+if [ -n "${PREFLIGHT_PHPSTAN_PATHS:-}" ]; then
+    # shellcheck disable=SC2086
+    ./vendor/bin/phpstan analyse ${PREFLIGHT_PHPSTAN_PATHS} --level=8 --memory-limit=2G
+else
+    ./vendor/bin/phpstan analyse --level=8 --memory-limit=2G
+fi
 echo -e "${GREEN}✓ PHPStan passed${NC}"
 
 echo -e "\n${YELLOW}Running PHPUnit tests (scope: ${PREFLIGHT_SCOPE})...${NC}"
@@ -92,7 +107,7 @@ esac
 # driven types pipeline honest: any DTO change must ship with a matching
 # regenerated .d.ts, never silently drift.
 echo -e "\n${YELLOW}Generating TypeScript types...${NC}"
-if ! php artisan typescript:transform; then
+if ! CACHE_STORE=array php artisan typescript:transform; then
     echo -e "${RED}✗ TypeScript transformer failed (see output above)${NC}"
     exit 1
 fi
@@ -104,7 +119,7 @@ if ! git -C "$ROOT_DIR" diff --quiet -- "$GENERATED_TYPES" 2>/dev/null; then
     echo -e "${RED}✗ packages/shared/types/generated.d.ts is out of date.${NC}"
     echo -e "${RED}  Someone changed a #[TypeScript]-tagged PHP DTO without regenerating.${NC}"
     echo -e "${RED}  To fix:${NC}"
-    echo -e "${RED}    (cd apps/api && php artisan typescript:transform)${NC}"
+    echo -e "${RED}    (cd apps/api && CACHE_STORE=array php artisan typescript:transform)${NC}"
     echo -e "${RED}    git add packages/shared/types/generated.d.ts${NC}"
     echo -e "${RED}    git commit -m 'chore(types): regenerate TypeScript types'${NC}"
     echo -e "${RED}    # (or 'git commit --amend' only if the DTO change is still unpushed)${NC}"
@@ -141,7 +156,12 @@ bash "$ROOT_DIR/scripts/factory/check-manifest-drift.sh"
 echo -e "${GREEN}✓ Route manifests in sync${NC}"
 
 echo -e "\n${YELLOW}Running Vitest tests...${NC}"
-pnpm test
+if [ -n "${PREFLIGHT_VITEST_PATHS:-}" ]; then
+    # shellcheck disable=SC2086
+    pnpm vitest run ${PREFLIGHT_VITEST_PATHS}
+else
+    pnpm test
+fi
 echo -e "${GREEN}✓ Vitest passed${NC}"
 
 # Fiscal fixture parity check

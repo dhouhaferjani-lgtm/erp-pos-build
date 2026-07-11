@@ -8,7 +8,10 @@ use Illuminate\Foundation\Http\FormRequest;
 
 final class RejectRequestsRequest extends FormRequest
 {
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
 
     /** @return array<string, list<string>> */
     public function rules(): array

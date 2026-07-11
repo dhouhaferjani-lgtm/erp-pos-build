@@ -28,6 +28,7 @@ use App\Modules\Inventory\Domain\StockTransferLineBatchAllocation;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -175,6 +176,83 @@ class StockTransferService
             // Move stock into in_transit immediately.
             return $this->moveSourceToInTransit($transfer->id, $data->initiatedByUserId);
         }, attempts: 3);
+    }
+
+    /**
+     * Validate aggregate source demand before a caller initiates a batch of
+     * transfers. Callers that initiate after this check must keep the same
+     * database transaction open so the locked stock rows stay pinned.
+     *
+     * @param  list<InitiateTransferLineData>  $lines
+     */
+    public function assertSourceAvailability(
+        string $tenantId,
+        string $companyId,
+        string $sourceLocationId,
+        array $lines,
+    ): void {
+        /** @var array<string, array{product_id: string, variant_id: ?string, quantity: numeric-string}> $required */
+        $required = [];
+        foreach ($lines as $line) {
+            $key = $line->productId.'|'.($line->variantId ?? '');
+            if (isset($required[$key])) {
+                $required[$key]['quantity'] = bcadd(
+                    $required[$key]['quantity'],
+                    $line->quantity,
+                    self::QTY_SCALE,
+                );
+            } else {
+                $required[$key] = [
+                    'product_id' => $line->productId,
+                    'variant_id' => $line->variantId,
+                    'quantity' => $line->quantity,
+                ];
+            }
+        }
+
+        $levels = StockLevel::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('location_id', $sourceLocationId)
+            ->whereIn('product_id', array_values(array_unique(array_column($required, 'product_id'))))
+            ->lockForUpdate()
+            ->get();
+
+        /** @var array<string, numeric-string> $availableByProductVariant */
+        $availableByProductVariant = [];
+        foreach ($levels as $level) {
+            $key = $level->product_id.'|'.($level->variant_id ?? '');
+            $availableByProductVariant[$key] = QuantityScale::round(
+                $level->getAvailableQuantity(),
+                self::QTY_SCALE,
+                QuantityScale::FLOOR,
+            );
+        }
+
+        foreach ($required as $key => $demand) {
+            $available = $this->availableQuantity($availableByProductVariant, $key);
+            if (bccomp($demand['quantity'], $available, self::QTY_SCALE) > 0) {
+                throw new InsufficientStockException(
+                    productId: $demand['product_id'],
+                    locationId: $sourceLocationId,
+                    requested: $demand['quantity'],
+                    available: $available,
+                );
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, numeric-string>  $availableByProductVariant
+     * @return numeric-string
+     */
+    private function availableQuantity(array $availableByProductVariant, string $key): string
+    {
+        if (isset($availableByProductVariant[$key])) {
+            return $availableByProductVariant[$key];
+        }
+
+        return '0.0000';
     }
 
     /**

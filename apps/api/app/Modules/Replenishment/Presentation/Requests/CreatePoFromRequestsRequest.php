@@ -11,9 +11,15 @@ use Illuminate\Validation\Rules\Exists;
 
 final class CreatePoFromRequestsRequest extends FormRequest
 {
-    public function __construct(private readonly CompanyContext $companyContext) { parent::__construct(); }
+    public function __construct(private readonly CompanyContext $companyContext)
+    {
+        parent::__construct();
+    }
 
-    public function authorize(): bool { return true; }
+    public function authorize(): bool
+    {
+        return true;
+    }
 
     /** @return array<string, list<string|Exists>> */
     public function rules(): array

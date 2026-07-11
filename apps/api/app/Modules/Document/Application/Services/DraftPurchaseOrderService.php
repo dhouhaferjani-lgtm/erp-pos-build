@@ -107,7 +107,7 @@ final class DraftPurchaseOrderService
     }
 
     /**
-     * @param list<DraftPurchaseOrderLineData> $lines
+     * @param  list<DraftPurchaseOrderLineData>  $lines
      * @return list<array{product_id: string, variant_id: string|null, location_id: string|null, description: string, quantity: numeric-string, unit_price: numeric-string, line_total: numeric-string, tax_rate: numeric-string, tax_amount: numeric-string}>
      */
     private function prepareLines(
@@ -179,7 +179,7 @@ final class DraftPurchaseOrderService
     }
 
     /**
-     * @param list<array{product_id: string, variant_id: string|null, location_id: string|null, description: string, quantity: numeric-string, unit_price: numeric-string, line_total: numeric-string, tax_rate: numeric-string, tax_amount: numeric-string}> $lines
+     * @param  list<array{product_id: string, variant_id: string|null, location_id: string|null, description: string, quantity: numeric-string, unit_price: numeric-string, line_total: numeric-string, tax_rate: numeric-string, tax_amount: numeric-string}>  $lines
      */
     private function persistLines(Document $document, array $lines, int $startingLineNumber, int $scale): void
     {
@@ -210,7 +210,7 @@ final class DraftPurchaseOrderService
     }
 
     /**
-     * @param array<int, array{line_total: numeric-string, tax_amount: numeric-string}> $lines
+     * @param  array<int, array{line_total: numeric-string, tax_amount: numeric-string}>  $lines
      * @return array{subtotal: numeric-string, tax: numeric-string, total: numeric-string}
      */
     private function totals(array $lines, int $scale): array

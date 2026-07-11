@@ -49,32 +49,57 @@ final class ReplenishmentFulfillmentService
             $groups[$request->location_id][] = $request;
         }
 
-        $transferIds = [];
-        foreach ($groups as $destinationLocationId => $group) {
-            $requestIds = array_map(static fn (ReplenishmentRequest $request): string => $request->id, $group);
-            sort($requestIds, SORT_STRING);
-            $transfer = $this->stockTransferService->initiate(new InitiateTransferData(
-                tenantId: $tenantId,
-                companyId: $companyId,
-                sourceLocationId: $sourceLocationId,
-                destinationLocationId: $destinationLocationId,
-                initiatedByUserId: $userId,
-                lines: array_map(
+        return DB::transaction(function () use (
+            $tenantId,
+            $companyId,
+            $sourceLocationId,
+            $userId,
+            $groups,
+            $quantityByRequest,
+        ): array {
+            /** @var list<InitiateTransferData> $transfers */
+            $transfers = [];
+            /** @var list<InitiateTransferLineData> $allLines */
+            $allLines = [];
+            foreach ($groups as $destinationLocationId => $group) {
+                $requestIds = array_map(static fn (ReplenishmentRequest $request): string => $request->id, $group);
+                sort($requestIds, SORT_STRING);
+                $transferLines = array_map(
                     static fn (ReplenishmentRequest $request): InitiateTransferLineData => new InitiateTransferLineData(
                         productId: $request->product_id,
                         quantity: $quantityByRequest[$request->id],
                         variantId: $request->variant_id,
                     ),
                     $group,
-                ),
-                idempotencyKey: 'replenishment:'.sha1(
-                    $sourceLocationId.':'.$destinationLocationId.':'.implode(',', $requestIds),
-                ),
-            ));
-            $transferIds[] = $transfer->id;
-        }
+                );
+                array_push($allLines, ...$transferLines);
+                $transfers[] = new InitiateTransferData(
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    sourceLocationId: $sourceLocationId,
+                    destinationLocationId: $destinationLocationId,
+                    initiatedByUserId: $userId,
+                    lines: $transferLines,
+                    idempotencyKey: 'replenishment:'.sha1(
+                        $sourceLocationId.':'.$destinationLocationId.':'.implode(',', $requestIds),
+                    ),
+                );
+            }
 
-        return $transferIds;
+            $this->stockTransferService->assertSourceAvailability(
+                $tenantId,
+                $companyId,
+                $sourceLocationId,
+                $allLines,
+            );
+
+            $transferIds = [];
+            foreach ($transfers as $transferData) {
+                $transferIds[] = $this->stockTransferService->initiate($transferData)->id;
+            }
+
+            return $transferIds;
+        });
     }
 
     /**

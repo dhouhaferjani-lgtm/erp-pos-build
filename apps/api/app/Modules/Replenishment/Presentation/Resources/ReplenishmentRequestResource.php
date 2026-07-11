@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Replenishment\Presentation\Resources;
 
+use App\Modules\Replenishment\Domain\ReplenishmentRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Modules\Replenishment\Domain\ReplenishmentRequest */
+/** @mixin ReplenishmentRequest */
 final class ReplenishmentRequestResource extends JsonResource
 {
     /** @return array<string, int|string|null> */

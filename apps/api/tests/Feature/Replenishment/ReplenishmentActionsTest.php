@@ -12,12 +12,14 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Replenishment\Application\DTOs\CaptureRequestData;
 use App\Modules\Replenishment\Application\Services\ReplenishmentCaptureService;
+use App\Modules\Replenishment\Application\Services\ReplenishmentFulfillmentService;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentChannel;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentFulfillmentType;
 use App\Modules\Replenishment\Domain\Enums\ReplenishmentStatus;
@@ -244,6 +246,33 @@ final class ReplenishmentActionsTest extends TestCase
         ])->assertOk();
 
         $this->assertSame(2, StockTransfer::query()->distinct()->count('idempotency_key'));
+    }
+
+    public function test_multi_destination_transfer_prevalidates_all_stock_before_initiating_any_group(): void
+    {
+        $a = $this->capture($this->shopA, $this->productA);
+        $b = $this->capture($this->shopB, $this->productB);
+        $this->seedStock($this->productA, '2');
+
+        try {
+            app(ReplenishmentFulfillmentService::class)->createTransfers(
+                tenantId: $this->tenant->id,
+                companyId: $this->company->id,
+                sourceLocationId: $this->source->id,
+                userId: $this->reviewer->id,
+                lines: [
+                    ['request_id' => $a->id, 'quantity' => '1'],
+                    ['request_id' => $b->id, 'quantity' => '1'],
+                ],
+            );
+            $this->fail('Expected the unavailable second group to reject the whole action.');
+        } catch (InsufficientStockException) {
+            // Expected: validation occurs before the first group is initiated.
+        }
+
+        $this->assertSame(0, StockTransfer::query()->count());
+        $this->assertSame(ReplenishmentStatus::Pending, $a->refresh()->status);
+        $this->assertSame(ReplenishmentStatus::Pending, $b->refresh()->status);
     }
 
     public function test_reject_requires_reason_and_closes_lines(): void
