@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/authStore'
@@ -42,7 +43,7 @@ vi.mock('@/components/organisms', () => ({
   AddPartnerModal: () => null,
   AddRepositoryModal: () => null,
 }))
-vi.mock('@/features/withholding', () => ({
+vi.mock('@/features/withholding/hooks/useWithholding', () => ({
   useWithholdingPreview: () => ({ data: undefined, mutate: mockWithholdingPreviewMutate }),
 }))
 vi.mock('@/hooks/useCurrency', async (importOriginal) => {
@@ -115,9 +116,11 @@ function renderForm(methods: unknown[] = [CHEQUE_METHOD]) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   render(
-    <QueryClientProvider client={client}>
-      <PaymentForm />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <PaymentForm />
+      </QueryClientProvider>
+    </MemoryRouter>,
   )
 }
 

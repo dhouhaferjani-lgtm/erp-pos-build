@@ -118,10 +118,8 @@ export function InstrumentDetailPage() {
   const [bounceRouting, setBounceRouting] = useState('')
   const [reason, setReason] = useState('')
 
-  const detailKey = tenantScopedKey(['instrument', instrumentId])
-  const eventsKey = tenantScopedKey(['instrument-events', instrumentId])
   const { data, isLoading, error } = useQuery({
-    queryKey: detailKey,
+    queryKey: tenantScopedKey(['instrument', instrumentId]),
     queryFn: async () => {
       const response = await api.get<InstrumentResponse>(`/payment-instruments/${instrumentId}`)
       return response.data
@@ -140,8 +138,8 @@ export function InstrumentDetailPage() {
 
   async function refresh() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: detailKey }),
-      queryClient.invalidateQueries({ queryKey: eventsKey }),
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['instrument', instrumentId]) }),
+      queryClient.invalidateQueries({ queryKey: tenantScopedKey(['instrument-events', instrumentId]) }),
     ])
     setDialog(null)
     setReason('')

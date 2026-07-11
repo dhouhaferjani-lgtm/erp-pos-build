@@ -108,7 +108,26 @@ function wrapper(queryClient: QueryClient) {
 beforeEach(() => {
   vi.clearAllMocks()
   setTenant('tenant-A', 'company-1')
-  mockApiGet.mockResolvedValue({ data: { data: [], meta: { total: 0 } } })
+  mockApiGet.mockImplementation((url: string) => Promise.resolve(url.includes('/treasury/maturing-instruments')
+    ? {
+        data: {
+          data: [],
+          meta: {
+            from: '2026-07-11',
+            to: '2026-10-09',
+            buckets: {
+              overdue: { count: 0, total_in: '0.000', total_out: '0.000' },
+              d0_7: { count: 0, total_in: '0.000', total_out: '0.000' },
+              d8_30: { count: 0, total_in: '0.000', total_out: '0.000' },
+              d31_60: { count: 0, total_in: '0.000', total_out: '0.000' },
+              d61_90: { count: 0, total_in: '0.000', total_out: '0.000' },
+              d90_plus: { count: 0, total_in: '0.000', total_out: '0.000' },
+            },
+            grand_total: { count: 0, total_in: '0.000', total_out: '0.000' },
+          },
+        },
+      }
+    : { data: { data: [], meta: { total: 0 } } }))
   mockApiPost.mockResolvedValue({
     data: {
       id: 'method-1',
@@ -150,7 +169,9 @@ describe('treasury tenant scope', () => {
     renderHook(() => usePaymentMethods(), { wrapper: wrapper(queryClient) })
 
     await waitFor(() => {
-      expect(queryClient.getQueryData(['instruments', 'tenant-A', 'company-1'])).toBeDefined()
+      expect(queryClient.getQueriesData({ queryKey: ['instruments'] }).some(([key, value]) => (
+        key.at(-2) === 'tenant-A' && key.at(-1) === 'company-1' && value !== undefined
+      ))).toBe(true)
       // PaymentListPage keys its query as ['payments', search, tenant, company]
       // since the list-search branch; the initial search term is ''.
       expect(queryClient.getQueryData(['payments', '', 'tenant-A', 'company-1'])).toBeDefined()

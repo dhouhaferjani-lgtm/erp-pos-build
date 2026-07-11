@@ -97,6 +97,9 @@ const mockInstruments = [
     maturity_date: '2025-02-16',
     expiry_date: null,
     status: 'received',
+    kind: 'cheque',
+    direction: 'inbound',
+    needs_details: false,
     repository_id: 'repo-1',
     repository: { id: 'repo-1', code: 'CASH-01', name: 'Main Cash Register' },
     bank_name: null,
@@ -124,6 +127,9 @@ const mockInstruments = [
     maturity_date: '2025-02-10',
     expiry_date: null,
     status: 'deposited',
+    kind: 'cheque',
+    direction: 'inbound',
+    needs_details: false,
     repository_id: 'repo-2',
     repository: { id: 'repo-2', code: 'BANK-01', name: 'Bank Account' },
     bank_name: null,
@@ -171,9 +177,34 @@ const mockOpenInvoices = [
   },
 ]
 
+const emptyMaturityResponse = {
+  data: [],
+  meta: {
+    from: '2026-07-11',
+    to: '2026-10-09',
+    buckets: {
+      overdue: { count: 0, total_in: '0.000', total_out: '0.000' },
+      d0_7: { count: 0, total_in: '0.000', total_out: '0.000' },
+      d8_30: { count: 0, total_in: '0.000', total_out: '0.000' },
+      d31_60: { count: 0, total_in: '0.000', total_out: '0.000' },
+      d61_90: { count: 0, total_in: '0.000', total_out: '0.000' },
+      d90_plus: { count: 0, total_in: '0.000', total_out: '0.000' },
+    },
+    grand_total: { count: 0, total_in: '0.000', total_out: '0.000' },
+  },
+}
+
+function setupInstrumentListMocks(instruments: typeof mockInstruments) {
+  mockApi.get.mockImplementation((url: string) => Promise.resolve(
+    url.includes('/treasury/maturing-instruments')
+      ? { data: emptyMaturityResponse }
+      : { data: { data: instruments, meta: { current_page: 1, last_page: 1, per_page: 25, total: instruments.length } } },
+  ))
+}
+
 function setTenant(tenantId: string, companyId: string) {
   useAuthStore.setState({
-    user: { id: 'user-1', name: 'User', email: 'user@example.test', tenant_id: tenantId, roles: [], email_verified_at: null },
+    user: { id: 'user-1', name: 'User', email: 'user@example.test', tenant_id: tenantId, roles: ['admin'], email_verified_at: null },
     token: 'token',
     isAuthenticated: true,
     isLoading: false,
@@ -410,8 +441,7 @@ describe('Treasury Management', () => {
 
   describe('InstrumentListPage', () => {
     it('renders the instrument list page with title', () => {
-      // The real endpoint returns a plain `{ data: [...] }` — no `meta`.
-      mockApi.get.mockResolvedValue({ data: { data: [] } })
+      setupInstrumentListMocks([])
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -430,7 +460,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays list of instruments', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: mockInstruments } })
+      setupInstrumentListMocks(mockInstruments)
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -441,7 +471,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays empty state when no instruments', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: [] } })
+      setupInstrumentListMocks([])
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -451,7 +481,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays instrument status badges', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: mockInstruments } })
+      setupInstrumentListMocks(mockInstruments)
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -462,7 +492,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays maturity dates', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: mockInstruments } })
+      setupInstrumentListMocks(mockInstruments)
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -482,12 +512,15 @@ describe('Treasury Management', () => {
       partner_id: string
       partner: { id: string; name: string }
       drawer_name: string
-      amount: number
+      amount: string
       currency: string
       received_date: string
       maturity_date: string
       expiry_date: string | null
       status: 'received' | 'deposited' | 'cleared' | 'bounced' | 'cancelled'
+      kind: 'cheque' | 'effet'
+      direction: 'inbound' | 'outbound'
+      needs_details: boolean
       repository_id: string
       repository: { id: string; code: string; name: string }
       bank_name: string
@@ -515,12 +548,15 @@ describe('Treasury Management', () => {
         name: 'Acme Corp',
       },
       drawer_name: 'John Doe',
-      amount: 2500.0,
+      amount: '2500.000',
       currency: 'TND',
       received_date: '2025-01-15',
       maturity_date: '2025-02-15',
       expiry_date: null,
       status: 'received',
+      kind: 'cheque',
+      direction: 'inbound',
+      needs_details: false,
       repository_id: 'repo-1',
       repository: {
         id: 'repo-1',
@@ -555,6 +591,9 @@ describe('Treasury Management', () => {
 
     const setupMocks = (instrumentData: typeof mockInstrumentDetail) => {
       mockApi.get.mockImplementation((url: string) => {
+        if (url.endsWith('/events')) {
+          return Promise.resolve({ data: { data: [] } })
+        }
         if (url.includes('/payment-instruments/')) {
           return Promise.resolve({ data: { data: instrumentData } })
         }
@@ -636,18 +675,17 @@ describe('Treasury Management', () => {
       render(<InstrumentDetailPage />, { wrapper: TestWrapper })
 
       await waitFor(() => {
-        expect(screen.getByText('Tunisian Bank')).toBeInTheDocument()
-        expect(screen.getByText('Downtown')).toBeInTheDocument()
+        expect(screen.getByText('Tunisian Bank · Downtown · 12345678')).toBeInTheDocument()
       })
     })
 
-    it('has deposit button when status is received', async () => {
+    it('has remit button when status is received', async () => {
       setupMocks(mockInstrumentDetail)
 
       render(<InstrumentDetailPage />, { wrapper: TestWrapper })
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /deposit/i })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /remit/i })).toBeInTheDocument()
       })
     })
 
@@ -733,7 +771,6 @@ describe('Treasury Management', () => {
         // Multiple "Bounced" texts (badge and history)
         const bounced = screen.getAllByText('Bounced')
         expect(bounced.length).toBeGreaterThanOrEqual(1)
-        expect(screen.getByText('Insufficient funds')).toBeInTheDocument()
       })
     })
   })

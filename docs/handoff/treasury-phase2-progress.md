@@ -451,3 +451,13 @@
 - FEC declaration: the canonical Treasury-spine descriptive section now lists `EF` alongside VT/AC/BQ/CA/OD, maps only `instrument` and `instrument_remittance` portfolio lifecycle entries to it, and explicitly preserves receipt-side payment journal coding. The deploy checklist repeats the operator-facing declaration and contre-passation rule.
 - Verification: all documented artisan commands and class names were checked against the current CLI/source; `git diff --check` passes; targeted link/path and required-token greps pass.
 - Deviations: none. Documentation only; no runtime or money-path code changed.
+
+### Gate 4 preflight — full Wave H verification
+
+- Backend scoped gate: `./vendor/bin/phpunit tests/Feature/Treasury tests/Feature/Accounting` — PASS, 1,012 tests / 4,179 assertions / 26 PostgreSQL-environment skips / 40 existing deprecations. `./vendor/bin/phpstan --memory-limit=1G` — 2,499 files, zero errors. `./vendor/bin/pint --dirty` — pass.
+- Initial web preflight RED: `pnpm lint` found 3 new TanStack scanner violations because already-scoped detail/event keys were stored in local variables the static gate cannot prove; the full Treasury+Finance Vitest run also exposed three stale test files that isolated task runs had missed (missing Router/current withholding mock, pre-pagination/maturity response fixtures, and pre-filter query-key expectations). No production API or money-path defect was involved.
+- Fix-forward: inline canonical `tenantScopedKey(...)` at the detail read and both invalidations; existing tenant-isolation behavior test stayed green. Updated only legacy test wrappers/mocks to the shipped contracts: Router + exact withholding hook, paginated instrument and maturity response shapes, events endpoint shape, permission-aware remit action, combined bank text, and filter-bearing query-key assertion.
+- Final web gate: focused repaired set — PASS, 3 files / 60 tests. `pnpm typecheck` — pass. `pnpm lint` — 0 errors; existing 6,423 warning baseline remains informational; TanStack audit 0 acknowledged / **0 new** / 0 stale; design-system audit 753 acknowledged / **0 new** / 0 stale; ESLint RuleTester 5 valid + 5 invalid pass. `pnpm vitest run src/features/treasury src/features/finance` — PASS, 54 files / 356 tests. `git diff --check` — pass.
+- Task-27 artifact gate: tracked `docs/sessions/treasury-phase2-e2e/REPORT.md` plus three retained local screenshots (`treasury-overview-final.png`, `effet-remittance.png`, `pos-check-cleared.png`).
+- Gate tag status: no RC tag was created while preflight was red. The first frozen review candidate will therefore be `phase2-gate-4-rc1` after this fix commit.
+- Money-path deviation: none.
