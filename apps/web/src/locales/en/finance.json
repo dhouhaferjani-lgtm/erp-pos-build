@@ -118,6 +118,15 @@
         "days90Plus": "90+ days"
       }
     },
+    "echeancier": {
+      "title": "Échéancier — upcoming maturities",
+      "subtitle": "Payment instruments due in the next 30 days",
+      "incoming": "Incoming",
+      "outgoing": "Outgoing",
+      "openRegister": "Open register",
+      "empty": "No instruments mature in this period.",
+      "atSight": "At sight"
+    },
     "trend": {
       "revenueVsExpenses": "Current-period revenue vs expenses",
       "revenue": "Revenue",

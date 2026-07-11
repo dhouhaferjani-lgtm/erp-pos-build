@@ -212,6 +212,10 @@
       "inbound": "Entrant",
       "outbound": "Sortant"
     },
+    "certainty": {
+      "portfolio": "En portefeuille",
+      "remitted": "Remis"
+    },
     "routings": {
       "re_present": "Représenter",
       "receivable": "Retour en créance",

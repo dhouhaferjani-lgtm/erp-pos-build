@@ -118,6 +118,15 @@
         "days90Plus": "90+ jours"
       }
     },
+    "echeancier": {
+      "title": "Échéancier — prochaines échéances",
+      "subtitle": "Instruments de paiement à échéance dans les 30 prochains jours",
+      "incoming": "Entrées",
+      "outgoing": "Sorties",
+      "openRegister": "Ouvrir le registre",
+      "empty": "Aucun instrument n'arrive à échéance sur cette période.",
+      "atSight": "À vue"
+    },
     "trend": {
       "revenueVsExpenses": "Produits vs charges de la période",
       "revenue": "Produits",

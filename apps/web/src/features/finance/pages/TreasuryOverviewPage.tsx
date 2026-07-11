@@ -4,6 +4,7 @@ import { QueryError } from '@/components/QueryError'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { StatCard } from '@/components/ui/StatCard'
 import { FinanceWidget } from '@/features/finance/components/FinanceWidget'
+import { EcheancierPanel } from '@/features/finance/components/EcheancierPanel'
 import { useProfitLoss } from '@/features/finance/hooks/useProfitLoss'
 import { useUpcomingPayments } from '@/features/finance/hooks/useUpcomingPayments'
 import { OwnerChart } from '@/features/owner-dashboard/components/OwnerChart'
@@ -45,6 +46,12 @@ function bucketCount(
     }
     return line.days_until_due > 60
   }).length
+}
+
+function addDaysToInputValue(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
 }
 
 interface UpcomingPaymentsPanelProps {
@@ -156,6 +163,8 @@ export function TreasuryOverviewPage() {
   const cashPosition = cashPositionQuery.data
   const upcomingPayments = upcomingPaymentsQuery.data
   const profitLoss = profitLossQuery.data
+  const maturityFrom = getTodayDateInputValue()
+  const maturityTo = addDaysToInputValue(maturityFrom, 30)
 
   const formatMoney = (amount: string) => formatReportCurrency(amount, currentCompany)
   const revenueVsExpensesOption: EChartsOption = {
@@ -223,6 +232,8 @@ export function TreasuryOverviewPage() {
       )}
 
       <FinanceWidget />
+
+      <EcheancierPanel from={maturityFrom} to={maturityTo} formatMoney={formatMoney} />
 
       {upcomingPaymentsQuery.isLoading ? (
         <p className={cn('py-8 text-center', textColors.tertiary)}>

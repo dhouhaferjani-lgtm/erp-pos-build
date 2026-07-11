@@ -18,6 +18,7 @@ vi.mock('react-router-dom', () => ({
   Link: ({ to, children, ...props }: { to: string; children: React.ReactNode; className?: string }) => (
     <a href={to} {...props}>{children}</a>
   ),
+  useSearchParams: () => [new URLSearchParams()],
 }))
 
 vi.mock('../../stores/authStore', () => {

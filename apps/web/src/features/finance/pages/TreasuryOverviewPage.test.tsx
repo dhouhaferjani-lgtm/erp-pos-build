@@ -53,6 +53,10 @@ vi.mock('@/features/finance/components/FinanceWidget', () => ({
   FinanceWidget: () => <section data-testid="finance-widget">Finance widget</section>,
 }))
 
+vi.mock('@/features/finance/components/EcheancierPanel', () => ({
+  EcheancierPanel: () => <section data-testid="echeancier-panel">Échéancier</section>,
+}))
+
 vi.mock('@/features/owner-dashboard/components/OwnerChart', () => ({
   OwnerChart: (props: {
     title: string

@@ -68,9 +68,13 @@ export function RemittanceCreatePage() {
         remittance_type: 'collection',
       })
       const slipId = response.data.data.id
+      let lineRequests = Promise.resolve()
       for (const instrumentId of selectedIds) {
-        await api.post(`/instrument-remittances/${slipId}/lines`, { instrument_id: instrumentId })
+        lineRequests = lineRequests.then(async () => {
+          await api.post(`/instrument-remittances/${slipId}/lines`, { instrument_id: instrumentId })
+        })
       }
+      await lineRequests
       await api.post(`/instrument-remittances/${slipId}/remit`)
       void navigate(`/treasury/remittances/${slipId}`)
     } catch {

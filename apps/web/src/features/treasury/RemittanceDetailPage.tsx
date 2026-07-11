@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Big from 'big.js'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -30,7 +30,7 @@ export function RemittanceDetailPage() {
   const { data: slip, isLoading, error } = useRemittance(remittanceId)
   const { data: repositories = [] } = useRemittanceRepositories()
   const [dialog, setDialog] = useState<'clear' | 'bounce' | null>(null)
-  const [selectedLine, setSelectedLine] = useState<RemittanceLine | null>(null)
+  const selectedLineRef = useRef<RemittanceLine | null>(null)
   const [feeAmount, setFeeAmount] = useState('0.000')
   const [feeVatAmount, setFeeVatAmount] = useState('0.000')
   const [valueDate, setValueDate] = useState('')
@@ -41,7 +41,7 @@ export function RemittanceDetailPage() {
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: tenantScopedKey(['remittance', remittanceId]) })
     setDialog(null)
-    setSelectedLine(null)
+    selectedLineRef.current = null
   }
 
   async function remitDraft() {
@@ -55,6 +55,7 @@ export function RemittanceDetailPage() {
   }
 
   async function submitLineAction() {
+    const selectedLine = selectedLineRef.current
     if (!selectedLine || !dialog) return
     setIsSubmitting(true)
     try {
@@ -68,7 +69,7 @@ export function RemittanceDetailPage() {
   }
 
   function openLineDialog(action: 'clear' | 'bounce', line: RemittanceLine) {
-    setSelectedLine(line)
+    selectedLineRef.current = line
     setDialog(action)
   }
 

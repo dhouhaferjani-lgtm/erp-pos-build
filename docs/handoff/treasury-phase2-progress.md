@@ -406,3 +406,14 @@
 - Verification: `pnpm typecheck` — pass; targeted ESLint — zero findings on new Task-24 files; targeted PHPStan — zero errors; Pint dirty test — pass; locale JSON valid; design-system audit — baseline 753, **0 new**, 0 stale; React Doctor changed scope — no issues found, score 88/100 (unchanged); `git diff --check` — pass.
 - API presentation seam: `formatLine()` now exposes already-persisted `drawer_name`, `bank_name`, and `maturity_date` so the required printable artifact does not issue N+1 detail calls. This is read-only serialization; no service, lock, GL, movement, or repository behavior changed.
 - Money-path deviation: none.
+
+### Task 25 — Treasury Overview échéancier panel and types
+
+- Status: complete.
+- Files touched: new `EcheancierPanel` and tenant-scoped `useMaturingInstruments`; Treasury Overview page/test; instrument register URL-filter initialization and affected tests; focused panel test; finance and Treasury en/fr locales; this progress log. Task-24 create/detail files received React Doctor-only behavior-preserving cleanup while still unmerged (sequential promise chain and handler-only line ref).
+- Sweep preservation: `origin/dev` history was checked for Treasury Overview, the instrument register, and all four locale files before edits. The existing PageHeader, FinanceWidget, StatCards, upcoming panels, and chart ordering/styles were preserved; the new panel uses the canonical card/badge treatment and design tokens.
+- RED: the focused panel test initially failed because the component did not exist. Its first implementation then exposed an invalid token key and the existing Overview tests lacked the new hook provider seam; the token was corrected and legacy page tests isolate the independently tested panel.
+- GREEN: focused Task-25/Overview/register path — PASS, 4 files / 17 tests. Focused panel plus Task-24 create flow — PASS, 2 files / 3 tests. The panel shows exact next-30-day incoming/outgoing totals from the filtered Task-19 grand total, up to five maturity rows with portfolio/remitted certainty, and a register link whose date query now initializes the real register filters.
+- Verification: `pnpm typecheck` — pass; targeted ESLint — pass; locale JSON valid; design-system audit — baseline 753, **0 new**, 0 stale; React Doctor changed scope — no issues found, score 88/100; `CACHE_STORE=array php artisan typescript:transform --force --no-interaction --quiet` — exit 0, 429 transforms, no generated diff; `git diff --check` — pass.
+- Types note: all Phase-2 DTOs/enums were already present from Tasks 2/20. The required final transform was clean, so no separate generated-types commit was necessary.
+- Money-path deviation: none. The panel and hook are read-only.

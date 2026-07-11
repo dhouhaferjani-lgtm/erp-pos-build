@@ -212,6 +212,10 @@
       "inbound": "Incoming",
       "outbound": "Outgoing"
     },
+    "certainty": {
+      "portfolio": "In portfolio",
+      "remitted": "Remitted"
+    },
     "routings": {
       "re_present": "Re-present",
       "receivable": "Return to receivable",

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Calendar, FileCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { Input, Select, StatusBadge, statusTone, type StatusTone } from '@/components/atoms'
 import {
@@ -106,11 +106,12 @@ export function InstrumentListPage() {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const currentCompany = useCompanyStore((state) => state.getCurrentCompany())
-  const [kind, setKind] = useState('')
+  const [searchParams] = useSearchParams()
+  const [kind, setKind] = useState(() => searchParams.get('kind') ?? '')
   const [direction, setDirection] = useState('')
   const [needsDetails, setNeedsDetails] = useState('')
-  const [maturityFrom, setMaturityFrom] = useState('')
-  const [maturityTo, setMaturityTo] = useState('')
+  const [maturityFrom, setMaturityFrom] = useState(() => searchParams.get('maturity_from') ?? '')
+  const [maturityTo, setMaturityTo] = useState(() => searchParams.get('maturity_to') ?? '')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
 
