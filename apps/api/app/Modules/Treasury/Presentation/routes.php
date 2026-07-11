@@ -100,6 +100,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:instruments.create')
         ->name('payment-instruments.store');
 
+    Route::patch('/payment-instruments/{instrument}', [PaymentInstrumentController::class, 'update'])
+        ->middleware('can:instruments.update')
+        ->name('payment-instruments.update');
+
     Route::post('/payment-instruments/{instrument}/deposit', [PaymentInstrumentController::class, 'deposit'])
         ->middleware('can:instruments.transfer')
         ->name('payment-instruments.deposit');
@@ -109,7 +113,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('payment-instruments.clear');
 
     Route::post('/payment-instruments/{instrument}/bounce', [PaymentInstrumentController::class, 'bounce'])
-        ->middleware('can:instruments.clear')
+        ->middleware('can:instruments.bounce')
         ->name('payment-instruments.bounce');
 
     Route::post('/payment-instruments/{instrument}/transfer', [PaymentInstrumentController::class, 'transfer'])

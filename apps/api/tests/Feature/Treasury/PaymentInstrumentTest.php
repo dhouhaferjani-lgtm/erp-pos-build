@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Treasury;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -15,11 +19,17 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
+use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
+use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -74,7 +84,10 @@ class PaymentInstrumentTest extends TestCase
             'password' => bcrypt('password'),
             'status' => UserStatus::Active,
         ]);
-        $this->user->givePermissionTo(['instruments.view', 'instruments.create', 'instruments.transfer', 'instruments.clear']);
+        $this->user->givePermissionTo([
+            'instruments.view', 'instruments.create', 'instruments.update',
+            'instruments.transfer', 'instruments.clear', 'instruments.bounce',
+        ]);
 
         UserCompanyMembership::create([
             'user_id' => $this->user->id,
@@ -83,6 +96,7 @@ class PaymentInstrumentTest extends TestCase
         ]);
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
 
         $this->checkMethod = PaymentMethod::create([
             'tenant_id' => $this->tenant->id,
@@ -90,7 +104,8 @@ class PaymentInstrumentTest extends TestCase
             'code' => 'CHECK',
             'name' => 'Check',
             'is_physical' => true,
-            'has_maturity' => false,
+            'has_maturity' => true,
+            'instrument_kind' => InstrumentKind::Cheque,
             'is_active' => true,
         ]);
 
@@ -100,6 +115,8 @@ class PaymentInstrumentTest extends TestCase
             'code' => 'CHECK_SAFE',
             'name' => 'Check Safe',
             'type' => 'safe',
+            'currency' => 'EUR',
+            'balance' => '0.000',
             'is_active' => true,
         ]);
 
@@ -109,6 +126,9 @@ class PaymentInstrumentTest extends TestCase
             'code' => 'BANK_MAIN',
             'name' => 'Main Bank',
             'type' => 'bank_account',
+            'currency' => 'EUR',
+            'balance' => '0.000',
+            'gl_account_id' => Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Bank)->id,
             'is_active' => true,
         ]);
 
@@ -169,6 +189,7 @@ class PaymentInstrumentTest extends TestCase
             'name' => 'Post-dated Check',
             'is_physical' => true,
             'has_maturity' => true,
+            'instrument_kind' => InstrumentKind::Cheque,
             'is_active' => true,
         ]);
 
@@ -197,6 +218,10 @@ class PaymentInstrumentTest extends TestCase
             'amount' => '1500.00',
             'received_date' => now(),
             'status' => 'received',
+            'kind' => InstrumentKind::Cheque,
+            'direction' => 'inbound',
+            'origin' => 'web',
+            'currency' => 'EUR',
             'repository_id' => $this->checkSafe->id,
         ]);
 
@@ -207,6 +232,10 @@ class PaymentInstrumentTest extends TestCase
         $response->assertStatus(200);
         $response->assertJsonPath('data.status', 'deposited');
         $response->assertJsonPath('data.deposited_to_id', $this->bankAccount->id);
+        $this->assertSame(1, AuditEvent::query()
+            ->where('aggregate_id', $instrument->id)
+            ->where('event_type', 'treasury.instrument.deposited')
+            ->count());
     }
 
     public function test_can_clear_deposited_instrument(): void
@@ -219,11 +248,17 @@ class PaymentInstrumentTest extends TestCase
             'partner_id' => $this->partner->id,
             'amount' => '1500.00',
             'received_date' => now(),
-            'status' => 'deposited',
+            'status' => 'received',
+            'kind' => InstrumentKind::Cheque,
+            'direction' => 'inbound',
+            'origin' => 'web',
+            'currency' => 'EUR',
             'repository_id' => $this->checkSafe->id,
-            'deposited_at' => now(),
-            'deposited_to_id' => $this->bankAccount->id,
         ]);
+
+        $this->actingAs($this->user)->postJson("/api/v1/payment-instruments/{$instrument->id}/deposit", [
+            'repository_id' => $this->bankAccount->id,
+        ])->assertOk();
 
         $response = $this->actingAs($this->user)->postJson("/api/v1/payment-instruments/{$instrument->id}/clear");
 
@@ -241,13 +276,20 @@ class PaymentInstrumentTest extends TestCase
             'partner_id' => $this->partner->id,
             'amount' => '1500.00',
             'received_date' => now(),
-            'status' => 'deposited',
+            'status' => 'received',
+            'kind' => InstrumentKind::Cheque,
+            'direction' => 'inbound',
+            'origin' => 'web',
+            'currency' => 'EUR',
             'repository_id' => $this->checkSafe->id,
-            'deposited_at' => now(),
-            'deposited_to_id' => $this->bankAccount->id,
         ]);
 
+        $this->actingAs($this->user)->postJson("/api/v1/payment-instruments/{$instrument->id}/deposit", [
+            'repository_id' => $this->bankAccount->id,
+        ])->assertOk();
+
         $response = $this->actingAs($this->user)->postJson("/api/v1/payment-instruments/{$instrument->id}/bounce", [
+            'routing' => 'receivable',
             'reason' => 'Insufficient funds',
         ]);
 
@@ -377,5 +419,168 @@ class PaymentInstrumentTest extends TestCase
         ]);
 
         $response->assertStatus(403);
+    }
+
+    public function test_company_scope_hides_other_company_instrument_from_show_and_transition(): void
+    {
+        $otherCompany = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        $otherMethod = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+        ]);
+        $instrument = $this->instrument([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'payment_method_id' => $otherMethod->id,
+        ]);
+
+        $this->actingAs($this->user)->getJson("/api/v1/payment-instruments/{$instrument->id}")->assertNotFound();
+        $this->actingAs($this->user)->postJson("/api/v1/payment-instruments/{$instrument->id}/transfer", [
+            'to_repository_id' => $this->checkSafe->id,
+        ])->assertNotFound();
+    }
+
+    public function test_patch_updates_received_details_and_appends_event(): void
+    {
+        $this->user->givePermissionTo('instruments.update');
+        $instrument = $this->instrument([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_method_id' => $this->checkMethod->id,
+            'status' => 'received',
+            'kind' => InstrumentKind::Cheque,
+            'repository_id' => $this->checkSafe->id,
+        ]);
+
+        $this->actingAs($this->user)->patchJson("/api/v1/payment-instruments/{$instrument->id}", [
+            'reference' => 'CHK-COMPLETED',
+            'bank_name' => 'BIAT',
+        ])->assertOk()->assertJsonPath('data.reference', 'CHK-COMPLETED');
+
+        $this->assertSame(1, InstrumentEvent::query()->where('instrument_id', $instrument->id)->where('event_type', 'details_updated')->count());
+    }
+
+    public function test_patch_rejects_deposited_instrument(): void
+    {
+        $this->user->givePermissionTo('instruments.update');
+        $instrument = $this->instrument([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_method_id' => $this->checkMethod->id,
+            'status' => 'deposited',
+            'kind' => InstrumentKind::Cheque,
+            'repository_id' => $this->checkSafe->id,
+        ]);
+
+        $this->actingAs($this->user)->patchJson("/api/v1/payment-instruments/{$instrument->id}", [
+            'reference' => 'TOO-LATE',
+        ])->assertUnprocessable();
+    }
+
+    public function test_bounce_requires_dedicated_permission_not_clear_permission(): void
+    {
+        $this->user->revokePermissionTo('instruments.bounce');
+        $instrument = $this->instrument([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_method_id' => $this->checkMethod->id,
+            'status' => 'deposited',
+            'kind' => InstrumentKind::Cheque,
+            'repository_id' => $this->checkSafe->id,
+        ]);
+
+        $this->actingAs($this->user)->postJson("/api/v1/payment-instruments/{$instrument->id}/bounce", [
+            'routing' => 'receivable',
+        ])->assertForbidden();
+    }
+
+    public function test_index_is_paginated_and_filters_needs_details(): void
+    {
+        $this->instrument([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_method_id' => $this->checkMethod->id,
+            'needs_details' => true,
+        ]);
+        $this->instrument([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_method_id' => $this->checkMethod->id,
+            'needs_details' => false,
+        ]);
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/payment-instruments?needs_details=true&per_page=10')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.needs_details', true)
+            ->assertJsonPath('meta.total', 1);
+    }
+
+    public function test_store_defaults_to_company_currency_and_snapshots_method_kind(): void
+    {
+        $method = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'has_maturity' => true,
+            'instrument_kind' => InstrumentKind::Cheque,
+        ]);
+
+        $this->actingAs($this->user)->postJson('/api/v1/payment-instruments', [
+            'payment_method_id' => $method->id,
+            'reference' => 'EUR-CHEQUE',
+            'amount' => '10.000',
+            'received_date' => now()->toDateString(),
+            'repository_id' => $this->checkSafe->id,
+        ])->assertCreated()
+            ->assertJsonPath('data.currency', 'EUR')
+            ->assertJsonPath('data.kind', 'cheque');
+    }
+
+    public function test_store_rejects_before_creation_when_portfolio_account_is_missing(): void
+    {
+        $accountId = app(InstrumentAccountResolver::class)->resolveOrFail(
+            InstrumentAccountPurpose::ChecksToCollect,
+            $this->company->id,
+        );
+        Account::query()->whereKey($accountId)->delete();
+
+        $this->actingAs($this->user)->postJson('/api/v1/payment-instruments', [
+            'payment_method_id' => $this->checkMethod->id,
+            'reference' => 'NO-PORTFOLIO',
+            'amount' => '10.000',
+            'received_date' => now()->toDateString(),
+            'repository_id' => $this->checkSafe->id,
+        ])->assertUnprocessable();
+        $this->assertSame(0, PaymentInstrument::query()->where('reference', 'NO-PORTFOLIO')->count());
+    }
+
+    public function test_manager_and_accountant_receive_new_instrument_permissions(): void
+    {
+        foreach (['manager', 'accountant'] as $roleName) {
+            $role = Role::query()->where('name', $roleName)->firstOrFail();
+            foreach (['instruments.update', 'instruments.bounce', 'instruments.remit'] as $permission) {
+                $this->assertTrue($role->hasPermissionTo($permission));
+            }
+        }
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function instrument(array $overrides = []): PaymentInstrument
+    {
+        return PaymentInstrument::create(array_merge([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_method_id' => $this->checkMethod->id,
+            'reference' => 'CHK-'.Str::upper(Str::random(8)),
+            'amount' => '10.000',
+            'currency' => 'EUR',
+            'received_date' => now()->toDateString(),
+            'status' => 'received',
+            'kind' => InstrumentKind::Cheque,
+            'direction' => 'inbound',
+            'origin' => 'web',
+            'repository_id' => $this->checkSafe->id,
+        ], $overrides));
     }
 }

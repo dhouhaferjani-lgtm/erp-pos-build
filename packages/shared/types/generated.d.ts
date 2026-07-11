@@ -280,7 +280,7 @@ export type CashMovementSourceType = 'customer_payment' | 'payment' | 'pos_recei
 }
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
-export type JournalCode = 'VT' | 'AC' | 'BQ' | 'CA' | 'OD';
+export type JournalCode = 'VT' | 'AC' | 'BQ' | 'CA' | 'EF' | 'OD';
 export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
 export type OpeningBatchType = 'ACCOUNTING' | 'INVENTORY' | 'AR_OPEN_ITEMS' | 'AP_OPEN_ITEMS';
@@ -1984,7 +1984,14 @@ writeoffCount: number;
 declare namespace App.Modules.Treasury.Domain.Enums {
 export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
+export type CancellationShape = 'b2b' | 'pos_revenue';
+export type DishonorRouting = 're_present' | 'receivable' | 'doubtful';
 export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
+export type InstrumentAccountPurpose = 'checks_to_collect' | 'effects_receivable' | 'effects_in_collection' | 'effects_discounted' | 'instrument_bank_fees' | 'vat_recoverable_on_fees' | 'doubtful_receivables';
+export type InstrumentDirection = 'inbound' | 'outbound';
+export type InstrumentEventType = 'created' | 'details_updated' | 'custody_transferred' | 'remitted' | 'cleared' | 'bounced' | 're_presented' | 'cancelled';
+export type InstrumentKind = 'cheque' | 'effet' | 'other';
+export type InstrumentOrigin = 'web' | 'pos';
 export type InstrumentStatus = 'received' | 'in_transit' | 'deposited' | 'clearing' | 'cleared' | 'bounced' | 'expired' | 'cancelled' | 'collected';
 export type MovementDirection = 'in' | 'out';
 export type MovementReasonCode = 'count_variance' | 'correction' | 'theft_loss' | 'other';
@@ -1994,6 +2001,9 @@ export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
 export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos';
 export type ProrationStrategy = 'proportional' | 'largest_first' | 'cashier_choice';
 export type ReconciliationStatus = 'draft' | 'completed' | 'cancelled';
+export type RemittanceLineStatus = 'pending' | 'cleared' | 'bounced';
+export type RemittanceStatus = 'draft' | 'remitted' | 'closed';
+export type RemittanceType = 'collection' | 'discount';
 export type RepositoryType = 'cash_register' | 'safe' | 'bank_account' | 'virtual';
 }
 declare namespace App.Modules.Uom.Application.DTOs {

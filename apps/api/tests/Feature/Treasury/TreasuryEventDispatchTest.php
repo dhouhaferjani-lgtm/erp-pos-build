@@ -19,6 +19,9 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Services\BankReconciliationService;
 use App\Modules\Treasury\Domain\BankReconciliation;
 use App\Modules\Treasury\Domain\BankReconciliationItem;
+use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
+use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\ReconciliationStatus;
@@ -35,6 +38,7 @@ use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
+use App\Shared\Domain\CurrencyScale;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -126,16 +130,36 @@ class TreasuryEventDispatchTest extends TestCase
 
     private function createInstrument(InstrumentStatus $status = InstrumentStatus::Received): PaymentInstrument
     {
+        $method = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'has_maturity' => true,
+            'instrument_kind' => InstrumentKind::Cheque,
+        ]);
+        $safe = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'SAFE-'.Str::random(4),
+            'name' => 'Instrument Safe',
+            'type' => RepositoryType::Safe,
+            'balance' => '0.000',
+            'currency' => 'TND',
+        ]);
+
         return PaymentInstrument::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
-            'payment_method_id' => $this->paymentMethod->id,
+            'payment_method_id' => $method->id,
             'reference' => 'CHK-'.Str::random(6),
             'amount' => '500.000',
             'currency' => 'TND',
             'status' => $status,
+            'kind' => InstrumentKind::Cheque,
+            'direction' => InstrumentDirection::Inbound,
+            'origin' => InstrumentOrigin::Web,
+            'repository_id' => $safe->id,
             'received_date' => now(),
             'maturity_date' => now()->addDays(30),
         ]);
@@ -225,7 +249,13 @@ class TreasuryEventDispatchTest extends TestCase
     {
         Event::fake([InstrumentCleared::class]);
 
-        $instrument = $this->createInstrument(InstrumentStatus::Deposited);
+        $instrument = $this->createInstrument();
+        $repository = $this->createBankRepository();
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/payment-instruments/{$instrument->id}/deposit", [
+                'repository_id' => $repository->id,
+            ])
+            ->assertOk();
 
         $this->actingAs($this->user)
             ->postJson("/api/v1/payment-instruments/{$instrument->id}/clear")
@@ -241,10 +271,17 @@ class TreasuryEventDispatchTest extends TestCase
     {
         Event::fake([InstrumentBounced::class]);
 
-        $instrument = $this->createInstrument(InstrumentStatus::Deposited);
+        $instrument = $this->createInstrument();
+        $repository = $this->createBankRepository();
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/payment-instruments/{$instrument->id}/deposit", [
+                'repository_id' => $repository->id,
+            ])
+            ->assertOk();
 
         $this->actingAs($this->user)
             ->postJson("/api/v1/payment-instruments/{$instrument->id}/bounce", [
+                'routing' => 'receivable',
                 'reason' => 'Insufficient funds',
             ])
             ->assertOk();
@@ -307,8 +344,9 @@ class TreasuryEventDispatchTest extends TestCase
             ->get();
 
         $this->assertCount(1, $movements, 'store() must record exactly one movement.');
-        $this->assertSame('in', $movements->first()->direction);
-        $this->assertSame(0, bccomp((string) $movements->first()->amount, '250.000', 3));
+        $movement = $movements->sole();
+        $this->assertSame('in', $movement->direction);
+        $this->assertSame(0, bccomp(CurrencyScale::bcformatStrict((string) $movement->amount, 3), '250.000', 3));
 
         // Balance moved once through the port.
         $repository->refresh();

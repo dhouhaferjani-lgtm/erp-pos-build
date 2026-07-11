@@ -6,348 +6,316 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
-use App\Modules\Treasury\Domain\Events\InstrumentBounced;
-use App\Modules\Treasury\Domain\Events\InstrumentCleared;
-use App\Modules\Treasury\Domain\Events\InstrumentDeposited;
-use App\Modules\Treasury\Domain\Events\InstrumentTransferred;
+use App\Modules\Treasury\Application\DTOs\BounceInstrumentData;
+use App\Modules\Treasury\Application\DTOs\ClearInstrumentData;
+use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
+use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
+use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
+use App\Modules\Treasury\Domain\Enums\DishonorRouting;
+use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
+use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
+use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\PaymentInstrument;
-use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Shared\Presentation\Validation\ScopedExists;
+use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Str;
 
-class PaymentInstrumentController extends Controller
+final class PaymentInstrumentController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly InstrumentLifecycleService $lifecycle,
+        private readonly InstrumentAccountResolver $accountResolver,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
-
+        $validated = $request->validate([
+            'status' => ['nullable', 'string'],
+            'kind' => ['nullable', 'string'],
+            'direction' => ['nullable', 'string'],
+            'partner_id' => ['nullable', 'uuid'],
+            'repository_id' => ['nullable', 'uuid'],
+            'needs_details' => ['nullable', 'in:true,false,1,0'],
+            'maturity_from' => ['nullable', 'date'],
+            'maturity_to' => ['nullable', 'date', 'after_or_equal:maturity_from'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
         $query = PaymentInstrument::query()
-            ->where('tenant_id', $tenantId)
-            ->with(['paymentMethod', 'partner', 'repository']);
-
-        // Filter by status
-        if ($request->has('status')) {
-            $query->where('status', $request->input('status'));
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->with(['paymentMethod', 'partner', 'repository', 'depositedTo']);
+        foreach (['status', 'kind', 'direction', 'partner_id', 'repository_id'] as $field) {
+            if (isset($validated[$field])) {
+                $query->where($field, $validated[$field]);
+            }
+        }
+        if (array_key_exists('needs_details', $validated)) {
+            $query->where(
+                'needs_details',
+                filter_var($validated['needs_details'], FILTER_VALIDATE_BOOLEAN),
+            );
+        }
+        if (isset($validated['maturity_from'])) {
+            $query->whereDate('maturity_date', '>=', $validated['maturity_from']);
+        }
+        if (isset($validated['maturity_to'])) {
+            $query->whereDate('maturity_date', '<=', $validated['maturity_to']);
         }
 
-        // Filter by partner
-        if ($request->has('partner_id')) {
-            $query->where('partner_id', $request->input('partner_id'));
-        }
-
-        // Filter by repository
-        if ($request->has('repository_id')) {
-            $query->where('repository_id', $request->input('repository_id'));
-        }
-
-        $instruments = $query->orderByDesc('received_date')->get();
+        /** @var LengthAwarePaginator<int, PaymentInstrument> $instruments */
+        $instruments = $query->orderByDesc('received_date')->paginate((int) ($validated['per_page'] ?? 25));
 
         return response()->json([
-            'data' => $instruments->map(fn (PaymentInstrument $instrument) => $this->formatInstrument($instrument)),
+            'data' => collect($instruments->items())->map(fn (PaymentInstrument $instrument): array => $this->formatInstrument($instrument)),
+            'meta' => [
+                'current_page' => $instruments->currentPage(),
+                'last_page' => $instruments->lastPage(),
+                'per_page' => $instruments->perPage(),
+                'total' => $instruments->total(),
+            ],
         ]);
     }
 
-    public function show(Request $request, string $id): JsonResponse
+    public function show(string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
-        $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
+        $instrument = $this->findInstrument($id);
+        $instrument->load(['paymentMethod', 'partner', 'repository', 'depositedTo']);
 
-        $instrument = PaymentInstrument::query()
-            ->where('tenant_id', $tenantId)
-            ->with(['paymentMethod', 'partner', 'repository', 'depositedTo'])
-            ->findOrFail($id);
-
-        return response()->json([
-            'data' => $this->formatInstrument($instrument),
-        ]);
+        return response()->json(['data' => $this->formatInstrument($instrument)]);
     }
 
     public function store(Request $request): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
-        $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
-
         $validated = $request->validate([
             'payment_method_id' => [
-                'required',
-                'uuid',
-                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+                'required', 'uuid',
+                ScopedExists::tenantAndCompany('payment_methods', $company->tenant_id, $company->id),
             ],
             'reference' => ['required', 'string', 'max:100'],
             'partner_id' => [
-                'nullable',
-                'uuid',
-                ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
+                'nullable', 'uuid',
+                ScopedExists::tenantAndCompany('partners', $company->tenant_id, $company->id),
             ],
             'drawer_name' => ['nullable', 'string', 'max:150'],
-            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'amount' => ['required', 'string', 'regex:/^\d+(\.\d{1,3})?$/'],
             'currency' => ['nullable', 'string', 'size:3'],
             'received_date' => ['required', 'date'],
             'maturity_date' => ['nullable', 'date'],
-            'expiry_date' => ['nullable', 'date'],
+            'direction' => ['nullable', 'in:inbound,outbound'],
             'repository_id' => [
-                'nullable',
-                'uuid',
-                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+                'required', 'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $company->tenant_id, $company->id),
             ],
+            'bank_id' => ['nullable', 'uuid'],
             'bank_name' => ['nullable', 'string', 'max:100'],
             'bank_branch' => ['nullable', 'string', 'max:100'],
             'bank_account' => ['nullable', 'string', 'max:50'],
-        ], [
-            'amount.regex' => 'Amount must have at most 3 decimal places.',
+            'needs_details' => ['nullable', 'boolean'],
+        ], ['amount.regex' => 'Amount must have at most 3 decimal places.']);
+        $paymentMethodId = $validated['payment_method_id'];
+        if (! is_string($paymentMethodId)) {
+            abort(422);
+        }
+        $method = PaymentMethod::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->whereKey($paymentMethodId)
+            ->firstOrFail();
+        $kind = $method->instrument_kind;
+        if (! $method->has_maturity || $kind === null || $kind === InstrumentKind::Other) {
+            return $this->domainError(new DomainException('Payment method is not a supported paper instrument method.'));
+        }
+
+        try {
+            $this->accountResolver->resolveOrFail(
+                $kind === InstrumentKind::Cheque
+                    ? InstrumentAccountPurpose::ChecksToCollect
+                    : InstrumentAccountPurpose::EffectsReceivable,
+                $company->id,
+            );
+            $instrument = $this->lifecycle->receive(new ReceiveInstrumentData(
+                tenantId: $company->tenant_id,
+                companyId: $company->id,
+                paymentMethodId: $method->id,
+                kind: $kind,
+                direction: InstrumentDirection::from($validated['direction'] ?? InstrumentDirection::Inbound->value),
+                origin: InstrumentOrigin::Web,
+                reference: $validated['reference'],
+                amount: $validated['amount'],
+                currency: strtoupper($validated['currency'] ?? $company->currency),
+                repositoryId: $validated['repository_id'],
+                partnerId: $validated['partner_id'] ?? null,
+                drawerName: $validated['drawer_name'] ?? null,
+                maturityDate: $validated['maturity_date'] ?? null,
+                receivedDate: $validated['received_date'],
+                bankId: $validated['bank_id'] ?? null,
+                bankName: $validated['bank_name'] ?? null,
+                bankBranch: $validated['bank_branch'] ?? null,
+                bankAccount: $validated['bank_account'] ?? null,
+                needsDetails: (bool) ($validated['needs_details'] ?? false),
+                createdBy: $user->id,
+            ));
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+        $instrument->load(['paymentMethod', 'partner', 'repository', 'depositedTo']);
+
+        return response()->json(['data' => $this->formatInstrument($instrument)], 201);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $instrument = $this->findInstrument($id);
+        $company = $this->companyContext->requireCompany();
+        $validated = $request->validate([
+            'reference' => ['sometimes', 'string', 'max:100'],
+            'maturity_date' => ['sometimes', 'nullable', 'date'],
+            'drawer_name' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'bank_id' => ['sometimes', 'nullable', 'uuid'],
+            'bank_name' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'bank_branch' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'bank_account' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'partner_id' => [
+                'sometimes', 'nullable', 'uuid',
+                ScopedExists::tenantAndCompany('partners', $company->tenant_id, $company->id),
+            ],
         ]);
 
-        $instrument = PaymentInstrument::create([
-            'tenant_id' => $tenantId,
-            'company_id' => $companyId,
-            'payment_method_id' => $validated['payment_method_id'],
-            'reference' => $validated['reference'],
-            'partner_id' => $validated['partner_id'] ?? null,
-            'drawer_name' => $validated['drawer_name'] ?? null,
-            'amount' => $validated['amount'],
-            'currency' => $validated['currency'] ?? 'TND',
-            'received_date' => $validated['received_date'],
-            'maturity_date' => $validated['maturity_date'] ?? null,
-            'expiry_date' => $validated['expiry_date'] ?? null,
-            'status' => InstrumentStatus::Received,
-            'repository_id' => $validated['repository_id'] ?? null,
-            'bank_name' => $validated['bank_name'] ?? null,
-            'bank_branch' => $validated['bank_branch'] ?? null,
-            'bank_account' => $validated['bank_account'] ?? null,
-            'created_by' => $user->id,
-        ]);
+        try {
+            $instrument = $this->lifecycle->updateDetails($instrument->id, $validated, $request->user()?->id);
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+        $instrument->load(['paymentMethod', 'partner', 'repository', 'depositedTo']);
 
-        $instrument->load(['paymentMethod', 'partner', 'repository']);
-
-        return response()->json([
-            'data' => $this->formatInstrument($instrument),
-        ], 201);
+        return response()->json(['data' => $this->formatInstrument($instrument)]);
     }
 
     public function deposit(Request $request, string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $instrument = $this->findInstrument($id);
         $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
-
-        /** @var PaymentInstrument $instrument */
-        $instrument = PaymentInstrument::query()
-            ->where('tenant_id', $tenantId)
-            ->findOrFail($id);
-
-        if (! $instrument->status->canDeposit()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'INVALID_STATUS',
-                    'message' => 'Instrument cannot be deposited in its current status',
-                ],
-            ], 422);
-        }
-
         $validated = $request->validate([
             'repository_id' => [
-                'required',
-                'uuid',
-                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+                'required', 'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $company->tenant_id, $company->id),
             ],
         ]);
-
-        // Verify the repository is a bank account. Tenant/company-scope the
-        // lookup as defense-in-depth alongside the ScopedExists validator above.
-        /** @var PaymentRepository $repository */
-        $repository = PaymentRepository::query()
-            ->where('tenant_id', $tenantId)
-            ->where('company_id', $companyId)
-            ->findOrFail($validated['repository_id']);
-        if ($repository->type->value !== 'bank_account') {
-            return response()->json([
-                'error' => [
-                    'code' => 'INVALID_REPOSITORY',
-                    'message' => 'Instruments can only be deposited to bank accounts',
-                ],
-            ], 422);
+        try {
+            $this->lifecycle->deposit($instrument->id, $validated['repository_id'], $request->user()?->id);
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
         }
 
-        $instrument->update([
-            'status' => InstrumentStatus::Deposited,
-            'deposited_at' => now(),
-            'deposited_to_id' => $validated['repository_id'],
-        ]);
-
-        event(new InstrumentDeposited(
-            instrumentId: $instrument->id,
-            tenantId: $tenantId,
-            companyId: $companyId,
-            repositoryId: $validated['repository_id'],
-            amount: $instrument->amount,
-            depositedAt: now()->toIso8601String(),
-        ));
-
-        /** @var PaymentInstrument $freshInstrument */
-        $freshInstrument = $instrument->fresh(['paymentMethod', 'partner', 'repository', 'depositedTo']);
-
-        return response()->json([
-            'data' => $this->formatInstrument($freshInstrument),
-        ]);
+        return $this->show($instrument->id);
     }
 
     public function clear(Request $request, string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
-        $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
-
-        /** @var PaymentInstrument $instrument */
-        $instrument = PaymentInstrument::query()
-            ->where('tenant_id', $tenantId)
-            ->findOrFail($id);
-
-        if (! $instrument->status->canClear()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'INVALID_STATUS',
-                    'message' => 'Instrument cannot be cleared in its current status',
-                ],
-            ], 422);
+        $instrument = $this->findInstrument($id);
+        $validated = $request->validate([
+            'fee_amount' => ['nullable', 'string', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'fee_vat_amount' => ['nullable', 'string', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'value_date' => ['nullable', 'date'],
+        ]);
+        try {
+            $instrument = $this->lifecycle->clear(new ClearInstrumentData(
+                instrumentId: $instrument->id,
+                currency: $instrument->currency,
+                feeAmount: $validated['fee_amount'] ?? '0.000',
+                feeVatAmount: $validated['fee_vat_amount'] ?? '0.000',
+                valueDate: $validated['value_date'] ?? null,
+                userId: $request->user()?->id,
+            ));
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
         }
+        $instrument->load(['paymentMethod', 'partner', 'repository', 'depositedTo']);
 
-        $instrument->update([
-            'status' => InstrumentStatus::Cleared,
-            'cleared_at' => now(),
-        ]);
-
-        event(new InstrumentCleared(
-            instrumentId: $instrument->id,
-            tenantId: $tenantId,
-            companyId: $companyId,
-            amount: $instrument->amount,
-            clearedAt: now()->toIso8601String(),
-        ));
-
-        /** @var PaymentInstrument $freshInstrument */
-        $freshInstrument = $instrument->fresh(['paymentMethod', 'partner', 'repository', 'depositedTo']);
-
-        return response()->json([
-            'data' => $this->formatInstrument($freshInstrument),
-        ]);
+        return response()->json(['data' => $this->formatInstrument($instrument)]);
     }
 
     public function bounce(Request $request, string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
-        $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
-
-        /** @var PaymentInstrument $instrument */
-        $instrument = PaymentInstrument::query()
-            ->where('tenant_id', $tenantId)
-            ->findOrFail($id);
-
-        if (! $instrument->status->canBounce()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'INVALID_STATUS',
-                    'message' => 'Instrument cannot be bounced in its current status',
-                ],
-            ], 422);
-        }
-
+        $instrument = $this->findInstrument($id);
         $validated = $request->validate([
+            'routing' => ['required', 'in:re_present,receivable,doubtful'],
+            'fee_amount' => ['nullable', 'string', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'fee_vat_amount' => ['nullable', 'string', 'regex:/^\d+(\.\d{1,3})?$/'],
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
+        try {
+            $instrument = $this->lifecycle->bounce(new BounceInstrumentData(
+                instrumentId: $instrument->id,
+                routing: DishonorRouting::from($validated['routing']),
+                currency: $instrument->currency,
+                feeAmount: $validated['fee_amount'] ?? '0.000',
+                feeVatAmount: $validated['fee_vat_amount'] ?? '0.000',
+                reason: $validated['reason'] ?? null,
+                userId: $request->user()?->id,
+            ));
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+        $instrument->load(['paymentMethod', 'partner', 'repository', 'depositedTo']);
 
-        $instrument->update([
-            'status' => InstrumentStatus::Bounced,
-            'bounced_at' => now(),
-            'bounce_reason' => $validated['reason'] ?? null,
-        ]);
-
-        event(new InstrumentBounced(
-            instrumentId: $instrument->id,
-            tenantId: $tenantId,
-            companyId: $companyId,
-            amount: $instrument->amount,
-            reason: $validated['reason'] ?? '',
-            bouncedAt: now()->toIso8601String(),
-        ));
-
-        /** @var PaymentInstrument $freshInstrument */
-        $freshInstrument = $instrument->fresh(['paymentMethod', 'partner', 'repository', 'depositedTo']);
-
-        return response()->json([
-            'data' => $this->formatInstrument($freshInstrument),
-        ]);
+        return response()->json(['data' => $this->formatInstrument($instrument)]);
     }
 
     public function transfer(Request $request, string $id): JsonResponse
     {
-        $companyId = $this->companyContext->requireCompanyId();
+        $instrument = $this->findInstrument($id);
         $company = $this->companyContext->requireCompany();
-        $tenantId = $company->tenant_id;
-
-        /** @var PaymentInstrument $instrument */
-        $instrument = PaymentInstrument::query()
-            ->where('tenant_id', $tenantId)
-            ->findOrFail($id);
-
-        if (! $instrument->status->canTransfer()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'INVALID_STATUS',
-                    'message' => 'Instrument cannot be transferred in its current status',
-                ],
-            ], 422);
-        }
-
         $validated = $request->validate([
             'to_repository_id' => [
-                'required',
-                'uuid',
-                ScopedExists::tenantAndCompany('payment_repositories', $tenantId, $companyId),
+                'required', 'uuid',
+                ScopedExists::tenantAndCompany('payment_repositories', $company->tenant_id, $company->id),
             ],
-            'reason' => ['nullable', 'string', 'max:255'],
         ]);
+        try {
+            $this->lifecycle->custodyTransfer($instrument->id, $validated['to_repository_id'], $request->user()?->id);
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
 
-        $fromRepositoryId = $instrument->repository_id ?? '';
-
-        $instrument->update([
-            'repository_id' => $validated['to_repository_id'],
-        ]);
-
-        event(new InstrumentTransferred(
-            instrumentId: $instrument->id,
-            tenantId: $tenantId,
-            companyId: $companyId,
-            fromRepositoryId: $fromRepositoryId,
-            toRepositoryId: $validated['to_repository_id'],
-            amount: $instrument->amount,
-            transferredAt: now()->toIso8601String(),
-        ));
-
-        /** @var PaymentInstrument $freshInstrument */
-        $freshInstrument = $instrument->fresh(['paymentMethod', 'partner', 'repository', 'depositedTo']);
-
-        return response()->json([
-            'data' => $this->formatInstrument($freshInstrument),
-        ]);
+        return $this->show($instrument->id);
     }
 
-    /**
-     * @return array<string, mixed>
-     */
+    private function findInstrument(string $id): PaymentInstrument
+    {
+        if (! Str::isUuid($id)) {
+            abort(404);
+        }
+        $company = $this->companyContext->requireCompany();
+
+        return PaymentInstrument::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->findOrFail($id);
+    }
+
+    private function domainError(DomainException $exception): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'BUSINESS_ERROR',
+                'message' => $exception->getMessage(),
+            ],
+        ], 422);
+    }
+
+    /** @return array<string, mixed> */
     private function formatInstrument(PaymentInstrument $instrument): array
     {
         return [
@@ -360,10 +328,7 @@ class PaymentInstrumentController extends Controller
             ] : null,
             'reference' => $instrument->reference,
             'partner_id' => $instrument->partner_id,
-            'partner' => $instrument->partner ? [
-                'id' => $instrument->partner->id,
-                'name' => $instrument->partner->name,
-            ] : null,
+            'partner' => $instrument->partner ? ['id' => $instrument->partner->id, 'name' => $instrument->partner->name] : null,
             'drawer_name' => $instrument->drawer_name,
             'amount' => $instrument->amount,
             'currency' => $instrument->currency,
@@ -371,12 +336,19 @@ class PaymentInstrumentController extends Controller
             'maturity_date' => $instrument->maturity_date?->toDateString(),
             'expiry_date' => $instrument->expiry_date?->toDateString(),
             'status' => $instrument->status->value,
+            'kind' => $instrument->kind?->value,
+            'direction' => $instrument->direction->value,
+            'origin' => $instrument->origin->value,
+            'needs_details' => $instrument->needs_details,
+            'dishonor_routing' => $instrument->dishonor_routing?->value,
+            'remittance_id' => $instrument->remittance_id,
             'repository_id' => $instrument->repository_id,
             'repository' => $instrument->repository ? [
                 'id' => $instrument->repository->id,
                 'code' => $instrument->repository->code,
                 'name' => $instrument->repository->name,
             ] : null,
+            'bank_id' => $instrument->bank_id,
             'bank_name' => $instrument->bank_name,
             'bank_branch' => $instrument->bank_branch,
             'bank_account' => $instrument->bank_account,

@@ -141,3 +141,16 @@
 - Verdict: `VERDICT: APPROVE`.
 - Non-blocking carry-forwards: keep the linked-payment lock position explicit as Wave C adds refund/payment guards; consider a committed-fixture two-connection concurrency harness; strengthen the portfolio-account reservation assertion before reconcile check #4; remove legacy controller event dispatches in Task 11; perform controller-level pre-transaction portfolio-account validation in its assigned task.
 - Artifact note: the reviewer returned the complete report but its own sandbox could not create `docs/handoff/gate-reviews/`; the exact returned review body was persisted through the worktree editing path, with the required final verdict line.
+
+### Task 11 — Payment-instrument HTTP surface rework
+
+- Status: complete.
+- Files touched: instrument controller and routes; role/permission seeder; generated shared TypeScript declarations; expanded instrument API and legacy event-dispatch tests; this progress log.
+- RED: `./vendor/bin/phpunit tests/Feature/Treasury/PaymentInstrumentTest.php` — expected contract failures: missing `instruments.update`, absent PATCH route, wrong hard-coded TND default, unpaginated response, missing dedicated bounce permission, and missing company predicate. Test fixtures that initially called a nonexistent instrument factory were corrected before implementation; the contract failures remained.
+- GREEN: instrument API path — PASS, 18 tests / 49 assertions. Instrument API + legacy event-dispatch regression — PASS, 26 tests / 67 assertions. Final instrument API + event dispatch + audit + clear/bounce regression paths — PASS, 41 tests / 140 assertions / 1 PostgreSQL-only skip.
+- Verification: targeted PHPStan on controller, seeder, and both API/event tests — zero errors; Pint — pass; `php artisan route:list --path=payment-instruments` shows all 8 expected routes including PATCH; `git diff --check` — pass.
+- HTTP/security evidence: every lookup is UUID-guarded and tenant+company scoped; index is paginated with `meta` and supports status/kind/direction/partner/repository/needs-details/maturity filters; PATCH delegates to `updateDetails`; all transitions delegate to the lifecycle service; bounce uses `instruments.bounce`; new update/bounce/remit permissions are granted to manager/accountant and to admin through the all-permissions role.
+- Lifecycle/audit evidence: controller-owned state mutations and event dispatches were deleted. A deposit through the endpoint leaves exactly one typed audit row, proving the lifecycle's after-commit dispatch is not duplicated.
+- Validation evidence: store snapshots `instrument_kind`, defaults currency from the active company, resolves the required portfolio account before entering the receive transaction, and leaves no instrument on a missing-account 422.
+- Type generation: `CACHE_STORE=array php artisan typescript:transform` exited successfully and generated the Phase-2 EF/instrument/remittance enum declarations in `packages/shared/types/generated.d.ts`; the command printed the repository's production-environment warning/cancel banner before its normal 425-type transform table, but the transform completed and the generated diff contains only the expected enums.
+- Money-path deviation: none. HTTP transitions are thin delegates; clear/bounce remain the only endpoint paths that can reach the movement port.
