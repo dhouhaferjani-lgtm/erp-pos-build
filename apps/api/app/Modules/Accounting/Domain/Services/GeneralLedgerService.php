@@ -2517,6 +2517,170 @@ final class GeneralLedgerService
         });
     }
 
+    /**
+     * Draft a dishonor entry. Before clearing, nominal value leaves the
+     * portfolio and only bank fees touch the bank. After clearing, the bank
+     * funds the nominal claw-back and fees in one exact credit.
+     *
+     * @param  numeric-string  $nominal
+     * @param  numeric-string  $fee
+     * @param  numeric-string  $feeVat
+     */
+    public function createInstrumentDishonorEntry(
+        string $companyId,
+        string $tenantId,
+        string $instrumentId,
+        ?string $partnerId,
+        string $routingAccountId,
+        string $portfolioAccountId,
+        string $bankAccountId,
+        string $feeAccountId,
+        string $vatAccountId,
+        string $nominal,
+        string $fee,
+        string $feeVat,
+        bool $afterClearing,
+        int $scale,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('Instrument dishonor entries require an enclosing transaction.');
+        }
+
+        $feeGross = bcadd($fee, $feeVat, $scale);
+        $bankCredit = $afterClearing ? bcadd($nominal, $feeGross, $scale) : $feeGross;
+
+        return DB::transaction(function () use (
+            $companyId,
+            $tenantId,
+            $instrumentId,
+            $partnerId,
+            $routingAccountId,
+            $portfolioAccountId,
+            $bankAccountId,
+            $feeAccountId,
+            $vatAccountId,
+            $nominal,
+            $fee,
+            $feeVat,
+            $afterClearing,
+            $scale,
+            $bankCredit,
+            $date,
+        ): JournalEntry {
+            $entry = JournalEntry::query()->create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => $afterClearing ? 'Instrument dishonor after clearing' : 'Instrument bounce before clearing',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'instrument',
+                'journal_code' => JournalCode::Effets,
+                'source_id' => $instrumentId,
+            ]);
+
+            $lineOrder = 0;
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $routingAccountId,
+                'partner_id' => $partnerId,
+                'debit' => $nominal,
+                'credit' => '0',
+                'description' => 'Dishonored instrument routing',
+                'line_order' => $lineOrder++,
+            ]);
+            if (bccomp($fee, '0', $scale) > 0) {
+                JournalLine::query()->create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $feeAccountId,
+                    'partner_id' => null,
+                    'debit' => $fee,
+                    'credit' => '0',
+                    'description' => 'Instrument dishonor bank fee',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+            if (bccomp($feeVat, '0', $scale) > 0) {
+                JournalLine::query()->create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $vatAccountId,
+                    'partner_id' => null,
+                    'debit' => $feeVat,
+                    'credit' => '0',
+                    'description' => 'Recoverable VAT on dishonor fee',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+            if (! $afterClearing) {
+                JournalLine::query()->create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $portfolioAccountId,
+                    'partner_id' => null,
+                    'debit' => '0',
+                    'credit' => $nominal,
+                    'description' => 'Dishonored instrument leaves portfolio',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+            if (bccomp($bankCredit, '0', $scale) > 0) {
+                JournalLine::query()->create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $bankAccountId,
+                    'partner_id' => null,
+                    'debit' => '0',
+                    'credit' => $bankCredit,
+                    'description' => 'Bank debit for instrument dishonor',
+                    'line_order' => $lineOrder,
+                ]);
+            }
+
+            return $entry->load('lines');
+        });
+    }
+
+    /** Draft a mirror counter-entry for a document tolerance write-off. */
+    public function createInstrumentToleranceReversalEntry(
+        string $companyId,
+        string $tenantId,
+        string $instrumentId,
+        JournalEntry $original,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('Instrument tolerance reversals require an enclosing transaction.');
+        }
+
+        $original->loadMissing('lines');
+
+        return DB::transaction(function () use ($companyId, $tenantId, $instrumentId, $original, $date): JournalEntry {
+            $entry = JournalEntry::query()->create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => 'Tolerance reversal after instrument dishonor',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'instrument_tolerance_reversal',
+                'journal_code' => JournalCode::Effets,
+                'source_id' => $instrumentId,
+            ]);
+            foreach ($original->lines as $order => $line) {
+                JournalLine::query()->create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $line->account_id,
+                    'partner_id' => $line->partner_id,
+                    'debit' => $line->credit,
+                    'credit' => $line->debit,
+                    'description' => 'Tolerance reversal: '.($line->description ?? ''),
+                    'line_order' => $order,
+                ]);
+            }
+
+            return $entry->load('lines');
+        });
+    }
+
     private function createInstrumentTransitEntry(
         string $companyId,
         string $tenantId,

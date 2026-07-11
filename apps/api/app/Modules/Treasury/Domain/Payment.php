@@ -50,6 +50,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $journal_entry_id
  * @property bool $is_reconciled
  * @property Carbon|null $reconciled_at
+ * @property Carbon|null $dishonored_at
  * @property string|null $created_by
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -89,6 +90,7 @@ class Payment extends Model
         'journal_entry_id',
         'is_reconciled',
         'reconciled_at',
+        'dishonored_at',
         'created_by',
         // Refund audit columns (Task 19 — spec §3.6 / §4.3)
         'original_payment_id',
@@ -121,6 +123,7 @@ class Payment extends Model
             'origin' => PaymentOrigin::class,
             'is_reconciled' => 'boolean',
             'reconciled_at' => 'datetime',
+            'dishonored_at' => 'datetime',
             'exchange_rate_at_payment' => 'decimal:6',
             'fx_gain_loss_amount' => 'decimal:4',
             'discount_taken' => 'decimal:4',

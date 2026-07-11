@@ -4,13 +4,21 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Application\Services;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Document\Domain\CreditNoteAllocation;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Treasury\Application\DTOs\BounceInstrumentData;
 use App\Modules\Treasury\Application\DTOs\ClearInstrumentData;
 use App\Modules\Treasury\Application\DTOs\InstrumentEventPayload;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
 use App\Modules\Treasury\Domain\Enums\CancellationShape;
+use App\Modules\Treasury\Domain\Enums\DishonorRouting;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentEventType;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
@@ -21,12 +29,14 @@ use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceLineStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceType;
+use App\Modules\Treasury\Domain\Events\InstrumentBounced;
 use App\Modules\Treasury\Domain\Events\InstrumentCleared;
 use App\Modules\Treasury\Domain\Events\InstrumentReceived;
 use App\Modules\Treasury\Domain\Events\InstrumentTransferred;
 use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\InstrumentRemittance;
 use App\Modules\Treasury\Domain\InstrumentRemittanceLine;
+use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -38,6 +48,8 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class InstrumentLifecycleService
 {
+    private const TOLERANCE_SCALE = 4;
+
     public function __construct(
         private GeneralLedgerService $generalLedger,
         private InstrumentAccountResolver $accountResolver,
@@ -284,6 +296,264 @@ final readonly class InstrumentLifecycleService
                 companyId: $instrument->company_id,
                 amount: $instrument->amount,
                 clearedAt: now()->toIso8601String(),
+            )));
+
+            return $instrument->fresh() ?? $instrument;
+        });
+    }
+
+    public function bounce(BounceInstrumentData $data): PaymentInstrument
+    {
+        return DB::transaction(function () use ($data): PaymentInstrument {
+            $instrument = PaymentInstrument::query()->lockForUpdate()->findOrFail($data->instrumentId);
+            if (! $instrument->status->canBounce()) {
+                throw new DomainException('Instrument cannot bounce in its current status.');
+            }
+            if ($instrument->currency !== strtoupper($data->currency)) {
+                throw new DomainException('Dishonor currency does not match the instrument.');
+            }
+
+            $line = InstrumentRemittanceLine::query()
+                ->where('instrument_id', $instrument->id)
+                ->whereIn('line_status', [RemittanceLineStatus::Pending, RemittanceLineStatus::Cleared])
+                ->orderByDesc('id')
+                ->lockForUpdate()
+                ->first();
+            if ($line === null) {
+                throw new DomainException('Instrument is not on a remitted slip.');
+            }
+            $remittance = InstrumentRemittance::query()->lockForUpdate()->findOrFail($line->remittance_id);
+            if (! in_array($remittance->status, [RemittanceStatus::Remitted, RemittanceStatus::Closed], true)) {
+                throw new DomainException('Instrument slip has not been remitted.');
+            }
+            $repository = PaymentRepository::query()->findOrFail($remittance->bank_repository_id);
+            if ($repository->gl_account_id === null) {
+                throw new DomainException('Bank repository has no GL account.');
+            }
+
+            $payment = $instrument->payment()->lockForUpdate()->first();
+            $allocations = collect();
+            $toleranceAllocations = collect();
+            $documents = collect();
+            if ($data->routing !== DishonorRouting::RePresent && $payment !== null) {
+                $allocations = PaymentAllocation::query()
+                    ->where('payment_id', $payment->id)
+                    ->where('amount', '>', 0)
+                    ->orderBy('document_id')
+                    ->orderBy('id')
+                    ->get();
+                $documentIds = $allocations->pluck('document_id')->unique()->sort()->values();
+                if ($documentIds->isNotEmpty()) {
+                    // Document locks precede every GL advisory lock. The stable id
+                    // order matches the payment writer and prevents AB/BA waits.
+                    $documents = Document::query()
+                        ->whereIn('id', $documentIds)
+                        ->where('company_id', $instrument->company_id)
+                        ->orderBy('id')
+                        ->lockForUpdate()
+                        ->get()
+                        ->keyBy('id');
+                    if ($documents->count() !== $documentIds->count()) {
+                        throw new DomainException('A payment allocation references a document outside the instrument company.');
+                    }
+                    $toleranceAllocations = PaymentAllocation::query()
+                        ->whereNull('payment_id')
+                        ->whereIn('document_id', $documentIds)
+                        ->whereColumn('tolerance_writeoff', 'amount')
+                        ->where('amount', '>', 0)
+                        ->orderBy('document_id')
+                        ->orderBy('id')
+                        ->get();
+                }
+            }
+
+            $scale = $this->scaleResolver->getScale($data->currency);
+            $fee = CurrencyScale::bcformatStrict($data->feeAmount, $scale);
+            $feeVat = CurrencyScale::bcformatStrict($data->feeVatAmount, $scale);
+            if (bccomp($fee, '0', $scale) < 0 || bccomp($feeVat, '0', $scale) < 0) {
+                throw new DomainException('Dishonor fees cannot be negative.');
+            }
+            $feeGross = bcadd($fee, $feeVat, $scale);
+            $afterClearing = $instrument->status === InstrumentStatus::Cleared;
+            $movementAmount = $afterClearing
+                ? bcadd($instrument->amount, $feeGross, $scale)
+                : $feeGross;
+            $routingAccountId = match ($data->routing) {
+                DishonorRouting::Doubtful => $this->accountResolver->resolveOrFail(
+                    InstrumentAccountPurpose::DoubtfulReceivables,
+                    $instrument->company_id,
+                ),
+                DishonorRouting::RePresent => $instrument->kind === InstrumentKind::Effet
+                    ? $this->accountResolver->resolveOrFail(
+                        InstrumentAccountPurpose::EffectsReceivable,
+                        $instrument->company_id,
+                    )
+                    : Account::findByPurposeOrFail(
+                        $instrument->company_id,
+                        SystemAccountPurpose::CustomerReceivable,
+                    )->id,
+                DishonorRouting::Receivable => Account::findByPurposeOrFail(
+                    $instrument->company_id,
+                    SystemAccountPurpose::CustomerReceivable,
+                )->id,
+            };
+            $portfolioPurpose = $instrument->kind === InstrumentKind::Cheque
+                ? InstrumentAccountPurpose::ChecksToCollect
+                : InstrumentAccountPurpose::EffectsInCollection;
+            $entry = $this->generalLedger->createInstrumentDishonorEntry(
+                companyId: $instrument->company_id,
+                tenantId: $instrument->tenant_id,
+                instrumentId: $instrument->id,
+                partnerId: $instrument->partner_id,
+                routingAccountId: $routingAccountId,
+                portfolioAccountId: $this->accountResolver->resolveOrFail($portfolioPurpose, $instrument->company_id),
+                bankAccountId: $repository->gl_account_id,
+                feeAccountId: $this->accountResolver->resolveOrFail(
+                    InstrumentAccountPurpose::InstrumentBankFees,
+                    $instrument->company_id,
+                ),
+                vatAccountId: $this->accountResolver->resolveOrFail(
+                    InstrumentAccountPurpose::VatRecoverableOnFees,
+                    $instrument->company_id,
+                ),
+                nominal: $instrument->amount,
+                fee: $fee,
+                feeVat: $feeVat,
+                afterClearing: $afterClearing,
+                scale: $scale,
+                date: now(),
+            );
+            $actor = User::query()->find($data->userId);
+            $this->generalLedger->postEntryNow($entry, $actor, $data->currency);
+
+            foreach ($toleranceAllocations as $tolerance) {
+                $original = JournalEntry::query()
+                    ->where('company_id', $instrument->company_id)
+                    ->where('source_type', 'payment_tolerance')
+                    ->where('source_id', $tolerance->document_id)
+                    ->where('status', 'posted')
+                    ->latest('created_at')
+                    ->first();
+                if ($original === null) {
+                    throw new DomainException('Tolerance write-off entry is missing for a reopened document.');
+                }
+                $reversal = $this->generalLedger->createInstrumentToleranceReversalEntry(
+                    $instrument->company_id,
+                    $instrument->tenant_id,
+                    $instrument->id,
+                    $original,
+                    now(),
+                );
+                $this->generalLedger->postEntryNow($reversal, $actor, $data->currency);
+            }
+
+            $movementId = null;
+            if (bccomp($movementAmount, '0', $scale) > 0) {
+                $leg = $afterClearing ? "dishonor:{$line->id}" : "bounce_fee:{$line->id}";
+                $movement = $this->movementService->record(new MovementIntent(
+                    repositoryId: $repository->id,
+                    tenantId: $instrument->tenant_id,
+                    companyId: $instrument->company_id,
+                    direction: MovementDirection::Out,
+                    amount: $movementAmount,
+                    currency: $data->currency,
+                    sourceType: MovementSourceType::Instrument,
+                    sourceId: $instrument->id,
+                    idempotencyLeg: $leg,
+                    journalEntryId: $entry->id,
+                    occurredAt: CarbonImmutable::now(),
+                    reasonCode: null,
+                    reversesMovementId: null,
+                    createdBy: $data->userId,
+                    notes: $data->reason,
+                    allowWhileFrozen: false,
+                ));
+                $movementId = $movement->movementId;
+            }
+
+            if ($data->routing !== DishonorRouting::RePresent && $payment !== null) {
+                foreach ($allocations as $allocation) {
+                    PaymentAllocation::query()->create([
+                        'payment_id' => $payment->id,
+                        'document_id' => $allocation->document_id,
+                        'amount' => bcmul($allocation->amount, '-1', $scale),
+                        'tolerance_writeoff' => null,
+                    ]);
+                }
+                foreach ($toleranceAllocations as $tolerance) {
+                    $toleranceAmount = CurrencyScale::bcformatStrict($tolerance->amount, $scale);
+                    $toleranceWriteoff = CurrencyScale::bcformatStrict(
+                        (string) $tolerance->tolerance_writeoff,
+                        self::TOLERANCE_SCALE,
+                    );
+                    PaymentAllocation::query()->create([
+                        'payment_id' => null,
+                        'document_id' => $tolerance->document_id,
+                        'amount' => bcsub('0', $toleranceAmount, $scale),
+                        'tolerance_writeoff' => bcsub('0', $toleranceWriteoff, self::TOLERANCE_SCALE),
+                    ]);
+                }
+                foreach ($documents as $document) {
+                    $documentTotal = CurrencyScale::bcformatStrict((string) $document->total, $scale);
+                    $allocated = PaymentAllocation::query()
+                        ->where('document_id', $document->id)
+                        ->get('amount')
+                        ->reduce(fn (string $sum, PaymentAllocation $row): string => bcadd($sum, $row->amount, $scale), '0');
+                    $credited = CreditNoteAllocation::query()
+                        ->where('invoice_id', $document->id)
+                        ->get('amount')
+                        ->reduce(fn (string $sum, CreditNoteAllocation $row): string => bcadd($sum, $row->amount, $scale), '0');
+                    $document->update([
+                        'balance_due' => bcsub(bcsub($documentTotal, $allocated, $scale), $credited, $scale),
+                        'status' => $document->status === DocumentStatus::Paid ? DocumentStatus::Posted : $document->status,
+                    ]);
+                }
+            }
+            if ($payment !== null) {
+                $payment->update(['dishonored_at' => now()]);
+            }
+
+            $instrument->update([
+                'status' => InstrumentStatus::Bounced,
+                'bounced_at' => now(),
+                'bounce_reason' => $data->reason,
+                'dishonor_routing' => $data->routing,
+            ]);
+            $line->update(['line_status' => RemittanceLineStatus::Bounced, 'bounced_at' => now()]);
+            if (! InstrumentRemittanceLine::query()
+                ->where('remittance_id', $remittance->id)
+                ->where('line_status', RemittanceLineStatus::Pending)
+                ->exists()) {
+                $remittance->update(['status' => RemittanceStatus::Closed]);
+            }
+            InstrumentEvent::query()->create([
+                'tenant_id' => $instrument->tenant_id,
+                'company_id' => $instrument->company_id,
+                'instrument_id' => $instrument->id,
+                'event_type' => InstrumentEventType::Bounced,
+                'from_status' => $afterClearing ? InstrumentStatus::Cleared->value : InstrumentStatus::Deposited->value,
+                'to_status' => InstrumentStatus::Bounced->value,
+                'from_repository_id' => $instrument->repository_id,
+                'to_repository_id' => $repository->id,
+                'remittance_id' => $remittance->id,
+                'journal_entry_id' => $entry->id,
+                'movement_id' => $movementId,
+                'payload' => (new InstrumentEventPayload(
+                    dishonorRouting: $data->routing,
+                    feeAmount: $fee,
+                    feeVatAmount: $feeVat,
+                    reason: $data->reason,
+                ))->toArray(),
+                'occurred_at' => now(),
+                'created_by' => $data->userId,
+            ]);
+            DB::afterCommit(fn () => event(new InstrumentBounced(
+                instrumentId: $instrument->id,
+                tenantId: $instrument->tenant_id,
+                companyId: $instrument->company_id,
+                amount: $instrument->amount,
+                reason: $data->reason ?? '',
+                bouncedAt: now()->toIso8601String(),
             )));
 
             return $instrument->fresh() ?? $instrument;
