@@ -366,3 +366,11 @@
 - Manual-paper compatibility: unlinked inbound manual registration intentionally has no receipt JE, so its nominal is excluded. Its later instrument/remittance lifecycle portfolio lines are subtracted as the same no-receipt circuit (including proportional mixed-slip nominal) to avoid permanent false drift; existing clear/reconcile coverage pins this. Once supplied to a payment, `payment_id` links the paper and the normal equality applies.
 - File-list seam: scheduler failure guidance changed because the same non-zero exit now has a third valid cause—alert-only portfolio drift—and must not falsely tell operators that every drift froze cash.
 - Money-path deviation: none. Check #4 only reads instruments/posted lines and writes alerts; it never mutates cash, journals, movements, or repository freeze state.
+
+## Wave G precondition — STOPPED
+
+- Checked: 2026-07-11 after Task 22, exactly at Wave G entry and before touching any frontend file.
+- `git fetch origin dev` succeeded. Fetched `origin/dev` is `f0f9cecc91e1adc310533363525c7ab1a6db5c3f` (`docs(handoff): autonomous audit gates — Codex self-reviews via claude -p (Opus standard, Fable 5 escalation on money paths)`, 2026-07-11T06:07:24+01:00).
+- `git branch -r --list origin/feat/design-system-unification` returned no branch; `git ls-remote --heads origin refs/heads/feat/design-system-unification` returned no ref; `git log origin/dev --all-match --grep=design-system-unification` returned no merge/commit.
+- Result: the brief §2 Wave-G precondition is unmet. This is one of the two authorized stop conditions. Tasks 23–28 and Gate 4 have not started; no rebase was attempted and no frontend file was touched.
+- Resume condition: merge the design-system unification sweep into `origin/dev`, then resume here with a fresh fetch, verify ancestry/merge presence, rebase this feature branch onto `origin/dev`, and follow the resulting PageHeader/token conventions.
