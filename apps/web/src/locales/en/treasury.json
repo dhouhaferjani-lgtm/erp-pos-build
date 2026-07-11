@@ -86,7 +86,8 @@
       "reversed": "Reversed",
       "cleared": "Cleared",
       "voided": "Voided",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "dishonored": "Dishonored"
     },
     "types": {
       "document_payment": "Invoice Payment",
@@ -132,6 +133,7 @@
   },
   "instruments": {
     "title": "Payment Instruments",
+    "count": "{{count}} instruments",
     "formTitle": "Instrument details",
     "reference": "Instrument reference",
     "referenceRequired": "Instrument reference is required",
@@ -173,6 +175,61 @@
     "markAsBounced": "Mark as Bounced",
     "bounceReason": "Reason (optional)",
     "bounceReasonPlaceholder": "e.g., Insufficient funds",
+    "unknownMethod": "Unknown payment method",
+    "kind": "Kind",
+    "direction": "Direction",
+    "remit": "Add to remittance",
+    "cancel": "Cancel instrument",
+    "cancelReason": "Cancellation reason",
+    "feeAmount": "Bank fee",
+    "feeVatAmount": "VAT on fee",
+    "valueDate": "Value date",
+    "bounceRouting": "Dishonor routing",
+    "bounceRoutingPlaceholder": "Select recovery route",
+    "filters": {
+      "all": "All",
+      "kind": "Instrument kind",
+      "direction": "Direction",
+      "needsDetails": "Details required",
+      "maturityFrom": "Maturity from",
+      "maturityTo": "Maturity to"
+    },
+    "buckets": {
+      "label": "Maturity buckets",
+      "overdue": "Overdue",
+      "d0_7": "Due in 0–7 days",
+      "d8_30": "Due in 8–30 days",
+      "d31_60": "Due in 31–60 days",
+      "d61_90": "Due in 61–90 days",
+      "d90_plus": "Due after 90 days"
+    },
+    "kinds": {
+      "cheque": "Cheque",
+      "effet": "Bill of exchange",
+      "other": "Other"
+    },
+    "directions": {
+      "inbound": "Incoming",
+      "outbound": "Outgoing"
+    },
+    "routings": {
+      "re_present": "Re-present",
+      "receivable": "Return to receivable",
+      "doubtful": "Doubtful receivable"
+    },
+    "events": {
+      "created": "Instrument received",
+      "details_updated": "Details updated",
+      "custody_transferred": "Custody transferred",
+      "remitted": "Added to remittance",
+      "cleared": "Cleared by bank",
+      "bounced": "Dishonored",
+      "re_presented": "Re-presented",
+      "cancelled": "Cancelled"
+    },
+    "clearDialog": { "title": "Clear instrument" },
+    "bounceDialog": { "title": "Record dishonor" },
+    "cancelDialog": { "title": "Cancel instrument" },
     "types": {
       "check": "Check",
       "promissory_note": "Promissory Note",

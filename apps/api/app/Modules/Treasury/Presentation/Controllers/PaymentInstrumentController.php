@@ -16,6 +16,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
+use App\Modules\Treasury\Domain\InstrumentEvent;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Shared\Presentation\Validation\ScopedExists;
@@ -91,6 +92,35 @@ final class PaymentInstrumentController extends Controller
         $instrument->load(['paymentMethod', 'partner', 'repository', 'depositedTo']);
 
         return response()->json(['data' => $this->formatInstrument($instrument)]);
+    }
+
+    public function events(string $id): JsonResponse
+    {
+        $instrument = $this->findInstrument($id);
+        $events = InstrumentEvent::query()
+            ->where('tenant_id', $instrument->tenant_id)
+            ->where('company_id', $instrument->company_id)
+            ->where('instrument_id', $instrument->id)
+            ->orderBy('occurred_at')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json([
+            'data' => $events->map(static fn (InstrumentEvent $event): array => [
+                'id' => $event->id,
+                'event_type' => $event->event_type->value,
+                'from_status' => $event->from_status,
+                'to_status' => $event->to_status,
+                'from_repository_id' => $event->from_repository_id,
+                'to_repository_id' => $event->to_repository_id,
+                'remittance_id' => $event->remittance_id,
+                'journal_entry_id' => $event->journal_entry_id,
+                'movement_id' => $event->movement_id,
+                'payload' => $event->payload,
+                'occurred_at' => $event->occurred_at->toIso8601String(),
+                'created_by' => $event->created_by,
+            ]),
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -289,6 +319,25 @@ final class PaymentInstrumentController extends Controller
         ]);
         try {
             $this->lifecycle->custodyTransfer($instrument->id, $validated['to_repository_id'], $request->user()?->id);
+        } catch (DomainException $exception) {
+            return $this->domainError($exception);
+        }
+
+        return $this->show($instrument->id);
+    }
+
+    public function cancel(Request $request, string $id): JsonResponse
+    {
+        $instrument = $this->findInstrument($id);
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+        try {
+            $this->lifecycle->cancel(
+                instrumentId: $instrument->id,
+                userId: $request->user()?->id,
+                reason: $validated['reason'],
+            );
         } catch (DomainException $exception) {
             return $this->domainError($exception);
         }

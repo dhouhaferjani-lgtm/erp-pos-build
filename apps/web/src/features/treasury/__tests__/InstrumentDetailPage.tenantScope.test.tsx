@@ -31,6 +31,7 @@ vi.mock('react-router-dom', async () => {
   return {
     ...actual,
     Link: ({ children }: { children: ReactNode }) => <a href="/test">{children}</a>,
+    useNavigate: () => vi.fn(),
     useParams: () => ({ id: mockRouteId.current }),
   }
 })
@@ -49,6 +50,14 @@ function setTenant(tenantId: string, companyId: string) {
       email: 'user@example.test',
       tenant_id: tenantId,
       roles: [],
+      permissions: [
+        'instruments.view',
+        'instruments.clear',
+        'instruments.bounce',
+        'instruments.remit',
+        'instruments.transfer',
+        'instruments.update',
+      ],
       email_verified_at: null,
     },
     token: 'token',
@@ -84,7 +93,7 @@ function instrumentFixture() {
     partner_id: 'partner-1',
     partner: { id: 'partner-1', name: 'Partner A' },
     drawer_name: null,
-    amount: 100,
+    amount: '100.000',
     currency: 'TND',
     received_date: '2026-05-11',
     maturity_date: '2026-05-20',
@@ -151,7 +160,7 @@ describe('InstrumentDetailPage tenant scope', () => {
     expect(mockApiGet).toHaveBeenCalledTimes(calls)
   })
 
-  it('invalidates deposit and transfer detail keys without touching tenant-B (.672, .675)', async () => {
+  it('invalidates transfer detail keys without touching tenant-B (.675)', async () => {
     const queryClient = createClient()
     queryClient.setQueryData(['instrument', 'instrument-1', 'tenant-B', 'company-1'], { marker: 'tenant-B-instrument' })
 
@@ -161,16 +170,6 @@ describe('InstrumentDetailPage tenant scope', () => {
       expect(mockApiGet.mock.calls.filter(([url]) => url === '/payment-instruments/instrument-1')).toHaveLength(1)
     })
 
-    await userEvent.click(await screen.findByRole('button', { name: 'treasury:instruments.deposit' }))
-    await userEvent.selectOptions(await screen.findByLabelText('treasury:instruments.selectBankAccount'), 'repo-bank')
-    await act(async () => {
-      await userEvent.click(screen.getAllByRole('button', { name: 'treasury:instruments.deposit' })[1])
-    })
-
-    await waitFor(() => {
-      expect(mockApiGet.mock.calls.filter(([url]) => url === '/payment-instruments/instrument-1')).toHaveLength(2)
-    })
-
     await userEvent.click(await screen.findByRole('button', { name: 'treasury:instruments.transfer' }))
     await userEvent.selectOptions(await screen.findByLabelText('treasury:instruments.selectRepository'), 'repo-bank')
     await act(async () => {
@@ -178,7 +177,7 @@ describe('InstrumentDetailPage tenant scope', () => {
     })
 
     await waitFor(() => {
-      expect(mockApiGet.mock.calls.filter(([url]) => url === '/payment-instruments/instrument-1')).toHaveLength(3)
+      expect(mockApiGet.mock.calls.filter(([url]) => url === '/payment-instruments/instrument-1')).toHaveLength(2)
     })
     expect(queryClient.getQueryData(['instrument', 'instrument-1', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-instrument' })
   })
@@ -194,8 +193,9 @@ describe('InstrumentDetailPage tenant scope', () => {
       expect(mockApiGet.mock.calls.filter(([url]) => url === '/payment-instruments/instrument-1')).toHaveLength(1)
     })
 
+    await userEvent.click(await screen.findByRole('button', { name: 'treasury:instruments.clear' }))
     await act(async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'treasury:instruments.clear' }))
+      await userEvent.click(screen.getAllByRole('button', { name: 'treasury:instruments.clear' })[1])
     })
 
     await waitFor(() => {
@@ -203,6 +203,7 @@ describe('InstrumentDetailPage tenant scope', () => {
     })
 
     await userEvent.click(screen.getByRole('button', { name: 'treasury:instruments.bounce' }))
+    await userEvent.selectOptions(await screen.findByLabelText('treasury:instruments.bounceRouting'), 'receivable')
     await userEvent.type(await screen.findByLabelText('treasury:instruments.bounceReason'), 'Insufficient funds')
     await act(async () => {
       await userEvent.click(screen.getAllByRole('button', { name: 'treasury:instruments.bounce' })[1])

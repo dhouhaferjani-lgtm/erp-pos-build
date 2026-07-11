@@ -63,6 +63,7 @@ interface Payment {
   currency: string
   payment_date: string
   status: 'pending' | 'completed' | 'failed' | 'reversed'
+  dishonored_at: string | null
   payment_type: PaymentType | null
   allocated_amount: string
   unallocated_amount: string
@@ -371,7 +372,7 @@ export function PaymentDetailPage() {
       <PageHeader
         title={t('payments.title')}
         breadcrumb={backLink}
-        subtitle={`${formatCurrency(payment.amount)} · ${getStatusLabel(payment.status)}`}
+        subtitle={`${formatCurrency(payment.amount)} · ${payment.dishonored_at ? t('payments.statuses.dishonored') : getStatusLabel(payment.status)}`}
         actions={
           <>
             {payment.status === 'pending' && (
@@ -442,8 +443,8 @@ export function PaymentDetailPage() {
             <div>
               <dt className={cn('text-sm font-medium', textColors.tertiary)}>{t('payments.status')}</dt>
               <dd className="mt-1">
-                <StatusBadge tone={statusTone(payment.status, statusToneOverrides)}>
-                  {getStatusLabel(payment.status)}
+                <StatusBadge tone={payment.dishonored_at ? 'danger' : statusTone(payment.status, statusToneOverrides)}>
+                  {payment.dishonored_at ? t('payments.statuses.dishonored') : getStatusLabel(payment.status)}
                 </StatusBadge>
               </dd>
             </div>

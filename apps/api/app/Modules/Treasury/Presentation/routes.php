@@ -102,6 +102,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:instruments.view')
         ->name('payment-instruments.show');
 
+    Route::get('/payment-instruments/{instrument}/events', [PaymentInstrumentController::class, 'events'])
+        ->middleware('can:instruments.view')
+        ->name('payment-instruments.events');
+
     Route::post('/payment-instruments', [PaymentInstrumentController::class, 'store'])
         ->middleware('can:instruments.create')
         ->name('payment-instruments.store');
@@ -125,6 +129,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/payment-instruments/{instrument}/transfer', [PaymentInstrumentController::class, 'transfer'])
         ->middleware('can:instruments.transfer')
         ->name('payment-instruments.transfer');
+
+    Route::post('/payment-instruments/{instrument}/cancel', [PaymentInstrumentController::class, 'cancel'])
+        ->middleware('can:instruments.update')
+        ->name('payment-instruments.cancel');
 
     Route::get('/instrument-remittances', [InstrumentRemittanceController::class, 'index'])
         ->middleware('can:instruments.remit')->name('instrument-remittances.index');

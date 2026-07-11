@@ -1703,7 +1703,7 @@ export function AppRoutes() {
           <Route
             path="instruments"
             element={
-              <RequirePermission moduleKey="treasury">
+              <RequirePermission permission="instruments.view">
                 <SuspenseWrapper>
                   <InstrumentListPage />
                 </SuspenseWrapper>
@@ -1713,7 +1713,7 @@ export function AppRoutes() {
           <Route
             path="instruments/:id"
             element={
-              <RequirePermission moduleKey="treasury">
+              <RequirePermission permission="instruments.view">
                 <SuspenseWrapper>
                   <InstrumentDetailPage />
                 </SuspenseWrapper>

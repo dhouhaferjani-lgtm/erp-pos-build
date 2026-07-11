@@ -477,6 +477,57 @@ class PaymentInstrumentTest extends TestCase
         ])->assertUnprocessable();
     }
 
+    public function test_events_endpoint_returns_the_immutable_timeline_in_order(): void
+    {
+        $instrument = $this->instrument();
+        InstrumentEvent::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'instrument_id' => $instrument->id,
+            'event_type' => 'created',
+            'to_status' => 'received',
+            'payload' => [],
+            'occurred_at' => now()->subHour(),
+        ]);
+        InstrumentEvent::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'instrument_id' => $instrument->id,
+            'event_type' => 'custody_transferred',
+            'from_status' => 'received',
+            'to_status' => 'received',
+            'from_repository_id' => $this->checkSafe->id,
+            'to_repository_id' => $this->bankAccount->id,
+            'payload' => ['reason' => 'bank handoff'],
+            'occurred_at' => now(),
+        ]);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/v1/payment-instruments/{$instrument->id}/events")
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.event_type', 'created')
+            ->assertJsonPath('data.1.event_type', 'custody_transferred')
+            ->assertJsonPath('data.1.payload.reason', 'bank handoff');
+    }
+
+    public function test_received_unlinked_instrument_can_be_cancelled_through_update_permission(): void
+    {
+        $instrument = $this->instrument();
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/payment-instruments/{$instrument->id}/cancel", [
+                'reason' => 'Drawer requested cancellation',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'cancelled');
+
+        $this->assertDatabaseHas('instrument_events', [
+            'instrument_id' => $instrument->id,
+            'event_type' => 'cancelled',
+        ]);
+    }
+
     public function test_bounce_requires_dedicated_permission_not_clear_permission(): void
     {
         $this->user->revokePermissionTo('instruments.bounce');

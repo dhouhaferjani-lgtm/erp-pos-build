@@ -43,6 +43,7 @@ function setTenant() {
       email: 'user@example.test',
       tenant_id: 'tenant-A',
       roles: [],
+      permissions: ['instruments.view', 'instruments.remit'],
       email_verified_at: null,
     },
     token: 'token',
@@ -61,7 +62,7 @@ function instrumentFixture() {
     partner_id: 'partner-1',
     partner: { id: 'partner-1', name: 'Partner A' },
     drawer_name: null,
-    amount: 100,
+    amount: '100.000',
     currency: 'TND',
     received_date: '2026-05-11',
     maturity_date: '2026-05-20',
@@ -130,18 +131,18 @@ describe('InstrumentDetailPage canonicalization', () => {
     renderPage()
 
     await screen.findByRole('heading', { level: 1 })
-    const matches = screen.getAllByText('Received')
+    const matches = screen.getAllByText('treasury:instruments.statuses.received')
     const pill = matches.find(
       (el) => el.tagName === 'SPAN' && el.className.includes('rounded-full'),
     )
     expect(pill).toBeDefined()
   })
 
-  it('exposes the Deposit action button for a received instrument', async () => {
+  it('exposes the remittance action button for a received instrument', async () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Deposit/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /treasury:instruments.remit/ })).toBeInTheDocument()
     })
   })
 })

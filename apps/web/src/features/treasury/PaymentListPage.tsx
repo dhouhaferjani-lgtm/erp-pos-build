@@ -31,6 +31,7 @@ interface Payment {
   partner_type: 'customer' | 'supplier' | 'both' | null
   payment_type: string | null
   status: 'pending' | 'completed' | 'cancelled'
+  dishonored_at: string | null
   created_at: string
 }
 
@@ -145,8 +146,8 @@ export function PaymentListPage() {
       key: 'status',
       header: t('treasury:payments.status'),
       render: (payment) => (
-        <StatusBadge tone={statusTone(payment.status, paymentStatusTones)}>
-          {getStatusLabel(payment.status)}
+        <StatusBadge tone={payment.dishonored_at ? 'danger' : statusTone(payment.status, paymentStatusTones)}>
+          {payment.dishonored_at ? t('treasury:payments.statuses.dishonored') : getStatusLabel(payment.status)}
         </StatusBadge>
       ),
     },

@@ -66,6 +66,13 @@ export const PERMISSIONS = {
   'treasury.create': ['admin', 'treasury', 'accountant', 'manager'],
   'treasury.edit': ['admin', 'treasury', 'accountant', 'manager'],
   'payments.create': ['admin', 'treasury', 'accountant', 'manager'],
+  'instruments.view': ['admin', 'treasury', 'accountant', 'manager'],
+  'instruments.create': ['admin', 'treasury', 'accountant', 'manager'],
+  'instruments.update': ['admin', 'treasury', 'accountant', 'manager'],
+  'instruments.clear': ['admin', 'treasury', 'accountant', 'manager'],
+  'instruments.bounce': ['admin', 'treasury', 'accountant', 'manager'],
+  'instruments.remit': ['admin', 'treasury', 'accountant', 'manager'],
+  'instruments.transfer': ['admin', 'treasury', 'accountant', 'manager'],
 
   // Treasury - Repositories
   'repositories.view': ['admin', 'treasury', 'accountant', 'manager'],

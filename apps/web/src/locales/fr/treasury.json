@@ -64,7 +64,8 @@
       "reversed": "Annulé",
       "cleared": "Encaissé",
       "voided": "Annulé",
-      "cancelled": "Annulé"
+      "cancelled": "Annulé",
+      "dishonored": "Impayé"
     },
     "types": {
       "document_payment": "Paiement facture",
@@ -132,6 +133,7 @@
   },
   "instruments": {
     "title": "Effets de paiement",
+    "count": "{{count}} effets",
     "formTitle": "Détails de l'effet",
     "reference": "Référence de l'effet",
     "referenceRequired": "La référence de l'effet est requise",
@@ -173,6 +175,61 @@
     "markAsBounced": "Marquer comme rejeté",
     "bounceReason": "Raison (optionnel)",
     "bounceReasonPlaceholder": "ex: Provision insuffisante",
+    "unknownMethod": "Mode de paiement inconnu",
+    "kind": "Nature",
+    "direction": "Sens",
+    "remit": "Ajouter au bordereau",
+    "cancel": "Annuler l'effet",
+    "cancelReason": "Motif d'annulation",
+    "feeAmount": "Frais bancaires",
+    "feeVatAmount": "TVA sur frais",
+    "valueDate": "Date de valeur",
+    "bounceRouting": "Traitement de l'impayé",
+    "bounceRoutingPlaceholder": "Sélectionner le traitement",
+    "filters": {
+      "all": "Tous",
+      "kind": "Nature de l'effet",
+      "direction": "Sens",
+      "needsDetails": "Détails requis",
+      "maturityFrom": "Échéance du",
+      "maturityTo": "Échéance au"
+    },
+    "buckets": {
+      "label": "Tranches d'échéance",
+      "overdue": "En retard",
+      "d0_7": "À 0–7 jours",
+      "d8_30": "À 8–30 jours",
+      "d31_60": "À 31–60 jours",
+      "d61_90": "À 61–90 jours",
+      "d90_plus": "À plus de 90 jours"
+    },
+    "kinds": {
+      "cheque": "Chèque",
+      "effet": "Traite",
+      "other": "Autre"
+    },
+    "directions": {
+      "inbound": "Entrant",
+      "outbound": "Sortant"
+    },
+    "routings": {
+      "re_present": "Représenter",
+      "receivable": "Retour en créance",
+      "doubtful": "Créance douteuse"
+    },
+    "events": {
+      "created": "Effet reçu",
+      "details_updated": "Détails modifiés",
+      "custody_transferred": "Garde transférée",
+      "remitted": "Ajouté au bordereau",
+      "cleared": "Encaissé par la banque",
+      "bounced": "Déclaré impayé",
+      "re_presented": "Représenté",
+      "cancelled": "Annulé"
+    },
+    "clearDialog": { "title": "Encaisser l'effet" },
+    "bounceDialog": { "title": "Enregistrer l'impayé" },
+    "cancelDialog": { "title": "Annuler l'effet" },
     "types": {
       "check": "Chèque",
       "promissory_note": "Billet à ordre",

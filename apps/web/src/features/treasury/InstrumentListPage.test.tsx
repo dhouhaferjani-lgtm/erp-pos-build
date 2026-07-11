@@ -4,8 +4,13 @@ import { InstrumentListPage } from './InstrumentListPage'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, second?: unknown) =>
-      typeof second === 'string' ? second : key,
+    t: (key: string, second?: unknown) => {
+      if (typeof second === 'string') return second
+      if (key === 'treasury:instruments.count' && second && typeof second === 'object' && 'count' in second) {
+        return `${String(second.count)} instruments`
+      }
+      return key
+    },
   }),
 }))
 
@@ -34,7 +39,7 @@ vi.mock('../../stores/companyStore', () => {
 /**
  * Mirrors `PaymentInstrumentController::formatInstrument` exactly (verified
  * against apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentInstrumentController.php).
- * There is NO `instrument_number`, `type`, `partner_name`, or `meta` — a mock
+ * There is NO `instrument_number`, `type`, or `partner_name` — a mock
  * cementing those phantom fields is the bug class this test guards against.
  */
 interface InstrumentRelation {
@@ -62,6 +67,9 @@ interface Instrument {
   maturity_date: string | null
   expiry_date: string | null
   status: 'received' | 'in_transit' | 'deposited' | 'clearing' | 'cleared' | 'bounced' | 'expired' | 'cancelled' | 'collected'
+  kind: 'cheque' | 'effet' | 'other' | null
+  direction: 'inbound' | 'outbound'
+  needs_details: boolean
   repository_id: string | null
   repository: RepositoryRelation | null
   bank_name: string | null
@@ -76,9 +84,9 @@ interface Instrument {
   created_at: string | null
 }
 
-// The real endpoint returns `{ data: [...] }` with NO `meta` — it is not paginated.
 interface InstrumentsResponse {
   data: Instrument[]
+  meta?: { current_page: number; last_page: number; per_page: number; total: number }
 }
 
 function makeInstrument(overrides: Partial<Instrument>): Instrument {
@@ -96,6 +104,9 @@ function makeInstrument(overrides: Partial<Instrument>): Instrument {
     maturity_date: '2026-07-14',
     expiry_date: null,
     status: 'received',
+    kind: 'cheque',
+    direction: 'inbound',
+    needs_details: false,
     repository_id: 'r1',
     repository: { id: 'r1', code: 'SAFE-1', name: 'Main Safe' },
     bank_name: null,
@@ -129,7 +140,12 @@ const mockUseQueryReturn: {
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
-  return { ...actual, useQuery: () => mockUseQueryReturn }
+  return {
+    ...actual,
+    useQuery: ({ queryKey }: { queryKey: unknown[] }) => JSON.stringify(queryKey).includes('maturing-instruments')
+      ? { data: undefined, isLoading: false, error: null }
+      : mockUseQueryReturn,
+  }
 })
 
 describe('InstrumentListPage (canonical list)', () => {
@@ -146,8 +162,7 @@ describe('InstrumentListPage (canonical list)', () => {
 
   it('renders status as a StatusBadge pill (rounded-full)', () => {
     render(<InstrumentListPage />)
-    // i18n mock returns the string default (2nd arg), so the label is the raw status.
-    const badge = screen.getByText('received')
+    const badge = screen.getByText('treasury:instruments.statuses.received')
     expect(badge.tagName).toBe('SPAN')
     expect(badge.className).toContain('rounded-full')
   })
@@ -196,7 +211,7 @@ describe('InstrumentListPage (canonical list)', () => {
       ],
     }
     render(<InstrumentListPage />)
-    expect(screen.getAllByText('-').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
   it('renders repository.name (nested relation, not the phantom repository_name) linked to the repository', () => {
@@ -222,7 +237,7 @@ describe('InstrumentListPage (canonical list)', () => {
       ],
     }
     render(<InstrumentListPage />)
-    expect(screen.getAllByText('-').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
   it('renders received_date and maturity_date, and a dash when maturity_date is null', () => {
@@ -237,16 +252,16 @@ describe('InstrumentListPage (canonical list)', () => {
       ],
     }
     render(<InstrumentListPage />)
-    expect(screen.getByText(new Date('2026-06-01').toLocaleDateString())).toBeInTheDocument()
+    expect(screen.getByText(new Date('2026-06-01').toLocaleDateString('fr-FR'))).toBeInTheDocument()
   })
 
-  it('does not read pagination metadata the API never returns (uses instruments.length for the count)', () => {
+  it('falls back to instruments.length when pagination metadata is absent', () => {
     mockUseQueryReturn.data = {
       data: [
         makeInstrument({ id: '8', reference: 'CHK-8000' }),
         makeInstrument({ id: '9', reference: 'CHK-9000' }),
       ],
-      // deliberately no `meta` — the real endpoint never sends one
+      // Defensive fallback for cached pre-pagination responses.
     }
     render(<InstrumentListPage />)
     expect(screen.getByText(/^2\s/)).toBeInTheDocument()
