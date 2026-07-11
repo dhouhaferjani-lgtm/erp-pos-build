@@ -75,3 +75,14 @@
 - Lock/money evidence: each mutating entrypoint locks the instrument before GL; cancellation uses `postEntryNow` inside the transaction; B2B reversal is `Dr 411 / Cr 5312`, journal `EF`; receive, custody, details, and unlinked cancellation create zero movements and zero unintended JEs.
 - Ordering note: `TreasuryMovementServiceInterface` injection is deferred to Task 8, its first consumer. Keeping an unread injected port through Tasks 6–7 fails level-8 PHPStan; no Task-6 transition is permitted to move repository money.
 - Money-path deviation: none. The injection timing differs only to satisfy static analysis; cancellation posting shape and synchronous transaction contract match spec §6/§7/§12.4.
+
+### Task 7 — Remittance composition, remit posting, deposit wrapper
+
+- Status: complete.
+- Files touched: new remittance application service; lifecycle deposit wrapper; GL aggregate-remittance and re-presentation builders; provider binding; remittance service test; this progress log.
+- RED: `./vendor/bin/phpunit tests/Feature/Treasury/InstrumentRemittanceServiceTest.php` — expected 5 missing-service errors, 1 missing-deposit error, and 1 exception-type mismatch.
+- GREEN: task path — PASS, 8 tests / 31 assertions. Task + lifecycle + schema regressions — PASS, 17 tests / 62 assertions / 1 PostgreSQL-only skip before the two final coverage pins were added.
+- Verification: targeted PHPStan including `GeneralLedgerService` — zero errors; Pint — pass; `git diff --check` — pass.
+- Lock/money evidence: remit locks instrument ids in sorted order before slip rows and `postEntryNow`; effet slips post one `Dr 5313 / Cr 413` EF entry for the exact total; cheque slips post no JE; cheque re-presentation posts `Dr 5312 / Cr 411`; no remit/custody movement is written.
+- Rollback interpretation: a failed remit leaves the already-created draft/line intact but rolls back every mutation attempted by `remit()` (status, JE, event). This is the only coherent interpretation for a composition API whose draft exists before the remit call.
+- Money-path deviation: none. Every GL post is synchronous and occurs after id-sorted instrument locks; repository balances remain untouched.

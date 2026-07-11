@@ -2361,24 +2361,117 @@ final class GeneralLedgerService
         event($posted);
     }
 
-    /**
-     * Post a journal entry SYNCHRONOUSLY inside the current transaction.
-     *
-     * Unlike {@see postEntryAndDispatchPostedEventAfterCommit}, which defers the
-     * ENTIRE post (status seal + hash + event) to DB::afterCommit when inside a
-     * transaction, this seals + persists (status -> Posted, chain_sequence,
-     * fiscal_hash) durably-in-transaction and defers ONLY the JournalEntryPosted
-     * event to afterCommit. This makes a money movement and its GL posting atomic:
-     * they commit or roll back together.
-     *
-     * Used by the Treasury money-movement spine (PostingMode::SynchronousInTransaction).
-     *
-     * @param  string|null  $currencyCode  Pass the entity currency when calling
-     *                                     from a queued job, console command, or
-     *                                     projection — there is no CompanyContext
-     *                                     bound there, so no-arg scale resolution
-     *                                     throws (precision contract, F-RES-1).
-     */
+    /** Draft the aggregate transit entry for an effet remittance. */
+    public function createInstrumentRemittanceEntry(
+        string $companyId,
+        string $tenantId,
+        string $remittanceId,
+        string $debitAccountId,
+        string $creditAccountId,
+        string $amount,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        return $this->createInstrumentTransitEntry(
+            companyId: $companyId,
+            tenantId: $tenantId,
+            sourceType: 'instrument_remittance',
+            sourceId: $remittanceId,
+            debitAccountId: $debitAccountId,
+            creditAccountId: $creditAccountId,
+            partnerId: null,
+            amount: $amount,
+            date: $date,
+            description: 'Instrument remittance',
+        );
+    }
+
+    public function createInstrumentRepresentationEntry(
+        string $companyId,
+        string $tenantId,
+        string $instrumentId,
+        ?string $partnerId,
+        string $portfolioAccountId,
+        string $amount,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        $receivable = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable);
+
+        return $this->createInstrumentTransitEntry(
+            companyId: $companyId,
+            tenantId: $tenantId,
+            sourceType: 'instrument',
+            sourceId: $instrumentId,
+            debitAccountId: $portfolioAccountId,
+            creditAccountId: $receivable->id,
+            partnerId: $partnerId,
+            amount: $amount,
+            date: $date,
+            description: 'Cheque re-presentation',
+        );
+    }
+
+    private function createInstrumentTransitEntry(
+        string $companyId,
+        string $tenantId,
+        string $sourceType,
+        string $sourceId,
+        string $debitAccountId,
+        string $creditAccountId,
+        ?string $partnerId,
+        string $amount,
+        \DateTimeInterface $date,
+        string $description,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('Instrument transit entries require an enclosing transaction.');
+        }
+
+        return DB::transaction(function () use (
+            $companyId,
+            $tenantId,
+            $sourceType,
+            $sourceId,
+            $debitAccountId,
+            $creditAccountId,
+            $partnerId,
+            $amount,
+            $date,
+            $description,
+        ): JournalEntry {
+            $entry = JournalEntry::query()->create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => $description,
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => $sourceType,
+                'journal_code' => JournalCode::Effets,
+                'source_id' => $sourceId,
+            ]);
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $debitAccountId,
+                'partner_id' => null,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => $description.' debit',
+                'line_order' => 0,
+            ]);
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $creditAccountId,
+                'partner_id' => $partnerId,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => $description.' credit',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+    }
+
     /**
      * Draft the immutable counter-entry for cancelling a received instrument.
      * The lifecycle service posts it synchronously after holding the instrument
@@ -2453,6 +2546,17 @@ final class GeneralLedgerService
         });
     }
 
+    /**
+     * Post a journal entry SYNCHRONOUSLY inside the current transaction.
+     *
+     * Unlike {@see postEntryAndDispatchPostedEventAfterCommit}, which defers the
+     * ENTIRE post (status seal + hash + event) to DB::afterCommit when inside a
+     * transaction, this seals + persists durably in-transaction and defers only
+     * the JournalEntryPosted event.
+     *
+     * @param  string|null  $currencyCode  Explicit entity currency for workers,
+     *                                     projections, and console contexts.
+     */
     public function postEntryNow(JournalEntry $entry, ?User $user, ?string $currencyCode = null): void
     {
         if (DB::transactionLevel() < 1) {

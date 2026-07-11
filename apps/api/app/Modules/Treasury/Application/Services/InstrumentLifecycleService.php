@@ -14,6 +14,7 @@ use App\Modules\Treasury\Domain\Enums\InstrumentEventType;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\RemittanceType;
 use App\Modules\Treasury\Domain\Events\InstrumentReceived;
 use App\Modules\Treasury\Domain\Events\InstrumentTransferred;
 use App\Modules\Treasury\Domain\InstrumentEvent;
@@ -30,6 +31,7 @@ final readonly class InstrumentLifecycleService
         private GeneralLedgerService $generalLedger,
         private InstrumentAccountResolver $accountResolver,
         private CurrencyScaleResolverInterface $scaleResolver,
+        private InstrumentRemittanceService $remittanceService,
     ) {}
 
     /**
@@ -132,6 +134,23 @@ final readonly class InstrumentLifecycleService
                 amount: $instrument->amount,
                 transferredAt: now()->toIso8601String(),
             )));
+        });
+    }
+
+    public function deposit(string $instrumentId, string $bankRepositoryId, ?string $userId): void
+    {
+        DB::transaction(function () use ($instrumentId, $bankRepositoryId, $userId): void {
+            $instrument = PaymentInstrument::query()->findOrFail($instrumentId);
+            $remittance = $this->remittanceService->createDraft(
+                companyId: $instrument->company_id,
+                tenantId: $instrument->tenant_id,
+                bankRepositoryId: $bankRepositoryId,
+                type: RemittanceType::Collection,
+                kind: $instrument->kind ?? throw new DomainException('Instrument kind is required.'),
+                userId: $userId,
+            );
+            $this->remittanceService->addLine($remittance->id, $instrument->id);
+            $this->remittanceService->remit($remittance->id, $userId);
         });
     }
 
