@@ -5,6 +5,7 @@ import { Modal, ModalContent, ModalFooter } from '@/components/organisms'
 import { Button, Checkbox, FormField, Input, Textarea } from '@/components/atoms'
 import { tokens } from '@/lib/designTokens'
 import type { Account } from '../types'
+// react-hook-form deferred: finance-spine submit logic is intentionally out of scope for this styling-only leg.
 
 interface EditAccountModalProps {
   account: Account

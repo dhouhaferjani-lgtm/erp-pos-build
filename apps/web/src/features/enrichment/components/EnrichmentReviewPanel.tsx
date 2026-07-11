@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { usePermissions, type Permission } from '@/hooks/usePermissions'
 import {
+
   useEnrichmentResult,
   useAcceptEnrichment,
   useRejectEnrichment,
@@ -16,6 +17,16 @@ import type {
   EnrichmentResult,
   ComparisonField,
 } from '../types/enrichment'
+
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
 
 interface EnrichmentReviewPanelProps {
   resultId: string
@@ -293,7 +304,7 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
                         onChange={() => {
                           setRejectReason(value)
                         }}
-                        className={tokens.radio.base}
+                        className={formTokenClasses.radio}
                       />
                       <span>{label}</span>
                     </label>
@@ -310,7 +321,7 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
                     setRejectNotes(e.target.value)
                   }}
                   placeholder={t('review.rejectNotePlaceholder')}
-                  className={`${tokens.textarea.base} min-h-20`}
+                  className={`${formTokenClasses.textarea} min-h-20`}
                 />
               </label>
             </div>
@@ -320,7 +331,7 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
               type="button"
               onClick={handleReject}
               disabled={rejectMutation.isPending || (showRejectInput && !rejectReason)}
-              className={`${tokens.button.base} ${tokens.button.danger} ${tokens.button.sizes.md} flex-1`}
+              className={`${buttonTokens.base} ${buttonTokens.danger} ${buttonTokens.sizes.md} flex-1`}
             >
               {rejectMutation.isPending
                 ? t('review.rejecting')
@@ -332,7 +343,7 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
               type="button"
               onClick={handleAccept}
               disabled={acceptMutation.isPending}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} flex-1`}
+              className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md} flex-1`}
             >
               {acceptMutation.isPending ? t('review.accepting') : t('review.accept')}
             </button>

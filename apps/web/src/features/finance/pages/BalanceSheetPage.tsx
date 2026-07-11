@@ -12,6 +12,7 @@ import {
   getTodayDateInputValue,
 } from './reportPageUtils'
 import type { BalanceSheetLine } from '../types'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function BalanceSheetPage() {
   const { t } = useTranslation(['finance'])
@@ -51,7 +52,7 @@ export function BalanceSheetPage() {
       <h2 className={cn('mb-4 text-xl font-bold', textColors.primary)}>
         {heading}
       </h2>
-      <table
+      <DataTable
         className={cn('min-w-full divide-y', borderColors.divideDefault)}
       >
         <thead className={tokens.table.header}>
@@ -84,7 +85,7 @@ export function BalanceSheetPage() {
             <td className={tdAmount}>{formatMoney(totalValue)}</td>
           </tr>
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 

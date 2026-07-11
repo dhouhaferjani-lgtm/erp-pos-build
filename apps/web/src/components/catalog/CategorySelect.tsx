@@ -19,6 +19,12 @@ interface FlatCategory {
   depth: number
 }
 
+/**
+ * Single category select used by product/inventory forms.
+ *
+ * This intentionally stays separate from `CategorySelector`, which is a
+ * multi-select combobox with a `number[]` payload for promotion/filter flows.
+ */
 export function CategorySelect({
   value,
   onChange,

@@ -31,6 +31,7 @@ import {
 } from '../../components/atoms/StatusBadge'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface PaymentAllocation {
   id: string
@@ -508,7 +509,7 @@ export function PaymentDetailPage() {
             {t('payments.sections.allocations')}
           </h2>
           <div className={cn('overflow-hidden rounded-lg border', borderColors.light)}>
-            <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+            <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
               <thead className={tokens.table.header}>
                 <tr>
                   <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
@@ -552,7 +553,7 @@ export function PaymentDetailPage() {
                   </td>
                 </tr>
               </tfoot>
-            </table>
+            </DataTable>
           </div>
         </div>
       )}

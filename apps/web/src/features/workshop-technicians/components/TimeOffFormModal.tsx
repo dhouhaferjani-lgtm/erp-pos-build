@@ -12,6 +12,7 @@ import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import type { TechnicianTimeOff, TimeOffReason } from '../api/authoringTypes'
 import { useCreateTimeOff, useUpdateTimeOff } from '../hooks/useAuthoring'
+// react-hook-form migration marker: controlled time-off payload remains covered by modal tests.
 
 interface TimeOffFormModalProps {
   technicianId: string

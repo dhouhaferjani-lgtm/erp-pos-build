@@ -18,6 +18,15 @@ vi.mock('@/hooks/usePermissions', () => ({
   }),
 }))
 
+vi.mock('@/features/owner-dashboard/components/OwnerChart', () => ({
+  OwnerChart: ({ title }: { title: string }) => <div data-testid="owner-chart">{title}</div>,
+}))
+
+function getAllByEuroAmount(majorPattern: string): HTMLElement[] {
+  const pattern = new RegExp(`${majorPattern}[\\s\\u00A0\\u202F]*,00\\s*EUR`)
+  return screen.getAllByText((text) => pattern.test(text))
+}
+
 describe('ProfitLossPage', () => {
   let queryClient: QueryClient
 
@@ -93,7 +102,7 @@ describe('ProfitLossPage', () => {
     await waitFor(() => {
       expect(screen.getByText('4000')).toBeInTheDocument()
       expect(screen.getByText('Sales Revenue')).toBeInTheDocument()
-      const amounts = screen.getAllByText('10,000.00')
+      const amounts = getAllByEuroAmount('10[\\s\\u00A0\\u202F]*000')
       expect(amounts.length).toBeGreaterThanOrEqual(1)
     })
   })
@@ -124,7 +133,7 @@ describe('ProfitLossPage', () => {
     await waitFor(() => {
       expect(screen.getByText('6000')).toBeInTheDocument()
       expect(screen.getByText('Salaries')).toBeInTheDocument()
-      const amounts = screen.getAllByText('5,000.00')
+      const amounts = getAllByEuroAmount('5[\\s\\u00A0\\u202F]*000')
       expect(amounts.length).toBeGreaterThanOrEqual(1)
     })
   })
@@ -159,9 +168,9 @@ describe('ProfitLossPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText(/Net Income/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/Net Income/i).length).toBeGreaterThanOrEqual(1)
       // Net income should be displayed (appears at least once)
-      const amounts = screen.getAllByText('5,000.00')
+      const amounts = getAllByEuroAmount('5[\\s\\u00A0\\u202F]*000')
       expect(amounts.length).toBeGreaterThanOrEqual(1)
     })
   })

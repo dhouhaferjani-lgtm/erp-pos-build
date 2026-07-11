@@ -8,6 +8,17 @@ import { borderColors, textColors, tokens, typography } from '@/lib/designTokens
 import { useUploadDocumentIngestion } from './queries'
 import type { DocumentKind } from './types'
 
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
+
+
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / (1024 * 1024)
 
@@ -155,7 +166,7 @@ export function UploadScanPage() {
             <select
               id="ingestion-kind"
               aria-label={t('fields.kind')}
-              className={tokens.select.base}
+              className={formTokenClasses.select}
               value={kind}
               onChange={(event) => { setKind(event.target.value as DocumentKind | '') }}
             >
@@ -190,7 +201,7 @@ export function UploadScanPage() {
                 </p>
                 <button
                   type="button"
-                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+                  className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
                   onClick={handleRemove}
                   aria-label={t('upload.remove')}
                 >
@@ -204,7 +215,7 @@ export function UploadScanPage() {
                 <p className={cn(typography.fontSize.sm, textColors.tertiary)}>{t('upload.dropHint')}</p>
                 <button
                   type="button"
-                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+                  className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
                   onClick={() => { fileInputRef.current?.click() }}
                 >
                   {t('upload.browse')}
@@ -233,7 +244,7 @@ export function UploadScanPage() {
         <div className="flex justify-end">
           <button
             type="submit"
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+            className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
             disabled={uploadMutation.isPending}
           >
             <Upload className="me-2 h-4 w-4" aria-hidden="true" />

@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-syntax -- Legacy Sidebar palette predates design-token enforcement; C5 adds only a finance-namespace link. */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'

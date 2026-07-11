@@ -7,6 +7,18 @@ import { usePermissions, type Permission } from '@/hooks/usePermissions'
 import { useEnrichmentResults, useBulkAcceptEnrichment } from '../api/enrichmentQueries'
 import { EnrichmentQueueTable } from '../components/EnrichmentQueueTable'
 import { EnrichmentReviewPanel } from '../components/EnrichmentReviewPanel'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
+
 
 type QualityFilter = 'all' | 'high' | 'medium' | 'low'
 
@@ -102,9 +114,9 @@ export function EnrichmentQueuePage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className={`text-2xl font-semibold ${textColors.primary}`}>
+          <PageHeaderTitle className={`text-2xl font-semibold ${textColors.primary}`}>
             {t('queue.title')}
-          </h1>
+          </PageHeaderTitle>
           <p className={`mt-1 text-sm ${textColors.tertiary}`}>
             {t('queue.subtitle', { total })}
             {' \u2014 '}
@@ -121,7 +133,7 @@ export function EnrichmentQueuePage() {
           <select
             value={qualityFilter}
             onChange={(e) => setQualityFilter(e.target.value as QualityFilter)}
-            className={tokens.select.base}
+            className={formTokenClasses.select}
             style={{ width: 'auto', marginTop: 0 }}
           >
             <option value="all">{t('queue.filterAll')}</option>
@@ -135,7 +147,7 @@ export function EnrichmentQueuePage() {
             <button
               onClick={handleBulkAccept}
               disabled={bulkAcceptMutation.isPending}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+              className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
             >
               {bulkAcceptMutation.isPending
                 ? t('queue.bulkAccepting')

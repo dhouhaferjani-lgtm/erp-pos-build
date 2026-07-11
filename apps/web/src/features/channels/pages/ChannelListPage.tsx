@@ -9,6 +9,10 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { fetchChannels } from '../api'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+
+const buttonTokens = tokens.button
+
 
 const thClass = cn('px-6 py-3 text-start text-xs font-medium uppercase', textColors.tertiary)
 const tdClass = cn('px-6 py-4 text-sm', textColors.secondary)
@@ -34,7 +38,7 @@ export function ChannelListPage() {
         actions={
           <Link
             to="/channels/new"
-            className={cn(tokens.button.base, tokens.button.primary, tokens.button.sizes.md, 'gap-2')}
+            className={cn(buttonTokens.base, buttonTokens.primary, buttonTokens.sizes.md, 'gap-2')}
           >
             <Plus className="h-4 w-4" />
             {t('channels:create.action')}
@@ -66,7 +70,7 @@ export function ChannelListPage() {
         </div>
       ) : (
         <div className={cn('overflow-hidden rounded-lg border bg-white', borderColors.light)}>
-          <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+          <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
             <thead>
               <tr>
                 <th className={thClass}>{t('channels:fields.name')}</th>
@@ -87,7 +91,7 @@ export function ChannelListPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
     </div>

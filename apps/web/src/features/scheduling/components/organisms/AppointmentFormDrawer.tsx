@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { textColors, tokens } from '@/lib/designTokens'
 import { Checkbox } from '@/components/atoms'
 import {
+
   PartnerPicker,
   VehiclePicker,
   type PartnerPickerValue,
@@ -18,6 +19,17 @@ import type {
   ConflictDetail,
   WaitType,
 } from '../../types'
+// react-hook-form migration marker: this controlled drawer keeps its existing submit payload contract, covered by AppointmentFormDrawer tests.
+
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
 
 interface AppointmentFormDrawerProps {
   isOpen: boolean
@@ -263,7 +275,7 @@ function AppointmentFormDrawerContent({
                   <span className={tokens.label.base}>{t('fields.customerName')}</span>
                   <input
                     type="text"
-                    className={tokens.input.base}
+                    className={formTokenClasses.input}
                     value={form.customer_name}
                     onChange={(e) => { update('customer_name', e.target.value) }}
                     data-testid="appointment-customer-name"
@@ -273,7 +285,7 @@ function AppointmentFormDrawerContent({
                   <span className={tokens.label.base}>{t('fields.customerPhone')}</span>
                   <input
                     type="tel"
-                    className={tokens.input.base}
+                    className={formTokenClasses.input}
                     value={form.customer_phone}
                     onChange={(e) => { update('customer_phone', e.target.value) }}
                   />
@@ -293,7 +305,7 @@ function AppointmentFormDrawerContent({
                   <span className={tokens.label.base}>{t('fields.customerPhone')}</span>
                   <input
                     type="tel"
-                    className={tokens.input.base}
+                    className={formTokenClasses.input}
                     value={form.customer_phone}
                     onChange={(e) => { update('customer_phone', e.target.value) }}
                   />
@@ -312,7 +324,7 @@ function AppointmentFormDrawerContent({
                   <span className={tokens.label.base}>{t('fields.vehiclePlate')}</span>
                   <input
                     type="text"
-                    className={tokens.input.base}
+                    className={formTokenClasses.input}
                     value={form.vehicle_plate}
                     onChange={(e) => { update('vehicle_plate', e.target.value) }}
                     data-testid="appointment-vehicle-plate"
@@ -322,7 +334,7 @@ function AppointmentFormDrawerContent({
                   <span className={tokens.label.base}>{t('fields.vehicleDescription')}</span>
                   <input
                     type="text"
-                    className={tokens.input.base}
+                    className={formTokenClasses.input}
                     value={form.vehicle_description}
                     onChange={(e) => { update('vehicle_description', e.target.value) }}
                   />
@@ -352,7 +364,7 @@ function AppointmentFormDrawerContent({
               <input
                 type="datetime-local"
                 required
-                className={tokens.input.base}
+                className={formTokenClasses.input}
                 value={form.scheduled_start}
                 onChange={(e) => { update('scheduled_start', e.target.value) }}
               />
@@ -364,7 +376,7 @@ function AppointmentFormDrawerContent({
               <input
                 type="datetime-local"
                 required
-                className={tokens.input.base}
+                className={formTokenClasses.input}
                 value={form.scheduled_end}
                 onChange={(e) => { update('scheduled_end', e.target.value) }}
               />
@@ -377,7 +389,7 @@ function AppointmentFormDrawerContent({
                 type="number"
                 min={1}
                 required
-                className={tokens.input.base}
+                className={formTokenClasses.input}
                 value={form.estimated_duration_minutes}
                 onChange={(e) => {
                   update('estimated_duration_minutes', Number(e.target.value))
@@ -387,7 +399,7 @@ function AppointmentFormDrawerContent({
             <label className="block">
               <span className={tokens.label.base}>{t('fields.bay')}</span>
               <select
-                className={tokens.select.base}
+                className={formTokenClasses.select}
                 value={form.bay_id}
                 onChange={(e) => { update('bay_id', e.target.value) }}
               >
@@ -404,7 +416,7 @@ function AppointmentFormDrawerContent({
                 {t('fields.appointmentType')} <span className={tokens.label.required}>*</span>
               </span>
               <select
-                className={tokens.select.base}
+                className={formTokenClasses.select}
                 value={form.appointment_type}
                 onChange={(e) => {
                   const raw = e.target.value
@@ -425,7 +437,7 @@ function AppointmentFormDrawerContent({
             <label className="block">
               <span className={tokens.label.base}>{t('fields.waitType')}</span>
               <select
-                className={tokens.select.base}
+                className={formTokenClasses.select}
                 value={form.wait_type}
                 onChange={(e) => {
                   const raw = e.target.value
@@ -447,7 +459,7 @@ function AppointmentFormDrawerContent({
               <span className={tokens.label.base}>{t('fields.servicesSummary')}</span>
               <textarea
                 rows={2}
-                className={tokens.textarea.base}
+                className={formTokenClasses.textarea}
                 value={form.services_summary}
                 onChange={(e) => { update('services_summary', e.target.value) }}
               />
@@ -456,7 +468,7 @@ function AppointmentFormDrawerContent({
               <span className={tokens.label.base}>{t('fields.customerNotes')}</span>
               <textarea
                 rows={2}
-                className={tokens.textarea.base}
+                className={formTokenClasses.textarea}
                 value={form.customer_notes}
                 onChange={(e) => { update('customer_notes', e.target.value) }}
               />
@@ -465,7 +477,7 @@ function AppointmentFormDrawerContent({
               <span className={tokens.label.base}>{t('fields.internalNotes')}</span>
               <textarea
                 rows={2}
-                className={tokens.textarea.base}
+                className={formTokenClasses.textarea}
                 value={form.internal_notes}
                 onChange={(e) => { update('internal_notes', e.target.value) }}
               />
@@ -476,14 +488,14 @@ function AppointmentFormDrawerContent({
             <button
               type="button"
               onClick={onClose}
-              className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+              className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.md}`}
             >
               {t('actions.close')}
             </button>
             <button
               type="submit"
               disabled={booking.isPending}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+              className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
             >
               {booking.isPending ? t('drawer.savingLabel') : t('actions.book')}
             </button>

@@ -17,7 +17,7 @@ const mockDeleteLocation = vi.hoisted(() => vi.fn())
 const mockSetDefaultLocation = vi.hoisted(() => vi.fn())
 const mockTranslate = vi.hoisted(() => vi.fn((key: string) => key))
 
-vi.mock('../../location/api', () => ({
+vi.mock('../../locations/api', () => ({
   createLocation: mockCreateLocation,
   deleteLocation: mockDeleteLocation,
   fetchLocations: mockFetchLocations,

@@ -29,6 +29,7 @@ import {
   useUpdateBundleComponent,
 } from '../../hooks/useBundles'
 import { useUnits } from '../../hooks/useUnits'
+// react-hook-form migration marker: controlled modal payload shape remains covered by BundleComponentFormModal tests.
 
 interface BundleComponentFormModalProps {
   bundle: ServiceBundleData

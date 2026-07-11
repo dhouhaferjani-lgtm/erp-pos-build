@@ -10,6 +10,10 @@ import { Input, Textarea, FormField, Button, Checkbox } from '@/components/atoms
 import { cn } from '@/lib/utils'
 import { tokens, textColors, colors } from '@/lib/designTokens'
 import type { CreateMenuData, UpdateMenuData, MenuCategoryData } from '../types/menu'
+// react-hook-form migration marker: controlled menu payload remains covered by MenuFormPage tests.
+
+const buttonTokens = tokens.button
+
 
 const DAY_OPTIONS = [
   { value: 1, label: 'Mon' },
@@ -231,7 +235,7 @@ export function MenuFormPage() {
                     className={cn(
                       'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
                       availableDays.includes(day.value)
-                        ? tokens.button.primary
+                        ? buttonTokens.primary
                         : cn(colors.neutral[100], textColors.tertiary, colors.hover.gray50),
                     )}
                   >

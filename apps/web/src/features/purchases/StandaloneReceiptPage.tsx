@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ClipboardList, PackagePlus, Plus, Save, Send, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
+
 import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
 import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
 import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
@@ -18,6 +19,16 @@ import { usePermissions } from '../../hooks/usePermissions'
 import { confirmDiscard, useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
 
 interface OptionItem {
   id: string
@@ -212,7 +223,7 @@ export function StandaloneReceiptPage() {
             aria-label={t('purchases:standaloneReceipt.fields.product')}
             value={line.productId}
             onChange={(event) => { updateLine(line.id, { productId: event.target.value }) }}
-            className={tokens.input.base}
+            className={formTokenClasses.input}
           >
             <option value="">{t('purchases:standaloneReceipt.placeholders.product')}</option>
             {(productsQuery.data ?? []).map((item) => (
@@ -330,7 +341,7 @@ export function StandaloneReceiptPage() {
             type="button"
             disabled={!canSubmit || createMutation.isPending}
             onClick={() => { submit('draft') }}
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md} gap-2`}
+            className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.md} gap-2`}
           >
             <Save className="h-4 w-4" />
             {t('purchases:standaloneReceipt.actions.saveDraft')}
@@ -339,7 +350,7 @@ export function StandaloneReceiptPage() {
             type="button"
             disabled={!canSubmit || createMutation.isPending}
             onClick={() => { submit('post') }}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-2`}
+            className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md} gap-2`}
           >
             <Send className="h-4 w-4" />
             {t('purchases:standaloneReceipt.actions.postNow')}
@@ -363,7 +374,7 @@ export function StandaloneReceiptPage() {
           <select
             value={supplierId}
             onChange={(event) => { setSupplierId(event.target.value) }}
-            className={tokens.input.base}
+            className={formTokenClasses.input}
           >
             <option value="">{t('purchases:standaloneReceipt.placeholders.supplier')}</option>
             {(suppliersQuery.data ?? []).map((supplier) => (
@@ -376,7 +387,7 @@ export function StandaloneReceiptPage() {
           <select
             value={locationId}
             onChange={(event) => { setLocationId(event.target.value) }}
-            className={tokens.input.base}
+            className={formTokenClasses.input}
           >
             <option value="">{t('purchases:standaloneReceipt.placeholders.location')}</option>
             {(locationsQuery.data ?? []).map((location) => (
@@ -389,7 +400,7 @@ export function StandaloneReceiptPage() {
           <input
             value={externalReference}
             onChange={(event) => { setExternalReference(event.target.value) }}
-            className={tokens.input.base}
+            className={formTokenClasses.input}
           />
         </label>
         <label className={`space-y-1 ${typography.fontSize.sm} ${typography.fontWeight.medium} ${textColors.secondary}`}>
@@ -398,7 +409,7 @@ export function StandaloneReceiptPage() {
             type="date"
             value={externalDate}
             onChange={(event) => { setExternalDate(event.target.value) }}
-            className={tokens.input.base}
+            className={formTokenClasses.input}
           />
         </label>
       </section>
@@ -412,7 +423,7 @@ export function StandaloneReceiptPage() {
           <button
             type="button"
             onClick={() => { setLines((current) => [...current, newLine()]) }}
-            className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm} gap-2`}
+            className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm} gap-2`}
           >
             <Plus className="h-4 w-4" />
             {t('purchases:standaloneReceipt.actions.addLine')}

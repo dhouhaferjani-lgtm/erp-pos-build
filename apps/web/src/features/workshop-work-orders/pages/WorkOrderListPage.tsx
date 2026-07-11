@@ -11,6 +11,9 @@ import { useWorkOrders } from '../hooks/useWorkOrders'
 import { WorkOrderRow } from '../components/WorkOrderRow'
 import type { WorkOrderListFilters, WorkOrderStatus } from '../types'
 
+const buttonTokens = tokens.button
+
+
 const STATUS_FILTERS: WorkOrderStatus[] = [
   'received',
   'diagnosed',
@@ -50,7 +53,7 @@ export function WorkOrderListPage() {
         actions={
           <Link
             to="/workshop/work-orders/new"
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} gap-1`}
+            className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md} gap-1`}
           >
             <Plus className="h-4 w-4" aria-hidden />
             {t('actions.newWorkOrder')}

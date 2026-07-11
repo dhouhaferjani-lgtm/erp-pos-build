@@ -430,7 +430,6 @@ export const semanticColorTokens = {
     activeBgGray100: 'active:bg-gray-100',
     bgAmber300Alpha20: 'bg-amber-300/20',
     bgAmber400: 'bg-amber-400',
-    bgAmber50Alpha50: 'bg-amber-50/50',
     bgBlackAlpha40: 'bg-black/40',
     bgBlue600Alpha20: 'bg-blue-600/20',
     bgGray500Alpha75: 'bg-gray-500/75',

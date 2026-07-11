@@ -17,6 +17,7 @@ import { Button } from '@/components/atoms/Button'
 import { MoneyInput } from '@/components/atoms/MoneyInput'
 import { StatusBadge } from '@/components/atoms/StatusBadge'
 import { bcadd, bccomp, formatCurrency } from '@/lib/decimal'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface OpenInvoicesListProps {
   partnerId: string
@@ -238,7 +239,7 @@ export function OpenInvoicesList({
 
       {/* Invoice Table */}
       <div className="overflow-x-auto">
-        <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+        <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
           <thead className={tokens.table.header}>
             <tr>
               {isManualMode && (
@@ -324,7 +325,7 @@ export function OpenInvoicesList({
               )
             })}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {/* Footer with Total */}

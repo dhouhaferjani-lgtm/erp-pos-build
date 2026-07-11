@@ -58,7 +58,7 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../../hooks/useLocation', () => ({
   useLocation: () => ({ currentLocationId: null }),
 }))
-vi.mock('../location/LocationSelector', () => ({
+vi.mock('../locations/LocationSelector', () => ({
   LocationSelector: () => <div data-testid="location-selector" />,
 }))
 

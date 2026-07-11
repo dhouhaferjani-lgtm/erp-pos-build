@@ -20,6 +20,16 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { usePaymentAllocationPreview } from './hooks/useSmartPayment'
 import { bcadd, bccomp, bcdiv, bcmul, bcsub, formatCurrency as formatDecimalCurrency } from '../../lib/decimal'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
+
 
 type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed'
 
@@ -735,9 +745,9 @@ export function PaymentForm() {
           <ArrowLeft className="h-4 w-4" />
           {t('common:back')}
         </Link>
-        <h1 className={cn('text-2xl font-bold', textColors.primary)}>
+        <PageHeaderTitle className={cn('text-2xl font-bold', textColors.primary)}>
           {documentTitle}
-        </h1>
+        </PageHeaderTitle>
       </div>
 
       {/* Form */}
@@ -1170,7 +1180,7 @@ export function PaymentForm() {
                         value={method}
                         checked={allocationMethod === method}
                         onChange={() => { handleAllocationMethodChange(method) }}
-                        className={cn('mt-1', tokens.radio.base)}
+                        className={cn('mt-1', formTokenClasses.radio)}
                       />
                       <span className="flex-1">
                         <span className={cn('block font-medium', textColors.primary)}>{label}</span>

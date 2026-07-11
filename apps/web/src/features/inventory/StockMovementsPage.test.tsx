@@ -16,7 +16,7 @@ vi.mock('react-router-dom', () => ({
 }))
 
 vi.mock('../../hooks/useLocation', () => ({ useLocation: () => ({ currentLocationId: null }) }))
-vi.mock('../location/LocationSelector', () => ({ LocationSelector: () => <div data-testid="location-selector" /> }))
+vi.mock('../locations/LocationSelector', () => ({ LocationSelector: () => <div data-testid="location-selector" /> }))
 
 vi.mock('../../stores/companyStore', () => {
   const state = { currentCompanyId: 'company-1' }

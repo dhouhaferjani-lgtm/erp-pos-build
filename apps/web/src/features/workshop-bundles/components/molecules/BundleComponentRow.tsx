@@ -3,6 +3,9 @@ import { borderColors, textColors, tokens } from '../../../../lib/designTokens'
 import type { ServiceBundleComponentData } from '../../types'
 import { ComponentTypeIcon } from '../atoms/ComponentTypeIcon'
 
+const buttonTokens = tokens.button
+
+
 interface BundleComponentRowProps {
   component: ServiceBundleComponentData
   currency: string
@@ -48,7 +51,7 @@ export function BundleComponentRow({
                 onClick={() => {
                   onEdit(component)
                 }}
-                className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
+                className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm}`}
                 data-testid={`bundle-component-edit-${component.id}`}
               >
                 {t('authoring.row.edit')}
@@ -60,7 +63,7 @@ export function BundleComponentRow({
                 onClick={() => {
                   onDelete(component)
                 }}
-                className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.sm}`}
+                className={`${buttonTokens.base} ${buttonTokens.dangerOutline} ${buttonTokens.sizes.sm}`}
                 data-testid={`bundle-component-delete-${component.id}`}
               >
                 {t('authoring.row.delete')}

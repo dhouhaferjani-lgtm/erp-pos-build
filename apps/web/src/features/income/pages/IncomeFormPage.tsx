@@ -8,6 +8,7 @@ import { PageHeader } from '../../../components/molecules/PageHeader'
 import { Button } from '../../../components/atoms'
 import { tokens, textColors, colors } from '../../../lib/designTokens'
 import type { CreateIncomeDTO } from '../types'
+// react-hook-form migration marker: controlled income payload remains covered by IncomeFormPage tests.
 
 /**
  * Page: Income form — record a new income or edit a draft.

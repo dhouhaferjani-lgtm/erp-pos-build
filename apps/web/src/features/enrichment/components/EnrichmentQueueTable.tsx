@@ -3,6 +3,7 @@ import { textColors, colors, borderColors, tokens } from '@/lib/designTokens'
 import { Checkbox } from '@/components/atoms'
 import { QualityBadge } from './QualityBadge'
 import type { EnrichmentResult } from '../types/enrichment'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface EnrichmentQueueTableProps {
   results: EnrichmentResult[]
@@ -44,7 +45,7 @@ export function EnrichmentQueueTable({
 
   return (
     <div className={`overflow-x-auto rounded-lg border ${borderColors.light}`}>
-      <table className={`min-w-full divide-y ${borderColors.divideDefault}`}>
+      <DataTable className={`min-w-full divide-y ${borderColors.divideDefault}`}>
         <thead className={colors.neutral[50]}>
           <tr>
             <th className="w-10 px-3 py-3">
@@ -123,7 +124,7 @@ export function EnrichmentQueueTable({
             )
           })}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

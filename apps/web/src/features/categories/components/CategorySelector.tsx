@@ -20,6 +20,12 @@ interface CategorySelectorProps {
   disabled?: boolean
 }
 
+/**
+ * Multi-category combobox used by coupon, promotion, and counting filters.
+ *
+ * This intentionally stays separate from `CategorySelect`, whose native
+ * single-select contract is `number | null` for product/inventory forms.
+ */
 export function CategorySelector({
   value,
   onChange,

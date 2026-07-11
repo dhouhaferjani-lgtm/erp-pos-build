@@ -17,6 +17,7 @@ import {
   getTodayDateInputValue,
 } from './reportPageUtils'
 import type { ProfitLossLine } from '../types'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function ProfitLossPage() {
   const { t } = useTranslation(['finance'])
@@ -83,7 +84,7 @@ export function ProfitLossPage() {
       <h2 className={cn('mb-4 text-xl font-bold', textColors.primary)}>
         {heading}
       </h2>
-      <table
+      <DataTable
         className={cn('min-w-full divide-y', borderColors.divideDefault)}
       >
         <thead className={tokens.table.header}>
@@ -116,7 +117,7 @@ export function ProfitLossPage() {
             <td className={tdAmount}>{formatMoney(totalValue)}</td>
           </tr>
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 

@@ -4,6 +4,18 @@ import { Download } from 'lucide-react'
 import { api } from '@/lib/api'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { useTechnicians } from '../hooks/useTechnicians'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
+
 
 function defaultPeriodStart(): string {
   const d = new Date()
@@ -70,9 +82,9 @@ export function PayrollExportPage() {
   return (
     <div className="space-y-6 p-6">
       <header className={`rounded-lg border ${borderColors.light} bg-white p-5`}>
-        <h1 className={`text-2xl font-semibold ${textColors.primary}`}>
+        <PageHeaderTitle className={`text-2xl font-semibold ${textColors.primary}`}>
           {t('navigation.payrollExports')}
-        </h1>
+        </PageHeaderTitle>
         <p className={`mt-1 text-sm ${textColors.tertiary}`}>
           {t('authoring.timeEntries.title')}
         </p>
@@ -86,7 +98,7 @@ export function PayrollExportPage() {
             </label>
             <input
               type="date"
-              className={tokens.input.base}
+              className={formTokenClasses.input}
               value={start}
               onChange={(e) => {
                 setStart(e.target.value)
@@ -99,7 +111,7 @@ export function PayrollExportPage() {
             </label>
             <input
               type="date"
-              className={tokens.input.base}
+              className={formTokenClasses.input}
               value={end}
               onChange={(e) => {
                 setEnd(e.target.value)
@@ -155,7 +167,7 @@ export function PayrollExportPage() {
               void handleGenerate()
             }}
             disabled={isGenerating}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} inline-flex items-center gap-2`}
+            className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md} inline-flex items-center gap-2`}
             data-testid="payroll-generate-button"
           >
             <Download className="h-4 w-4" />

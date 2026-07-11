@@ -12,6 +12,7 @@ import {
   getTodayDateInputValue,
 } from './reportPageUtils'
 import type { AgedPayablesLine } from '../types'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function AgedPayablesPage() {
   const { t } = useTranslation(['finance'])
@@ -78,7 +79,7 @@ export function AgedPayablesPage() {
         <div className={textColors.tertiary}>{t('finance:reports.common.loading')}</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+          <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
             <thead className={tokens.table.header}>
               <tr>
                 <th className={headCellStart}>
@@ -157,7 +158,7 @@ export function AgedPayablesPage() {
                 </td>
               </tr>
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
     </div>

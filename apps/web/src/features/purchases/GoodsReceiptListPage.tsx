@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
+
   Package,
   CheckCircle2,
   Clock,
@@ -30,6 +31,16 @@ import { Button } from '../../components/atoms/Button/Button'
 import { EntityLink } from '../../components/molecules/EntityLink'
 import { PageHeader } from '../../components/molecules/PageHeader/PageHeader'
 import { ReceiveGoodsDialog, type ReceiveGoodsRequest } from './components/ReceiveGoodsDialog'
+
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
 
 interface PurchaseOrderLine {
   id: string
@@ -637,7 +648,7 @@ export function GoodsReceiptListPage() {
                       type="button"
                       onClick={() => { handlePostDraftReceipt(receipt.id) }}
                       disabled={postDraftReceiptMutation.isPending && postDraftReceiptMutation.variables === receipt.id}
-                      className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} gap-1`}
+                      className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm} gap-1`}
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       {t('inventory:goodsReceipt.actions.postDraft')}
@@ -646,7 +657,7 @@ export function GoodsReceiptListPage() {
                       type="button"
                       onClick={() => { handleDeleteDraftReceipt(receipt.id) }}
                       disabled={deleteDraftReceiptMutation.isPending && deleteDraftReceiptMutation.variables === receipt.id}
-                      className={`${tokens.button.base} ${tokens.button.danger} ${tokens.button.sizes.sm} gap-1`}
+                      className={`${buttonTokens.base} ${buttonTokens.danger} ${buttonTokens.sizes.sm} gap-1`}
                     >
                       <Trash2 className="h-4 w-4" />
                       {t('inventory:goodsReceipt.actions.deleteDraft')}
@@ -692,7 +703,7 @@ export function GoodsReceiptListPage() {
                           aria-label={t('purchases:supplierInvoices.create.selectReceiptPo', { number: po.document_number })}
                           checked={selectedInvoicePoIdSet.has(po.id)}
                           onChange={() => { toggleInvoiceSelection(po.id) }}
-                          className={tokens.checkbox.base}
+                          className={formTokenClasses.checkbox}
                         />
                       )}
                       <EntityLink
@@ -805,7 +816,7 @@ export function GoodsReceiptListPage() {
                           }}
                           disabled={downloadGoodsReceiptPdfMutation.isPending}
                           aria-label={`${t('inventory:goodsReceipt.printGrn')} ${receiptNumber}`.trim()}
-                          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm} gap-1`}
+                          className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm} gap-1`}
                         >
                           <Printer className="h-4 w-4" />
                           {t('inventory:goodsReceipt.printGrn')}
@@ -836,7 +847,7 @@ export function GoodsReceiptListPage() {
                           <ChevronRight className="h-4 w-4" />
                         </>
                       )}
-                      className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm} gap-1`}
+                      className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm} gap-1`}
                     />
                   </div>
                 </div>

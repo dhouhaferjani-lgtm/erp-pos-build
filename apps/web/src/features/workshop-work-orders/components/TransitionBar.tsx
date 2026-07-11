@@ -2,6 +2,9 @@ import { useTranslation } from 'react-i18next'
 import { tokens } from '@/lib/designTokens'
 import type { WorkOrderStatus } from '../types'
 
+const buttonTokens = tokens.button
+
+
 interface TransitionBarProps {
   current: WorkOrderStatus
   canTransition: boolean
@@ -35,9 +38,9 @@ const ALLOWED_NEXT: Record<WorkOrderStatus, WorkOrderStatus[]> = {
 }
 
 const BUTTON_LAYOUT = 'gap-1 px-3 py-1.5 text-xs shadow-sm'
-const ACTION_BUTTON = `${tokens.button.base} ${tokens.button.primary} ${BUTTON_LAYOUT}`
-const SECONDARY_BUTTON = `${tokens.button.base} ${tokens.button.secondary} ${BUTTON_LAYOUT}`
-const DANGER_BUTTON = `${tokens.button.base} ${tokens.button.danger} ${BUTTON_LAYOUT}`
+const ACTION_BUTTON = `${buttonTokens.base} ${buttonTokens.primary} ${BUTTON_LAYOUT}`
+const SECONDARY_BUTTON = `${buttonTokens.base} ${buttonTokens.secondary} ${BUTTON_LAYOUT}`
+const DANGER_BUTTON = `${buttonTokens.base} ${buttonTokens.danger} ${BUTTON_LAYOUT}`
 
 export function TransitionBar({
   current,

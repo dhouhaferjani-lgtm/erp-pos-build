@@ -9,6 +9,17 @@ import { AddQuickProductModal } from '@/components/organisms'
 import { buildProductPrefill } from '../buildProductPrefill'
 import type { ExtractedLine, ProductCandidate, ReceiptLineCandidate } from '../types'
 
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
+
+
 export interface ReviewedLineState {
   productId: string
   variantId?: string
@@ -161,7 +172,7 @@ export function LineMappingTable({
                   />
                   <button
                     type="button"
-                    className={cn(tokens.button.base, tokens.button.secondary, tokens.button.sizes.sm, 'mt-2')}
+                    className={cn(buttonTokens.base, buttonTokens.secondary, buttonTokens.sizes.sm, 'mt-2')}
                     onClick={() => { setCreateForIndex(index) }}
                   >
                     {t('review.newProduct')}
@@ -216,7 +227,7 @@ export function LineMappingTable({
                     <label className={tokens.label.base} htmlFor={`source-line-${index}`}>{t('review.sourceLine')}</label>
                     <select
                       id={`source-line-${index}`}
-                      className={tokens.select.base}
+                      className={formTokenClasses.select}
                       value={value.sourceLineId}
                       onChange={(event) => { onChange(index, { ...value, sourceLineId: event.target.value }) }}
                     >
@@ -236,7 +247,7 @@ export function LineMappingTable({
                       <input
                         id={`batch-${index}`}
                         aria-label={t('review.batchNumber')}
-                        className={tokens.input.base}
+                        className={formTokenClasses.input}
                         value={value.batchNumber}
                         onChange={(event) => { onChange(index, { ...value, batchNumber: event.target.value }) }}
                       />
@@ -247,7 +258,7 @@ export function LineMappingTable({
                         id={`expiry-${index}`}
                         aria-label={t('review.expiryDate')}
                         type="date"
-                        className={tokens.input.base}
+                        className={formTokenClasses.input}
                         value={value.expiryDate}
                         onChange={(event) => { onChange(index, { ...value, expiryDate: event.target.value }) }}
                       />

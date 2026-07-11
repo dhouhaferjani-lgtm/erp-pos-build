@@ -6,6 +6,10 @@ import { useModules } from '../hooks/useModuleReadiness'
 import { useCompanyProfile } from '../hooks/useCompanyProgression'
 import { ModulesRoadmapView } from './ModulesRoadmapView'
 import { ModulesGridView } from './ModulesGridView'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+
+const buttonTokens = tokens.button
+
 
 type ViewMode = 'roadmap' | 'grid'
 
@@ -33,7 +37,7 @@ export function ModulesCatalog() {
             void modulesQuery.refetch()
             void profileQuery.refetch()
           }}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+          className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
         >
           {t('dashboard.retry')}
         </button>
@@ -49,7 +53,7 @@ export function ModulesCatalog() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>{t('modules.title')}</h1>
+          <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>{t('modules.title')}</PageHeaderTitle>
           <p className={`${textColors.tertiary} text-sm mt-1`}>{t('modules.subtitle')}</p>
         </div>
 
@@ -60,7 +64,7 @@ export function ModulesCatalog() {
             onClick={() => setViewMode('roadmap')}
             className={`px-3 py-1.5 text-sm font-medium transition-colors ${
               viewMode === 'roadmap'
-                ? `${tokens.button.primary}`
+                ? `${buttonTokens.primary}`
                 : `${textColors.secondary} ${colors.hover.gray50}`
             }`}
           >
@@ -71,7 +75,7 @@ export function ModulesCatalog() {
             onClick={() => setViewMode('grid')}
             className={`px-3 py-1.5 text-sm font-medium transition-colors ${
               viewMode === 'grid'
-                ? `${tokens.button.primary}`
+                ? `${buttonTokens.primary}`
                 : `${textColors.secondary} ${colors.hover.gray50}`
             }`}
           >

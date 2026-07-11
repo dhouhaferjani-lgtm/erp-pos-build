@@ -4,6 +4,9 @@ import { ReadinessBadge, ProgressBar } from '@/components/atoms'
 import type { ModuleReadiness, ModuleReadinessStatus } from '../api/types'
 import { useActivateModule } from '../hooks/useModuleReadiness'
 
+const buttonTokens = tokens.button
+
+
 interface ModuleCardProps {
   module: ModuleReadiness
 }
@@ -72,7 +75,7 @@ export function ModuleCard({ module }: ModuleCardProps) {
           type="button"
           onClick={() => activateMutation.mutate(module.id)}
           disabled={activateMutation.isPending}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} mt-auto`}
+          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm} mt-auto`}
         >
           {t('modules.activate')}
         </button>

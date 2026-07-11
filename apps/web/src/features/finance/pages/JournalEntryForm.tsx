@@ -16,6 +16,8 @@ import {
   Select,
   MoneyInput,
 } from '../../../components/atoms'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
+// react-hook-form deferred: journal-entry payload logic is intentionally out of scope for this styling-only leg.
 
 interface JournalLineForm {
   id: string
@@ -209,7 +211,7 @@ export function JournalEntryForm() {
             </h2>
 
             <div className={cn('border rounded-lg overflow-hidden', borderColors.light)}>
-              <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+              <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
                 <thead className={tokens.table.header}>
                   <tr>
                     <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase', textColors.tertiary)}>
@@ -332,7 +334,7 @@ export function JournalEntryForm() {
                     </td>
                   </tr>
                 </tfoot>
-              </table>
+              </DataTable>
             </div>
 
             <Button

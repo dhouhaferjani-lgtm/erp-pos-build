@@ -103,7 +103,7 @@ Canonical: `components/molecules/pickers/{PartnerPicker,ProductPicker,ServicePic
 
 **Partner/supplier picking has FOUR implementations** (highest-value consolidation): `PartnerPicker` (canonical, 6 sites), `components/ui/PartnerSearchSelect` (4 sites: DocumentForm, CreateCreditNotePage, QuoteRequestCreatePage, CustomerHistoryAuditPage), `features/crm/components/PartnerSelect` (2 sites), `features/document-ingestions/components/SupplierPicker` (1 site).
 
-Other dupes: `ProductPicker` vs `features/products/components/ProductSelector` (2 sites: CouponFormPage, PromotionFormPage); location picking split across `features/location/LocationSelector` (3 sites) and `features/locations/components/LocationSelectorMulti` (2 sites) — singular/plural dir split; `components/catalog/CategorySelect` (1 site) vs `features/categories/components/CategorySelector` (3 sites); `components/ui/UserPicker` (2 sites) vs `features/users/components/UserSelector` (1 site).
+Other dupes: `ProductPicker` vs `features/products/components/ProductSelector` (2 sites: CouponFormPage, PromotionFormPage); location picking now lives under `features/locations/` for both the active-location switcher and the multi-select location control; `components/catalog/CategorySelect` (single native select, `number | null`) and `features/categories/components/CategorySelector` (multi-select combobox, `number[]`) are intentionally distinct; `components/ui/UserPicker` (2 sites) vs `features/users/components/UserSelector` (1 site).
 
 No canonical equivalent yet (keep, standardize style): `components/ui/{InvoiceSearchSelect,DeliveryNoteSearchSelect,DocumentSearchSelect(base)}`; feature-local enum selects (ReturnReasonSelect etc.) — low priority.
 

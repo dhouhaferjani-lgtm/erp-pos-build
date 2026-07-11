@@ -18,6 +18,11 @@ vi.mock('@/hooks/usePermissions', () => ({
   }),
 }))
 
+function getAllByEuroAmount(majorPattern: string): HTMLElement[] {
+  const pattern = new RegExp(`${majorPattern}[\\s\\u00A0\\u202F]*,00\\s*EUR`)
+  return screen.getAllByText((text) => pattern.test(text))
+}
+
 describe('BalanceSheetPage', () => {
   let queryClient: QueryClient
 
@@ -95,7 +100,7 @@ describe('BalanceSheetPage', () => {
     await waitFor(() => {
       expect(screen.getByText('1000')).toBeInTheDocument()
       expect(screen.getByText('Cash')).toBeInTheDocument()
-      const amounts = screen.getAllByText('5,000.00')
+      const amounts = getAllByEuroAmount('5[\\s\\u00A0\\u202F]*000')
       expect(amounts.length).toBeGreaterThanOrEqual(1)
     })
   })
@@ -127,7 +132,7 @@ describe('BalanceSheetPage', () => {
     await waitFor(() => {
       expect(screen.getByText('2000')).toBeInTheDocument()
       expect(screen.getByText('Accounts Payable')).toBeInTheDocument()
-      const amounts = screen.getAllByText('3,000.00')
+      const amounts = getAllByEuroAmount('3[\\s\\u00A0\\u202F]*000')
       expect(amounts.length).toBeGreaterThanOrEqual(1)
     })
   })
@@ -159,7 +164,7 @@ describe('BalanceSheetPage', () => {
     await waitFor(() => {
       expect(screen.getByText('3000')).toBeInTheDocument()
       expect(screen.getByText('Capital')).toBeInTheDocument()
-      const amounts = screen.getAllByText('2,000.00')
+      const amounts = getAllByEuroAmount('2[\\s\\u00A0\\u202F]*000')
       expect(amounts.length).toBeGreaterThanOrEqual(1)
     })
   })

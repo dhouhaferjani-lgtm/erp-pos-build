@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
+
   Download,
   FileText,
   Filter,
@@ -39,6 +40,8 @@ import type {
   WithholdingDirection,
   CertificateStatus,
 } from './types'
+
+const buttonTokens = tokens.button
 
 /**
  * Certificate lifecycle statuses routed through the one sanctioned StatusBadge
@@ -187,7 +190,7 @@ export function WithholdingCertificatesList() {
         <div className="flex items-center justify-center gap-1">
           <Link
             to={`/treasury/withholding-certificates/${cert.id}`}
-            className={cn('inline-flex items-center justify-center rounded p-1', textColors.tertiary, tokens.button.ghost)}
+            className={cn('inline-flex items-center justify-center rounded p-1', textColors.tertiary, buttonTokens.ghost)}
             title={t('certificates.actions.viewDetails')}
           >
             <Eye className="h-4 w-4" />

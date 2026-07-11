@@ -1,6 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 
+const buttonTokens = tokens.button
+
+
 interface CalendarDayHeaderProps {
   date: string
   view: 'day' | 'week'
@@ -33,7 +36,7 @@ export function CalendarDayHeader({
         <button
           type="button"
           onClick={onToday}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+          className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
         >
           {t('scheduler.today')}
         </button>
@@ -41,7 +44,7 @@ export function CalendarDayHeader({
           type="button"
           onClick={onPrevious}
           aria-label={t('scheduler.previous')}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+          className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
         >
           {'<'}
         </button>
@@ -49,7 +52,7 @@ export function CalendarDayHeader({
           type="button"
           onClick={onNext}
           aria-label={t('scheduler.next')}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+          className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
         >
           {'>'}
         </button>
@@ -81,7 +84,7 @@ export function CalendarDayHeader({
         <button
           type="button"
           onClick={onNewAppointment}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
+          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm}`}
         >
           {t('scheduler.newAppointment')}
         </button>

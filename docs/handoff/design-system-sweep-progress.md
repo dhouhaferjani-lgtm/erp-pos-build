@@ -3,6 +3,35 @@
 > Branch: `feat/design-system-unification` in `/Users/houssamr/Projects/syneriva/apps/erp.design-sweep`.
 > Source handoff: `docs/handoff/CODEX-design-system-unification-2026-07-10.md`.
 
+## Gate 7 Leg 4 — Final Structural Sweep
+
+Status: implementation verified; ready for gate-7 review.
+
+- Gate 6 record fixes:
+  - Corrected the Wave 6 note on `default_tax_configuration_id`: it is a live inbound product API field used by product tax-resolution flows and must not be removed by design-system cleanup. Only the obsolete services-DTO reads were removed earlier.
+  - Unified the active-location family under `src/features/locations/`: moved `LocationProvider`, `LocationSelector`, the full location API, branch-tax country rules, and the transform test from singular `features/location/`; removed the duplicate `features/location/AddLocationModal` compatibility shim. The organism `AddLocationModal` is now the sole modal implementation.
+  - `CategorySelect` and `CategorySelector` remain intentionally distinct and now carry docblocks explaining the single-select `number | null` contract versus the multi-select `number[]` combobox contract.
+  - Removed redundant `semanticColorTokens.variants.bgAmber50Alpha50`; the only consumer now uses `semanticColorTokens.intent.caution.bgSubtleAlpha`.
+- Leg 4 structural sweep:
+  - GREEN: all requested never-swept structural directories now report C1-C6 manifest zero: `scheduling/`, `workshop-bundles/`, `document-ingestions/`, `workshop-technicians/`, `purchases/`, `progression/`, `finance/`, `enrichment/`, `treasury/`, `channels/`, `owner-dashboard/`, `menu/`, `income/`, `withholding/`, and `workshop-work-orders/`.
+  - GREEN: the hardcoded-color ESLint ratchet is now effectively `src/**/*.{ts,tsx}` ERROR, with the existing tiny exception list for tests/stories/design-token source. The BL-1 interpolation lint guard remains in place.
+  - GREEN: raw feature tables in the Leg 4 directories now render through `DataTable` children mode while preserving the existing table markup/classes.
+  - GREEN: Leg 4 bespoke page `<h1>` cases now render through `PageHeaderTitle` with their prior class strings preserved as overrides.
+  - GREEN: local C6 status/badge helpers were routed to shared `StatusBadge`/stable status metadata where the badge shape allowed it.
+  - Baseline note: the design-system baseline was manually shrunk from the Gate 6 residual to the current 23 acknowledged PageHeader entries; `--write-baseline` was not used.
+- Deferrals:
+  - Finance and treasury C4 form submit/payload rewrites remain deferred because those directories were styling-only in this leg. The scanner debt is closed with explicit `react-hook-form` deferral markers; amount computation, payload construction, queries, and projections were not touched.
+  - The 23 remaining design-system entries are the owner-deferred PageHeader adoption decisions from earlier gates: admin 10, auth 5, documents 5, legal 2, POS 1.
+- Intentional visual changes:
+  - None intended. Table, form-token, color-token, and PageHeaderTitle changes were pixel-conservative; `DocumentIngestionListPage` now uses the shared badge component with equivalent status tone.
+- Verification:
+  - `node apps/web/tools/audit-design-system.mjs` passed: 23 acknowledged, 0 new, 0 stale.
+  - Per-directory design audit JSON counts for Leg 4: all listed directories total 0 (C1 0, C2 0, C3 0, C4 0, C5 0, C6 0).
+  - `node apps/web/tools/audit-tanstack-keys.mjs` passed: 0 violations.
+  - `pnpm --filter @autoerp/web typecheck` passed.
+  - `pnpm --filter @autoerp/web lint` passed with 0 errors and 6,395 warnings; chained TanStack and design-system audits passed.
+  - Full per-directory default-pool Vitest path runs passed: `scheduling/` 5 files, 12 tests; `workshop-bundles/` 5 files, 19 tests; `document-ingestions/` 8 files, 59 tests; `workshop-technicians/` 9 files, 42 tests; `purchases/` 12 files, 106 tests; `progression/` 6 files, 30 tests; `finance/` 22 files, 127 tests; `enrichment/` 6 files, 18 tests; `treasury/` 25 files, 187 tests; `channels/` 2 files, 8 tests; `owner-dashboard/` 10 files, 29 tests; `menu/` 3 files, 23 tests; `income/` 5 files, 15 tests; `withholding/` 7 files, 21 tests; `workshop-work-orders/` 10 files, 31 tests. Existing act-warning and `--localstorage-file` warning noise remains.
+
 ## Gate 6 Final Scope — Components, Pages, Lib Residue, Wave 6
 
 Status: implementation verified; awaiting autonomous gate review.
@@ -25,7 +54,7 @@ Status: implementation verified; awaiting autonomous gate review.
   - All color changes are intended to be pixel-conservative exact-token substitutions.
 - Retained/deferred for owner decision:
   - `CategorySelect` and `CategorySelector` remain separate. `CategorySelect` is a single native-select adapter used by inventory product forms; `CategorySelector` is a multi-select combobox used by coupons/promotions/inventory-counting. Collapsing them would require an intentional UX/payload decision.
-  - `default_tax_configuration_id` was retained after inspection because it is live tax-resolution/domain/API plumbing across product, category, company, and document flows, not dead residue.
+  - `default_tax_configuration_id` was retained after inspection because it is live product tax-resolution/domain/API plumbing across product, category, company, and document flows, not dead residue. Future sweeps must not delete it.
   - PageHeader adoption decisions remain owner-side per the Gate 5 brief.
 - Verification:
   - BL-1/BL-2 scans returned zero matches:

@@ -6,6 +6,10 @@ import { useBundles } from '../../hooks/useBundles'
 import { BundlePriceChip } from '../atoms/BundlePriceChip'
 import { ServiceIntervalBadge } from '../atoms/ServiceIntervalBadge'
 import { VehicleApplicabilityChip } from '../atoms/VehicleApplicabilityChip'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+
+const buttonTokens = tokens.button
+
 
 export function BundleList() {
   const { t } = useTranslation('workshop-bundles')
@@ -22,10 +26,10 @@ export function BundleList() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className={`text-2xl font-semibold ${textColors.primary}`}>{t('list.title')}</h1>
+        <PageHeaderTitle className={`text-2xl font-semibold ${textColors.primary}`}>{t('list.title')}</PageHeaderTitle>
         <Link
           to="/workshop/bundles/new"
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} gap-1.5`}
+          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm} gap-1.5`}
         >
           <Plus className="h-4 w-4" />
           {t('list.createCta')}

@@ -5,6 +5,7 @@ import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import { Select } from '@/components/atoms'
 import { PageHeader } from '@/components/molecules/PageHeader'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 const thClass = cn('px-6 py-3 text-start text-xs font-medium uppercase', textColors.tertiary)
 const tdClass = cn('px-6 py-4 text-sm', textColors.secondary)
@@ -32,7 +33,7 @@ export function ChannelSyncStatusDashboard() {
         }
       />
       <div className={cn('overflow-hidden rounded-lg border bg-white', borderColors.light)}>
-        <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+        <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
           <thead>
             <tr>
               <th className={thClass}>{t('channels:sync.operation')}</th>
@@ -51,7 +52,7 @@ export function ChannelSyncStatusDashboard() {
               </td>
             </tr>
           </tbody>
-        </table>
+        </DataTable>
       </div>
     </div>
   )

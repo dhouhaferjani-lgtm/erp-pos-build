@@ -20,6 +20,17 @@ import { SourceViewer } from './components/SourceViewer'
 import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/pickers/PartnerPicker'
 import type { DocumentIngestionDetail, IngestionStatus, ReviewedLinePayload, ReviewedPayload } from './types'
 
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
+
+
 function confidenceSummary(detail: DocumentIngestionDetail) {
   return detail.confidenceSummary ?? detail.confidence_summary ?? null
 }
@@ -184,7 +195,7 @@ export function ReviewIngestionPage() {
         <p>{detail.error?.message ?? t('review.extractionFailed')}</p>
         <button
           type="button"
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
           onClick={() => { void reExtractMutation.mutateAsync().then(() => refetch()) }}
         >
           {t('actions.reExtract')}
@@ -320,7 +331,7 @@ export function ReviewIngestionPage() {
                 <select
                   id="ingestion-location"
                   aria-label={t('review.location')}
-                  className={tokens.select.base}
+                  className={formTokenClasses.select}
                   value={locationId}
                   onChange={(event) => { setLocationId(event.target.value) }}
                 >
@@ -334,7 +345,7 @@ export function ReviewIngestionPage() {
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  className={tokens.checkbox.base}
+                  className={formTokenClasses.checkbox}
                   checked={pendingReceipt}
                   onChange={(event) => { setPendingReceipt(event.target.checked) }}
                 />

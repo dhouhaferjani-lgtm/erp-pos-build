@@ -20,9 +20,9 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 
-vi.mock('@/features/location/api', async () => {
-  const actual = await vi.importActual<typeof import('@/features/location/api')>(
-    '@/features/location/api',
+vi.mock('@/features/locations/api', async () => {
+  const actual = await vi.importActual<typeof import('@/features/locations/api')>(
+    '@/features/locations/api',
   )
   return {
     ...actual,
@@ -30,7 +30,7 @@ vi.mock('@/features/location/api', async () => {
   }
 })
 
-vi.mock('@/features/location/LocationProvider', () => ({
+vi.mock('@/features/locations/LocationProvider', () => ({
   useInvalidateLocations: () => vi.fn(),
 }))
 

@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { Spinner } from '@/components/atoms/Spinner'
 import { StatusBadge } from '@/components/atoms/StatusBadge'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface AllocationPreviewProps {
   preview: PaymentAllocationPreview
@@ -76,7 +77,7 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
 
       {/* Allocations Table */}
       <div className="overflow-x-auto">
-        <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+        <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
           <thead className={tokens.table.header}>
             <tr>
               <th className={cn('px-4 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
@@ -126,7 +127,7 @@ export function AllocationPreview({ preview, isLoading }: AllocationPreviewProps
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {/* Summary */}

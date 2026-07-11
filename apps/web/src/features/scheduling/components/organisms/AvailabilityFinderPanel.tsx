@@ -5,6 +5,17 @@ import { FreeSlotPicker } from '../molecules/FreeSlotPicker'
 import { useFreeSlots } from '../../hooks/useScheduling'
 import type { FreeSlotDTO } from '../../types'
 
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
+
+
 interface AvailabilityFinderPanelProps {
   /** Called when the user picks a slot — typically opens the booking drawer. */
   onPick?: (slot: FreeSlotDTO) => void
@@ -46,7 +57,7 @@ export function AvailabilityFinderPanel({ onPick }: AvailabilityFinderPanelProps
           <input
             type="number"
             min={1}
-            className={tokens.input.base}
+            className={formTokenClasses.input}
             value={duration}
             onChange={(e) => { setDuration(Number(e.target.value)) }}
           />
@@ -55,7 +66,7 @@ export function AvailabilityFinderPanel({ onPick }: AvailabilityFinderPanelProps
           <span className={tokens.label.base}>{t('availability.from')}</span>
           <input
             type="date"
-            className={tokens.input.base}
+            className={formTokenClasses.input}
             value={from}
             onChange={(e) => { setFrom(e.target.value) }}
           />
@@ -64,7 +75,7 @@ export function AvailabilityFinderPanel({ onPick }: AvailabilityFinderPanelProps
           <span className={tokens.label.base}>{t('availability.to')}</span>
           <input
             type="date"
-            className={tokens.input.base}
+            className={formTokenClasses.input}
             value={to}
             onChange={(e) => { setTo(e.target.value) }}
           />
@@ -72,7 +83,7 @@ export function AvailabilityFinderPanel({ onPick }: AvailabilityFinderPanelProps
         <div className="flex items-end">
           <button
             type="submit"
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md} w-full`}
+            className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md} w-full`}
           >
             {t('availability.search')}
           </button>

@@ -7,12 +7,24 @@ import { AppointmentSourceBadge } from '../components/atoms/AppointmentSourceBad
 import { AppointmentTypeChip } from '../components/atoms/AppointmentTypeChip'
 import { TimeSlotLabel } from '../components/atoms/TimeSlotLabel'
 import {
+
   useAppointment,
   useCancelAppointment,
   useCheckInAppointment,
   useConfirmAppointment,
   useConvertAppointment,
 } from '../hooks/useScheduling'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
 
 /**
  * Read + action page for a single appointment.
@@ -86,14 +98,14 @@ export function AppointmentDetailPage() {
         <button
           type="button"
           onClick={() => { void navigate('/scheduling') }}
-          className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm} self-start`}
+          className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm} self-start`}
         >
           ← {t('actions.back')}
         </button>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className={`text-2xl font-bold ${textColors.primary}`}>
+          <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>
             {a.appointment_number}
-          </h1>
+          </PageHeaderTitle>
           <AppointmentStatusBadge status={a.status} />
           <AppointmentSourceBadge source={a.source} />
           <AppointmentTypeChip type={a.appointment_type} />
@@ -158,7 +170,7 @@ export function AppointmentDetailPage() {
           <button
             type="button"
             onClick={() => { void navigate(`/workshop/work-orders/${a.work_order_id ?? ''}`) }}
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm} self-start`}
+            className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm} self-start`}
           >
             {a.work_order_id}
           </button>
@@ -173,7 +185,7 @@ export function AppointmentDetailPage() {
               type="button"
               disabled={confirm.isPending}
               onClick={onConfirm}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
+              className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm}`}
             >
               {t('actions.confirm')}
             </button>
@@ -183,7 +195,7 @@ export function AppointmentDetailPage() {
               type="button"
               disabled={checkIn.isPending}
               onClick={onCheckIn}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
+              className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm}`}
             >
               {t('actions.checkIn')}
             </button>
@@ -193,7 +205,7 @@ export function AppointmentDetailPage() {
               type="button"
               disabled={convert.isPending}
               onClick={onConvert}
-              className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
+              className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm}`}
             >
               {t('actions.convert')}
             </button>
@@ -202,7 +214,7 @@ export function AppointmentDetailPage() {
             <div className="flex items-center gap-2">
               <input
                 type="text"
-                className={`${tokens.input.base} w-48`}
+                className={`${formTokenClasses.input} w-48`}
                 placeholder={t('detail.reasonPlaceholder')}
                 value={cancelReason}
                 onChange={(e) => { setCancelReason(e.target.value) }}
@@ -211,7 +223,7 @@ export function AppointmentDetailPage() {
                 type="button"
                 disabled={cancel.isPending}
                 onClick={onCancel}
-                className={`${tokens.button.base} ${tokens.button.danger} ${tokens.button.sizes.sm}`}
+                className={`${buttonTokens.base} ${buttonTokens.danger} ${buttonTokens.sizes.sm}`}
               >
                 {t('actions.cancel')}
               </button>

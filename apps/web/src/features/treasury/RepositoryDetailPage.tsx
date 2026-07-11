@@ -17,6 +17,7 @@ import { StatusBadge, statusTone, type StatusTone } from '../../components/atoms
 import { EntityLink } from '../../components/molecules/EntityLink'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { useAccounts } from '../finance/hooks/useAccounts'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 interface Repository {
   id: string
@@ -400,7 +401,7 @@ export function RepositoryDetailPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className={cn('min-w-full divide-y', borderColors.divideDefault)}>
+            <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
               <thead className={tokens.table.header}>
                 <tr>
                   <th className={cn('px-6 py-3 text-start text-xs font-medium uppercase tracking-wider', textColors.tertiary)}>
@@ -499,7 +500,7 @@ export function RepositoryDetailPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
       </div>

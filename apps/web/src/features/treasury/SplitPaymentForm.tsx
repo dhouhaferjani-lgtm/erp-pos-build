@@ -10,6 +10,7 @@ import { useCurrency } from '../../hooks/useCurrency'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { Button, FormField, Input, MoneyInput, Select } from '../../components/atoms'
+// react-hook-form deferred: treasury split-payment payload logic is intentionally out of scope for this styling-only leg.
 
 interface PaymentMethod {
   id: string

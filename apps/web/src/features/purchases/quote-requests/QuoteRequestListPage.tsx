@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { FileText, Plus } from 'lucide-react'
 
+
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
 import { PageHeader } from '@/components/molecules/PageHeader/PageHeader'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
@@ -9,6 +10,8 @@ import { formatCurrency } from '@/lib/decimal'
 
 import { useQuoteRequests } from './api'
 import type { QuoteRequestListItem } from './types'
+
+const buttonTokens = tokens.button
 
 interface QuoteRequestGroupRow {
   groupId: string
@@ -70,7 +73,7 @@ export function QuoteRequestListPage() {
         actions={
           <Link
             to="/purchases/quote-requests/new"
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+            className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
           >
             <Plus className="me-2 h-4 w-4" />
             {t('purchases:quoteRequests.actions.new')}
@@ -133,7 +136,7 @@ export function QuoteRequestListPage() {
                   <div className={`text-sm font-medium ${textColors.primary}`}>
                     {formatCurrency(group.primary.total, true, group.primary.currency)}
                   </div>
-                  <Link className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`} to={href}>
+                  <Link className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`} to={href}>
                     {t('purchases:quoteRequests.actions.open')}
                   </Link>
                 </div>

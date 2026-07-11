@@ -3,6 +3,15 @@ import { useTranslation } from 'react-i18next'
 import { borderColors, colors, textColors, tokens, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useLocationStore } from '@/stores/locationStore'
 
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
+
+
 export interface OwnerDashboardFiltersValue {
   from: string
   to: string
@@ -91,7 +100,7 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
           onChange={(event) => {
             handleDateChange('from', event.target.value)
           }}
-          className={`ms-2 ${tokens.input.base} w-auto`}
+          className={`ms-2 ${formTokenClasses.input} w-auto`}
         />
       </label>
       <label className={`text-sm ${textColors.secondary}`}>
@@ -102,7 +111,7 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
           onChange={(event) => {
             handleDateChange('to', event.target.value)
           }}
-          className={`ms-2 ${tokens.input.base} w-auto`}
+          className={`ms-2 ${formTokenClasses.input} w-auto`}
         />
       </label>
       <label className={`text-sm ${textColors.secondary}`}>
@@ -112,7 +121,7 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
           onChange={(event) => {
             onChange({ ...value, granularity: parseGranularity(event.target.value) })
           }}
-          className={`ms-2 ${tokens.select.base} w-auto`}
+          className={`ms-2 ${formTokenClasses.select} w-auto`}
         >
           <option value="hour">{t('reports:ownerDashboard.filters.hour')}</option>
           <option value="day">{t('reports:ownerDashboard.filters.day')}</option>

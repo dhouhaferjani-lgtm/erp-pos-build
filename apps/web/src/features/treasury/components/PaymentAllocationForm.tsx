@@ -16,6 +16,14 @@ import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import { bcadd, bccomp, formatCurrency } from '@/lib/decimal'
 
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
+
 interface PaymentAllocationFormProps {
   paymentId: string
   partnerId: string
@@ -181,7 +189,7 @@ export function PaymentAllocationForm({
                 onChange={() => {
                   handleMethodChange(method)
                 }}
-                className={cn('mt-1', tokens.radio.base)}
+                className={cn('mt-1', formTokenClasses.radio)}
               />
               <div className="flex-1">
                 <p className={cn('font-medium', textColors.primary)}>{label}</p>

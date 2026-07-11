@@ -17,7 +17,7 @@ import { PageHeader } from '../../../components/molecules/PageHeader'
 import { DataTable, type DataTableColumn } from '../../../components/molecules'
 import { QuantityInput } from '../../../components/atoms'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
-import { LocationSelector } from '../../location/LocationSelector'
+import { LocationSelector } from '../../locations/LocationSelector'
 import {
   batchesInvalidationPredicate,
   stockLevelsInvalidationPredicate,

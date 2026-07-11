@@ -6,6 +6,9 @@ import type { TechnicianTimeEntry } from '../api/authoringTypes'
 import { useDeleteTimeEntry, useTimeEntries } from '../hooks/useAuthoring'
 import { TimeEntryFormModal } from './TimeEntryFormModal'
 
+const buttonTokens = tokens.button
+
+
 interface TimeEntriesTabProps {
   technicianId: string
 }
@@ -83,7 +86,7 @@ export function TimeEntriesTab({ technicianId }: TimeEntriesTabProps) {
         <button
           type="button"
           onClick={handleAdd}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} inline-flex items-center gap-1`}
+          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm} inline-flex items-center gap-1`}
         >
           <Plus className="h-4 w-4" />
           {t('authoring.timeEntries.add')}
@@ -159,7 +162,7 @@ export function TimeEntriesTab({ technicianId }: TimeEntriesTabProps) {
                       handleEdit(row)
                     }}
                     disabled={locked}
-                    className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
+                    className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm}`}
                     aria-label={t('authoring.timeEntries.modal.editTitle')}
                   >
                     <Pencil className="h-4 w-4" />
@@ -170,7 +173,7 @@ export function TimeEntriesTab({ technicianId }: TimeEntriesTabProps) {
                       handleDelete(row)
                     }}
                     disabled={locked}
-                    className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.sm}`}
+                    className={`${buttonTokens.base} ${buttonTokens.dangerOutline} ${buttonTokens.sizes.sm}`}
                     aria-label={t('authoring.timeEntries.confirmDelete')}
                   >
                     <Trash2 className="h-4 w-4" />

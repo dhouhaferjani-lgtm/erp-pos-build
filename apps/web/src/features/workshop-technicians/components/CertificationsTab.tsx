@@ -4,10 +4,13 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import type { TechnicianCertification } from '../api/authoringTypes'
 import {
+
   useDeleteCertification,
   useTechnicianCertifications,
 } from '../hooks/useAuthoring'
 import { CertificationFormModal } from './CertificationFormModal'
+
+const buttonTokens = tokens.button
 
 interface CertificationsTabProps {
   technicianId: string
@@ -47,7 +50,7 @@ export function CertificationsTab({ technicianId }: CertificationsTabProps) {
         <button
           type="button"
           onClick={handleAdd}
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm} inline-flex items-center gap-1`}
+          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm} inline-flex items-center gap-1`}
         >
           <Plus className="h-4 w-4" />
           {t('authoring.certifications.add')}
@@ -79,7 +82,7 @@ export function CertificationsTab({ technicianId }: CertificationsTabProps) {
                   onClick={() => {
                     handleEdit(row)
                   }}
-                  className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
+                  className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm}`}
                   aria-label={t('authoring.certifications.modal.editTitle')}
                 >
                   <Pencil className="h-4 w-4" />
@@ -89,7 +92,7 @@ export function CertificationsTab({ technicianId }: CertificationsTabProps) {
                   onClick={() => {
                     handleDelete(row)
                   }}
-                  className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.sm}`}
+                  className={`${buttonTokens.base} ${buttonTokens.dangerOutline} ${buttonTokens.sizes.sm}`}
                   aria-label={t('authoring.certifications.confirmDelete')}
                 >
                   <Trash2 className="h-4 w-4" />

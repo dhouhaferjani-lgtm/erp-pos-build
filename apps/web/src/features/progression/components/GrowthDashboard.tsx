@@ -6,6 +6,10 @@ import { useRecommendations } from '../hooks/useRecommendations'
 import { StageIndicatorBadge } from './StageIndicatorBadge'
 import { MilestoneItem } from './MilestoneItem'
 import { RecommendationCard } from './RecommendationCard'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+
+const buttonTokens = tokens.button
+
 
 export function GrowthDashboard() {
   const { t } = useTranslation('progression')
@@ -35,7 +39,7 @@ export function GrowthDashboard() {
             void milestonesQuery.refetch()
             void recommendationsQuery.refetch()
           }}
-          className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+          className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
         >
           {t('dashboard.retry')}
         </button>
@@ -53,7 +57,7 @@ export function GrowthDashboard() {
       {profile && (
         <div className="flex items-center justify-between">
           <div>
-            <h1 className={`text-2xl font-bold ${textColors.primary}`}>{t('dashboard.title')}</h1>
+            <PageHeaderTitle className={`text-2xl font-bold ${textColors.primary}`}>{t('dashboard.title')}</PageHeaderTitle>
             <p className={`${textColors.tertiary} text-sm mt-1`}>{t('dashboard.subtitle')}</p>
           </div>
           <StageIndicatorBadge

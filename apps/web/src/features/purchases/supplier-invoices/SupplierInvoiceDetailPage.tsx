@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
+
   FileText,
   Paperclip,
   Upload,
@@ -44,6 +45,16 @@ import {
   useRecordSupplierPayment,
   downloadAttachment,
 } from './api'
+
+const buttonTokens = tokens.button
+
+const formTokenClasses = {
+  input: tokens.input.base,
+  select: tokens.select.base,
+  textarea: tokens.textarea.base,
+  checkbox: tokens.checkbox.base,
+  radio: tokens.radio.base,
+}
 
 // ── Match status icon ──────────────────────────────────────────────────────
 
@@ -363,7 +374,7 @@ export function SupplierInvoiceDetailPage() {
               <>
                 <Link
                   to={`/treasury/payments/new?supplier_invoice=${invoice.id}`}
-                  className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+                  className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.md}`}
                 >
                   {t('purchases:supplierInvoices.actions.payInTreasury')}
                 </Link>
@@ -590,7 +601,7 @@ export function SupplierInvoiceDetailPage() {
             type="button"
             onClick={() => { fileInputRef.current?.click() }}
             disabled={uploadMutation.isPending}
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.sm}`}
+            className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.sm}`}
           >
             <Upload className="me-1.5 h-4 w-4" />
             {uploadMutation.isPending
@@ -634,7 +645,7 @@ export function SupplierInvoiceDetailPage() {
                   <button
                     type="button"
                     onClick={() => { handleDownload(att.id, att.filename) }}
-                    className={`${tokens.button.base} ${tokens.button.ghost} ${tokens.button.sizes.sm}`}
+                    className={`${buttonTokens.base} ${buttonTokens.ghost} ${buttonTokens.sizes.sm}`}
                     aria-label={t('purchases:supplierInvoices.actions.downloadAttachment')}
                   >
                     <Download className="h-4 w-4" />
@@ -643,7 +654,7 @@ export function SupplierInvoiceDetailPage() {
                     type="button"
                     onClick={() => { handleDeleteAttachment(att.id) }}
                     disabled={deleteMutation.isPending}
-                    className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.sm}`}
+                    className={`${buttonTokens.base} ${buttonTokens.dangerOutline} ${buttonTokens.sizes.sm}`}
                     aria-label={t('purchases:supplierInvoices.actions.deleteAttachment')}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -688,7 +699,7 @@ export function SupplierInvoiceDetailPage() {
               value={paymentAmount}
               onChange={setPaymentAmount}
               aria-label={t('purchases:supplierInvoices.paymentForm.amount')}
-              className={tokens.input.base}
+              className={formTokenClasses.input}
             />
           </FormField>
 

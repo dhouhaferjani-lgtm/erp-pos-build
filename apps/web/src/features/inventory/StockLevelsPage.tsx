@@ -15,7 +15,7 @@ import { getQuantityDecimals } from '../../lib/quantityScale'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
-import { LocationSelector } from '../location/LocationSelector'
+import { LocationSelector } from '../locations/LocationSelector'
 import { useLocation } from '../../hooks/useLocation'
 import { getLocations } from '../locations/api/locations'
 import {

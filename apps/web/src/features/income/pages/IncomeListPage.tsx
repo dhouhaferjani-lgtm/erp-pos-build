@@ -11,6 +11,7 @@ import { QueryError } from '@/components/QueryError'
 import { formatCurrency } from '@/lib/format'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import type { IncomeFilters } from '../types'
+import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 /**
  * Page: Income list — record and post business income.
@@ -78,7 +79,7 @@ export function IncomeListPage() {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <DataTable className="w-full text-sm">
             <thead>
               <tr className={`border-b ${borderColors.default} ${textColors.tertiary} text-start`}>
                 <th className="px-4 py-2 text-start font-medium">{t('income:form.date')}</th>
@@ -120,7 +121,7 @@ export function IncomeListPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
     </ListPageLayout>

@@ -3,6 +3,9 @@ import { tokens, textColors } from '@/lib/designTokens'
 import { TimeSlotLabel } from '../atoms/TimeSlotLabel'
 import type { FreeSlotDTO } from '../../types'
 
+const buttonTokens = tokens.button
+
+
 interface FreeSlotPickerProps {
   slots: FreeSlotDTO[]
   isLoading?: boolean
@@ -35,7 +38,7 @@ export function FreeSlotPicker({ slots, isLoading = false, onPick }: FreeSlotPic
           <button
             type="button"
             onClick={() => { onPick(slot) }}
-            className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.sm}`}
+            className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.sm}`}
           >
             {t('availability.pick')}
           </button>

@@ -3,6 +3,9 @@ import { Check, RotateCcw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { tokens } from '@/lib/designTokens'
 
+const buttonTokens = tokens.button
+
+
 interface CommitBarProps {
   canCommit: boolean
   isCommitting: boolean
@@ -35,7 +38,7 @@ export function CommitBar({
         {canReExtract && (
           <button
             type="button"
-            className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`}
+            className={`${buttonTokens.base} ${buttonTokens.secondary} ${buttonTokens.sizes.md}`}
             disabled={isReExtracting}
             onClick={onReExtract}
           >
@@ -45,7 +48,7 @@ export function CommitBar({
         )}
         <button
           type="button"
-          className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.md}`}
+          className={`${buttonTokens.base} ${buttonTokens.dangerOutline} ${buttonTokens.sizes.md}`}
           disabled={isRejecting}
           onClick={onReject}
         >
@@ -54,7 +57,7 @@ export function CommitBar({
         </button>
         <button
           type="button"
-          className={`${tokens.button.base} ${tokens.button.primary} ${tokens.button.sizes.md}`}
+          className={`${buttonTokens.base} ${buttonTokens.primary} ${buttonTokens.sizes.md}`}
           disabled={!canCommit || isCommitting}
           onClick={onCommit}
         >

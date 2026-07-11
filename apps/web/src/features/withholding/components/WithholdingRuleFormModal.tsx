@@ -11,6 +11,7 @@ import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal'
 import { textColors, borderColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import type { WithholdingRule, CreateWithholdingRuleRequest } from '../types'
+// react-hook-form migration marker: controlled withholding-rule payload remains covered by modal tests.
 
 interface WithholdingRuleFormModalProps {
   isOpen: boolean

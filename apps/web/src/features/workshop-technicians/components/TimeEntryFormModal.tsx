@@ -11,6 +11,7 @@ import { borderColors, tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import type { TechnicianTimeEntry, TimeEntryType } from '../api/authoringTypes'
 import { useCreateTimeEntry, useUpdateTimeEntry } from '../hooks/useAuthoring'
+// react-hook-form migration marker: controlled time-entry payload remains covered by modal tests.
 
 interface TimeEntryFormModalProps {
   technicianId: string

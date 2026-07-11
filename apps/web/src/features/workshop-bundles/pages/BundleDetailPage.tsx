@@ -13,6 +13,7 @@ import { BundleExpandedPreview } from '../components/organisms/BundleExpandedPre
 import { BundleComponentFormModal } from '../components/organisms/BundleComponentFormModal'
 import { BundleApplicabilityEditor } from '../components/organisms/BundleApplicabilityEditor'
 import type { ServiceBundleComponentData } from '../types'
+import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
 export function BundleDetailPage() {
   const { t } = useTranslation('workshop-bundles')
@@ -38,9 +39,9 @@ export function BundleDetailPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <h1 className={`text-2xl font-semibold ${textColors.primary}`}>
+      <PageHeaderTitle className={`text-2xl font-semibold ${textColors.primary}`}>
         {t('detail.title', { name: bundle.name })}
-      </h1>
+      </PageHeaderTitle>
 
       <section className={`rounded-lg border ${borderColors.light} bg-white p-4`}>
         <h2 className={`mb-3 text-sm font-medium uppercase tracking-wide ${textColors.tertiary}`}>
