@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Replenishment;
 
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -15,6 +16,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockTransfer;
+use App\Modules\Inventory\Domain\StockTransferLineBatchAllocation;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Replenishment\Application\DTOs\CaptureRequestData;
@@ -100,6 +102,78 @@ final class ReplenishmentActionsTest extends TestCase
         $this->assertSame(2, StockTransfer::query()->count());
         $this->assertSame(ReplenishmentStatus::Fulfilled, $a->refresh()->status);
         $this->assertSame(ReplenishmentStatus::Fulfilled, $b->refresh()->status);
+    }
+
+    public function test_create_transfer_auto_allocates_fefo_for_batch_tracked_products(): void
+    {
+        // 71% of the pharmacy tenant's catalogue is batch-tracked; the transfer
+        // action must auto-allocate the source's batches (earliest expiry first)
+        // rather than 500 on the "require batch allocations" invariant.
+        $this->productA->update(['requires_batch_tracking' => true]);
+        $early = $this->createBatch($this->productA, 'LOT-EARLY', now()->addMonths(2)->toDateString());
+        $late = $this->createBatch($this->productA, 'LOT-LATE', now()->addMonths(9)->toDateString());
+        $this->seedBatchStock($this->productA, $early, '3.0000');
+        $this->seedBatchStock($this->productA, $late, '5.0000');
+
+        $request = $this->capture($this->shopA, $this->productA);
+
+        $response = $this->action('create-transfer', [
+            'source_location_id' => $this->source->id,
+            'lines' => [
+                ['request_id' => $request->id, 'quantity' => '4.0000'],
+            ],
+        ])->assertOk();
+
+        $this->assertCount(1, $response->json('data.transfer_ids'));
+        $this->assertSame(1, StockTransfer::query()->count());
+        $this->assertSame(ReplenishmentStatus::Fulfilled, $request->refresh()->status);
+
+        $transferId = $response->json('data.transfer_ids.0');
+        $allocations = StockTransferLineBatchAllocation::query()
+            ->whereHas('line', fn ($q) => $q->where('transfer_id', $transferId))
+            ->with('batch')
+            ->get()
+            ->sortBy(fn (StockTransferLineBatchAllocation $a) => (string) $a->batch->expiry_date)
+            ->values();
+
+        // FEFO: the earliest-expiry batch is drained fully (3) before the later
+        // batch supplies the remainder (1).
+        $this->assertCount(2, $allocations);
+        $this->assertSame((int) $early->id, $allocations[0]->batch_id);
+        $this->assertSame('3.0000', (string) $allocations[0]->quantity);
+        $this->assertSame((int) $late->id, $allocations[1]->batch_id);
+        $this->assertSame('1.0000', (string) $allocations[1]->quantity);
+    }
+
+    public function test_create_transfer_returns_422_when_sellable_batch_stock_is_insufficient(): void
+    {
+        // Stock levels cover the line (2 sellable + 5 recalled = 7 >= 4), so the
+        // stock-level pre-check passes; only the FEFO batch allocator can detect
+        // that the *sellable* batch stock (2) cannot cover the line (4). It must
+        // surface as a 422 INSUFFICIENT_STOCK envelope, never a 500.
+        $this->productA->update(['requires_batch_tracking' => true]);
+        $sellable = $this->createBatch($this->productA, 'LOT-SELLABLE', now()->addMonths(2)->toDateString());
+        $recalled = $this->createBatch($this->productA, 'LOT-RECALLED', now()->addMonths(9)->toDateString());
+        $this->seedBatchStock($this->productA, $sellable, '2.0000');
+        $this->seedBatchStock($this->productA, $recalled, '5.0000');
+        $recalled->recall('supplier recall');
+
+        $request = $this->capture($this->shopA, $this->productA);
+
+        $response = $this->action('create-transfer', [
+            'source_location_id' => $this->source->id,
+            'lines' => [
+                ['request_id' => $request->id, 'quantity' => '4.0000'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'INSUFFICIENT_STOCK');
+        $response->assertJsonPath('error.details.product_id', $this->productA->id);
+        $response->assertJsonPath('error.details.location_id', $this->source->id);
+
+        $this->assertSame(0, StockTransfer::query()->count());
+        $this->assertSame(ReplenishmentStatus::Pending, $request->refresh()->status);
     }
 
     public function test_create_transfer_requires_inventory_permission(): void
@@ -391,6 +465,37 @@ final class ReplenishmentActionsTest extends TestCase
             quantity: $quantity,
             reference: 'SEED',
             userId: $this->reviewer->id,
+            expectedCompanyId: $this->company->id,
+        );
+    }
+
+    private function createBatch(Product $product, string $batchNumber, string $expiryDate): Batch
+    {
+        /** @var Batch $batch */
+        $batch = Batch::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'batch_number' => $batchNumber,
+            'manufacturing_date' => now()->subMonth()->toDateString(),
+            'expiry_date' => $expiryDate,
+            'is_active' => true,
+            'is_expired' => false,
+            'is_recalled' => false,
+        ]);
+
+        return $batch;
+    }
+
+    private function seedBatchStock(Product $product, Batch $batch, string $quantity): void
+    {
+        app(StockAdjustmentService::class)->receive(
+            productId: $product->id,
+            locationId: $this->source->id,
+            quantity: $quantity,
+            reference: 'BATCH-SEED',
+            userId: $this->reviewer->id,
+            batchId: (int) $batch->id,
             expectedCompanyId: $this->company->id,
         );
     }

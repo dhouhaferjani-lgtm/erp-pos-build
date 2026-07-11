@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Application\Services;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
 use App\Modules\Inventory\Domain\Enums\MovementType;
@@ -124,6 +125,14 @@ class StockTransferService
             $productIds = $this->collectProductIds($data->lines);
             $this->loadAndVerifyProducts($productIds, $data->tenantId, $data->companyId);
 
+            // When the caller opts in, fill in the batch allocations for any
+            // batch-tracked line that arrived without them, earliest-expiry
+            // first (FEFO). Batch knowledge stays inside this module; callers
+            // like replenishment fulfilment never query batch tables.
+            $lines = $data->autoAllocateBatchesFefo
+                ? $this->resolveFefoAllocations($data)
+                : $data->lines;
+
             $transferNumber = $data->transferNumber ?? $this->generateTransferNumber($data->tenantId, $data->companyId);
 
             /** @var StockTransfer $transfer */
@@ -144,7 +153,7 @@ class StockTransferService
                 'initiated_by_user_id' => $data->initiatedByUserId,
             ]);
 
-            foreach ($data->lines as $line) {
+            foreach ($lines as $line) {
                 if (bccomp($line->quantity, '0', self::QTY_SCALE) <= 0) {
                     throw new InvalidArgumentException('Each transfer line must have quantity greater than zero.');
                 }
@@ -733,22 +742,107 @@ class StockTransferService
     }
 
     /**
-     * Enforce FEFO ordering: the line's batch allocations must equal the
-     * canonical earliest-expiry-first split of the line quantity across the
-     * sellable batches available at the source location.
+     * Auto-fill FEFO batch allocations for every batch-tracked line that
+     * arrived without them (the opt-in `autoAllocateBatchesFefo` path). Lines
+     * that are not batch-tracked, or that already carry explicit allocations,
+     * pass through untouched.
+     *
+     * Locks the source's batch-stock rows via computeFefoSplit(); the caller
+     * runs inside initiate()'s transaction so those locks are held through the
+     * subsequent assertAllocationsFollowFefo()/issue() re-reads.
+     *
+     * @return list<InitiateTransferLineData>
      */
-    private function assertAllocationsFollowFefo(
-        StockTransferLine $line,
-        Product $product,
-        StockTransfer $transfer,
-    ): void {
+    private function resolveFefoAllocations(InitiateTransferData $data): array
+    {
+        $productIds = $this->collectProductIds($data->lines);
+
+        /** @var array<string, bool> $batchTracked */
+        $batchTracked = [];
+        foreach (
+            Product::query()
+                ->where('tenant_id', $data->tenantId)
+                ->where('company_id', $data->companyId)
+                ->whereIn('id', $productIds)
+                ->where('requires_batch_tracking', true)
+                ->pluck('id') as $id
+        ) {
+            $batchTracked[(string) $id] = true;
+        }
+
+        /** @var list<InitiateTransferLineData> $resolved */
+        $resolved = [];
+        foreach ($data->lines as $line) {
+            if (! isset($batchTracked[$line->productId]) || count($line->batchAllocations) > 0) {
+                $resolved[] = $line;
+
+                continue;
+            }
+
+            $split = $this->computeFefoSplit(
+                productId: $line->productId,
+                variantId: $line->variantId,
+                quantity: $line->quantity,
+                tenantId: $data->tenantId,
+                companyId: $data->companyId,
+                sourceLocationId: $data->sourceLocationId,
+            );
+
+            if (bccomp($split['remaining'], '0', self::QTY_SCALE) > 0) {
+                // The sellable batch stock cannot cover the line. Route through
+                // the same InsufficientStockException the non-batch path uses so
+                // the endpoint maps it to a 422 INSUFFICIENT_STOCK envelope.
+                throw new InsufficientStockException(
+                    productId: $line->productId,
+                    locationId: $data->sourceLocationId,
+                    requested: $line->quantity,
+                    available: bcsub($line->quantity, $split['remaining'], self::QTY_SCALE),
+                );
+            }
+
+            /** @var list<InitiateTransferBatchAllocationData> $allocations */
+            $allocations = [];
+            foreach ($split['allocations'] as $batchId => $qty) {
+                $allocations[] = new InitiateTransferBatchAllocationData($batchId, $qty);
+            }
+
+            $resolved[] = new InitiateTransferLineData(
+                productId: $line->productId,
+                quantity: $line->quantity,
+                variantId: $line->variantId,
+                batchAllocations: $allocations,
+            );
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Compute the canonical FEFO (earliest-expiry-first) split of $quantity
+     * across the sellable batches at the source location. Locks the batch-stock
+     * rows it reads. Batches that cannot be sold (expired / recalled / inactive)
+     * are skipped, matching the transfer-issue convention.
+     *
+     * @param  numeric-string  $quantity
+     * @return array{allocations: array<int, numeric-string>, remaining: numeric-string}
+     *                                                                                   `allocations` is batchId => quantity earliest-expiry first; `remaining`
+     *                                                                                   is the shortfall (> 0 means the sellable stock could not cover $quantity).
+     */
+    private function computeFefoSplit(
+        string $productId,
+        ?string $variantId,
+        string $quantity,
+        string $tenantId,
+        string $companyId,
+        string $sourceLocationId,
+    ): array {
         $batches = Batch::query()
-            ->where('tenant_id', $transfer->tenant_id)
-            ->where('company_id', $transfer->company_id)
-            ->where('product_id', $product->id)
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('product_id', $productId)
             ->when(
-                $line->variant_id !== null,
-                fn ($q) => $q->where('variant_id', $line->variant_id),
+                $variantId !== null,
+                fn ($q) => $q->where('variant_id', $variantId),
                 fn ($q) => $q->whereNull('variant_id'),
             )
             ->orderBy('expiry_date')
@@ -763,9 +857,9 @@ class StockTransferService
             }
 
             $batchStock = BatchStock::query()
-                ->where('tenant_id', $transfer->tenant_id)
+                ->where('tenant_id', $tenantId)
                 ->where('batch_id', $batch->id)
-                ->where('location_id', $transfer->source_location_id)
+                ->where('location_id', $sourceLocationId)
                 ->lockForUpdate()
                 ->first();
 
@@ -779,19 +873,44 @@ class StockTransferService
         }
 
         /** @var numeric-string $remaining */
-        $remaining = (string) $line->quantity;
-        /** @var array<int, numeric-string> $expected */
-        $expected = [];
+        $remaining = $quantity;
+        /** @var array<int, numeric-string> $allocations */
+        $allocations = [];
         foreach ($available as $batchId => $qty) {
             if (bccomp($remaining, '0', self::QTY_SCALE) <= 0) {
                 break;
             }
             $take = bccomp($qty, $remaining, self::QTY_SCALE) < 0 ? $qty : $remaining;
-            $expected[$batchId] = $take;
+            $allocations[$batchId] = $take;
             $remaining = bcsub($remaining, $take, self::QTY_SCALE);
         }
 
-        if (bccomp($remaining, '0', self::QTY_SCALE) > 0) {
+        return ['allocations' => $allocations, 'remaining' => $remaining];
+    }
+
+    /**
+     * Enforce FEFO ordering: the line's batch allocations must equal the
+     * canonical earliest-expiry-first split of the line quantity across the
+     * sellable batches available at the source location.
+     */
+    private function assertAllocationsFollowFefo(
+        StockTransferLine $line,
+        Product $product,
+        StockTransfer $transfer,
+    ): void {
+        $split = $this->computeFefoSplit(
+            productId: $product->id,
+            variantId: $line->variant_id,
+            quantity: (string) $line->quantity,
+            tenantId: $transfer->tenant_id,
+            companyId: $transfer->company_id,
+            sourceLocationId: $transfer->source_location_id,
+        );
+
+        /** @var array<int, numeric-string> $expected */
+        $expected = $split['allocations'];
+
+        if (bccomp($split['remaining'], '0', self::QTY_SCALE) > 0) {
             throw new InvalidArgumentException('Insufficient sellable batch stock at the source to fulfil the transfer line under FEFO.');
         }
 

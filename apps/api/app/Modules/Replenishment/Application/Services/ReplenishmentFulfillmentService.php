@@ -83,6 +83,10 @@ final class ReplenishmentFulfillmentService
                     idempotencyKey: 'replenishment:'.sha1(
                         $sourceLocationId.':'.$destinationLocationId.':'.implode(',', $requestIds),
                     ),
+                    // Replenishment must not reach into batch tables (module
+                    // boundary). Let the Inventory module auto-allocate the
+                    // source's batches FEFO for any batch-tracked line.
+                    autoAllocateBatchesFefo: true,
                 );
             }
 

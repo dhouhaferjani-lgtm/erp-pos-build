@@ -19,6 +19,13 @@ final class InitiateTransferData
     /**
      * @param  list<InitiateTransferLineData>  $lines
      * @param  numeric-string  $transferCost
+     * @param  bool  $autoAllocateBatchesFefo  When true, any batch-tracked line
+     *                                         that carries no explicit batch allocations is auto-allocated from the
+     *                                         source location's sellable batches earliest-expiry-first (FEFO) before
+     *                                         the transfer is issued. Defaults false so existing callers — which must
+     *                                         supply their own allocations — are unaffected. Callers that cannot
+     *                                         compute batch splits themselves (e.g. replenishment fulfilment, which
+     *                                         must not reach into batch tables) opt in.
      */
     public function __construct(
         public readonly string $tenantId,
@@ -34,5 +41,6 @@ final class InitiateTransferData
         public readonly ?string $transferCostLabel = null,
         public readonly TransferCostDistribution $transferCostDistribution = TransferCostDistribution::ProRataValue,
         public readonly ?string $idempotencyKey = null,
+        public readonly bool $autoAllocateBatchesFefo = false,
     ) {}
 }
