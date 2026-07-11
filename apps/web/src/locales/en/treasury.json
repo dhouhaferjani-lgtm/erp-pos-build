@@ -132,6 +132,13 @@
   },
   "instruments": {
     "title": "Payment Instruments",
+    "formTitle": "Instrument details",
+    "reference": "Instrument reference",
+    "referenceRequired": "Instrument reference is required",
+    "referencePlaceholder": "Enter the cheque or instrument reference",
+    "maturityDateRequired": "Maturity date is required for an effet",
+    "drawerName": "Drawer name",
+    "withholdingUnavailable": "Withholding is not available for deferred payments",
     "singular": "instrument",
     "plural": "instruments",
     "new": "New Instrument",

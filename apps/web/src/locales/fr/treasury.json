@@ -132,6 +132,13 @@
   },
   "instruments": {
     "title": "Effets de paiement",
+    "formTitle": "Détails de l'effet",
+    "reference": "Référence de l'effet",
+    "referenceRequired": "La référence de l'effet est requise",
+    "referencePlaceholder": "Saisir la référence du chèque ou de l'effet",
+    "maturityDateRequired": "La date d'échéance est requise pour un effet",
+    "drawerName": "Nom du tireur",
+    "withholdingUnavailable": "La retenue à la source n'est pas disponible pour les paiements différés",
     "singular": "effet",
     "plural": "effets",
     "new": "Nouvel effet",

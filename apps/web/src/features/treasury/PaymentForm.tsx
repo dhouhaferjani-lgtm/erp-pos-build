@@ -37,6 +37,7 @@ interface PaymentMethod {
   name: string
   is_physical: boolean
   has_maturity: boolean
+  instrument_kind: 'cheque' | 'effet' | null
   requires_third_party: boolean
   is_push: boolean
   has_deducted_fees: boolean
@@ -110,6 +111,10 @@ interface PaymentFormData {
   instrument_number: string
   maturity_date: string
   third_party_name: string
+  drawer_name: string
+  bank_name: string
+  bank_branch: string
+  bank_account: string
   withholding_enabled?: boolean
   withholding_rate?: string
   withholding_transaction_type?: string
@@ -289,6 +294,10 @@ export function PaymentForm() {
       instrument_number: '',
       maturity_date: '',
       third_party_name: '',
+      drawer_name: '',
+      bank_name: '',
+      bank_branch: '',
+      bank_account: '',
     },
   })
 
@@ -614,36 +623,20 @@ export function PaymentForm() {
     !isPositiveAmount(paymentAmount) ||
     (allocationMethod === AllocationMethod.MANUAL && normalizeManualAllocations(manualAllocations).length === 0)
 
+  const paymentMethodRegistration = register('payment_method_id', {
+    required: t('treasury:payments.form.paymentMethodRequired'),
+  })
+
   const createMutation = useMutation({
     mutationFn: async (data: PaymentFormData) => {
       // Prepare allocations array
       const allocations = buildPaymentAllocations(data.amount)
 
-      // Checks / post-dated checks (has_maturity) become a first-class
-      // PaymentInstrument via the existing endpoint, then link to the payment
-      // through the existing instrument_id field.
-      let instrumentId: string | undefined
-      if (selectedMethod?.has_maturity) {
-        const instrument = await apiPost<{ id: string }>('/payment-instruments', {
-          payment_method_id: data.payment_method_id,
-          reference: data.instrument_number,
-          partner_id: data.partner_id || undefined,
-          drawer_name: data.third_party_name || undefined,
-          bank_name: data.third_party_name || undefined,
-          amount: data.amount,
-          currency,
-          received_date: data.payment_date,
-          maturity_date: data.maturity_date || undefined,
-          repository_id: data.repository_id || undefined,
-        })
-        instrumentId = instrument.id
-      }
-
-      // When a third party is required but no instrument was created (e.g. a bank
+      // When a third party is required by an immediate method (e.g. a bank
       // transfer), fold the third-party/bank name into the payment notes — there
       // is no dedicated column and adding one is out of scope here.
       const notes =
-        selectedMethod?.requires_third_party && !instrumentId && data.third_party_name
+        selectedMethod?.requires_third_party && !selectedMethod.has_maturity && data.third_party_name
           ? [data.notes, `${t('treasury:payments.form.thirdParty')}: ${data.third_party_name}`]
               .filter((part) => part && part.trim() !== '')
               .join('\n')
@@ -657,7 +650,16 @@ export function PaymentForm() {
         payment_date: data.payment_date,
         reference: data.reference,
         notes,
-        instrument_id: instrumentId,
+        ...(selectedMethod?.has_maturity && {
+          instrument: {
+            reference: data.instrument_number,
+            maturity_date: data.maturity_date || undefined,
+            drawer_name: data.drawer_name || undefined,
+            bank_name: data.bank_name || undefined,
+            bank_branch: data.bank_branch || undefined,
+            bank_account: data.bank_account || undefined,
+          },
+        }),
         allocations: allocations.length > 0 ? allocations : undefined,
         withholding_enabled: withholdingEnabled,
         withholding_rate: withholdingEnabled && withholdingRate ? withholdingRate : undefined,
@@ -797,9 +799,16 @@ export function PaymentForm() {
             >
               <Select
                 id="payment_method_id"
-                {...register('payment_method_id', {
-                  required: t('treasury:payments.form.paymentMethodRequired'),
-                })}
+                {...paymentMethodRegistration}
+                onChange={(event) => {
+                  void paymentMethodRegistration.onChange(event)
+                  const nextMethod = paymentMethods.find((method) => method.id === event.target.value)
+                  if (nextMethod?.has_maturity) {
+                    setWithholdingEnabled(false)
+                    setWithholdingRate('')
+                    setWithholdingTransactionType('')
+                  }
+                }}
                 error={Boolean(errors.payment_method_id)}
               >
                 <option value="">{t('treasury:payments.form.selectMethod')}</option>
@@ -902,46 +911,73 @@ export function PaymentForm() {
               />
             </FormField>
 
-            {/* Check / instrument number + maturity date (methods with maturity) */}
+            {/* Deferred-tender instrument details */}
             {selectedMethod?.has_maturity && (
-              <>
-                <FormField
-                  label={t('treasury:payments.form.instrumentNumber')}
-                  htmlFor="instrument_number"
-                  required
-                  error={errors.instrument_number?.message}
-                >
-                  <Input
-                    type="text"
-                    id="instrument_number"
-                    {...register('instrument_number', {
-                      required: t('treasury:payments.form.instrumentNumberRequired'),
-                    })}
-                    error={Boolean(errors.instrument_number)}
-                    placeholder={t('treasury:payments.form.instrumentNumberPlaceholder')}
-                  />
-                </FormField>
+              <fieldset
+                className={cn('sm:col-span-2 rounded-lg border p-4', borderColors.light, colors.neutral[50])}
+              >
+                <legend className={cn('px-1 text-sm font-semibold', textColors.primary)}>
+                  {t('treasury:instruments.formTitle')}
+                </legend>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    label={t('treasury:instruments.reference')}
+                    htmlFor="instrument_number"
+                    required
+                    error={errors.instrument_number?.message}
+                  >
+                    <Input
+                      type="text"
+                      id="instrument_number"
+                      required
+                      {...register('instrument_number', {
+                        required: t('treasury:instruments.referenceRequired'),
+                      })}
+                      error={Boolean(errors.instrument_number)}
+                      placeholder={t('treasury:instruments.referencePlaceholder')}
+                    />
+                  </FormField>
 
-                <FormField
-                  label={t('treasury:payments.form.maturityDate')}
-                  htmlFor="maturity_date"
-                  required
-                  error={errors.maturity_date?.message}
-                >
-                  <Input
-                    type="date"
-                    id="maturity_date"
-                    {...register('maturity_date', {
-                      required: t('treasury:payments.form.maturityDateRequired'),
-                    })}
-                    error={Boolean(errors.maturity_date)}
-                  />
-                </FormField>
-              </>
+                  <FormField
+                    label={t('treasury:instruments.maturityDate')}
+                    htmlFor="maturity_date"
+                    required={selectedMethod.instrument_kind === 'effet'}
+                    error={errors.maturity_date?.message}
+                  >
+                    <Input
+                      type="date"
+                      id="maturity_date"
+                      required={selectedMethod.instrument_kind === 'effet'}
+                      {...register('maturity_date', {
+                        required: selectedMethod.instrument_kind === 'effet'
+                          ? t('treasury:instruments.maturityDateRequired')
+                          : false,
+                      })}
+                      error={Boolean(errors.maturity_date)}
+                    />
+                  </FormField>
+
+                  <FormField label={t('treasury:instruments.drawerName')} htmlFor="drawer_name">
+                    <Input id="drawer_name" type="text" {...register('drawer_name')} />
+                  </FormField>
+
+                  <FormField label={t('treasury:instruments.bankName')} htmlFor="bank_name">
+                    <Input id="bank_name" type="text" {...register('bank_name')} />
+                  </FormField>
+
+                  <FormField label={t('treasury:instruments.bankBranch')} htmlFor="bank_branch">
+                    <Input id="bank_branch" type="text" {...register('bank_branch')} />
+                  </FormField>
+
+                  <FormField label={t('treasury:instruments.bankAccount')} htmlFor="bank_account">
+                    <Input id="bank_account" type="text" {...register('bank_account')} />
+                  </FormField>
+                </div>
+              </fieldset>
             )}
 
             {/* Third party / bank name (methods requiring a third party) */}
-            {selectedMethod?.requires_third_party && (
+            {selectedMethod?.requires_third_party && !selectedMethod.has_maturity && (
               <FormField
                 label={t('treasury:payments.form.thirdParty')}
                 htmlFor="third_party_name"
@@ -1016,6 +1052,10 @@ export function PaymentForm() {
                   variant="primary"
                   size="sm"
                   onClick={() => { setWithholdingEnabled(true) }}
+                  disabled={selectedMethod?.has_maturity}
+                  title={selectedMethod?.has_maturity
+                    ? t('treasury:instruments.withholdingUnavailable')
+                    : undefined}
                   className="mt-2"
                 >
                   {t('withholding:form.enable')}

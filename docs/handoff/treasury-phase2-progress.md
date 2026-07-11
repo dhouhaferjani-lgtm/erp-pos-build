@@ -193,3 +193,15 @@
 - Refund evidence: full refund, partial refund, and reverse read the linked instrument before any write and reject Received/Deposited/Bounced instruments with the settle-first message. A real deferred payment is remitted, cleared into the bank, then successfully refunded with an Out movement from that bank repository.
 - API/currency evidence: `formatPayment` exposes `dishonored_at`; all remaining `PaymentController` TND fallbacks now use active-company currency.
 - Money-path deviation: none. Supplier direction keeps cash movement/GL intact; customer pending paper cannot enter a cash undo path until cleared.
+
+### Task 15 — Single-call deferred-tender payment form
+
+- Status: complete.
+- Files touched: `PaymentForm.tsx`; its existing focused test; new `__tests__/PaymentForm.instrument.test.tsx`; en/fr Treasury locale files; this progress log.
+- RED: after correcting the new test's partial currency-hook mock, the task path failed 2/3 tests because the accessible instrument fieldset and inline instrument fields did not exist. The immediate-payment compatibility test was already green. A native-required assertion then exposed that the visual required marker was not reflected in browser constraint validation.
+- GREEN: task path — PASS, 3 tests / 3. PaymentForm task + legacy + tenant-scope regressions — PASS, 21 tests / 21.
+- Verification: `pnpm typecheck` — pass; en/fr locale JSON parse — pass; focused ESLint — zero errors (warnings only, including existing React Hook Form compiler/act warnings); `git diff --check` — pass. React Doctor's initial default-base scan was contaminated by branch-wide differences against `main`; its one Task-15-specific effect-chain finding was corrected by moving the withholding reset into the method-change event handler, then reverified against the Gate-1 base.
+- Contract evidence: Cheque/Effet methods render one accessible instrument fieldset with required reference, effet-only required maturity, drawer name, and bank name/branch/account fields. Submission makes exactly one `/payments` call carrying the nested `instrument` object; immediate payments omit that object and preserve their previous payload path.
+- UX evidence: the fieldset reuses the established form tokens/grid; maturity methods never render the generic third-party field; withholding is reset when switching to a maturity method, and its recommendation action is disabled with a translated explanatory tooltip while such a method is selected.
+- Localization evidence: every new label, validation message, placeholder, and tooltip is under `treasury:instruments.*` in both English and French.
+- Money-path deviation: none. This frontend change targets the Task-13 transactional payment endpoint and removes the former client-side two-POST sequence.

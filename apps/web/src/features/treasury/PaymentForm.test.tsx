@@ -253,6 +253,7 @@ const CHECK_METHOD = {
   name: 'Check',
   is_physical: true,
   has_maturity: true,
+  instrument_kind: 'cheque',
   requires_third_party: true,
   is_push: false,
   has_deducted_fees: false,
@@ -306,8 +307,7 @@ describe('PaymentForm method-driven conditional fields', () => {
 
     await selectMethod(CASH_METHOD.id)
 
-    expect(screen.queryByLabelText('treasury:payments.form.instrumentNumber *')).toBeNull()
-    expect(screen.queryByLabelText('treasury:payments.form.maturityDate *')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'treasury:instruments.formTitle' })).toBeNull()
     expect(screen.queryByLabelText('treasury:payments.form.thirdParty *')).toBeNull()
   })
 
@@ -317,17 +317,18 @@ describe('PaymentForm method-driven conditional fields', () => {
 
     await selectMethod(CHECK_METHOD.id)
 
-    expect(await screen.findByLabelText('treasury:payments.form.instrumentNumber *')).toBeInTheDocument()
-    expect(screen.getByLabelText('treasury:payments.form.maturityDate *')).toBeInTheDocument()
+    expect(await screen.findByLabelText('treasury:instruments.reference *')).toBeInTheDocument()
+    expect(screen.getByLabelText('treasury:instruments.maturityDate')).toBeInTheDocument()
   })
 
-  it('shows third-party field when requires_third_party method is selected', async () => {
+  it('shows drawer and bank fields inside the instrument block', async () => {
     mockLookups([CHECK_METHOD], [CASH_REPO])
     render(<PaymentForm />, { wrapper: wrapper(createClient()) })
 
     await selectMethod(CHECK_METHOD.id)
 
-    expect(await screen.findByLabelText('treasury:payments.form.thirdParty *')).toBeInTheDocument()
+    expect(await screen.findByLabelText('treasury:instruments.drawerName')).toBeInTheDocument()
+    expect(screen.getByLabelText('treasury:instruments.bankName')).toBeInTheDocument()
   })
 
   it('shows computed fee + net line when has_deducted_fees method is selected', async () => {
@@ -408,12 +409,8 @@ describe('PaymentForm repository scoping by method', () => {
 })
 
 describe('PaymentForm check payment persistence', () => {
-  it('creates a payment instrument then links it via instrument_id when submitting a check payment', async () => {
+  it('creates the payment and its inline instrument in one request', async () => {
     mockLookups([CHECK_METHOD], [CASH_REPO])
-    mockApiPost.mockImplementation(async (url: string) => {
-      if (url === '/payment-instruments') return { id: 'instrument-1' }
-      return { id: 'payment-1', payment_number: 'PAY-1', amount: 100 }
-    })
     render(<PaymentForm />, { wrapper: wrapper(createClient()) })
 
     await selectMethod(CHECK_METHOD.id)
@@ -421,26 +418,22 @@ describe('PaymentForm check payment persistence', () => {
     fireEvent.change(await screen.findByLabelText('treasury:payments.form.amount *'), { target: { value: '100' } })
     fireEvent.change(await screen.findByLabelText('treasury:payments.form.repository *'), { target: { value: CASH_REPO.id } })
     fireEvent.change(await screen.findByLabelText('treasury:payments.partner *'), { target: { value: 'partner-1' } })
-    fireEvent.change(await screen.findByLabelText('treasury:payments.form.instrumentNumber *'), { target: { value: 'CHK-0001' } })
-    fireEvent.change(await screen.findByLabelText('treasury:payments.form.maturityDate *'), { target: { value: '2026-08-01' } })
-    fireEvent.change(await screen.findByLabelText('treasury:payments.form.thirdParty *'), { target: { value: 'Banque Test' } })
+    fireEvent.change(await screen.findByLabelText('treasury:instruments.reference *'), { target: { value: 'CHK-0001' } })
+    fireEvent.change(await screen.findByLabelText('treasury:instruments.maturityDate'), { target: { value: '2026-08-01' } })
+    fireEvent.change(await screen.findByLabelText('treasury:instruments.bankName'), { target: { value: 'Banque Test' } })
 
     fireEvent.click(await screen.findByRole('button', { name: 'common:save' }))
 
     await waitFor(() => {
-      const instrumentCall = mockApiPost.mock.calls.find((c) => c[0] === '/payment-instruments')
-      expect(instrumentCall).toBeDefined()
-      expect(instrumentCall?.[1]).toMatchObject({
+      expect(mockApiPost).toHaveBeenCalledTimes(1)
+      expect(mockApiPost).toHaveBeenCalledWith('/payments', expect.objectContaining({
         payment_method_id: CHECK_METHOD.id,
-        reference: 'CHK-0001',
-        maturity_date: '2026-08-01',
-      })
-    })
-
-    await waitFor(() => {
-      const paymentCall = mockApiPost.mock.calls.find((c) => c[0] === '/payments')
-      expect(paymentCall).toBeDefined()
-      expect(paymentCall?.[1]).toMatchObject({ instrument_id: 'instrument-1' })
+        instrument: expect.objectContaining({
+          reference: 'CHK-0001',
+          maturity_date: '2026-08-01',
+          bank_name: 'Banque Test',
+        }),
+      }))
     })
   })
 })
