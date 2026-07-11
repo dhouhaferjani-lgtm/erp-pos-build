@@ -6,6 +6,7 @@ use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Treasury\Presentation\Controllers\BankReconciliationController;
 use App\Modules\Treasury\Presentation\Controllers\CashPositionController;
+use App\Modules\Treasury\Presentation\Controllers\InstrumentRemittanceController;
 use App\Modules\Treasury\Presentation\Controllers\MultiPaymentController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentInstrumentController;
@@ -119,6 +120,23 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/payment-instruments/{instrument}/transfer', [PaymentInstrumentController::class, 'transfer'])
         ->middleware('can:instruments.transfer')
         ->name('payment-instruments.transfer');
+
+    Route::get('/instrument-remittances', [InstrumentRemittanceController::class, 'index'])
+        ->middleware('can:instruments.remit')->name('instrument-remittances.index');
+    Route::post('/instrument-remittances', [InstrumentRemittanceController::class, 'store'])
+        ->middleware('can:instruments.remit')->name('instrument-remittances.store');
+    Route::get('/instrument-remittances/{remittance}', [InstrumentRemittanceController::class, 'show'])
+        ->middleware('can:instruments.remit')->name('instrument-remittances.show');
+    Route::post('/instrument-remittances/{remittance}/lines', [InstrumentRemittanceController::class, 'addLine'])
+        ->middleware('can:instruments.remit')->name('instrument-remittances.lines.store');
+    Route::delete('/instrument-remittances/{remittance}/lines/{line}', [InstrumentRemittanceController::class, 'removeLine'])
+        ->middleware('can:instruments.remit')->name('instrument-remittances.lines.destroy');
+    Route::post('/instrument-remittances/{remittance}/remit', [InstrumentRemittanceController::class, 'remit'])
+        ->middleware('can:instruments.remit')->name('instrument-remittances.remit');
+    Route::post('/instrument-remittances/{remittance}/lines/{line}/clear', [InstrumentRemittanceController::class, 'clearLine'])
+        ->middleware('can:instruments.clear')->name('instrument-remittances.lines.clear');
+    Route::post('/instrument-remittances/{remittance}/lines/{line}/bounce', [InstrumentRemittanceController::class, 'bounceLine'])
+        ->middleware('can:instruments.bounce')->name('instrument-remittances.lines.bounce');
 
     // Payments
     Route::get('/payments', [PaymentController::class, 'index'])

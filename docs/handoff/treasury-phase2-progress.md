@@ -154,3 +154,15 @@
 - Validation evidence: store snapshots `instrument_kind`, defaults currency from the active company, resolves the required portfolio account before entering the receive transaction, and leaves no instrument on a missing-account 422.
 - Type generation: `CACHE_STORE=array php artisan typescript:transform` exited successfully and generated the Phase-2 EF/instrument/remittance enum declarations in `packages/shared/types/generated.d.ts`; the command printed the repository's production-environment warning/cancel banner before its normal 425-type transform table, but the transform completed and the generated diff contains only the expected enums.
 - Money-path deviation: none. HTTP transitions are thin delegates; clear/bounce remain the only endpoint paths that can reach the movement port.
+
+### Task 12 — Remittance (bordereau) HTTP API
+
+- Status: complete.
+- Files touched: new remittance controller; treasury routes; focused remittance API test; this progress log.
+- RED: `./vendor/bin/phpunit tests/Feature/Treasury/InstrumentRemittanceApiTest.php` — expected 3 route-not-found failures (the cross-company 404 assertion was incidentally green while the surface was absent).
+- GREEN: API path — PASS, 4 tests / 26 assertions. API + remittance-service + instrument-controller regressions — PASS, 30 tests / 106 assertions.
+- Verification: targeted PHPStan on controller/routes/test — zero errors; Pint — pass; `php artisan route:list --path=instrument-remittances` shows all 8 expected routes; `git diff --check` — pass.
+- Surface evidence: create/list/show, add/remove line, remit, per-line clear, and per-line bounce are present; reads are paginated; all slip/line ids are UUID-guarded; every slip lookup is tenant+company scoped; add-line validation scopes instruments to the active tenant/company.
+- Permission evidence: create/compose/read/remit use `instruments.remit`, settlement uses `instruments.clear`, and dishonor uses `instruments.bounce`; a remit-only user is forbidden from both settlement actions until the independent permission is granted.
+- Lifecycle evidence: the two-line API flow creates a draft, remits both instruments, clears each via the lifecycle service, and reports the slip `closed` only after the last pending line settles. A draft line can be removed; the same mutation after remit returns 422.
+- Money-path deviation: none. The controller never writes slip, instrument, journal, movement, or repository state directly.
