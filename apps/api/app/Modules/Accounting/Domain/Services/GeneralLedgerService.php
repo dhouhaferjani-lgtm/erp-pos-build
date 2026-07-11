@@ -24,6 +24,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\Treasury\Domain\Enums\CancellationShape;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
@@ -2378,6 +2379,80 @@ final class GeneralLedgerService
      *                                     bound there, so no-arg scale resolution
      *                                     throws (precision contract, F-RES-1).
      */
+    /**
+     * Draft the immutable counter-entry for cancelling a received instrument.
+     * The lifecycle service posts it synchronously after holding the instrument
+     * row lock, preserving the global lock order.
+     *
+     * @param  numeric-string  $amount
+     */
+    public function createInstrumentCancellationEntry(
+        string $companyId,
+        string $tenantId,
+        string $instrumentId,
+        ?string $partnerId,
+        string $portfolioAccountId,
+        string $amount,
+        CancellationShape $shape,
+        \DateTimeInterface $date,
+    ): JournalEntry {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('Instrument cancellation entries require an enclosing transaction.');
+        }
+
+        return DB::transaction(function () use (
+            $companyId,
+            $tenantId,
+            $instrumentId,
+            $partnerId,
+            $portfolioAccountId,
+            $amount,
+            $shape,
+            $date,
+        ): JournalEntry {
+            $counterpart = $this->getAccountByPurpose(
+                $companyId,
+                $shape === CancellationShape::B2b
+                    ? SystemAccountPurpose::CustomerReceivable
+                    : SystemAccountPurpose::ProductRevenue,
+            );
+            $entry = JournalEntry::query()->create([
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $date,
+                'description' => 'Instrument receipt cancellation',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'instrument',
+                'journal_code' => JournalCode::Effets,
+                'source_id' => $instrumentId,
+            ]);
+
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $counterpart->id,
+                'partner_id' => $shape === CancellationShape::B2b ? $partnerId : null,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => $shape === CancellationShape::B2b
+                    ? 'Customer receivable restored'
+                    : 'POS revenue reversed',
+                'line_order' => 0,
+            ]);
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $portfolioAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Instrument portfolio reversed',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+    }
+
     public function postEntryNow(JournalEntry $entry, ?User $user, ?string $currencyCode = null): void
     {
         if (DB::transactionLevel() < 1) {

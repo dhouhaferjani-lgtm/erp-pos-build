@@ -64,3 +64,14 @@
 - Verification: schema and relations round-trip; duplicate `(remittance_id, instrument_id)` rejected; migration re-run twice with FK detection; sequential numbers `REM-{YYYY}-0001/0002`; targeted PHPStan — zero errors; Pint — pass; `git diff --check` — pass.
 - Test-harness deviation: true two-connection allocation contention is represented by a PostgreSQL advisory-lock query assertion plus gapless sequential allocation and the DB unique constraint, mirroring the repository's `GlChainSequenceConcurrencyTest` rationale that independent connections are flaky under `RefreshDatabase`'s uncommitted outer transaction. The PostgreSQL lock assertion runs at Gate 1.
 - Money-path deviation: none. Remittance numbering and schema do not post GL or move repository balances.
+
+### Task 6 — Lifecycle receive/custody/cancel/updateDetails
+
+- Status: complete.
+- Files touched: new receive DTO, cancellation-shape enum, received domain event, lifecycle service; new GL cancellation builder; treasury provider binding; lifecycle test; this progress log.
+- RED: `./vendor/bin/phpunit tests/Feature/Treasury/InstrumentLifecycleReceiveTest.php` — expected 6 missing-service errors.
+- GREEN: task path — PASS, 6 tests / 23 assertions. Task + instrument-event immutability + `postEntryNow` atomicity regressions — PASS, 15 tests / 43 assertions / 2 PostgreSQL trigger skips.
+- Verification: targeted PHPStan including `GeneralLedgerService` — zero errors; Pint — pass; `git diff --check` — pass.
+- Lock/money evidence: each mutating entrypoint locks the instrument before GL; cancellation uses `postEntryNow` inside the transaction; B2B reversal is `Dr 411 / Cr 5312`, journal `EF`; receive, custody, details, and unlinked cancellation create zero movements and zero unintended JEs.
+- Ordering note: `TreasuryMovementServiceInterface` injection is deferred to Task 8, its first consumer. Keeping an unread injected port through Tasks 6–7 fails level-8 PHPStan; no Task-6 transition is permitted to move repository money.
+- Money-path deviation: none. The injection timing differs only to satisfy static analysis; cancellation posting shape and synchronous transaction contract match spec §6/§7/§12.4.

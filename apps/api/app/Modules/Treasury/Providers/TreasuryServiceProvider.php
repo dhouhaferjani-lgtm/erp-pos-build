@@ -9,6 +9,7 @@ use App\Modules\Treasury\Application\Projections\TreasuryAccountChargeBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
+use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
 use App\Modules\Treasury\Infrastructure\EloquentPaymentMethodResolver;
@@ -51,6 +52,8 @@ class TreasuryServiceProvider extends ServiceProvider
             TreasuryMovementServiceInterface::class,
             TreasuryMovementService::class,
         );
+
+        $this->app->bind(InstrumentLifecycleService::class);
 
         // Phase 1 §7.4 / §13 / SoT §13.6/D16 — Treasury-operational projector
         // for `SALE_RECEIPT` fiscal events. Owns the Treasury `Payment` +
