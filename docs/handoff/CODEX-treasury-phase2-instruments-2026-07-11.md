@@ -1,6 +1,6 @@
 # CODEX HANDOVER — Treasury Phase ②: Instrument Portfolio + Échéancier
 
-> **Date:** 2026-07-11. **Runner:** Codex desktop (CLI-brokered Codex cannot write to `apps/erp.*` worktrees). **Post-run per gate:** the Claude session gate-reviews the worktree diff — do NOT merge to dev or push yourself, ever.
+> **Date:** 2026-07-11 (autonomous-gates revision, owner order). **Runner:** Codex desktop (CLI-brokered Codex cannot write to `apps/erp.*` worktrees). **Execution is AUTONOMOUS END-TO-END:** gate reviews run inside this workflow via `claude -p` (§3) — no human wait at gates. Do NOT merge to dev or push yourself, ever; when Gate 4 closes, leave the worktree and report — the Claude session runs the final orchestrated whole-branch review and owns the merge.
 > **Plan (the source of truth — execute it task-by-task):** `docs/superpowers/plans/2026-07-11-treasury-phase2-instruments-echeancier.md` (**Rev 2**). **Spec (binding):** `docs/superpowers/specs/2026-07-10-treasury-phase2-instruments-echeancier-design.md` (**Rev 2** — §6 lock order, §7 posting tables, §20 reconciliation). Both adversarially reviewed and reconciled (reviews in `specs/reviews/` + `plans/reviews/` dated 2026-07-11).
 > **Branch:** `feat/treasury-instruments`, worktree `../erp.treasury-instruments`.
 
@@ -32,20 +32,38 @@ All of the plan's **Global Constraints** section, plus:
 10. Commit every green step (conventional commits). **Never merge to dev, never push dev, never force-push.** The branch stays in the worktree for Claude-side gate reviews.
 11. If a plan instruction contradicts what you find in code, STOP that task and record the contradiction in the progress file — do not improvise around a money path. Line refs in the plan are re-grep-before-edit hints, not gospel; *semantic* contradictions are what stop work.
 
-## 3. Execution order + HARD-STOP GATES
+## 3. Execution order + AUTONOMOUS AUDIT GATES (run them yourself via `claude -p`)
 
-Execute waves in plan order. **Four hard stops — commit, leave the worktree, notify the owner, wait for the gate verdict before continuing:**
+Execute waves in plan order. Four gates. At each gate you do NOT wait for a human — you run the adversarial review yourself with the Claude CLI, fix what it finds, and re-run until clean:
 
-| Gate | After | Scope reviewed | Claude-side reviewer tier |
-|---|---|---|---|
-| **GATE 1** | Wave B (Tasks 1–10) | schema + lifecycle service + GL postings | **Fable 5** (money path — crucial) |
-| **GATE 2** | Wave D (Tasks 11–15) | HTTP surface + payment cutover + refund guards | **Fable 5** (money path — crucial) |
-| **GATE 3** | Wave E (Tasks 16–18) | POS bridges (fiscal perimeter) | **Fable 5** (fiscal + money — crucial) |
-| **GATE 4** | Wave H (Tasks 19–28) | échéancier, reconcile #4, FE, E2E | **Opus** wave review + **one Fable 5 whole-branch final pass** |
+| Gate | After | Scope reviewed |
+|---|---|---|
+| **GATE 1** | Wave B (Tasks 1–10) | schema + lifecycle service + GL postings |
+| **GATE 2** | Wave D (Tasks 11–15) | HTTP surface + payment cutover + refund guards |
+| **GATE 3** | Wave E (Tasks 16–18) | POS bridges (fiscal perimeter) |
+| **GATE 4** | Wave H (Tasks 19–28) | échéancier, reconcile #4, FE, E2E |
 
-(Reviewer tiering is the owner's standing rule: Opus by default, Fable 5 only for crucial financial-spine/fiscal reviews — Gates 1–3 and the final whole-branch pass are exactly that. In-wave spot checks, if requested, run on Opus.)
+**Gate protocol (identical every gate):**
 
-**Wave G (FE, Tasks 23–25) precondition:** the design-system unification sweep (`feat/design-system-unification`) must be MERGED to dev first. Before starting Wave G: `git fetch origin dev && git rebase origin/dev`, resolve nothing silently (report conflicts), then follow the **post-sweep** conventions — PageHeader adoption pattern and design tokens as they exist on dev at that moment, not as they looked when this brief was written. Verified 2026-07-11: the sweep currently touches NONE of Wave G's named files, but its remaining PageHeader pass may — re-check `git log origin/dev -- apps/web/src/features/treasury` before editing each file. Waves A–F are backend-only and have zero overlap with the sweep — start immediately, no waiting.
+1. Commit everything, run the §4 verification commands, then tag: `git tag phase2-gate-<N>-rc<attempt>`.
+2. Run the review from the worktree root (**Opus is the standard reviewer**):
+
+```bash
+claude -p --model claude-opus-4-8 \
+  "ADVERSARIAL GATE REVIEW, Treasury Phase 2, GATE <N> (scope: waves per docs/handoff/CODEX-treasury-phase2-instruments-2026-07-11.md §3).
+   Review ONLY the diff: git diff <previous-gate-tag-or-origin/dev>..HEAD.
+   Binding references: docs/superpowers/specs/2026-07-10-treasury-phase2-instruments-echeancier-design.md (Rev 2 — §6 lock order, §7 posting tables, §20) and docs/superpowers/plans/2026-07-11-treasury-phase2-instruments-echeancier.md (Rev 2 — task Interfaces are contracts).
+   Verify against code with file:line citations; hunt: lock-order inversions, movements without JEs or outside the port, afterCommit GL posting, float on money, missing idempotency, spec/plan deviations not recorded in the progress file, test gaps vs the plan's pinned assertions.
+   Write the full review to docs/handoff/gate-reviews/GATE-<N>-rc<attempt>.md with a final verdict line 'VERDICT: APPROVE' or 'VERDICT: CHANGES-REQUIRED' plus numbered findings with severity."
+```
+
+3. **Escalation rule (owner's tiering):** re-run the SAME prompt with `--model claude-fable-5` ONLY when the Opus review (a) returns CHANGES-REQUIRED with any BLOCKER/HIGH finding on a money path (GL posting shapes, port `record()`/`transfer()` semantics, allocation/balance_due mutation, fiscal projections), or (b) says it is uncertain about a money-path behavior, or (c) you deviated from the plan on a money path (progress-file deviation entry exists for this wave). Fable 5 is for crucial financial/inventory-spine verification only — everything else stays on Opus.
+4. CHANGES-REQUIRED → fix every finding (TDD — regression test first for each real defect), commit, bump `rc<attempt>`, re-run step 2. Repeat until `VERDICT: APPROVE`. A finding you believe is WRONG: rebut it in the progress file with code evidence and include the rebuttal in the next review prompt — never silently ignore.
+5. APPROVE → `git tag phase2-gate-<N>`, log the verdict + review file path in the progress file, continue to the next wave.
+
+**The only two STOP conditions** (report and halt instead of proceeding): a gate fails 3 consecutive rc attempts on the same BLOCKER (design-level contradiction — a human decision is needed), or the Wave-G precondition below is unmet when you reach it.
+
+**Wave G (FE, Tasks 23–25) precondition:** the design-system unification sweep (`feat/design-system-unification`) must be MERGED to dev first. At Wave G start: `git fetch origin dev`; if the sweep is not on origin/dev, STOP and report (do not build FE against pre-sweep conventions). If it is: `git rebase origin/dev` (report conflicts, never resolve money-path conflicts silently), then follow the **post-sweep** conventions — PageHeader pattern and design tokens as they exist on dev at that moment. Verified 2026-07-11: the sweep currently touches NONE of Wave G's named files, but its remaining PageHeader pass may — re-check `git log origin/dev -- apps/web/src/features/treasury` before editing each file. Waves A–F are backend-only and have zero overlap — start immediately, no waiting.
 
 ## 4. Verification commands (run at every gate, paste output into the progress file)
 
@@ -71,4 +89,8 @@ Plus per-gate: Gate 1 — the Task 8/9 in-test `treasury:reconcile` runs are gre
 
 ## 6. Progress tracking
 
-`docs/handoff/treasury-phase2-progress.md` in the worktree — update after every task: files touched, test counts, verification output, deviations-with-justification, contradictions found (rule 2.11). This file travels with the branch and is the first thing each gate review reads.
+`docs/handoff/treasury-phase2-progress.md` in the worktree — update after every task: files touched, test counts, verification output, deviations-with-justification, contradictions found (rule 2.11). Gate review files live in `docs/handoff/gate-reviews/` and are committed with the branch. This file travels with the branch and is the first thing each gate review reads.
+
+## 7. End state
+
+When Gate 4 is APPROVED: final progress-file entry (all gates, review files, rc counts, open notes), leave the worktree intact, report done. **The Claude session then runs the final whole-branch review** (orchestrated Opus/Sonnet multi-agent discovery + verification, Fable-tier orchestrator) **and owns the merge decision** — your gates do not replace it.
