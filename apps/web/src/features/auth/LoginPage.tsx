@@ -161,7 +161,7 @@ export function LoginPage() {
                     type="button"
                     onClick={() => { selectOrganization(org.tenant_id) }}
                     disabled={loginMutation.isPending}
-                    className={`w-full text-left rounded-lg border ${colorTokens.border.default} px-4 py-3 hover:${colorTokens.intent.primary.borderFocus} hover:${colorTokens.intent.primary.bgSubtle} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} disabled:opacity-50`}
+                    className={`w-full text-left rounded-lg border ${colorTokens.border.default} px-4 py-3 ${colorTokens.variants.hoverBorderBlue500} ${colorTokens.variants.hoverBgBlue50} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} disabled:opacity-50`}
                   >
                     <span className={`block text-sm font-medium ${colorTokens.text.primary}`}>{org.name}</span>
                     <span className={`block text-xs ${colorTokens.text.subtle}`}>{org.slug}</span>
@@ -204,8 +204,8 @@ export function LoginPage() {
                 onChange={handleChange}
                 className={`mt-1 block w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${
                   errors.email
-                    ? `${colorTokens.intent.danger.border} focus:${colorTokens.intent.danger.borderFocus} focus:${colorTokens.intent.danger.ring}`
-                    : `${colorTokens.border.default} focus:${colorTokens.intent.primary.borderFocus}`
+                    ? `${colorTokens.intent.danger.border} ${colorTokens.variants.focusBorderRed500} ${colorTokens.variants.focusRingRed500}`
+                    : `${colorTokens.border.default} ${colorTokens.variants.focusBorderBlue500}`
                 }`}
                 aria-invalid={!!errors.email}
                 aria-describedby={errors.email ? 'email-error' : undefined}
@@ -230,8 +230,8 @@ export function LoginPage() {
                 onChange={handleChange}
                 className={`mt-1 block w-full rounded-lg border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} ${
                   errors.password
-                    ? `${colorTokens.intent.danger.border} focus:${colorTokens.intent.danger.borderFocus} focus:${colorTokens.intent.danger.ring}`
-                    : `${colorTokens.border.default} focus:${colorTokens.intent.primary.borderFocus}`
+                    ? `${colorTokens.intent.danger.border} ${colorTokens.variants.focusBorderRed500} ${colorTokens.variants.focusRingRed500}`
+                    : `${colorTokens.border.default} ${colorTokens.variants.focusBorderBlue500}`
                 }`}
                 aria-invalid={!!errors.password}
                 aria-describedby={errors.password ? 'password-error' : undefined}
@@ -256,7 +256,7 @@ export function LoginPage() {
             className={`group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} ${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.focus.primaryRing} disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
           >
             <span className="absolute start-0 inset-y-0 flex items-center ps-3">
-              <LogIn className={`h-5 w-5 ${colorTokens.intent.primary.textSubtle} group-hover:${colorTokens.intent.primary.textFaint}`} />
+              <LogIn className={`h-5 w-5 ${colorTokens.intent.primary.textSubtle} ${colorTokens.variants.groupHoverTextBlue400}`} />
             </span>
             {loginMutation.isPending ? t('login.signingIn') : t('login.submit')}
           </button>

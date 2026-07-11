@@ -167,7 +167,7 @@ export function Dashboard() {
               <button
                 type="button"
                 onClick={() => { navigate('/settings/setup'); }}
-                className={`mt-1 inline-flex items-center gap-1 text-sm ${colorTokens.intent.caution.textStrong} underline hover:${colorTokens.intent.caution.textStrongest}`}
+                className={`mt-1 inline-flex items-center gap-1 text-sm ${colorTokens.intent.caution.textStrong} underline ${colorTokens.variants.hoverTextAmber900}`}
               >
                 {t('settings:onboarding.viewChecklist')}
                 <ArrowRight className="h-3 w-3" />
@@ -178,7 +178,7 @@ export function Dashboard() {
             type="button"
             onClick={handleDismissBanner}
             aria-label={t('settings:onboarding.dismiss')}
-            className={`shrink-0 rounded p-1 ${colorTokens.intent.caution.text} hover:${colorTokens.intent.caution.bgSoft} hover:${colorTokens.intent.caution.textStronger}`}
+            className={`shrink-0 rounded p-1 ${colorTokens.intent.caution.text} ${colorTokens.variants.hoverBgAmber100} ${colorTokens.variants.hoverTextAmber800}`}
           >
             <X className="h-4 w-4" />
           </button>
@@ -194,14 +194,14 @@ export function Dashboard() {
         <div className="flex gap-3">
           <Link
             to="/sales/quotes/new"
-            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page} transition-colors`}
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50} transition-colors`}
           >
             <Plus className="h-4 w-4" />
             {t('dashboard.newQuote')}
           </Link>
           <Link
             to="/sales/invoices/new"
-            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover} transition-colors`}
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover} transition-colors`}
           >
             <Plus className="h-4 w-4" />
             {t('dashboard.newInvoice')}
@@ -310,7 +310,7 @@ export function Dashboard() {
             <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{t('dashboard.recentDocuments')}</h2>
             <Link
               to="/documents"
-              className={`flex items-center gap-1 text-sm ${colorTokens.intent.primary.text} hover:${colorTokens.intent.primary.textStronger}`}
+              className={`flex items-center gap-1 text-sm ${colorTokens.intent.primary.text} ${colorTokens.variants.hoverTextBlue800}`}
             >
               {t('viewAll')}
               <ArrowRight className="h-4 w-4" />
@@ -348,7 +348,7 @@ export function Dashboard() {
                     id={doc.id}
                     documentType={documentType}
                     label={row}
-                    className={`flex items-center justify-between px-6 py-4 hover:${colorTokens.surface.page}`}
+                    className={`flex items-center justify-between px-6 py-4 ${colorTokens.variants.hoverBgGray50}`}
                   />
                 ) : (
                   <span key={doc.id} className="flex items-center justify-between px-6 py-4">
@@ -366,7 +366,7 @@ export function Dashboard() {
             <h2 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{t('dashboard.recentPayments')}</h2>
             <Link
               to="/treasury/payments"
-              className={`flex items-center gap-1 text-sm ${colorTokens.intent.primary.text} hover:${colorTokens.intent.primary.textStronger}`}
+              className={`flex items-center gap-1 text-sm ${colorTokens.intent.primary.text} ${colorTokens.variants.hoverTextBlue800}`}
             >
               {t('viewAll')}
               <ArrowRight className="h-4 w-4" />
@@ -397,7 +397,7 @@ export function Dashboard() {
                       </div>
                     </>
                   )}
-                  className={`flex items-center justify-between px-6 py-4 hover:${colorTokens.surface.page}`}
+                  className={`flex items-center justify-between px-6 py-4 ${colorTokens.variants.hoverBgGray50}`}
                 />
               ))
             )}

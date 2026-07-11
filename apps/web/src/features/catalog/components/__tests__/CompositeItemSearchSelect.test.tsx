@@ -219,7 +219,7 @@ describe('CompositeItemSearchSelect', () => {
 
     // Wait for the selected item to load
     await waitFor(() => {
-      const clearButton = screen.getByLabelText('Clear selection')
+      const clearButton = screen.getByLabelText('common:actions.clear')
       expect(clearButton).toBeInTheDocument()
     })
   })
@@ -237,10 +237,10 @@ describe('CompositeItemSearchSelect', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Clear selection')).toBeInTheDocument()
+      expect(screen.getByLabelText('common:actions.clear')).toBeInTheDocument()
     })
 
-    await user.click(screen.getByLabelText('Clear selection'))
+    await user.click(screen.getByLabelText('common:actions.clear'))
 
     expect(onChange).toHaveBeenCalledWith('')
   })

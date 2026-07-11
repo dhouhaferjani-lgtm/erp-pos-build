@@ -43,7 +43,7 @@ export function SendToKitchenButton({
           type="button"
           onClick={handleClick}
           disabled={loading}
-          className={`rounded-lg ${colorTokens.intent.caution.bgStrong} px-3 py-1.5 text-sm font-medium text-white hover:${colorTokens.intent.caution.bgStronger} disabled:opacity-50`}
+          className={`rounded-lg ${colorTokens.intent.caution.bgStrong} px-3 py-1.5 text-sm font-medium text-white ${colorTokens.variants.hoverBgAmber700} disabled:opacity-50`}
         >
           {loading ? '...' : t('orders.actions.sendToKitchen')}
         </button>
@@ -68,7 +68,7 @@ export function SendToKitchenButton({
       type="button"
       onClick={handleClick}
       disabled={disabled || loading}
-      className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.caution.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.caution.bgStronger} disabled:opacity-50`}
+      className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.caution.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.variants.hoverBgAmber700} disabled:opacity-50`}
     >
       {t('orders.actions.sendToKitchen')}
     </button>

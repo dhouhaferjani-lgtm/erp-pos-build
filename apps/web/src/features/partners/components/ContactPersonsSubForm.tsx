@@ -119,7 +119,7 @@ export function ContactPersonsSubForm({
                 >
                   <div className="flex items-center gap-2">
                     {contact.is_primary && (
-                      <Star className={`h-4 w-4 ${colorTokens.intent.warning.fillSubtle} ${colorTokens.intent.warning.textSubtle}`} />
+                      <Star className={`h-4 w-4 ${colorTokens.intent.warning.fillSubtle} ${colorTokens.intent.warning.textFaint}`} />
                     )}
                     <span className={`font-medium ${colorTokens.text.primary}`}>
                       {contact.first_name || contact.last_name
@@ -263,7 +263,7 @@ export function ContactPersonsSubForm({
                       />
                       <span className="flex items-center gap-1">
                         {contact.is_primary ? (
-                          <Star className={`h-3.5 w-3.5 ${colorTokens.intent.warning.fillSubtle} ${colorTokens.intent.warning.textSubtle}`} />
+                          <Star className={`h-3.5 w-3.5 ${colorTokens.intent.warning.fillSubtle} ${colorTokens.intent.warning.textFaint}`} />
                         ) : (
                           <StarOff className={`h-3.5 w-3.5 ${colorTokens.text.disabled}`} />
                         )}

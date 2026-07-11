@@ -48,7 +48,7 @@ export function EditBatchPage() {
         <div className="flex items-center gap-4">
           <Link
             to={`/inventory/batches/${uuid}`}
-            className={`${colorTokens.text.disabled} hover:${colorTokens.text.muted}`}
+            className={`${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
           >
             <ArrowLeft className="h-6 w-6" />
           </Link>
@@ -70,7 +70,7 @@ export function EditBatchPage() {
         <div className="flex items-center gap-4">
           <Link
             to={`/inventory/batches/${uuid}`}
-            className={`${colorTokens.text.disabled} hover:${colorTokens.text.muted}`}
+            className={`${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
           >
             <ArrowLeft className="h-6 w-6" />
           </Link>
@@ -92,7 +92,7 @@ export function EditBatchPage() {
       <div className="flex items-center gap-4">
         <Link
           to={`/inventory/batches/${uuid}`}
-          className={`${colorTokens.text.disabled} hover:${colorTokens.text.muted}`}
+          className={`${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
         >
           <ArrowLeft className="h-6 w-6" />
         </Link>

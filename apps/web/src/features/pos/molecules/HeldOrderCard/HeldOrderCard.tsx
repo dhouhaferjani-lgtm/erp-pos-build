@@ -88,7 +88,7 @@ export function HeldOrderCard({
       className={cn(
         'rounded-lg border bg-white p-4 shadow-sm transition-all',
         'hover:shadow-md',
-        expiryInfo?.isNearExpiry && `${colorTokens.intent.caution.border} ${colorTokens.intent.caution.bgSubtle}/50`,
+        expiryInfo?.isNearExpiry && `${colorTokens.intent.caution.border} ${colorTokens.variants.bgAmber50Alpha50}`,
         expiryInfo?.expired && cn(borderColors.error, tokens.alert.error, 'opacity-75'),
       )}
     >

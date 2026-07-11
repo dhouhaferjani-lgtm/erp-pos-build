@@ -318,7 +318,9 @@ describe('ProductForm opening-stock section gate', () => {
   })
 
   it('moves opening controls into the ready-to-sell strip and removes the opening card', async () => {
-    mockHasPermission.mockImplementation((p: string) => p === 'inventory.adjust')
+    mockHasPermission.mockImplementation((p: string) => (
+      p === 'inventory.adjust' || p === 'pricing.view_cost_prices'
+    ))
 
     renderWithProviders(<ProductForm />, {
       route: '/inventory/products/new',
@@ -336,7 +338,9 @@ describe('ProductForm opening-stock section gate', () => {
   })
 
   it('keeps stored TTC authoritative while recalculating HT and margin with cost markup math', async () => {
-    mockHasPermission.mockImplementation((p: string) => p === 'inventory.adjust')
+    mockHasPermission.mockImplementation((p: string) => (
+      p === 'inventory.adjust' || p === 'pricing.view_cost_prices'
+    ))
 
     renderWithProviders(<ProductForm />, {
       route: '/inventory/products/new',
@@ -350,19 +354,29 @@ describe('ProductForm opening-stock section gate', () => {
     fireEvent.change(screen.getByLabelText('inventory:products.costHt'), {
       target: { value: '8.500' },
     })
-    fireEvent.change(screen.getByLabelText('inventory:products.priceTtc'), {
+    const priceTtcInput = screen.getByLabelText('inventory:products.priceTtc')
+    fireEvent.focus(priceTtcInput)
+    fireEvent.change(priceTtcInput, {
       target: { value: '14.280' },
     })
+    fireEvent.blur(priceTtcInput)
 
-    expect(screen.getByLabelText('inventory:products.priceHt')).toHaveValue(14.28)
-    expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue('68.00')
-
-    fireEvent.change(screen.getByLabelText('inventory:products.marginPercent'), {
-      target: { value: '41.2' },
+    await waitFor(() => {
+      expect(screen.getByLabelText('inventory:products.priceHt')).toHaveValue(14.28)
+      expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue(68)
     })
 
-    expect(screen.getByLabelText('inventory:products.priceHt')).toHaveValue(12.002)
-    expect(screen.getByLabelText('inventory:products.priceTtc')).toHaveValue(12.002)
+    const marginInput = screen.getByLabelText('inventory:products.marginPercent')
+    fireEvent.focus(marginInput)
+    fireEvent.change(marginInput, {
+      target: { value: '41.2' },
+    })
+    fireEvent.blur(marginInput)
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('inventory:products.priceHt')).toHaveValue(12.002)
+      expect(screen.getByLabelText('inventory:products.priceTtc')).toHaveValue(12.002)
+    })
   })
 
   it('renders edit hero primary image with md variant and accepted enrichment state', async () => {

@@ -44,7 +44,7 @@ export function ReviewStep({
         <button
           type="button"
           onClick={() => { onGoToStep(1) }}
-          className={`absolute right-3 top-3 p-1 ${colorTokens.text.disabled} hover:${colorTokens.text.muted}`}
+          className={`absolute right-3 top-3 p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
           aria-label={t('auth:register.editSection')}
         >
           <Pencil className="h-4 w-4" />
@@ -67,7 +67,7 @@ export function ReviewStep({
         <button
           type="button"
           onClick={() => { onGoToStep(2) }}
-          className={`absolute right-3 top-3 p-1 ${colorTokens.text.disabled} hover:${colorTokens.text.muted}`}
+          className={`absolute right-3 top-3 p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
           aria-label={t('auth:register.editSection')}
         >
           <Pencil className="h-4 w-4" />
@@ -95,7 +95,7 @@ export function ReviewStep({
         <button
           type="button"
           onClick={() => { onGoToStep(3) }}
-          className={`absolute right-3 top-3 p-1 ${colorTokens.text.disabled} hover:${colorTokens.text.muted}`}
+          className={`absolute right-3 top-3 p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
           aria-label={t('auth:register.editSection')}
         >
           <Pencil className="h-4 w-4" />

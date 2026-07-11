@@ -102,7 +102,7 @@ export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: 
           type="text"
           {...register('batch_number')}
           disabled={isSubmitting}
-          className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring} disabled:${colorTokens.surface.muted} disabled:${colorTokens.text.subtle}`}
+          className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500} ${colorTokens.variants.disabledBgGray100} ${colorTokens.variants.disabledTextGray500}`}
           placeholder={t('batches:form.enterBatchNumber')}
         />
         {errors.batch_number && (
@@ -125,7 +125,7 @@ export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: 
             {...register('expiry_date')}
             disabled={isSubmitting}
             min={today}
-            className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring} disabled:${colorTokens.surface.muted} disabled:${colorTokens.text.subtle}`}
+            className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500} ${colorTokens.variants.disabledBgGray100} ${colorTokens.variants.disabledTextGray500}`}
           />
           {errors.expiry_date && (
             <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.expiry_date.message}</p>
@@ -145,7 +145,7 @@ export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: 
             {...register('manufacturing_date')}
             disabled={isSubmitting}
             max={today}
-            className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring} disabled:${colorTokens.surface.muted} disabled:${colorTokens.text.subtle}`}
+            className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500} ${colorTokens.variants.disabledBgGray100} ${colorTokens.variants.disabledTextGray500}`}
           />
           {errors.manufacturing_date && (
             <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{errors.manufacturing_date.message}</p>
@@ -165,7 +165,7 @@ export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: 
           {...register('notes')}
           disabled={isSubmitting}
           rows={4}
-          className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring} disabled:${colorTokens.surface.muted} disabled:${colorTokens.text.subtle}`}
+          className={`block w-full rounded-lg border ${colorTokens.border.default} px-4 py-2 ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500} ${colorTokens.variants.disabledBgGray100} ${colorTokens.variants.disabledTextGray500}`}
           placeholder={t('batches:form.enterNotes')}
         />
         {errors.notes && (
@@ -178,7 +178,7 @@ export function BatchForm({ batch, onSave, isSubmitting = false, submitLabel }: 
         <button
           type="submit"
           disabled={isSubmitting}
-          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-6 py-2.5 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:${colorTokens.intent.primary.ring} focus:ring-offset-2 disabled:${colorTokens.surface.disabled} disabled:${colorTokens.text.subtle}`}
+          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-6 py-2.5 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 ${colorTokens.variants.focusRingBlue500} focus:ring-offset-2 ${colorTokens.variants.disabledBgGray300} ${colorTokens.variants.disabledTextGray500}`}
         >
           {isSubmitting ? (
             <>

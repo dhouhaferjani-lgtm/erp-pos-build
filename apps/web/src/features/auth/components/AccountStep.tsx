@@ -66,7 +66,7 @@ export function AccountStep({ formData, errors, updateField }: AccountStepProps)
           <button
             type="button"
             onClick={() => { setShowPassword((prev) => !prev) }}
-            className={`absolute inset-y-0 right-0 flex items-center pr-3 ${colorTokens.text.disabled} hover:${colorTokens.text.muted}`}
+            className={`absolute inset-y-0 right-0 flex items-center pr-3 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
             tabIndex={-1}
           >
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

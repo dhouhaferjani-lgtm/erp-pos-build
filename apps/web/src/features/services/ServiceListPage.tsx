@@ -115,13 +115,13 @@ export function ServiceListPage() {
         <div className="flex items-center gap-2">
           <Link
             to="/services/categories"
-            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page} transition-colors`}
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50} transition-colors`}
           >
             {t('services.manageCategories', 'Manage Categories')}
           </Link>
           <Link
             to="/services/new"
-            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover} transition-colors`}
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover} transition-colors`}
           >
             <Plus className="h-4 w-4" />
             {t('services.addService', 'Add Service')}
@@ -143,14 +143,14 @@ export function ServiceListPage() {
             <div className={`flex items-center gap-1 rounded-lg border ${colorTokens.border.subtle} p-1`}>
               <button
                 onClick={() => { setViewMode('list') }}
-                className={`rounded p-1.5 ${viewMode === 'list' ? `${colorTokens.surface.muted} ${colorTokens.text.primary}` : `${colorTokens.text.disabled} hover:${colorTokens.text.muted}`}`}
+                className={`rounded p-1.5 ${viewMode === 'list' ? `${colorTokens.surface.muted} ${colorTokens.text.primary}` : `${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}`}
                 title={t('views.list')}
               >
                 <List className="h-4 w-4" />
               </button>
               <button
                 onClick={() => { setViewMode('grid') }}
-                className={`rounded p-1.5 ${viewMode === 'grid' ? `${colorTokens.surface.muted} ${colorTokens.text.primary}` : `${colorTokens.text.disabled} hover:${colorTokens.text.muted}`}`}
+                className={`rounded p-1.5 ${viewMode === 'grid' ? `${colorTokens.surface.muted} ${colorTokens.text.primary}` : `${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}`}
                 title={t('views.grid')}
               >
                 <Grid className="h-4 w-4" />
@@ -172,7 +172,7 @@ export function ServiceListPage() {
                   className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                     pricingFilter === type
                       ? `${colorTokens.surface.inverseStrong} text-white`
-                      : `${colorTokens.surface.muted} ${colorTokens.text.muted} hover:${colorTokens.surface.subdued}`
+                      : `${colorTokens.surface.muted} ${colorTokens.text.muted} ${colorTokens.variants.hoverBgGray200}`
                   }`}
                 >
                   {type === 'all' ? t('filters.all', 'All') : getPricingTypeLabel(type)}
@@ -188,7 +188,7 @@ export function ServiceListPage() {
               <select
                 value={categoryFilter}
                 onChange={(e) => { setCategoryFilter(e.target.value); }}
-                className={`rounded-lg border ${colorTokens.border.default} bg-white px-3 py-1 text-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+                className={`rounded-lg border ${colorTokens.border.default} bg-white px-3 py-1 text-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
               >
                 <option value="all">{t('filters.all', 'All')}</option>
                 {categories.map((cat) => (
@@ -224,7 +224,7 @@ export function ServiceListPage() {
             <div className="mt-6">
               <Link
                 to="/services/new"
-                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover}`}
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 <Plus className="h-4 w-4" />
                 {t('services.addService', 'Add Service')}
@@ -264,14 +264,14 @@ export function ServiceListPage() {
               {services.map((service) => {
                 const PricingIcon = pricingTypeIcons[service.pricing_type]
                 return (
-                  <tr key={service.id} className={`hover:${colorTokens.surface.page}`}>
+                  <tr key={service.id} className={`${colorTokens.variants.hoverBgGray50}`}>
                     <td className={`whitespace-nowrap px-6 py-4 text-sm font-mono ${colorTokens.text.subtle}`}>
                       {service.code}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
                       <Link
                         to={`/services/${service.id}`}
-                        className={`font-medium ${colorTokens.text.primary} hover:${colorTokens.intent.primary.text}`}
+                        className={`font-medium ${colorTokens.text.primary} ${colorTokens.variants.hoverTextBlue600}`}
                       >
                         {service.name}
                       </Link>
@@ -314,7 +314,7 @@ export function ServiceListPage() {
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
                       <Link
                         to={`/services/${service.id}`}
-                        className={`${colorTokens.intent.primary.text} hover:${colorTokens.intent.primary.textStrongest}`}
+                        className={`${colorTokens.intent.primary.text} ${colorTokens.variants.hoverTextBlue900}`}
                       >
                         {t('actions.view')}
                       </Link>

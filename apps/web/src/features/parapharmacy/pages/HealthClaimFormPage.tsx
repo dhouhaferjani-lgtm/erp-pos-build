@@ -309,7 +309,7 @@ export function HealthClaimFormPage() {
                 id="requires_disclaimer"
                 checked={requiresDisclaimer}
                 onChange={(e) => { setRequiresDisclaimer(e.target.checked); }}
-                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} focus:${colorTokens.intent.primary.ring}`}
+                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
               />
               <label htmlFor="requires_disclaimer" className={`text-sm ${colorTokens.text.secondary}`}>
                 {t('parapharmacy:requiresDisclaimer')}

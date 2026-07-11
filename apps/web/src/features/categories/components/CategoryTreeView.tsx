@@ -31,7 +31,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
     <div className="select-none">
       {/* Category Row */}
       <div
-        className={`flex items-center gap-2 py-2 px-3 hover:${colorTokens.surface.page} rounded-md group`}
+        className={`flex items-center gap-2 py-2 px-3 ${colorTokens.variants.hoverBgGray50} rounded-md group`}
         style={{ paddingInlineStart: `${indentWidth}px` }}
         onMouseEnter={() => { setShowActions(true); }}
         onMouseLeave={() => { setShowActions(false); }}
@@ -39,7 +39,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
         {/* Expand/Collapse Button */}
         <button
           onClick={() => { setIsExpanded(!isExpanded); }}
-          className={`flex-shrink-0 p-0.5 rounded hover:${colorTokens.surface.subdued} ${
+          className={`flex-shrink-0 p-0.5 rounded ${colorTokens.variants.hoverBgGray200} ${
             hasChildren ? 'visible' : 'invisible'
           }`}
           aria-label={isExpanded ? t('inventory:categories.collapseAll') : t('inventory:categories.expandAll')}
@@ -84,7 +84,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
           {onAddSubcategory && (
             <button
               onClick={() => { onAddSubcategory(category); }}
-              className={`p-1 rounded hover:${colorTokens.surface.subdued} ${colorTokens.text.muted} hover:${colorTokens.intent.primary.text}`}
+              className={`p-1 rounded ${colorTokens.variants.hoverBgGray200} ${colorTokens.text.muted} ${colorTokens.variants.hoverTextBlue600}`}
               title={t('inventory:categories.actions.addSubcategory')}
             >
               <Plus className="w-4 h-4" />
@@ -93,7 +93,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
           {onEdit && (
             <button
               onClick={() => { onEdit(category); }}
-              className={`p-1 rounded hover:${colorTokens.surface.subdued} ${colorTokens.text.muted} hover:${colorTokens.intent.primary.text}`}
+              className={`p-1 rounded ${colorTokens.variants.hoverBgGray200} ${colorTokens.text.muted} ${colorTokens.variants.hoverTextBlue600}`}
               title={t('inventory:categories.actions.edit')}
             >
               <Edit className="w-4 h-4" />
@@ -102,7 +102,7 @@ function CategoryNode({ category, level, onEdit, onDelete, onAddSubcategory }: C
           {onDelete && (
             <button
               onClick={() => { onDelete(category); }}
-              className={`p-1 rounded hover:${colorTokens.surface.subdued} ${colorTokens.text.muted} hover:${colorTokens.intent.danger.text}`}
+              className={`p-1 rounded ${colorTokens.variants.hoverBgGray200} ${colorTokens.text.muted} ${colorTokens.variants.hoverTextRed600}`}
               title={t('inventory:categories.actions.delete')}
             >
               <Trash2 className="w-4 h-4" />

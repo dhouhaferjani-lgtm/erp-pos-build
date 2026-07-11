@@ -159,7 +159,7 @@ export function ContactFormPage() {
       <div className="flex items-center gap-4">
         <Link
           to="/crm/contacts"
-          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} hover:${colorTokens.text.primary}`}
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.variants.hoverTextGray900}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('common:actions.back')}
@@ -317,7 +317,7 @@ export function ContactFormPage() {
                   type="checkbox"
                   id="is_primary"
                   {...register('is_primary')}
-                  className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} focus:${colorTokens.intent.primary.ring}`}
+                  className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
                 />
                 <span className={`text-sm ${colorTokens.text.secondary}`}>{t('crm:contacts.isPrimary')}</span>
               </label>

@@ -62,14 +62,14 @@ export function ExpenseCategorySelect({
 
   return (
     <div className="space-y-2">
-      <label className={`text-sm font-medium ${colorTokens.text.secondary} dark:${colorTokens.text.faint}`}>
+      <label className={`text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.darkTextGray300}`}>
         {t('expenses:form.category')}
       </label>
       <select
         value={value || ''}
         onChange={(e) => { onChange(e.target.value); }}
         disabled={disabled || isLoading || !hasCategories}
-        className={`w-full rounded-md border ${colorTokens.border.default} bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:${colorTokens.surface.page} disabled:${colorTokens.text.subtle} dark:${colorTokens.border.inverse} dark:${colorTokens.surface.inverse} dark:${colorTokens.text.inverseFaint} dark:disabled:${colorTokens.surface.inverseStrong}`}
+        className={`w-full rounded-md border ${colorTokens.border.default} bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed ${colorTokens.variants.disabledBgGray50} ${colorTokens.variants.disabledTextGray500} ${colorTokens.variants.darkBorderGray600} ${colorTokens.variants.darkBgGray800} ${colorTokens.variants.darkTextGray100} ${colorTokens.variants.darkDisabledBgGray900}`}
       >
         <option value="">
           {isLoading
@@ -81,12 +81,12 @@ export function ExpenseCategorySelect({
         {buildCategoryOptions(categories)}
       </select>
       {error && (
-        <p className={`text-sm ${colorTokens.intent.danger.text} dark:${colorTokens.intent.danger.textFaint}`}>
+        <p className={`text-sm ${colorTokens.intent.danger.text} ${colorTokens.variants.darkTextRed400}`}>
           {t('common:error')}
         </p>
       )}
       {!isLoading && !error && !hasCategories && (
-        <p className={`text-sm ${colorTokens.text.subtle} dark:${colorTokens.text.disabled}`}>
+        <p className={`text-sm ${colorTokens.text.subtle} ${colorTokens.variants.darkTextGray400}`}>
           {t('expenses:categories.noCategoriesDescription')}{' '}
           <a
             href="/expenses/categories"

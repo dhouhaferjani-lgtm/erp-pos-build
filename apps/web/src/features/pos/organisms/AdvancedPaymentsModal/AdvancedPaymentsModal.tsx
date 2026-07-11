@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
-import { tokens, textColors, borderColors, colors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { tokens, textColors, borderColors, colors, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { Select } from '@/components/atoms'
 import { POSButton } from '../../atoms/POSButton'
 import { ReceiptPrintButton } from '../../components/ReceiptPrintButton'
@@ -546,7 +546,7 @@ export function AdvancedPaymentsModal({
                                 value={entryAmount}
                                 onChange={(e) => { setEntryAmount(e.target.value); }}
                                 placeholder="0.00"
-                                className={cn( 'text-2xl font-semibold min-h-[56px]')}
+                                className="text-2xl font-semibold min-h-[56px]"
                                 autoFocus
                               />
                             </div>
@@ -749,7 +749,7 @@ export function AdvancedPaymentsModal({
                               value="change"
                               checked={preferChangeOverCredit}
                               onChange={() => { setPreferChangeOverCredit(true) }}
-                              className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.warning.textStronger} ${colorTokens.focus.primaryRing}`}
+                              className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.warning.text} ${colorTokens.focus.primaryRing}`}
                             />
                             <span>{t('advancedPayments.giveChange')}</span>
                           </label>
@@ -760,7 +760,7 @@ export function AdvancedPaymentsModal({
                               value="credit"
                               checked={!preferChangeOverCredit}
                               onChange={() => { setPreferChangeOverCredit(false) }}
-                              className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.warning.textStronger} ${colorTokens.focus.primaryRing}`}
+                              className={`h-4 w-4 ${colorTokens.border.default} ${colorTokens.intent.warning.text} ${colorTokens.focus.primaryRing}`}
                             />
                             <span>{t('advancedPayments.addToCredit')}</span>
                           </label>

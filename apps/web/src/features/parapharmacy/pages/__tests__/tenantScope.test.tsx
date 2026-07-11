@@ -400,6 +400,84 @@ describe('parapharmacy mutation cascades', () => {
   })
 })
 
+describe('parapharmacy form payload identity', () => {
+  it('submits exact edit payloads after RHF submit wrapping', async () => {
+    setTenant('tenant-A', 'company-1')
+
+    const expectations: Record<string, unknown> = {
+      certifications: {
+        id: 'cert-1',
+        payload: {
+          type: 'organic',
+          slug: 'organic',
+          certifying_body: null,
+          logo_url: null,
+          verification_url: null,
+          is_active: true,
+          display_order: 1,
+          translations: [{ id: '', locale: 'en', name: 'Organic', description: null }],
+        },
+      },
+      'health-claims': {
+        id: 'claim-1',
+        payload: {
+          claim_type: 'function',
+          slug: 'supports-health',
+          regulatory_status: 'approved',
+          efsa_reference: null,
+          fda_reference: null,
+          country_restrictions: ['TN', 'FR'],
+          requires_disclaimer: false,
+          translations: [{ id: '', locale: 'en', claim: 'Supports health', disclaimer_text: null }],
+        },
+      },
+      ingredients: {
+        id: 'ingredient-1',
+        payload: {
+          slug: 'vitamin-c',
+          cas_number: null,
+          is_allergen: false,
+          allergen_code: null,
+          regulatory_status: 'approved',
+          notes: null,
+          translations: [{ id: '', locale: 'en', name: 'Vitamin C', description: null }],
+        },
+      },
+      'key-components': {
+        id: 'key-component-1',
+        payload: {
+          slug: 'gelatin',
+          is_allergen: false,
+          translations: [{ id: '', locale: 'en', name: 'Gelatin', description: null }],
+        },
+      },
+    }
+
+    for (const config of resources) {
+      const client = createTestQueryClient()
+      const editForm = renderWithRoute(<config.formPage />, client, config.editRoute, config.formPath)
+      await waitFor(() => { expect(config.detailMock).toHaveBeenCalled() })
+
+      if (config.resource === 'health-claims') {
+        const countryRestrictions = await editForm.findByLabelText('parapharmacy:countryRestrictions')
+        fireEvent.change(countryRestrictions, {
+          target: { value: 'TN, FR' },
+        })
+      }
+
+      await submitRenderedForm(editForm)
+
+      await waitFor(() => {
+        expect(config.updateMock).toHaveBeenCalledWith(
+          (expectations[config.resource] as { id: string }).id,
+          (expectations[config.resource] as { payload: unknown }).payload,
+        )
+      })
+      editForm.unmount()
+    }
+  })
+})
+
 describe('parapharmacy cross-tenant isolation', () => {
   it('tenant-A list results do not contain tenant-B cache entries (L18)', async () => {
     const client = persistentQueryClient()

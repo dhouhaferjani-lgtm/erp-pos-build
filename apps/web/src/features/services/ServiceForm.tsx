@@ -177,7 +177,7 @@ export function ServiceForm() {
       <div className="flex items-center gap-4">
         <Link
           to="/services"
-          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} hover:${colorTokens.text.primary}`}
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.variants.hoverTextGray900}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('actions.back')}
@@ -218,7 +218,7 @@ export function ServiceForm() {
                 type="text"
                 id="code"
                 {...register('code', { required: t('validation.required') })}
-                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
                 placeholder={t('services.form.codePlaceholder')}
               />
               {errors.code && (
@@ -235,7 +235,7 @@ export function ServiceForm() {
                 type="text"
                 id="name"
                 {...register('name', { required: t('validation.required') })}
-                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
                 placeholder={t('services.namePlaceholder')}
               />
               {errors.name && (
@@ -251,7 +251,7 @@ export function ServiceForm() {
               <select
                 id="category_id"
                 {...register('category_id')}
-                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
               >
                 <option value="">{t('services.noCategory')}</option>
                 {categories.map((category) => (
@@ -270,7 +270,7 @@ export function ServiceForm() {
               <select
                 id="is_active"
                 {...register('is_active')}
-                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
               >
                 <option value="true">{t('status.active')}</option>
                 <option value="false">{t('status.inactive')}</option>
@@ -286,7 +286,7 @@ export function ServiceForm() {
                 id="description"
                 {...register('description')}
                 rows={3}
-                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
                 placeholder={t('services.descriptionPlaceholder')}
               />
             </div>
@@ -307,7 +307,7 @@ export function ServiceForm() {
               <select
                 id="pricing_type"
                 {...register('pricing_type', { required: true })}
-                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
               >
                 <option value="flat_rate">{t('services.pricingTypes.flatRate')}</option>
                 <option value="hourly">{t('services.pricingTypes.hourly')}</option>
@@ -323,7 +323,7 @@ export function ServiceForm() {
               <select
                 id="currency"
                 {...register('currency', { required: true })}
-                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
               >
                 <option value="TND">{t('settings:company.currencies.TND')}</option>
                 <option value="EUR">{t('settings:company.currencies.EUR')}</option>
@@ -382,7 +382,7 @@ export function ServiceForm() {
                     min="0"
                     id="default_duration_minutes"
                     {...register('default_duration_minutes', { valueAsNumber: true })}
-                    className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+                    className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
                     placeholder="60"
                   />
                 </div>
@@ -431,14 +431,14 @@ export function ServiceForm() {
         <div className="flex items-center justify-end gap-3">
           <Link
             to="/services"
-            className={`rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page}`}
+            className={`rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50}`}
           >
             {t('actions.cancel')}
           </Link>
           <button
             type="submit"
             disabled={isSubmitting || mutation.isPending}
-            className={`rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50`}
+            className={`rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50`}
           >
             {mutation.isPending ? t('status.saving') : t('actions.save')}
           </button>

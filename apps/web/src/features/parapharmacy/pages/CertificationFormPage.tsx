@@ -280,7 +280,7 @@ export function CertificationFormPage() {
                 id="is_active"
                 checked={isActive}
                 onChange={(e) => { setIsActive(e.target.checked); }}
-                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} focus:${colorTokens.intent.primary.ring}`}
+                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
               />
               <label htmlFor="is_active" className={`text-sm ${colorTokens.text.secondary}`}>
                 {t('parapharmacy:isActive')}

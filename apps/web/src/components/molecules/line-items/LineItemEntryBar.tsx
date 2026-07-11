@@ -6,7 +6,7 @@ import { api } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
-import { borderColors, colors, textColors, tokens } from '../../../lib/designTokens'
+import { borderColors, colors, textColors, tokens, semanticColorTokens as colorTokens } from '../../../lib/designTokens'
 import { useBarcodeScanner } from '../../../hooks/useBarcodeScanner'
 import { ProductCell } from './ProductCell'
 import { useProductLineLookup, type ProductLineLookupOutcome, type ProductLineProduct } from './useProductLineLookup'
@@ -247,7 +247,7 @@ export function LineItemEntryBar({
             setMessage(null)
           }}
           onKeyDown={handleKeyDown}
-          className={`min-w-0 flex-1 border-0 bg-transparent p-0 text-sm ${textColors.primary} placeholder:${textColors.disabled} focus:outline-none focus:ring-0`}
+          className={`min-w-0 flex-1 border-0 bg-transparent p-0 text-sm ${textColors.primary} ${colorTokens.variants.placeholderTextGray400} focus:outline-none focus:ring-0`}
         />
         {query !== '' && (
           <button

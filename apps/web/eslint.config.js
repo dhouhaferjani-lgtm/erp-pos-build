@@ -5,6 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import noHardcodedStep from './eslint-rules/no-hardcoded-step.js'
 import noHardcodedEntityRoute from './eslint-rules/no-hardcoded-entity-route.js'
+import noDeadTailwindTokenInterpolation from './eslint-rules/no-dead-tailwind-token-interpolation.js'
 import noParseFloatOnMoney from './eslint-rules/no-parsefloat-on-money.js'
 import noUntranslatedLiteral from './eslint-rules/no-untranslated-literal.js'
 
@@ -29,6 +30,7 @@ const precisionPlugin = {
 // they can never regress.
 const localPlugin = {
   rules: {
+    'no-dead-tailwind-token-interpolation': noDeadTailwindTokenInterpolation,
     'no-hardcoded-entity-route': noHardcodedEntityRoute,
     'no-untranslated-literal': noUntranslatedLiteral,
   },
@@ -79,6 +81,7 @@ export default tseslint.config(
       // i18n guard — WARN on the legacy surface (ratcheted). Cleaned feature
       // dirs promote it to ERROR in the i18n-clean override block at the end.
       'local/no-hardcoded-entity-route': 'warn',
+      'local/no-dead-tailwind-token-interpolation': 'error',
       'local/no-untranslated-literal': 'warn',
       // Phase-11 precision-guard rules — WARN level (ratcheted, not hard-fail).
       'precision/no-hardcoded-step': 'warn',
@@ -362,6 +365,10 @@ export default tseslint.config(
         {
           selector: 'TemplateElement[value.raw=/\\b(bg|text|border|ring|divide|from|to|via|placeholder|fill|stroke|outline|accent|caret|shadow|decoration)-(gray|red|green|blue|yellow|amber|orange|purple|pink|indigo|emerald|rose|slate|zinc|neutral|stone|sky|violet|teal|cyan|lime|fuchsia)-(\\d{2,3})\\b/]',
           message: 'Hardcoded Tailwind color classes are not allowed in Wave 5 migrated directories. Use semantic design tokens from lib/designTokens.ts.',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/(hover|focus|focus-within|focus-visible|group-hover|disabled|placeholder|active|dark|file):$/]',
+          message: 'Do not compose Tailwind variants with token interpolation. Add the complete class literal to designTokens.ts and reference that token.',
         },
       ],
     },

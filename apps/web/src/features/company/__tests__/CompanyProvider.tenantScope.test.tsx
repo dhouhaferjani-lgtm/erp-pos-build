@@ -138,6 +138,7 @@ describe('CompanyProvider tenant scope', () => {
           currency: 'TND',
           locale: 'en_US',
           timezone: 'Africa/Tunis',
+          isPrimary: false,
         },
       ])
     })

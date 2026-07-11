@@ -258,6 +258,46 @@ describe('CreateStockTransferPage line entry bar', () => {
     })
   })
 
+  it('submits the complete header and line payload with decimal strings intact', async () => {
+    const user = userEvent.setup()
+    mockApiGet.mockResolvedValue({
+      kind: 'product',
+      matched_code_type: 'product_barcode',
+      product: product(BATCH_PRODUCT_ID),
+    })
+
+    renderPage()
+    await selectLocations(user)
+
+    await user.type(screen.getByLabelText(/notes/i), '  Cold chain handoff  ')
+    await user.type(screen.getByLabelText(/transfer cost \(freight, handling\)/i), '8.250')
+    await user.type(screen.getByLabelText(/cost label/i), 'Temperature control')
+    await user.selectOptions(screen.getByLabelText(/allocate cost by/i), 'equal_per_line')
+    scan('123456')
+
+    expect(await screen.findByText('PARA-LOT Batch tracked product')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /create transfer/i }))
+
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledWith({
+        source_location_id: 'source-location',
+        destination_location_id: 'destination-location',
+        notes: 'Cold chain handoff',
+        transfer_cost: '8.25',
+        transfer_cost_label: 'Temperature control',
+        transfer_cost_distribution: 'equal_per_line',
+        lines: [
+          {
+            product_id: BATCH_PRODUCT_ID,
+            quantity: '1',
+            batch_allocations: [{ batch_id: 101, quantity: '1.0000' }],
+          },
+        ],
+      })
+    })
+  })
+
   it('keeps a scanned batch-tracked line blocked when FEFO cannot cover the quantity', async () => {
     const user = userEvent.setup()
     mockUseProductBatches.mockReturnValue({ data: [], isLoading: false, isFetching: false })

@@ -1,7 +1,7 @@
 import { forwardRef } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
-import { colors, textColors, focusRing } from '@/lib/designTokens'
+import { colors, textColors, focusRing, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface POSButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'success' | 'danger'
@@ -29,10 +29,10 @@ export const POSButton = forwardRef<HTMLButtonElement, POSButtonProps>(
   ) => {
     // Variant styles
     const variantClasses = {
-      primary: cn(colors.primary[600], `hover:${colors.primary[700]}`, textColors.inverse),
-      secondary: cn(colors.neutral[200], `hover:${colors.neutral[300]}`, textColors.primary),
-      success: cn(colors.success[600], `hover:${colors.success[700]}`, textColors.inverse),
-      danger: cn(colors.error[600], `hover:${colors.error[700]}`, textColors.inverse),
+      primary: cn(colors.primary[600], `${colorTokens.variants.hoverBgBlue700}`, textColors.inverse),
+      secondary: cn(colors.neutral[200], `${colorTokens.variants.hoverBgGray300}`, textColors.primary),
+      success: cn(colors.success[600], `${colorTokens.variants.hoverBgGreen700}`, textColors.inverse),
+      danger: cn(colors.error[600], `${colorTokens.variants.hoverBgRed700}`, textColors.inverse),
     }
 
     // Size styles (different for icon-only vs with text)

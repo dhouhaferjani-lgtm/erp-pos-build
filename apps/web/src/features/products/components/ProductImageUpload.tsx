@@ -108,7 +108,7 @@ export function ProductImageUpload({ productId, onUploadSuccess }: ProductImageU
       <div
         className={`
           relative cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors
-          ${dragActive ? `${colorTokens.intent.primary.borderFocus} ${colorTokens.intent.primary.bgSubtle}` : `${colorTokens.border.default} hover:${colorTokens.border.strong}`}
+          ${dragActive ? `${colorTokens.intent.primary.borderFocus} ${colorTokens.intent.primary.bgSubtle}` : `${colorTokens.border.default} ${colorTokens.variants.hoverBorderGray400}`}
           ${uploadMutation.isPending ? 'cursor-not-allowed opacity-50' : ''}
         `}
         onDragEnter={handleDrag}

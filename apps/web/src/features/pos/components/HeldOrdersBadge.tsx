@@ -28,7 +28,7 @@ export function HeldOrdersBadge({ terminalId, onClick }: HeldOrdersBadgeProps) {
       className={cn(
         'relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
         count > 0
-          ? `${colorTokens.intent.caution.bgSubtle} ${colorTokens.intent.caution.textStrong} hover:${colorTokens.intent.caution.bgSoft}`
+          ? `${colorTokens.intent.caution.bgSubtle} ${colorTokens.intent.caution.textStrong} ${colorTokens.variants.hoverBgAmber100}`
           : cn(textColors.tertiary, colors.hover.gray100),
       )}
       title={t('pos:heldOrders.title')}

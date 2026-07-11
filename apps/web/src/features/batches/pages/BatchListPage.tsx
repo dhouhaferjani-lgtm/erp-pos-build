@@ -85,7 +85,7 @@ export function BatchListPage() {
         </div>
         <Link
           to="/inventory/batches/new"
-          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover} transition-colors`}
+          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover} transition-colors`}
         >
           <Plus className="h-4 w-4" />
           {t('batches:actions.addBatch', 'Add Batch')}
@@ -133,7 +133,7 @@ export function BatchListPage() {
             <div className="mt-6">
               <Link
                 to="/inventory/batches/new"
-                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover}`}
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 <Plus className="h-4 w-4" />
                 {t('batches:actions.addBatch', 'Add Batch')}
@@ -171,11 +171,11 @@ export function BatchListPage() {
                 const totalQuantity = batch.available_quantity ?? 0
 
                 return (
-                  <tr key={batch.id} className={`hover:${colorTokens.surface.page}`}>
+                  <tr key={batch.id} className={`${colorTokens.variants.hoverBgGray50}`}>
                     <td className="whitespace-nowrap px-6 py-4">
                       <Link
                         to={`/inventory/batches/${batch.uuid}`}
-                        className={`font-medium ${colorTokens.text.primary} hover:${colorTokens.intent.primary.text}`}
+                        className={`font-medium ${colorTokens.text.primary} ${colorTokens.variants.hoverTextBlue600}`}
                       >
                         {batch.batch_number}
                       </Link>
@@ -212,7 +212,7 @@ export function BatchListPage() {
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
                       <Link
                         to={`/inventory/batches/${batch.uuid}`}
-                        className={`${colorTokens.intent.primary.text} hover:${colorTokens.intent.primary.textStrongest}`}
+                        className={`${colorTokens.intent.primary.text} ${colorTokens.variants.hoverTextBlue900}`}
                       >
                         {t('common:actions.view')}
                       </Link>

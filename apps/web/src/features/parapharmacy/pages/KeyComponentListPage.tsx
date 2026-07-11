@@ -112,7 +112,7 @@ export function KeyComponentListPage() {
                 </tr>
               ) : (
                 data?.data?.map((keyComponent) => (
-                  <tr key={keyComponent.id} className={`hover:${colorTokens.surface.page}`}>
+                  <tr key={keyComponent.id} className={`${colorTokens.variants.hoverBgGray50}`}>
                     <td className={`px-6 py-4 text-sm font-medium ${colorTokens.text.primary}`}>
                       {keyComponent.name}
                     </td>

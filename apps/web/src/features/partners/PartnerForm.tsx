@@ -608,7 +608,7 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
                     <input
                       type="file"
                       accept=".pdf,.jpg,.jpeg,.png"
-                      className={`block w-full text-sm ${colorTokens.text.subtle} file:me-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold ${colorTokens.intent.primary.fileBgSubtle} ${colorTokens.intent.primary.fileTextStrong} ${colorTokens.intent.primary.fileBgSoftHover}`}
+                      className={`block w-full text-sm ${colorTokens.text.subtle} file:me-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold ${colorTokens.intent.primary.fileBgSubtle} ${colorTokens.intent.primary.fileText} ${colorTokens.intent.primary.fileBgHoverSoft}`}
                     />
                   </div>
                 </div>

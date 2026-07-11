@@ -9,7 +9,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
-import { colorClasses, textColors, borderColors } from '../../../lib/designTokens'
+import { colorClasses, textColors, borderColors, semanticColorTokens as colorTokens } from '../../../lib/designTokens'
 
 export type NotesCellProps = {
   value: string | null
@@ -108,7 +108,7 @@ export function NotesCell({ value, readOnly = false, className = '', valueClassN
           <button
             type="button"
             onClick={enterEdit}
-            className={`cursor-pointer text-start hover:${textColors.secondary} ${noteTextClassName}`}
+            className={`cursor-pointer text-start ${colorTokens.variants.hoverTextGray700} ${noteTextClassName}`}
           >
             {value}
           </button>

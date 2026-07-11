@@ -3,6 +3,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TransferOwnershipModal } from '../TransferOwnershipModal'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -72,6 +74,24 @@ describe('TransferOwnershipModal', () => {
     mutate.mockReset()
     mockApiGet.mockReset()
     mockApiGet.mockResolvedValue({ data: { data: partners } })
+    useAuthStore.setState({
+      user: {
+        id: 'user-1',
+        name: 'User',
+        email: 'user@example.test',
+        tenant_id: 'tenant-A',
+        roles: [],
+        email_verified_at: null,
+      },
+      token: 'token',
+      isAuthenticated: true,
+      isLoading: false,
+    })
+    useCompanyStore.setState({
+      currentCompanyId: 'company-1',
+      companies: [],
+      isLoading: false,
+    })
   })
 
   it('calls the transfer mutation with the partner UUID selected via the picker', async () => {

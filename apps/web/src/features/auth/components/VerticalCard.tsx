@@ -21,7 +21,7 @@ export function VerticalCard({ vertical, selected, onSelect }: VerticalCardProps
       onClick={onSelect}
       className={cn(
         'flex items-center gap-3 rounded-xl border-2 p-4 text-start transition-all',
-        `hover:${colorTokens.intent.primary.border} hover:${colorTokens.intent.primary.bgSubtle}/50 focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2`,
+        `${colorTokens.variants.hoverBorderBlue300} ${colorTokens.variants.hoverBgBlue50Alpha50} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2`,
         selected
           ? `${colorTokens.intent.primary.borderFocus} ${colorTokens.intent.primary.bgSubtle}`
           : `${colorTokens.border.subtle} bg-white`

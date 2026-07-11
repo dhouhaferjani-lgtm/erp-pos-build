@@ -3,6 +3,72 @@
 > Branch: `feat/design-system-unification` in `/Users/houssamr/Projects/syneriva/apps/erp.design-sweep`.
 > Source handoff: `docs/handoff/CODEX-design-system-unification-2026-07-10.md`.
 
+## Gate 5 Remediation — Wave 5 Leg 3 Rejection
+
+Status: remediation implemented; awaiting autonomous gate review.
+
+- BL-1/BL-2 dead Tailwind interpolation:
+  - Rewrote branch-wide variant-prefix interpolation (`hover:${...}`, `focus:${...}`, `group-hover:${...}`, etc.) and opacity-suffix interpolation (`${token}/75`, etc.) to complete static class literals exposed through `semanticColorTokens.variants`.
+  - Added global ESLint guard `local/no-dead-tailwind-token-interpolation` plus a `no-restricted-syntax` Wave 5 selector for `TemplateElement` variant prefixes.
+  - Probe verification: temporary `TailwindInterpolationProbe.tsx` with `hover:${colorTokens.surface.page}` and `${colorTokens.surface.neutral}/75` failed ESLint as expected; probe was removed.
+  - Final scans returned zero matches:
+    - `rg -n "(hover|focus|focus-within|focus-visible|group-hover|disabled|placeholder|active|dark|file):\\$\\{|\\$\\{[^}]+\\}/\\d" apps/web/src || true`
+    - old semantic-token suffix scan returned no live consumers outside the Gate 5 brief text.
+- BL-3/M1 badge parity:
+  - Updated VAT/stock badge tests away from raw class assertions.
+  - Added semantic/tone coverage for `OrderStatusBadge`, `TableStatusBadge`, `BatchStatusBadge`, voucher `StatusBadge`, and VAT period badges.
+- M2 RHF payload identity:
+  - Added/extended exact payload tests for composite items, modifier groups, settings user edit, parapharmacy edit forms, promotions, coupons, and stock-transfer create.
+  - Directory-run follow-up fixed stale tests that were asserting old accessible labels, class literals, permission gates, and query-key shapes.
+- M3/minors:
+  - Cleaned `AdvancedPaymentsModal` import/`cn` usage and restored warning radio tone.
+  - Normalized token suffixes: `bgSubtleAlphaLight`, `groupBgHover`, `fileBgHoverSoft`, `fileText`, `warning.borderFocus`, `warning.textFaint`, `ledger.textDisabled`, `neutral.textSubtle`.
+  - No intentional visual changes. All class rewrites are pixel-conservative literalizations of the existing token values; stale test updates changed assertions only.
+  - Deferrals: none added in this remediation.
+- Verification:
+  - Focused remediation suite passed: `pnpm --filter @autoerp/web test -- src/features/catalog/pages/__tests__/CompositeItemFormPage.test.tsx src/features/catalog/pages/ModifierGroupFormPage.test.tsx src/features/settings/components/UserEditModal.test.tsx src/features/parapharmacy/pages/__tests__/tenantScope.test.tsx src/features/promotions/pages/PromotionFormPage.test.tsx src/features/coupons/pages/CouponFormPage.test.tsx src/features/stock-transfers/__tests__/CreateStockTransferPage.lineEntry.test.tsx src/features/pos/atoms/StockBadge.test.tsx src/features/pos/atoms/TableStatusBadge.test.tsx src/features/pos/molecules/OrderStatusBadge/OrderStatusBadge.test.tsx src/features/batches/components/BatchStatusBadge.test.tsx src/features/vouchers/components/__tests__/StatusBadge.test.tsx src/features/vat-reporting/components/__tests__/VatPeriodStatusBadge.test.tsx` passed: 13 files, 74 tests.
+  - Full per-directory Vitest path runs passed:
+    - `src/components/molecules/line-items`: 5 files, 22 tests.
+    - `src/features/documents`: 35 files, 260 tests.
+    - `src/features/admin`: 6 files, 22 tests.
+    - `src/features/import`: 6 files, 26 tests.
+    - `src/features/inventory-counting`: 6 files, 34 tests.
+    - `src/features/opening-balances`: 1 file, 6 tests.
+    - `src/features/partners`: 6 files, 79 tests.
+    - `src/features/compliance`: 3 files, 25 tests.
+    - `src/features/loyalty`: 16 files, 78 tests.
+    - `src/features/parts-catalog`: 6 files, 39 tests.
+    - `src/features/auth`: 13 files, 61 passed, 1 skipped.
+    - `src/pages/legal`: no test files found; run passed with `--passWithNoTests`.
+    - `src/features/services`: 1 file, 16 tests.
+    - `src/features/batches`: 3 files, 15 tests.
+    - `src/features/parapharmacy`: 1 file, 5 tests.
+    - `src/features/pricing`: 2 files, 31 tests.
+    - `src/features/vat-reporting`: 4 files, 11 tests.
+    - `src/features/vouchers`: 11 files, 75 tests.
+    - `src/features/categories`: 1 file, 9 tests.
+    - `src/features/crm`: 4 files, 30 tests.
+    - `src/features/products`: 13 files, 83 tests.
+    - `src/features/dashboard`: 2 files, 8 tests.
+    - `src/features/reports`: no test files found; run passed with `--passWithNoTests`.
+    - `src/features/uom`: 3 files, 31 tests.
+    - `src/features/pos`: 46 files, 443 tests.
+    - `src/features/expenses`: 6 files, 50 passed, 3 todo.
+    - `src/features/coupons`: 2 files, 14 tests.
+    - `src/features/promotions`: 2 files, 15 tests.
+    - `src/features/stock-transfers`: 8 files, 19 tests.
+    - `src/features/settings`: 27 files, 113 tests.
+    - `src/features/catalog`: 13 files, 84 tests.
+    - `src/features/vehicles`: 6 files, 17 tests.
+    - `src/features/customer-history-audit`: 2 files, 15 tests.
+    - `src/features/locations`: 2 files, 7 tests.
+    - `src/features/company`: 2 files, 8 tests.
+    - `src/features/inventory`: 37 files, 266 tests.
+  - `pnpm --filter @autoerp/web typecheck` passed.
+  - `pnpm --filter @autoerp/web lint` passed with 0 errors and 6,919 warnings; chained TanStack and design-system audits passed.
+  - `pnpm --filter @autoerp/web audit:keys` passed: 0 violations.
+  - `node apps/web/tools/audit-design-system.mjs` passed: 183 acknowledged, 0 new, 0 stale.
+
 ## Gate 1 Fixlist — Blockers
 
 Status: blockers complete; majors complete.

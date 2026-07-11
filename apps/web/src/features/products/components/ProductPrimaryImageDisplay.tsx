@@ -122,7 +122,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
               className={`group relative aspect-square overflow-hidden rounded border-2 transition-all hover:scale-105 ${
                 image.id === primaryImage.id
                   ? `${colorTokens.intent.primary.borderFocus} ring-2 ${colorTokens.intent.primary.ringSoft}`
-                  : `border-transparent hover:${colorTokens.border.default}`
+                  : `border-transparent ${colorTokens.variants.hoverBorderGray300}`
               }`}
             >
               <img
@@ -146,7 +146,7 @@ export function ProductPrimaryImageDisplay({ productId }: ProductPrimaryImageDis
       {/* View Gallery Button */}
       <button
         onClick={handleViewGalleryClick}
-        className={`flex w-full items-center justify-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} transition-colors hover:${colorTokens.surface.page}`}
+        className={`flex w-full items-center justify-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} transition-colors ${colorTokens.variants.hoverBgGray50}`}
       >
         <Images className="h-4 w-4" />
         {t('images.viewGallery', { count: validImages.length })}

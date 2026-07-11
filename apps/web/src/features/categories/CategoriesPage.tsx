@@ -139,7 +139,7 @@ export function CategoriesPage() {
         <div className="mt-4 sm:mt-0">
           <button
             onClick={handleCreate}
-            className={`inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${colorTokens.intent.primary.bgStrong} hover:${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:${colorTokens.intent.primary.ring}`}
+            className={`inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${colorTokens.intent.primary.bgStrong} ${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.variants.focusRingBlue500}`}
           >
             <Plus className="w-4 h-4" />
             {t('inventory:categories.new')}
@@ -171,7 +171,7 @@ export function CategoriesPage() {
             <div className="mt-6">
               <button
                 onClick={handleCreate}
-                className={`inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${colorTokens.intent.primary.bgStrong} hover:${colorTokens.intent.primary.bgStrongHover}`}
+                className={`inline-flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${colorTokens.intent.primary.bgStrong} ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 <Plus className="w-4 h-4" />
                 {t('inventory:categories.empty.action')}
@@ -194,7 +194,7 @@ export function CategoriesPage() {
       {dialogMode && (
         <div className="fixed inset-0 z-10 overflow-y-auto">
           <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <div className={`fixed inset-0 ${colorTokens.surface.neutral}/75 transition-opacity`} onClick={handleFormCancel} />
+            <div className={`fixed inset-0 ${colorTokens.variants.bgGray500Alpha75} transition-opacity`} onClick={handleFormCancel} />
             <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-start shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
               <div className="mb-4">
                 <h3 className={`text-lg font-medium leading-6 ${colorTokens.text.primary}`}>

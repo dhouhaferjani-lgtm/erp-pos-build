@@ -170,7 +170,7 @@ export function CouponListPage() {
               {coupons.map((coupon) => (
                 <tr
                   key={coupon.id}
-                  className={`hover:${colorTokens.surface.page} cursor-pointer`}
+                  className={`${colorTokens.variants.hoverBgGray50} cursor-pointer`}
                   onClick={() => navigate(`/pos/coupons/${coupon.id}/edit`)}
                 >
                   <td className="px-4 py-3">
@@ -201,7 +201,7 @@ export function CouponListPage() {
                       {coupon.status === 'active' ? (
                         <button
                           onClick={() => { handleAction('revoke', coupon); }}
-                          className={`p-1.5 rounded hover:${colorTokens.intent.notice.bgSubtle} ${colorTokens.intent.notice.text}`}
+                          className={`p-1.5 rounded ${colorTokens.variants.hoverBgOrange50} ${colorTokens.intent.notice.text}`}
                           title={t('coupons:actions.revoke')}
                         >
                           <Ban className="w-4 h-4" />
@@ -210,7 +210,7 @@ export function CouponListPage() {
                       {coupon.status === 'revoked' || coupon.status === 'exhausted' ? (
                         <button
                           onClick={() => { handleAction('reactivate', coupon); }}
-                          className={`p-1.5 rounded hover:${colorTokens.intent.success.bgSubtle} ${colorTokens.intent.success.text}`}
+                          className={`p-1.5 rounded ${colorTokens.variants.hoverBgGreen50} ${colorTokens.intent.success.text}`}
                           title={t('coupons:actions.reactivate')}
                         >
                           <RefreshCw className="w-4 h-4" />
@@ -219,7 +219,7 @@ export function CouponListPage() {
                       {coupon.status !== 'active' ? (
                         <button
                           onClick={() => { handleAction('delete', coupon); }}
-                          className={`p-1.5 rounded hover:${colorTokens.intent.danger.bgSubtle} ${colorTokens.intent.danger.textSubtle}`}
+                          className={`p-1.5 rounded ${colorTokens.variants.hoverBgRed50} ${colorTokens.intent.danger.textSubtle}`}
                           title={t('coupons:deleteCoupon')}
                         >
                           <Trash2 className="w-4 h-4" />

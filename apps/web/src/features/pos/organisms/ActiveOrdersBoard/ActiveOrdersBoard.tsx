@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { OrderStatusBadge } from '../../molecules/OrderStatusBadge'
 import { KitchenTimer } from '../../atoms/KitchenTimer'
-import { colors, textColors, borderColors } from '@/lib/designTokens'
+import { colors, textColors, borderColors, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import type { OrderData } from '../../api/orderApi'
 
 export interface ActiveOrdersBoardProps {
@@ -86,7 +86,7 @@ export function ActiveOrdersBoard({
                   key={order.id}
                   type="button"
                   onClick={() => { onSelectOrder(order.id); }}
-                  className={`w-full rounded-lg border p-3 text-left transition-colors hover:${borderColors.primary} ${
+                  className={`w-full rounded-lg border p-3 text-left transition-colors ${colorTokens.variants.hoverBorderBlue500} ${
                     selectedOrderId === order.id
                       ? `${borderColors.primary} ${colors.primary[50]}`
                       : `${borderColors.light} ${colors.white}`

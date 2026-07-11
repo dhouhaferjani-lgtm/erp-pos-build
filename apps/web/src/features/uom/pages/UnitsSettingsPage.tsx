@@ -144,7 +144,7 @@ export function UnitsSettingsPage() {
                 <tbody className={`bg-white divide-y ${colorTokens.border.divider}`}>
                   {category.units && category.units.length > 0 ? (
                     category.units.map((unit) => (
-                      <tr key={unit.id} className={`hover:${colorTokens.surface.page}`}>
+                      <tr key={unit.id} className={`${colorTokens.variants.hoverBgGray50}`}>
                         <td className={`px-6 py-4 text-sm font-medium ${colorTokens.text.primary}`}>
                           {unit.name}
                         </td>

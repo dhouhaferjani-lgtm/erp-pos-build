@@ -83,7 +83,7 @@ export function BatchDetailPage() {
         <div className="flex items-start gap-4">
           <Link
             to="/inventory/batches"
-            className={`mt-1 ${colorTokens.text.disabled} hover:${colorTokens.text.muted}`}
+            className={`mt-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
           >
             <ArrowLeft className="h-6 w-6" />
           </Link>
@@ -117,7 +117,7 @@ export function BatchDetailPage() {
           {canRecall && (
             <button
               onClick={() => { setConfirmAction('recall'); }}
-              className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.intent.notice.borderStrong} px-4 py-2 text-sm font-medium ${colorTokens.intent.notice.text} hover:${colorTokens.intent.notice.bgSubtle}`}
+              className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.intent.notice.borderStrong} px-4 py-2 text-sm font-medium ${colorTokens.intent.notice.text} ${colorTokens.variants.hoverBgOrange50}`}
             >
               <AlertTriangle className="h-4 w-4" />
               {t('batches:actions.recallBatch')}
@@ -126,7 +126,7 @@ export function BatchDetailPage() {
           {canEdit && (
             <Link
               to={`/inventory/batches/${uuid}/edit`}
-              className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover}`}
+              className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover}`}
             >
               <Edit className="h-4 w-4" />
               {t('common:actions.edit')}
@@ -135,7 +135,7 @@ export function BatchDetailPage() {
           {canDelete && (
             <button
               onClick={() => { setConfirmAction('delete'); }}
-              className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.borderStrong} px-4 py-2 text-sm font-medium ${colorTokens.intent.danger.text} hover:${colorTokens.intent.danger.bgSubtle}`}
+              className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.borderStrong} px-4 py-2 text-sm font-medium ${colorTokens.intent.danger.text} ${colorTokens.variants.hoverBgRed50}`}
             >
               <Trash2 className="h-4 w-4" />
               {t('common:actions.delete')}
@@ -158,7 +158,7 @@ export function BatchDetailPage() {
               </label>
               <Link
                 to={`/inventory/products/${batch.product.id}`}
-                className={`block font-medium ${colorTokens.intent.primary.text} hover:${colorTokens.intent.primary.textStronger}`}
+                className={`block font-medium ${colorTokens.intent.primary.text} ${colorTokens.variants.hoverTextBlue800}`}
               >
                 {batch.product.name}
               </Link>
@@ -330,7 +330,7 @@ export function BatchDetailPage() {
                   value={recallReason}
                   onChange={(e) => { setRecallReason(e.target.value); }}
                   rows={3}
-                  className={`mt-1 block w-full rounded-md ${colorTokens.border.default} shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:${colorTokens.intent.primary.ring} sm:text-sm`}
+                  className={`mt-1 block w-full rounded-md ${colorTokens.border.default} shadow-sm ${colorTokens.variants.focusBorderBlue500} ${colorTokens.variants.focusRingBlue500} sm:text-sm`}
                   placeholder={t('batches:form.enterRecallReason')}
                 />
               </div>
@@ -339,7 +339,7 @@ export function BatchDetailPage() {
               <button
                 type="button"
                 onClick={() => { setConfirmAction(null); setRecallReason('') }}
-                className={`rounded-lg border ${colorTokens.border.default} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page} transition-colors`}
+                className={`rounded-lg border ${colorTokens.border.default} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50} transition-colors`}
               >
                 {t('common:actions.cancel')}
               </button>
@@ -347,7 +347,7 @@ export function BatchDetailPage() {
                 type="button"
                 onClick={handleRecall}
                 disabled={!recallReason.trim()}
-                className={`rounded-lg ${colorTokens.intent.warning.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.warning.bgStronger} disabled:opacity-50 transition-colors`}
+                className={`rounded-lg ${colorTokens.intent.warning.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.variants.hoverBgYellow700} disabled:opacity-50 transition-colors`}
               >
                 {t('batches:actions.recallBatch')}
               </button>

@@ -126,7 +126,7 @@ export function ProductSelector({
             <button
               type="button"
               onClick={handleClearAll}
-              className={`text-sm ${colorTokens.intent.danger.text} hover:${colorTokens.intent.danger.textStrong}`}
+              className={`text-sm ${colorTokens.intent.danger.text} ${colorTokens.variants.hoverTextRed700}`}
             >
               {t('common:clear')} ({value.length})
             </button>
@@ -147,8 +147,8 @@ export function ProductSelector({
             <ComboboxInput
               className={cn(
                 `w-full ps-10 pe-10 py-3 border ${colorTokens.border.default} rounded-md`,
-                `focus:outline-none focus:ring-2 focus:${colorTokens.intent.primary.ring} focus:${colorTokens.intent.primary.borderFocus}`,
-                `disabled:${colorTokens.surface.muted} disabled:cursor-not-allowed`,
+                `focus:outline-none focus:ring-2 ${colorTokens.variants.focusRingBlue500} ${colorTokens.variants.focusBorderBlue500}`,
+                `${colorTokens.variants.disabledBgGray100} disabled:cursor-not-allowed`,
                 'transition-colors'
               )}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setQuery(e.target.value); }}
@@ -241,7 +241,7 @@ export function ProductSelector({
             {selectedProducts.map((product) => (
               <div
                 key={product.id}
-                className={`flex items-center gap-3 p-2 bg-white rounded border ${colorTokens.border.subtle} hover:${colorTokens.border.default} transition-colors`}
+                className={`flex items-center gap-3 p-2 bg-white rounded border ${colorTokens.border.subtle} ${colorTokens.variants.hoverBorderGray300} transition-colors`}
               >
                 {/* Product Icon */}
                 <div className={`flex-shrink-0 h-8 w-8 rounded ${colorTokens.surface.muted} flex items-center justify-center`}>
@@ -261,7 +261,7 @@ export function ProductSelector({
                 <button
                   type="button"
                   onClick={() => { handleRemoveProduct(product.id); }}
-                  className={`flex-shrink-0 p-1 ${colorTokens.text.disabled} hover:${colorTokens.intent.danger.text} transition-colors`}
+                  className={`flex-shrink-0 p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextRed600} transition-colors`}
                   title={t('common:actions.delete')}
                 >
                   <X className="h-4 w-4" />

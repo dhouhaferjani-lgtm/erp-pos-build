@@ -141,8 +141,8 @@ export function ProductGrid({
               className={cn(
                 'w-full ps-10 pe-10 py-3 rounded-lg',
                 `border-2 ${colorTokens.intent.available.border} ${colorTokens.intent.available.bgSubtle}`,
-                `focus:outline-none focus:ring-2 focus:${colorTokens.intent.available.ringFocus} focus:${colorTokens.intent.available.borderFocus}`,
-                `placeholder:${colorTokens.intent.available.textFaint}`,
+                `focus:outline-none focus:ring-2 ${colorTokens.variants.focusRingEmerald500} ${colorTokens.variants.focusBorderEmerald500}`,
+                `${colorTokens.variants.placeholderTextEmerald400}`,
                 isBarcodeSearching && 'animate-pulse',
                 touchOptimized && 'py-4 text-lg'
               )}
@@ -154,7 +154,7 @@ export function ProductGrid({
                 className="absolute end-3 top-1/2 -translate-y-1/2"
                 aria-label={t('pos:barcode.clearInput')}
               >
-                <X className={`w-5 h-5 ${colorTokens.intent.available.textFaint} hover:${colorTokens.intent.available.text}`} />
+                <X className={`w-5 h-5 ${colorTokens.intent.available.textFaint} ${colorTokens.variants.hoverTextEmerald600}`} />
               </button>
             )}
           </div>

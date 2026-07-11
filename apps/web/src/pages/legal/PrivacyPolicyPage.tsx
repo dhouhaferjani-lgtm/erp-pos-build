@@ -7,7 +7,7 @@ export function PrivacyPolicyPage() {
   const { t } = useTranslation('common')
 
   return (
-    <div className={`min-h-screen ${colorTokens.surface.page} dark:${colorTokens.surface.inverseStrong}`}>
+    <div className={`min-h-screen ${colorTokens.surface.page} ${colorTokens.variants.darkBgGray900}`}>
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
         <Link
           to="/"
@@ -31,7 +31,7 @@ export function PrivacyPolicyPage() {
             <h2 className={`text-xl font-semibold ${colorTokens.text.primary} ${colorTokens.text.darkInverse}`}>
               {t('legal.privacy.section1.title')}
             </h2>
-            <p className={`mt-2 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               {t('legal.privacy.section1.body')}
             </p>
           </section>
@@ -41,10 +41,10 @@ export function PrivacyPolicyPage() {
             <h2 className={`text-xl font-semibold ${colorTokens.text.primary} ${colorTokens.text.darkInverse}`}>
               {t('legal.privacy.section2.title')}
             </h2>
-            <p className={`mt-2 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               {t('legal.privacy.section2.intro')}
             </p>
-            <ul className={`mt-2 list-disc space-y-1 pl-6 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <ul className={`mt-2 list-disc space-y-1 pl-6 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               <li>
                 <strong>{t('legal.privacy.section2.accountInfo.label')}</strong>:{' '}
                 {t('legal.privacy.section2.accountInfo.detail')}
@@ -69,13 +69,13 @@ export function PrivacyPolicyPage() {
             <h2 className={`text-xl font-semibold ${colorTokens.text.primary} ${colorTokens.text.darkInverse}`}>
               {t('legal.privacy.section3.title')}
             </h2>
-            <ul className={`mt-2 list-disc space-y-1 pl-6 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <ul className={`mt-2 list-disc space-y-1 pl-6 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               <li>{t('legal.privacy.section3.purpose1')}</li>
               <li>{t('legal.privacy.section3.purpose2')}</li>
               <li>{t('legal.privacy.section3.purpose3')}</li>
               <li>{t('legal.privacy.section3.purpose4')}</li>
             </ul>
-            <p className={`mt-2 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               {t('legal.privacy.section3.legalBasis')}
             </p>
           </section>
@@ -85,7 +85,7 @@ export function PrivacyPolicyPage() {
             <h2 className={`text-xl font-semibold ${colorTokens.text.primary} ${colorTokens.text.darkInverse}`}>
               {t('legal.privacy.section4.title')}
             </h2>
-            <p className={`mt-2 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               {t('legal.privacy.section4.body')}
             </p>
           </section>
@@ -95,10 +95,10 @@ export function PrivacyPolicyPage() {
             <h2 className={`text-xl font-semibold ${colorTokens.text.primary} ${colorTokens.text.darkInverse}`}>
               {t('legal.privacy.section5.title')}
             </h2>
-            <p className={`mt-2 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               {t('legal.privacy.section5.intro')}
             </p>
-            <ul className={`mt-2 list-disc space-y-1 pl-6 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <ul className={`mt-2 list-disc space-y-1 pl-6 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               <li>
                 <strong>{t('legal.privacy.section5.access.label')}</strong>:{' '}
                 {t('legal.privacy.section5.access.detail')}
@@ -127,7 +127,7 @@ export function PrivacyPolicyPage() {
             <h2 className={`text-xl font-semibold ${colorTokens.text.primary} ${colorTokens.text.darkInverse}`}>
               {t('legal.privacy.section6.title')}
             </h2>
-            <p className={`mt-2 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               {t('legal.privacy.section6.body')}
             </p>
           </section>
@@ -137,10 +137,10 @@ export function PrivacyPolicyPage() {
             <h2 className={`text-xl font-semibold ${colorTokens.text.primary} ${colorTokens.text.darkInverse}`}>
               {t('legal.privacy.section7.title')}
             </h2>
-            <p className={`mt-2 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               {t('legal.privacy.section7.intro')}
             </p>
-            <p className={`mt-2 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               <a
                 href="mailto:privacy@company.com"
                 className="text-primary-600 hover:text-primary-500 dark:text-primary-400"
@@ -148,7 +148,7 @@ export function PrivacyPolicyPage() {
                 privacy@company.com
               </a>
             </p>
-            <p className={`mt-2 ${colorTokens.text.muted} dark:${colorTokens.text.faint}`}>
+            <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               {t('legal.privacy.section7.cnil')}
             </p>
           </section>

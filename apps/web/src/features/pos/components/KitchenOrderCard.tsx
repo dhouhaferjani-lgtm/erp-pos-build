@@ -3,7 +3,7 @@ import { KitchenTimer } from '../atoms/KitchenTimer'
 import { OrderStatusBadge } from '../molecules/OrderStatusBadge'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
 import { statusTone } from '@/components/atoms/StatusBadge/statusTone'
-import { colors, textColors, borderColors } from '@/lib/designTokens'
+import { colors, textColors, borderColors, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import type { OrderData, OrderLineData } from '../api/orderApi'
 import { Button } from '@/components/atoms'
 
@@ -103,7 +103,7 @@ export function KitchenOrderCard({
               disabled={!canTap}
               onClick={() => { handleLineTap(line) }}
               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors ${
-                canTap ? `${colors.hover.gray50} active:${colors.neutral[100]}` : ''
+                canTap ? `${colors.hover.gray50} ${colorTokens.variants.activeBgGray100}` : ''
               }`}
             >
               <div className="flex-1">
@@ -139,7 +139,7 @@ export function KitchenOrderCard({
             type="button"
             onClick={() => { onBump(order.id) }}
             disabled={isBumping}
-            className={`w-full rounded-lg  ${colors.success[600]} px-4 py-2 text-sm font-semibold ${textColors.inverse} hover:${colors.success[700]} disabled:opacity-50`}
+            className={`w-full rounded-lg  ${colors.success[600]} px-4 py-2 text-sm font-semibold ${textColors.inverse} ${colorTokens.variants.hoverBgGreen700} disabled:opacity-50`}
           >
             {t('kitchen.bump')}
           </Button>

@@ -115,7 +115,7 @@ export function HealthClaimListPage() {
                 </tr>
               ) : (
                 data?.data?.map((healthClaim) => (
-                  <tr key={healthClaim.id} className={`hover:${colorTokens.surface.page}`}>
+                  <tr key={healthClaim.id} className={`${colorTokens.variants.hoverBgGray50}`}>
                     <td className={`px-6 py-4 text-sm font-medium ${colorTokens.text.primary} max-w-md truncate`}>
                       {healthClaim.claim}
                     </td>

@@ -126,7 +126,7 @@ export function ProductImageGallery({
                   <button
                     onClick={() => { handleSetPrimary(image.id); }}
                     disabled={settingPrimaryId === image.id}
-                    className={`flex h-8 w-8 items-center justify-center rounded-full bg-white ${colorTokens.text.secondary} shadow-sm transition-colors hover:${colorTokens.surface.muted} disabled:cursor-not-allowed disabled:opacity-50`}
+                    className={`flex h-8 w-8 items-center justify-center rounded-full bg-white ${colorTokens.text.secondary} shadow-sm transition-colors ${colorTokens.variants.hoverBgGray100} disabled:cursor-not-allowed disabled:opacity-50`}
                     title={t('products:images.setPrimary')}
                   >
                     {settingPrimaryId === image.id ? (
@@ -140,7 +140,7 @@ export function ProductImageGallery({
                 <button
                   onClick={() => { handleDelete(image.id); }}
                   disabled={deletingId === image.id}
-                  className={`flex h-8 w-8 items-center justify-center rounded-full bg-white ${colorTokens.intent.danger.text} shadow-sm transition-colors hover:${colorTokens.intent.danger.bgSubtle} disabled:cursor-not-allowed disabled:opacity-50`}
+                  className={`flex h-8 w-8 items-center justify-center rounded-full bg-white ${colorTokens.intent.danger.text} shadow-sm transition-colors ${colorTokens.variants.hoverBgRed50} disabled:cursor-not-allowed disabled:opacity-50`}
                   title={t('common:delete')}
                 >
                   {deletingId === image.id ? (

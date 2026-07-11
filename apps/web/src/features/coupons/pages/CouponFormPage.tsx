@@ -146,7 +146,7 @@ export function CouponFormPage() {
         <button
           type="button"
           onClick={() => navigate('/pos/coupons')}
-          className={`p-2 rounded-lg hover:${colorTokens.surface.muted}`}
+          className={`p-2 rounded-lg ${colorTokens.variants.hoverBgGray100}`}
         >
           <ArrowLeft className="w-5 h-5" />
         </button>

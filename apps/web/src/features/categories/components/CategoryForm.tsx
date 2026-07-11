@@ -87,7 +87,7 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting = fals
             })}
             type="text"
             id="name"
-            className={`mt-1 block w-full rounded-md ${colorTokens.border.default} shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:${colorTokens.intent.primary.ring} sm:text-sm`}
+            className={`mt-1 block w-full rounded-md ${colorTokens.border.default} shadow-sm ${colorTokens.variants.focusBorderBlue500} ${colorTokens.variants.focusRingBlue500} sm:text-sm`}
             placeholder={t('inventory:categories.namePlaceholder')}
           />
           {errors.name && (
@@ -103,7 +103,7 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting = fals
             {...register('description')}
             id="description"
             rows={3}
-            className={`mt-1 block w-full rounded-md ${colorTokens.border.default} shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:${colorTokens.intent.primary.ring} sm:text-sm`}
+            className={`mt-1 block w-full rounded-md ${colorTokens.border.default} shadow-sm ${colorTokens.variants.focusBorderBlue500} ${colorTokens.variants.focusRingBlue500} sm:text-sm`}
             placeholder={t('inventory:categories.descriptionPlaceholder')}
           />
         </div>
@@ -124,7 +124,7 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting = fals
               setValueAs: (v) => (v === '' || v === null ? null : Number(v)),
             })}
             id="parentId"
-            className={`mt-1 block w-full rounded-md ${colorTokens.border.default} shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:${colorTokens.intent.primary.ring} sm:text-sm`}
+            className={`mt-1 block w-full rounded-md ${colorTokens.border.default} shadow-sm ${colorTokens.variants.focusBorderBlue500} ${colorTokens.variants.focusRingBlue500} sm:text-sm`}
             disabled={isLoadingTree}
           >
             <option value="">{t('inventory:categories.noParent')}</option>
@@ -149,7 +149,7 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting = fals
             {...register('isActive')}
             type="checkbox"
             id="isActive"
-            className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} focus:${colorTokens.intent.primary.ring}`}
+            className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
           />
           <label htmlFor="isActive" className={`ms-2 block text-sm ${colorTokens.text.primary}`}>
             {t('inventory:categories.isActive')}
@@ -163,14 +163,14 @@ export function CategoryForm({ category, onSubmit, onCancel, isSubmitting = fals
           type="button"
           onClick={onCancel}
           disabled={isSubmitting}
-          className={`px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} bg-white border ${colorTokens.border.default} rounded-md shadow-sm hover:${colorTokens.surface.page} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:${colorTokens.intent.primary.ring} disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} bg-white border ${colorTokens.border.default} rounded-md shadow-sm ${colorTokens.variants.hoverBgGray50} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.variants.focusRingBlue500} disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {t('inventory:categories.form.cancel')}
         </button>
         <button
           type="submit"
           disabled={isSubmitting}
-          className={`px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrong} border border-transparent rounded-md shadow-sm hover:${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:${colorTokens.intent.primary.ring} disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrong} border border-transparent rounded-md shadow-sm ${colorTokens.intent.primary.bgStrongHover} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.variants.focusRingBlue500} disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {isSubmitting
             ? t('inventory:categories.form.saving')

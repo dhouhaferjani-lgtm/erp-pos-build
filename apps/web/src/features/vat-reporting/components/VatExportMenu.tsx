@@ -53,7 +53,7 @@ export function VatExportMenu({ periodId }: VatExportMenuProps) {
             <button
               key={format.format}
               type="button"
-              className={`block w-full px-4 py-2 text-start text-sm ${colorTokens.text.secondary} hover:${colorTokens.surface.muted}`}
+              className={`block w-full px-4 py-2 text-start text-sm ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray100}`}
               onClick={() => { handleExport(format.format); }}
               disabled={exportMutation.isPending}
             >

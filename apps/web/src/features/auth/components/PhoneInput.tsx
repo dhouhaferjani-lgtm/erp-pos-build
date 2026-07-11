@@ -34,7 +34,7 @@ export function PhoneInput({ countryCode, value, onChange, error }: PhoneInputPr
           onChange={(e) => { onChange(e.target.value) }}
           placeholder="612345678"
           className={cn(
-            `block w-full border ${colorTokens.border.default} px-3 py-2 text-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`,
+            `block w-full border ${colorTokens.border.default} px-3 py-2 text-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`,
             dialCode ? 'rounded-e-lg' : 'rounded-lg'
           )}
         />

@@ -1,6 +1,6 @@
 import { CalendarDays, MapPin } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
+import { borderColors, colors, textColors, tokens, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useLocationStore } from '@/stores/locationStore'
 
 export interface OwnerDashboardFiltersValue {
@@ -126,7 +126,7 @@ export function OwnerDashboardFilters({ value, onChange }: OwnerDashboardFilters
           <button
             type="button"
             onClick={handleAllLocations}
-            className={`text-sm ${value.locationIds.length === 0 ? textColors.primary : textColors.tertiary} hover:${textColors.secondary}`}
+            className={`text-sm ${value.locationIds.length === 0 ? textColors.primary : textColors.tertiary} ${colorTokens.variants.hoverTextGray700}`}
           >
             {t('reports:ownerDashboard.filters.allLocations')}
           </button>

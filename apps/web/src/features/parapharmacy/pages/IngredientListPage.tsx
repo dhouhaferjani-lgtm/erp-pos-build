@@ -118,7 +118,7 @@ export function IngredientListPage() {
                 </tr>
               ) : (
                 data?.data?.map((ingredient) => (
-                  <tr key={ingredient.id} className={`hover:${colorTokens.surface.page}`}>
+                  <tr key={ingredient.id} className={`${colorTokens.variants.hoverBgGray50}`}>
                     <td className={`px-6 py-4 text-sm font-medium ${colorTokens.text.primary}`}>
                       {ingredient.name}
                     </td>

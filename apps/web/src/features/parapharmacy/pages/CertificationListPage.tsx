@@ -118,7 +118,7 @@ export function CertificationListPage() {
                 </tr>
               ) : (
                 data?.data?.map((certification) => (
-                  <tr key={certification.id} className={`hover:${colorTokens.surface.page}`}>
+                  <tr key={certification.id} className={`${colorTokens.variants.hoverBgGray50}`}>
                     <td className={`px-6 py-4 text-sm font-medium ${colorTokens.text.primary}`}>
                       {certification.name}
                     </td>

@@ -112,7 +112,7 @@ export function CompositeItemSearchSelect({
         aria-disabled={disabled}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
-        className={`flex w-full items-center justify-between rounded-lg border ${borderColors.default} px-3 py-2 text-start shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:${colorTokens.intent.primary.ring} ${
+        className={`flex w-full items-center justify-between rounded-lg border ${borderColors.default} px-3 py-2 text-start shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 ${colorTokens.variants.focusVisibleRingBlue500} ${
           disabled ? `${colors.neutral[100]} cursor-not-allowed` : `${colors.white} ${colors.hover.gray50} cursor-pointer`
         }`}
       >

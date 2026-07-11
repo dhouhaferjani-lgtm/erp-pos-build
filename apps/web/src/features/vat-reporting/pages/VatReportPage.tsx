@@ -24,7 +24,7 @@ export function VatReportPage() {
       <button
         type="button"
         onClick={() => { void navigate('/finance/vat-periods'); }}
-        className={`mb-4 flex items-center gap-1.5 text-sm ${colorTokens.text.subtle} hover:${colorTokens.text.secondary}`}
+        className={`mb-4 flex items-center gap-1.5 text-sm ${colorTokens.text.subtle} ${colorTokens.variants.hoverTextGray700}`}
       >
         <ArrowLeft className="h-4 w-4" />
         {t('finance:vatReporting.detail.backToList')}

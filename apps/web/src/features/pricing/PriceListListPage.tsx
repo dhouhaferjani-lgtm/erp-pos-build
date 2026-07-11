@@ -73,7 +73,7 @@ export function PriceListListPage() {
         </div>
         <Link
           to="/pricing/price-lists/new"
-          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover} transition-colors`}
+          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover} transition-colors`}
         >
           <Plus className="h-4 w-4" />
           {t('pricing:priceLists.create', 'Create Price List')}
@@ -117,7 +117,7 @@ export function PriceListListPage() {
             <div className="mt-6">
               <Link
                 to="/pricing/price-lists/new"
-                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover}`}
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 <Plus className="h-4 w-4" />
                 {t('pricing:priceLists.create', 'Create Price List')}
@@ -152,11 +152,11 @@ export function PriceListListPage() {
             </thead>
             <tbody className={`divide-y ${colorTokens.border.divider} bg-white`}>
               {filteredPriceLists.map((priceList) => (
-                <tr key={priceList.id} className={`hover:${colorTokens.surface.page}`}>
+                <tr key={priceList.id} className={`${colorTokens.variants.hoverBgGray50}`}>
                   <td className="whitespace-nowrap px-6 py-4">
                     <Link
                       to={`/pricing/price-lists/${priceList.id}`}
-                      className={`font-mono font-medium ${colorTokens.intent.primary.text} hover:${colorTokens.intent.primary.textStronger}`}
+                      className={`font-mono font-medium ${colorTokens.intent.primary.text} ${colorTokens.variants.hoverTextBlue800}`}
                     >
                       {priceList.code}
                     </Link>
@@ -165,7 +165,7 @@ export function PriceListListPage() {
                     <div>
                       <Link
                         to={`/pricing/price-lists/${priceList.id}`}
-                        className={`font-medium ${colorTokens.text.primary} hover:${colorTokens.intent.primary.text}`}
+                        className={`font-medium ${colorTokens.text.primary} ${colorTokens.variants.hoverTextBlue600}`}
                       >
                         {priceList.name}
                       </Link>

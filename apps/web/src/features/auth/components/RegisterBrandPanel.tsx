@@ -13,14 +13,14 @@ export function RegisterBrandPanel() {
     <div className={`hidden w-[420px] shrink-0 flex-col justify-between ${colorTokens.intent.ledger.bgInverse} p-10 md:flex`}>
       <div>
         <h1 className={`text-3xl font-bold ${colorTokens.text.inverse}`}>{productName}</h1>
-        <p className={`mt-3 text-base ${colorTokens.intent.ledger.textSubtle}`}>
+        <p className={`mt-3 text-base ${colorTokens.intent.ledger.textDisabled}`}>
           {t(`auth:brandPanel.${product}.tagline`)}
         </p>
 
         <ul className="mt-10 space-y-4">
           {features.map((feature) => (
             <li key={feature} className="flex items-center gap-3">
-              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${colorTokens.intent.success.bg}/20`}>
+              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${colorTokens.variants.bgGreen500Alpha20}`}>
                 <Check className={`h-3.5 w-3.5 ${colorTokens.intent.success.textFaint}`} />
               </span>
               <span className={`text-sm ${colorTokens.intent.ledger.textFaint}`}>{feature}</span>

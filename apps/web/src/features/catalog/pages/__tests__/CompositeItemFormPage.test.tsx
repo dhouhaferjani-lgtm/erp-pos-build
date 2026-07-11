@@ -151,7 +151,7 @@ describe('CompositeItemFormPage', () => {
     })
   })
 
-  it('sends base_price as a string (not a JS number) in the update payload', async () => {
+  it('sends the full update payload with decimal fields preserved as strings', async () => {
     const user = userEvent.setup()
     render(<CompositeItemFormPage />)
 
@@ -169,7 +169,21 @@ describe('CompositeItemFormPage', () => {
       // Precision contract: monetary values MUST be strings, never JS numbers —
       // coercing to Number() would silently truncate TND's 3rd decimal place.
       expect(typeof data['base_price']).toBe('string')
-      expect(data['base_price']).toBe('12.5')
+      expect(data).toEqual({
+        code: 'ESP',
+        name: 'Espresso',
+        category_id: null,
+        vertical_type: 'fnb',
+        base_price: '12.5',
+        manual_cost: null,
+        production_type: 'made_to_order',
+        pricing_mode: 'standard',
+        tax_rate: '7.00',
+        is_active: true,
+        is_available: true,
+        image_url: null,
+      })
+      expect(data).not.toHaveProperty('tax_configuration_id')
     })
   })
 })

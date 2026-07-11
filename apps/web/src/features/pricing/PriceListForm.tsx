@@ -111,7 +111,7 @@ export function PriceListForm() {
       <div className="flex items-center gap-4">
         <Link
           to="/pricing/price-lists"
-          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} hover:${colorTokens.text.primary}`}
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.variants.hoverTextGray900}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('common:actions.back')}
@@ -140,7 +140,7 @@ export function PriceListForm() {
               type="text"
               id="code"
               {...register('code', { required: t('pricing:validation.codeRequired', 'Code is required') })}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
               placeholder={t('pricing:priceLists.codePlaceholder')}
             />
             {errors.code && (
@@ -157,7 +157,7 @@ export function PriceListForm() {
               type="text"
               id="name"
               {...register('name', { required: t('pricing:validation.nameRequired', 'Name is required') })}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
               placeholder={t('pricing:priceLists.namePlaceholder')}
             />
             {errors.name && (
@@ -173,7 +173,7 @@ export function PriceListForm() {
             <select
               id="currency"
               {...register('currency', { required: true })}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
             >
               <option value="TND">{t('pricing:priceLists.currencies.TND')}</option>
               <option value="EUR">{t('pricing:priceLists.currencies.EUR')}</option>
@@ -190,7 +190,7 @@ export function PriceListForm() {
               id="description"
               {...register('description')}
               rows={3}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
               placeholder={t('pricing:priceLists.descriptionPlaceholder', 'Optional description for this price list')}
             />
           </div>
@@ -204,7 +204,7 @@ export function PriceListForm() {
               type="date"
               id="valid_from"
               {...register('valid_from')}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
             />
           </div>
 
@@ -217,7 +217,7 @@ export function PriceListForm() {
               type="date"
               id="valid_until"
               {...register('valid_until')}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm focus:${colorTokens.intent.primary.borderFocus} focus:outline-none focus:ring-1 focus:${colorTokens.intent.primary.ring}`}
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.variants.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorTokens.variants.focusRingBlue500}`}
             />
           </div>
 
@@ -229,7 +229,7 @@ export function PriceListForm() {
                 type="checkbox"
                 id="is_active"
                 {...register('is_active')}
-                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} focus:${colorTokens.intent.primary.ring}`}
+                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
               />
               <span className={`text-sm ${colorTokens.text.secondary}`}>
                 {t('pricing:priceLists.fields.active', 'Active')}
@@ -242,7 +242,7 @@ export function PriceListForm() {
                 type="checkbox"
                 id="is_default"
                 {...register('is_default')}
-                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} focus:${colorTokens.intent.primary.ring}`}
+                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
               />
               <span className={`text-sm ${colorTokens.text.secondary}`}>
                 {t('pricing:priceLists.fields.default', 'Default')}
@@ -264,14 +264,14 @@ export function PriceListForm() {
         <div className={`flex justify-end gap-3 pt-4 border-t ${colorTokens.border.subtle}`}>
           <Link
             to="/pricing/price-lists"
-            className={`rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page}`}
+            className={`rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50}`}
           >
             {t('common:actions.cancel')}
           </Link>
           <button
             type="submit"
             disabled={isSubmitting || mutation.isPending}
-            className={`rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50`}
+            className={`rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover} disabled:opacity-50`}
           >
             {mutation.isPending ? t('common:status.saving') : t('common:actions.save')}
           </button>

@@ -152,7 +152,7 @@ export function PromotionListPage() {
               {promotions.map((promo) => (
                 <tr
                   key={promo.id}
-                  className={`hover:${colorTokens.surface.page} cursor-pointer`}
+                  className={`${colorTokens.variants.hoverBgGray50} cursor-pointer`}
                   onClick={() => navigate(`/pos/promotions/${promo.id}/edit`)}
                 >
                   <td className="px-4 py-3">
@@ -185,7 +185,7 @@ export function PromotionListPage() {
                       {promo.status === 'draft' || promo.status === 'paused' ? (
                         <button
                           onClick={() => { handleAction('activate', promo); }}
-                          className={`p-1.5 rounded hover:${colorTokens.intent.success.bgSubtle} ${colorTokens.intent.success.text}`}
+                          className={`p-1.5 rounded ${colorTokens.variants.hoverBgGreen50} ${colorTokens.intent.success.text}`}
                           title={t('promotions:actions.activate')}
                         >
                           <Play className="w-4 h-4" />
@@ -194,7 +194,7 @@ export function PromotionListPage() {
                       {promo.status === 'active' ? (
                         <button
                           onClick={() => { handleAction('pause', promo); }}
-                          className={`p-1.5 rounded hover:${colorTokens.intent.warning.bgSubtle} ${colorTokens.intent.warning.text}`}
+                          className={`p-1.5 rounded ${colorTokens.variants.hoverBgYellow50} ${colorTokens.intent.warning.text}`}
                           title={t('promotions:actions.pause')}
                         >
                           <Pause className="w-4 h-4" />
@@ -203,7 +203,7 @@ export function PromotionListPage() {
                       {promo.status !== 'archived' ? (
                         <button
                           onClick={() => { handleAction('archive', promo); }}
-                          className={`p-1.5 rounded hover:${colorTokens.surface.muted} ${colorTokens.text.subtle}`}
+                          className={`p-1.5 rounded ${colorTokens.variants.hoverBgGray100} ${colorTokens.text.subtle}`}
                           title={t('promotions:actions.archive')}
                         >
                           <Archive className="w-4 h-4" />
@@ -212,7 +212,7 @@ export function PromotionListPage() {
                       {promo.status !== 'active' ? (
                         <button
                           onClick={() => { handleAction('delete', promo); }}
-                          className={`p-1.5 rounded hover:${colorTokens.intent.danger.bgSubtle} ${colorTokens.intent.danger.textSubtle}`}
+                          className={`p-1.5 rounded ${colorTokens.variants.hoverBgRed50} ${colorTokens.intent.danger.textSubtle}`}
                           title={t('promotions:deletePromotion')}
                         >
                           <Trash2 className="w-4 h-4" />

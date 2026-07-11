@@ -256,7 +256,7 @@ export function IngredientFormPage() {
                 id="is_allergen"
                 checked={isAllergen}
                 onChange={(e) => { setIsAllergen(e.target.checked); }}
-                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} focus:${colorTokens.intent.primary.ring}`}
+                className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.variants.focusRingBlue500}`}
               />
               <label htmlFor="is_allergen" className={`text-sm ${colorTokens.text.secondary}`}>
                 {t('parapharmacy:isAllergen')}

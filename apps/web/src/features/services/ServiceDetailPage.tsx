@@ -136,7 +136,7 @@ export function ServiceDetailPage() {
         <div className="flex items-center gap-4">
           <Link
             to="/services"
-            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} hover:${colorTokens.text.primary}`}
+            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.variants.hoverTextGray900}`}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('actions.back')}
@@ -167,7 +167,7 @@ export function ServiceDetailPage() {
         <div className="flex items-center gap-2">
           <Link
             to={`/services/${id}/edit`}
-            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page}`}
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50}`}
           >
             <Edit className="h-4 w-4" />
             {t('actions.edit')}
@@ -175,7 +175,7 @@ export function ServiceDetailPage() {
           <button
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
-            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.border} bg-white px-4 py-2 text-sm font-medium ${colorTokens.intent.danger.textStrong} hover:${colorTokens.intent.danger.bgSubtle} disabled:opacity-50`}
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.border} bg-white px-4 py-2 text-sm font-medium ${colorTokens.intent.danger.textStrong} ${colorTokens.variants.hoverBgRed50} disabled:opacity-50`}
           >
             <Trash2 className="h-4 w-4" />
             {t('actions.delete')}

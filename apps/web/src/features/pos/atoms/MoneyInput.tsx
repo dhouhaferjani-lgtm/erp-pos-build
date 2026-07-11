@@ -1,6 +1,6 @@
 import type { InputHTMLAttributes, ChangeEvent } from 'react'
 import { cn } from '@/lib/utils'
-import { colors, textColors, borderColors, focusRing } from '@/lib/designTokens'
+import { colors, textColors, borderColors, focusRing, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 
 export interface MoneyInputProps
@@ -94,7 +94,7 @@ export function MoneyInput({
             // Error state
             error
               ? cn(borderColors.error, focusRing.error)
-              : cn(borderColors.default, `focus:${borderColors.primary}`),
+              : cn(borderColors.default, `${colorTokens.variants.focusBorderBlue500}`),
 
             // Disabled state
             disabled && cn(colors.neutral[100], 'cursor-not-allowed opacity-50')

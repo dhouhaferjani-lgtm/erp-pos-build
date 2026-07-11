@@ -6,7 +6,7 @@ import { Plus, Car } from 'lucide-react'
 import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { SearchInput } from '../../components/molecules/SearchInput'
-import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { borderColors, textColors, tokens, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
@@ -153,7 +153,7 @@ export function VehicleListPage() {
                   <td className="whitespace-nowrap px-6 py-4">
                     <Link
                       to={`/vehicles/${vehicle.id}`}
-                      className={`font-medium ${textColors.primary} hover:${textColors.brand}`}
+                      className={`font-medium ${textColors.primary} ${colorTokens.variants.hoverTextBlue600}`}
                     >
                       {vehicle.brand} {vehicle.model}
                     </Link>

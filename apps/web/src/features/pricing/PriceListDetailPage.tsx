@@ -127,7 +127,7 @@ export function PriceListDetailPage() {
         <div className="flex items-center gap-4">
           <Link
             to="/pricing/price-lists"
-            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} hover:${colorTokens.text.primary}`}
+            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.variants.hoverTextGray900}`}
           >
             <ArrowLeft className="h-4 w-4" />
             {t('common:actions.back')}
@@ -156,7 +156,7 @@ export function PriceListDetailPage() {
         <div className="flex items-center gap-2">
           <Link
             to={`/pricing/price-lists/${id}/edit`}
-            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page}`}
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50}`}
           >
             <Edit className="h-4 w-4" />
             {t('common:actions.edit')}
@@ -164,7 +164,7 @@ export function PriceListDetailPage() {
           <button
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
-            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.border} bg-white px-4 py-2 text-sm font-medium ${colorTokens.intent.danger.textStrong} hover:${colorTokens.intent.danger.bgSubtle} disabled:opacity-50`}
+            className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.intent.danger.border} bg-white px-4 py-2 text-sm font-medium ${colorTokens.intent.danger.textStrong} ${colorTokens.variants.hoverBgRed50} disabled:opacity-50`}
           >
             <Trash2 className="h-4 w-4" />
             {t('common:actions.delete')}
@@ -215,7 +215,7 @@ export function PriceListDetailPage() {
           </div>
           <button
             onClick={() => { setShowAddItemModal(true); }}
-            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-3 py-1.5 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover}`}
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-3 py-1.5 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover}`}
           >
             <Plus className="h-4 w-4" />
             {t('pricing:priceLists.addItem', 'Add Item')}
@@ -253,7 +253,7 @@ export function PriceListDetailPage() {
             <tbody className={`divide-y ${colorTokens.border.divider} bg-white`}>
               {Object.entries(itemsByProduct).map(([_productId, items]) =>
                 items.map((item, index) => (
-                  <tr key={item.id} className={`hover:${colorTokens.surface.page}`}>
+                  <tr key={item.id} className={`${colorTokens.variants.hoverBgGray50}`}>
                     {index === 0 && (
                       <td
                         className="whitespace-nowrap px-6 py-4"
@@ -278,7 +278,7 @@ export function PriceListDetailPage() {
                       <button
                         onClick={() => { handleRemoveItem(item); }}
                         disabled={removeItemMutation.isPending}
-                        className={`${colorTokens.intent.danger.text} hover:${colorTokens.intent.danger.textStronger} disabled:opacity-50`}
+                        className={`${colorTokens.intent.danger.text} ${colorTokens.variants.hoverTextRed800} disabled:opacity-50`}
                         title={t('common:actions.delete')}
                       >
                         <X className="h-4 w-4" />
@@ -304,7 +304,7 @@ export function PriceListDetailPage() {
           </div>
           <button
             onClick={() => { setShowAssignPartnerModal(true); }}
-            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-3 py-1.5 text-sm font-medium text-white hover:${colorTokens.intent.primary.bgStrongHover}`}
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-3 py-1.5 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover}`}
           >
             <Plus className="h-4 w-4" />
             {t('pricing:priceLists.assignPartner', 'Assign Partner')}
@@ -324,7 +324,7 @@ export function PriceListDetailPage() {
         ) : (
           <ul className={`divide-y ${colorTokens.border.divider}`}>
             {priceList.partners.map((partner) => (
-              <li key={partner.id} className={`flex items-center justify-between px-6 py-4 hover:${colorTokens.surface.page}`}>
+              <li key={partner.id} className={`flex items-center justify-between px-6 py-4 ${colorTokens.variants.hoverBgGray50}`}>
                 <div>
                   <p className={`font-medium ${colorTokens.text.primary}`}>{partner.name}</p>
                   {(partner.valid_from || partner.valid_until) && (
@@ -336,7 +336,7 @@ export function PriceListDetailPage() {
                 <button
                   onClick={() => { handleRemovePartner(partner); }}
                   disabled={removePartnerMutation.isPending}
-                  className={`${colorTokens.intent.danger.text} hover:${colorTokens.intent.danger.textStronger} disabled:opacity-50`}
+                  className={`${colorTokens.intent.danger.text} ${colorTokens.variants.hoverTextRed800} disabled:opacity-50`}
                   title={t('common:actions.delete')}
                 >
                   <X className="h-4 w-4" />
@@ -357,7 +357,7 @@ export function PriceListDetailPage() {
             <p className={`${colorTokens.text.subtle} mb-4`}>{t('pricing:priceLists.addItemComingSoon')}</p>
             <button
               onClick={() => { setShowAddItemModal(false); }}
-              className={`rounded-lg ${colorTokens.surface.muted} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.subdued}`}
+              className={`rounded-lg ${colorTokens.surface.muted} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray200}`}
             >
               {t('common:actions.close')}
             </button>
@@ -374,7 +374,7 @@ export function PriceListDetailPage() {
             <p className={`${colorTokens.text.subtle} mb-4`}>{t('pricing:priceLists.assignPartnerComingSoon')}</p>
             <button
               onClick={() => { setShowAssignPartnerModal(false); }}
-              className={`rounded-lg ${colorTokens.surface.muted} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.subdued}`}
+              className={`rounded-lg ${colorTokens.surface.muted} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray200}`}
             >
               {t('common:actions.close')}
             </button>

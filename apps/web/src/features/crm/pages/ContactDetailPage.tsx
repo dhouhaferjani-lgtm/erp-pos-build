@@ -91,7 +91,7 @@ export function ContactDetailPage() {
       <div className="flex items-center gap-4">
         <Link
           to="/crm/contacts"
-          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} hover:${colorTokens.text.primary}`}
+          className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.variants.hoverTextGray900}`}
         >
           <ArrowLeft className="h-4 w-4" />
           {t('common:actions.back')}
@@ -246,7 +246,7 @@ export function ContactDetailPage() {
                   )}
                   <button
                     type="button"
-                    className={`rounded p-1 ${colorTokens.text.disabled} hover:${colorTokens.surface.muted} hover:${colorTokens.intent.danger.textSubtle}`}
+                    className={`rounded p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverBgGray100} ${colorTokens.variants.hoverTextRed500}`}
                     title={t('crm:contacts.unlinkCompany')}
                     onClick={() => {
                       if (window.confirm(t('crm:contacts.unlinkConfirm'))) {

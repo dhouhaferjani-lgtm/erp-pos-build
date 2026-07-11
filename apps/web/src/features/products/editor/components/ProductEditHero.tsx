@@ -171,7 +171,7 @@ export function ProductEditHero({
                       enrichmentState === 'unavailable'
                         ? 'bg-white/10 text-[#B7C6D9]'
                         : enrichmentState === 'ready-for-review'
-                          ? `${colorTokens.intent.caution.bgSoftStronger}/20 ${colorTokens.intent.caution.textFaint}`
+                          ? `${colorTokens.variants.bgAmber300Alpha20} ${colorTokens.intent.caution.textFaint}`
                           : 'bg-[rgba(31,138,91,.18)] text-[#7BE0B0]',
                     )}
                   >

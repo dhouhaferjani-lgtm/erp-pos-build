@@ -481,8 +481,8 @@ export function CompanyPage() {
                       disabled={updateProcurementMutation.isPending}
                       aria-pressed={isActive}
                       className={cn(
-                        `min-h-40 rounded-lg border bg-white p-5 text-left shadow-sm transition-colors focus:outline-none focus:ring-2 focus:${colorTokens.intent.primary.ring} focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60`,
-                        isActive ? `${colorTokens.intent.primary.borderFocus} ring-1 ${colorTokens.intent.primary.ring}` : cn(borderColors.light, `hover:${colorTokens.intent.primary.border}`),
+                        `min-h-40 rounded-lg border bg-white p-5 text-left shadow-sm transition-colors focus:outline-none focus:ring-2 ${colorTokens.variants.focusRingBlue500} focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60`,
+                        isActive ? `${colorTokens.intent.primary.borderFocus} ring-1 ${colorTokens.intent.primary.ring}` : cn(borderColors.light, `${colorTokens.variants.hoverBorderBlue300}`),
                       )}
                     >
                       <div className="flex items-start justify-between gap-3">

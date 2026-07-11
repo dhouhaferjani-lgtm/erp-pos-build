@@ -165,7 +165,7 @@ export function PromotionFormPage() {
         <button
           type="button"
           onClick={() => navigate('/pos/promotions')}
-          className={`p-2 rounded-lg hover:${colorTokens.surface.muted}`}
+          className={`p-2 rounded-lg ${colorTokens.variants.hoverBgGray100}`}
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -409,7 +409,7 @@ export function PromotionFormPage() {
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   daysOfWeek.includes(day)
                     ? `${colorTokens.intent.primary.bg} text-white`
-                    : `${colorTokens.surface.muted} ${colorTokens.text.secondary} hover:${colorTokens.surface.subdued}`
+                    : `${colorTokens.surface.muted} ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray200}`
                 }`}
               >
                 {t(`promotions:days.${day}`)}

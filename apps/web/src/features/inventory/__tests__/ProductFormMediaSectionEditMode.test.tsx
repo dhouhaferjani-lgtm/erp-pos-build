@@ -93,9 +93,13 @@ vi.mock('../../catalog/components/ProductVariantMatrixEditor', () => ({
 }))
 
 // ── ProductImageSection + CreateModeImageBuffer mocks ────────────────────────
-vi.mock('../../products/components', () => ({
+vi.mock('../../products/components/ProductImageSection', () => ({
   ProductImageSection: () => <div data-testid="product-image-section" />,
+}))
+vi.mock('../../products/components/ParapharmacyMetadataFields', () => ({
   ParapharmacyMetadataFields: () => null,
+}))
+vi.mock('../../products/components/CreateModeImageBuffer', () => ({
   CreateModeImageBuffer: () => <div data-testid="create-mode-image-buffer" />,
 }))
 

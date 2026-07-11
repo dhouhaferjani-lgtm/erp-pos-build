@@ -193,7 +193,7 @@ export function ConversionCalculator({
             <button
               type="button"
               onClick={handleSwapUnits}
-              className={`p-2 ${colorTokens.text.muted} hover:${colorTokens.surface.muted} rounded-full transition-colors`}
+              className={`p-2 ${colorTokens.text.muted} ${colorTokens.variants.hoverBgGray100} rounded-full transition-colors`}
               title={t('uom:swapUnits')}
               disabled={!fromUnitId || !toUnitId}
             >

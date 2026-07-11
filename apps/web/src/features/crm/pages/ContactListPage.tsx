@@ -98,7 +98,7 @@ export function ContactListPage() {
               contacts.map((contact) => (
                 <tr
                   key={contact.id}
-                  className={`cursor-pointer hover:${colorTokens.surface.page}`}
+                  className={`cursor-pointer ${colorTokens.variants.hoverBgGray50}`}
                   onClick={() => { void navigate(`/crm/contacts/${contact.id}`) }}
                 >
                   <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium ${colorTokens.text.primary}`}>

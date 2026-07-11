@@ -126,7 +126,7 @@ export function RegisterPage() {
         {/* Mobile header — visible only on mobile */}
         <div className={`${colorTokens.intent.ledger.bgInverse} px-6 py-4 md:hidden`}>
           <h1 className={`text-lg font-bold ${colorTokens.text.inverse}`}>{productName}</h1>
-          <p className={`text-sm ${colorTokens.intent.ledger.textSubtle}`}>
+          <p className={`text-sm ${colorTokens.intent.ledger.textDisabled}`}>
             {t(`auth:brandPanel.${product}.tagline` as const)}
           </p>
         </div>
@@ -176,7 +176,7 @@ export function RegisterPage() {
                 <button
                   type="button"
                   onClick={goBack}
-                  className={`flex items-center rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} hover:${colorTokens.surface.page} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2`}
+                  className={`flex items-center rounded-lg border ${colorTokens.border.default} bg-white px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2`}
                 >
                   <ChevronLeft className="mr-1 h-4 w-4" />
                   {t('auth:register.back')}
