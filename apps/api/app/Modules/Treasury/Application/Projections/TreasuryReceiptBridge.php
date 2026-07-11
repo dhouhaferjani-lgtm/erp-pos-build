@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Application\Projections;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
@@ -14,12 +15,16 @@ use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Projections\Concerns\HandlesMaturityTenderLeg;
+use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
+use App\Modules\Treasury\Domain\Enums\CancellationShape;
+use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
@@ -127,6 +132,8 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         private readonly PaymentMethodResolver $paymentMethodResolver,
         private readonly TreasuryMovementServiceInterface $movementService,
         private readonly HandlesMaturityTenderLeg $maturityLegHandler,
+        private readonly InstrumentLifecycleService $instrumentLifecycle,
+        private readonly AuditService $auditService,
     ) {}
 
     public function name(): string
@@ -317,17 +324,27 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             // type — REFUND_RECEIPT/SALE_VOID are RESERVED_UNREACHABLE). Every
             // money field in the payload is NON-NEGATIVE (§6), so the refund
             // signal is the invoice_type_code, NOT a negative amount. For a
-            // refund each tender leg pays cash OUT of the drawer and posts a GL
-            // reversal of the sale entry; a plain SALE keeps the Task-20 IN +
-            // sale-GL behavior. Decided ONCE from the immutable payload so the
-            // whole receipt's legs are consistent.
+            // refund immediate legs pay cash OUT and reverse the sale entry;
+            // Task 17 maturity legs instead cancel exactly one still-Received
+            // original instrument or fall back to cash with a durable alert.
+            // A plain SALE keeps the Task-20 IN + sale-GL behavior. Decided
+            // once from the immutable payload so the receipt stays consistent.
             $invoiceTypeCode = $view->payload->invoiceTypeCode;
             $isRefund = $invoiceTypeCode === 'REFUND' || $invoiceTypeCode === 'VOID';
+            $originalEventId = $view->originalReceiptReference?->fiscalEventId;
 
             $totalLines = count($view->payments);
             $index = 0;
             foreach ($view->payments as $payment) {
-                $this->projectPaymentLineFromCanonical($event, $receipt, $payment, $index, $totalLines, $isRefund);
+                $this->projectPaymentLineFromCanonical(
+                    $event,
+                    $receipt,
+                    $payment,
+                    $index,
+                    $totalLines,
+                    $isRefund,
+                    $originalEventId,
+                );
                 $index++;
             }
         });
@@ -370,6 +387,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         int $index,
         int $totalLines,
         bool $isRefund,
+        ?string $originalEventId,
     ): void {
         $amount = $line->amount;
         $methodCode = $line->methodCode;
@@ -418,6 +436,25 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         }
 
         $isMaturityLeg = $this->maturityLegHandler->handles($paymentMethod);
+        if ($isRefund && $isMaturityLeg) {
+            if ($originalEventId === null) {
+                throw new RuntimeException('TreasuryReceiptBridge: maturity refund has no original fiscal event reference.');
+            }
+            if ($this->handleMaturityRefundLeg(
+                $event,
+                $line,
+                $index,
+                $paymentMethod,
+                $receipt,
+                $originalEventId,
+            )) {
+                return;
+            }
+
+            // Missing, ambiguous, or active non-Received paper takes the safe
+            // standard cash reversal path after emitting its durable alert.
+            $isMaturityLeg = false;
+        }
 
         // Repository resolution — the 27-key canonical payload does not
         // carry per-payment `repository_id` (synthesis v5 §3 deliberately
@@ -687,5 +724,98 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         } catch (QueryException) {
             return null;
         }
+    }
+
+    /**
+     * Return true when the maturity refund is fully handled without cash.
+     * False means the caller must use the standard refund JE + movement path.
+     */
+    private function handleMaturityRefundLeg(
+        FiscalEvent $event,
+        PaymentDTO $line,
+        int $index,
+        PaymentMethod $method,
+        Receipt $receipt,
+        string $originalEventId,
+    ): bool {
+        $matches = PaymentInstrument::query()
+            ->where('tenant_id', $event->tenant_id)
+            ->where('company_id', $event->company_id)
+            ->where('idempotency_key', 'like', sprintf('fiscal_event:%s:instrument:%%', $originalEventId))
+            ->where('kind', $method->instrument_kind?->value)
+            ->where('amount', $line->amount)
+            ->orderBy('id')
+            ->get();
+        $received = $matches->where('status', InstrumentStatus::Received)->values();
+
+        if ($received->count() === 1) {
+            /** @var PaymentInstrument $instrument */
+            $instrument = $received->first();
+            $this->instrumentLifecycle->cancel(
+                $instrument->id,
+                $receipt->cashier_id,
+                sprintf('POS refund/void fiscal event %s', $event->id),
+                CancellationShape::PosRevenue,
+            );
+
+            return true;
+        }
+
+        if ($matches->count() === 1 && $matches->first()?->status === InstrumentStatus::Cancelled) {
+            return true;
+        }
+
+        $this->recordMaturityRefundAlert(
+            event: $event,
+            index: $index,
+            originalEventId: $originalEventId,
+            matchCount: $matches->count(),
+            receivedCount: $received->count(),
+            userId: $receipt->cashier_id,
+        );
+
+        return false;
+    }
+
+    private function recordMaturityRefundAlert(
+        FiscalEvent $event,
+        int $index,
+        string $originalEventId,
+        int $matchCount,
+        int $receivedCount,
+        ?string $userId,
+    ): void {
+        $aggregateId = sprintf('%s:payment:%d', $event->id, $index);
+        $exists = DB::table('audit_events')
+            ->where('tenant_id', $event->tenant_id)
+            ->where('event_type', 'pos_refund_on_active_instrument')
+            ->where('aggregate_type', 'fiscal_event')
+            ->where('aggregate_id', $aggregateId)
+            ->exists();
+
+        if (! $exists) {
+            $this->auditService->record(
+                companyId: $event->company_id,
+                userId: $userId,
+                eventType: 'pos_refund_on_active_instrument',
+                aggregateType: 'fiscal_event',
+                aggregateId: $aggregateId,
+                payload: [
+                    'refund_event_id' => $event->id,
+                    'leg_index' => $index,
+                    'original_event_id' => $originalEventId,
+                    'match_count' => $matchCount,
+                    'received_count' => $receivedCount,
+                ],
+            );
+        }
+
+        Log::warning('POS maturity refund could not safely cancel its original instrument.', [
+            'refund_event_id' => $event->id,
+            'leg_index' => $index,
+            'original_event_id' => $originalEventId,
+            'match_count' => $matchCount,
+            'received_count' => $receivedCount,
+        ]);
     }
 }

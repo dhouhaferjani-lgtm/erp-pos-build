@@ -272,3 +272,16 @@
 - Boundary evidence: missing portfolio account fails closed before instrument creation; voucher-shaped non-maturity and `has_maturity + Other` legs retain cash JE/movement behavior; `pos_receipt_payments` rows are byte-identical across the Treasury maturity branch; projections run with `CompanyContext` cleared.
 - Lock/atomicity evidence: fresh paper is created before Payment/GL work; `postEntryNow` remains inside the enclosing bridge transaction; deferred legs return before the repository port. The unique-violation replay lookup occurs after `receive()` has rolled back its nested savepoint.
 - Deviations: none. Task 16 intentionally establishes the sale-leg seam; refund/void maturity routing remains assigned to Task 17.
+
+### Task 17 — POS refund/void maturity handling
+
+- Status: complete.
+- Files touched: `TreasuryReceiptBridge`; `InstrumentLifecycleService`; new focused `PosBridgeInstrumentRefundTest`; this progress log.
+- RED: the same-day canonical check-refund path left the original instrument `Received` and entered the Task-16 sale-side maturity flow instead of cancelling the paper.
+- GREEN: focused Task-17 path — PASS, 4 tests / 36 assertions. Task path plus Task-16, legacy POS spine/refund, and lifecycle-cancellation regressions — PASS, 30 tests / 185 assertions.
+- Verification: targeted PHPStan over bridge/lifecycle/test — zero errors; Pint dirty test — pass; `git diff --check` — pass.
+- Same-day evidence: original-event resolution uses the sealed `original_receipt_reference.fiscal_event_id`; exactly one matching Received kind+amount instrument is locked and cancelled with `PosRevenue`; its linked original Payment becomes Reversed, the sole cancellation JE is Dr ProductRevenue / Cr 5112, aggregate revenue nets to zero, no standard refund JE or repository movement is written, and replay is a silent Cancelled no-op.
+- Active/ambiguous evidence: a Deposited original remains untouched while the refund posts the standard Dr-Revenue/Cr-cash JE plus one Out movement; two identical canonical check legs are never guess-cancelled and use the same safe cash path. Both outcomes write `pos_refund_on_active_instrument`; the event/index aggregate key stays at one row across replay and a warning is logged.
+- Failure/immutability evidence: making ProductRevenue unavailable forces cancellation GL creation to throw; the outer transaction leaves the instrument Received with no cancellation event, refund Payment, or movement. `pos_receipt_payments` bytes are unchanged by the maturity refund path, and `CompanyContext` is cleared before every bridge apply.
+- Lock/atomicity evidence: cancellation locks the instrument before reading/updating its linked Payment and before `postEntryNow`; the no-cash branch never resolves or locks a repository. Alert + standard refund JE + movement share the outer bridge transaction on fallback.
+- Deviations: none. Zero or multiple safe candidates intentionally follow the binding safe-default cash reversal plus alert; only exactly one Received candidate can cancel.

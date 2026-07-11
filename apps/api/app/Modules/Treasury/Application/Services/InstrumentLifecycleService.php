@@ -574,7 +574,8 @@ final readonly class InstrumentLifecycleService
 
             $payment = $instrument->payment()->first();
             if ($payment !== null && $payment->status !== PaymentStatus::Reversed
-                && $payment->getAttribute('dishonored_at') === null) {
+                && $payment->getAttribute('dishonored_at') === null
+                && $shape !== CancellationShape::PosRevenue) {
                 throw new DomainException('Settle or reverse the linked payment before cancelling its instrument.');
             }
 
@@ -596,6 +597,10 @@ final readonly class InstrumentLifecycleService
                 );
                 $this->generalLedger->postEntryNow($entry, User::query()->find($userId), $instrument->currency);
                 $journalEntryId = $entry->id;
+            }
+
+            if ($payment !== null && $shape === CancellationShape::PosRevenue) {
+                $payment->update(['status' => PaymentStatus::Reversed]);
             }
 
             $instrument->update(['status' => InstrumentStatus::Cancelled]);
