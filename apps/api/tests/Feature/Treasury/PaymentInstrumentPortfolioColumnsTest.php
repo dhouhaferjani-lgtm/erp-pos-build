@@ -11,8 +11,12 @@ use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
+use App\Modules\Treasury\Domain\Enums\RemittanceStatus;
+use App\Modules\Treasury\Domain\Enums\RemittanceType;
+use App\Modules\Treasury\Domain\InstrumentRemittance;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -27,7 +31,20 @@ final class PaymentInstrumentPortfolioColumnsTest extends TestCase
     {
         [$tenant, $company, $method] = $this->context();
         $bankId = (string) Str::uuid();
-        $remittanceId = (string) Str::uuid();
+        $bank = PaymentRepository::factory()->for($company)->create([
+            'tenant_id' => $tenant->id,
+            'type' => 'bank_account',
+        ]);
+        $remittance = InstrumentRemittance::query()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'number' => 'REM-TEST-0001',
+            'remittance_type' => RemittanceType::Collection,
+            'instrument_kind' => InstrumentKind::Effet,
+            'bank_repository_id' => $bank->id,
+            'status' => RemittanceStatus::Draft,
+        ]);
+        $remittanceId = $remittance->id;
 
         $instrument = PaymentInstrument::query()->create([
             'tenant_id' => $tenant->id,

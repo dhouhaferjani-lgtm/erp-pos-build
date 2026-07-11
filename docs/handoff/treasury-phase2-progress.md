@@ -54,3 +54,13 @@
 - Verification: both migrations re-run three times in-test; typed payload round-trip and model relation asserted; targeted PHPStan — zero errors; Pint — pass; `git diff --check` — pass.
 - PostgreSQL note: raw UPDATE/DELETE trigger assertions remain part of the Gate-1 PostgreSQL directory run; the local fast loop is SQLite and correctly skips them.
 - Money-path deviation: none. Event rows only record lifecycle facts and do not post GL or move repository balances.
+
+### Task 5 — Instrument remittance schema and numbering
+
+- Status: complete.
+- Files touched: remittance/line migration; new remittance models and three enums; `PaymentInstrument.remittance()` relation; new schema/numbering test; Task-2 FK-aware fixture update; this progress log.
+- RED: `./vendor/bin/phpunit tests/Feature/Treasury/InstrumentRemittanceSchemaTest.php` — expected 4 missing-model/migration errors and 1 PostgreSQL advisory-lock skip.
+- GREEN: Task 5 + Task 2 portfolio regression — PASS, 8 tests / 28 assertions / 1 PostgreSQL-only skip.
+- Verification: schema and relations round-trip; duplicate `(remittance_id, instrument_id)` rejected; migration re-run twice with FK detection; sequential numbers `REM-{YYYY}-0001/0002`; targeted PHPStan — zero errors; Pint — pass; `git diff --check` — pass.
+- Test-harness deviation: true two-connection allocation contention is represented by a PostgreSQL advisory-lock query assertion plus gapless sequential allocation and the DB unique constraint, mirroring the repository's `GlChainSequenceConcurrencyTest` rationale that independent connections are flaky under `RefreshDatabase`'s uncommitted outer transaction. The PostgreSQL lock assertion runs at Gate 1.
+- Money-path deviation: none. Remittance numbering and schema do not post GL or move repository balances.

@@ -64,6 +64,7 @@ use Illuminate\Support\Carbon;
  * @property-read PaymentRepository|null $depositedTo
  * @property-read User|null $createdBy
  * @property-read Payment|null $payment
+ * @property-read InstrumentRemittance|null $remittance
  */
 class PaymentInstrument extends Model
 {
@@ -181,6 +182,14 @@ class PaymentInstrument extends Model
     public function payment(): BelongsTo
     {
         return $this->belongsTo(Payment::class);
+    }
+
+    /**
+     * @return BelongsTo<InstrumentRemittance, $this>
+     */
+    public function remittance(): BelongsTo
+    {
+        return $this->belongsTo(InstrumentRemittance::class);
     }
 
     /**
