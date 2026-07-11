@@ -39,6 +39,11 @@ export const PERMISSIONS = {
   'inventory.transfers.complete': ['admin', 'inventory', 'manager'],
   'inventory.transfers.cancel': ['admin', 'inventory', 'manager'],
 
+  // Replenishment requests
+  'replenishment.view': ['admin', 'manager', 'operator'],
+  'replenishment.create': ['admin', 'manager', 'operator'],
+  'replenishment.process': ['admin', 'manager'],
+
   // Expenses
   'expenses.view': ['admin', 'manager', 'cashier', 'viewer', 'operator', 'accountant'],
   'expenses.create': ['admin', 'manager', 'cashier', 'operator', 'accountant'],

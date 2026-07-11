@@ -664,7 +664,9 @@ Also add the sidebar nav item under the Inventory group (follow how `stock-trans
 
 ### Task 13: Web capture page
 
-**Files:** `pages/ReplenishmentCapturePage.tsx` + test.
+**Files:** `pages/ReplenishmentCapturePage.tsx` + test; `src/hooks/usePermissions.ts` (add the three replenishment permissions to the existing hardcoded frontend map so `RequirePermission` accepts and enforces them).
+
+Plan amendment: the `RequirePermission.permission` type is derived from the hardcoded `PERMISSIONS` map, not the backend permission source. Add `replenishment.view`/`replenishment.create` for `admin|manager|operator` and `replenishment.process` for `admin|manager`, mirroring `RolesAndPermissionsSeeder`. The map remains a known drift risk for future consolidation.
 
 Composition (reuse only): `PageHeader` molecule; location select limited to allowed locations (fetch via existing `useLocations()` and filter by the memberships-aware endpoint the backend enforces anyway — UI shows all active locations user may access; server is the authority); `LineItemEntryBar` with `onAddProduct={(product, meta) => submit capture for product/meta.variantId}` and `onBeforeAdd={() => locationChosen}`; after each submit show a toast + append to a local "submitted this session" list rendered with `StatusBadge`; `QuantityInput` + note field in an inline row before submit (quantity optional). Phone-usable: single column, no fixed widths.
 - Tests: veto add without location; capture called with string qty; 403 from server surfaces `QueryError`.
