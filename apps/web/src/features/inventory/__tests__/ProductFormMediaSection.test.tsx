@@ -90,31 +90,12 @@ vi.mock('../../catalog/components/ProductVariantMatrixEditor', () => ({
   ProductVariantMatrixEditor: () => null,
 }))
 
-// ── ProductImageSection + CreateModeImageBuffer mocks ────────────────────────
-vi.mock('../../products/components/ProductImageSection', () => ({
-  ProductImageSection: () => <div data-testid="product-image-section" />,
-}))
-vi.mock('../../products/components/ParapharmacyMetadataFields', () => ({
-  ParapharmacyMetadataFields: () => null,
-}))
-vi.mock('../../products/components/CreateModeImageBuffer', () => ({
-  CreateModeImageBuffer: ({
-    bufferedFiles,
-    onFilesChange,
-  }: {
-    bufferedFiles: File[]
-    onFilesChange: (files: File[]) => void
-  }) => (
-    <div data-testid="create-mode-image-buffer">
-      <input
-        data-testid="buffer-file-input"
-        type="file"
-        onChange={() => { onFilesChange([...bufferedFiles]) }}
-      />
-      <button type="button" aria-label="products:media.addImage">
-        Add
-      </button>
-    </div>
+// ── Shared media section integration boundary ────────────────────────────────
+vi.mock('../../products/sections/ProductMediaSection', () => ({
+  ProductMediaSection: () => (
+    <section id="section-media">
+      <div data-testid="media-create-mode-image-buffer" />
+    </section>
   ),
 }))
 
@@ -171,7 +152,7 @@ describe('ProductForm — Media section (create mode)', () => {
 
   it('renders CreateModeImageBuffer in create mode (not the disabled tile)', () => {
     render(<ProductForm />)
-    expect(screen.getByTestId('create-mode-image-buffer')).toBeInTheDocument()
+    expect(screen.getByTestId('media-create-mode-image-buffer')).toBeInTheDocument()
     // Old "save first" text must NOT appear (buffer replaces it)
     expect(screen.queryByText('products:media.saveFirst')).not.toBeInTheDocument()
   })
@@ -185,6 +166,6 @@ describe('ProductForm — Media section (create mode)', () => {
   it('does NOT render the ProductImageSection stub in create mode', () => {
     render(<ProductForm />)
     // ProductImageSection is the edit-mode component — not present in create mode
-    expect(screen.queryByTestId('product-image-section')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('media-product-image-section')).not.toBeInTheDocument()
   })
 })

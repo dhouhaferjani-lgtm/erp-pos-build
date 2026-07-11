@@ -56,6 +56,16 @@ interface CartState {
    * whenever `cartSessionId` is cleared or regenerated.
    */
   cartLinesRemovedThisSession: number;
+  /**
+   * Added-line pulse (cart-always-foreground v1, spec §2.5): the line id that
+   * received the most recent `addItem` (new line OR merge-increment) or
+   * `updateLineModifiers` hit (customize-EDIT confirm, Rev 2 U9), plus a
+   * monotonic nonce so a repeat add of the SAME line re-triggers the pulse.
+   * Reset on clear/replace — a recalled or hydrated cart must not pulse.
+   * Stale ids after removeItem are harmless: the UI matches by live line id.
+   */
+  lastAddedLineId: string | null;
+  lastAddedNonce: number;
 }
 
 interface CartActions {
@@ -230,6 +240,8 @@ const initialState: CartState = {
   transactionDiscount: undefined,
   cartSessionId: null,
   cartLinesRemovedThisSession: 0,
+  lastAddedLineId: null,
+  lastAddedNonce: 0,
 };
 
 /**
@@ -275,7 +287,13 @@ export const useCartStore = create<CartStore>()((set, get) => ({
           const updated = recalcLineTotal(existing, existing.quantity + 1);
           const newItems = [...state.items];
           newItems[existingIndex] = updated;
-          return { items: newItems, cartSessionId, cartLinesRemovedThisSession };
+          return {
+            items: newItems,
+            cartSessionId,
+            cartLinesRemovedThisSession,
+            lastAddedLineId: existing.id,
+            lastAddedNonce: state.lastAddedNonce + 1,
+          };
         }
       }
 
@@ -326,7 +344,13 @@ export const useCartStore = create<CartStore>()((set, get) => ({
         tax_amount: computeTaxAmount(priceValue, taxRate),
       };
 
-      return { items: [...state.items, newItem], cartSessionId, cartLinesRemovedThisSession };
+      return {
+        items: [...state.items, newItem],
+        cartSessionId,
+        cartLinesRemovedThisSession,
+        lastAddedLineId: newItem.id,
+        lastAddedNonce: state.lastAddedNonce + 1,
+      };
     });
   },
 
@@ -369,27 +393,35 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   },
 
   updateLineModifiers: (lineId: string, newModifiers: SelectedModifier[]) => {
-    set((state) => ({
-      items: state.items.map((item) => {
-        if (item.id !== lineId) return item;
-        const decimals = getDecimals();
-        const currentAdjustment = bcsum(
-          item.product.selectedModifiers?.map((m) => m.price_adjustment) ?? [],
-          decimals,
-        );
-        const basePrice = bcsub(item.product.price, currentAdjustment, decimals);
-        const newAdjustment = bcsum(newModifiers.map((m) => m.price_adjustment), decimals);
-        const priceValue = bcadd(basePrice, newAdjustment, decimals);
-        const lineTotal = bcmul(priceValue, String(item.quantity), decimals);
-        return {
-          ...item,
-          product: { ...item.product, selectedModifiers: newModifiers, price: priceValue },
-          unit_price: priceValue,
-          line_total: lineTotal,
-          tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
-        };
-      }),
-    }));
+    set((state) => {
+      // Rev 2 (U9): a customize-EDIT confirm is a pane-originated cart
+      // mutation the operator must confirm — stamp the pulse like addItem.
+      // A missing line id stays a no-op AND does not stamp.
+      if (!state.items.some((item) => item.id === lineId)) return state;
+      return {
+        items: state.items.map((item) => {
+          if (item.id !== lineId) return item;
+          const decimals = getDecimals();
+          const currentAdjustment = bcsum(
+            item.product.selectedModifiers?.map((m) => m.price_adjustment) ?? [],
+            decimals,
+          );
+          const basePrice = bcsub(item.product.price, currentAdjustment, decimals);
+          const newAdjustment = bcsum(newModifiers.map((m) => m.price_adjustment), decimals);
+          const priceValue = bcadd(basePrice, newAdjustment, decimals);
+          const lineTotal = bcmul(priceValue, String(item.quantity), decimals);
+          return {
+            ...item,
+            product: { ...item.product, selectedModifiers: newModifiers, price: priceValue },
+            unit_price: priceValue,
+            line_total: lineTotal,
+            tax_amount: computeTaxAmount(lineTotal, item.tax_rate),
+          };
+        }),
+        lastAddedLineId: lineId,
+        lastAddedNonce: state.lastAddedNonce + 1,
+      };
+    });
   },
 
   removeItem: (itemId: string) => {
@@ -443,7 +475,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
     const hadReturnItems = state.items.some((i) => (i.kind ?? 'sale') === 'return');
     const linesRemovedBefore = state.cartLinesRemovedThisSession;
 
-    set({ items: [], transactionDiscount: undefined, cartSessionId: null, cartLinesRemovedThisSession: 0 });
+    set({ items: [], transactionDiscount: undefined, cartSessionId: null, cartLinesRemovedThisSession: 0, lastAddedLineId: null, lastAddedNonce: 0 });
 
     // Only a genuine discard (operator dumping a built sale) is fraud-relevant.
     // Checkout/hold/shift-close/operator-switch end the cart without a discard
@@ -558,7 +590,7 @@ export const useCartStore = create<CartStore>()((set, get) => ({
   replaceCart: (items, transactionDiscount) => {
     // A recalled / replaced cart is a NEW correlation — regenerate the session
     // and reset the removed-line counter.
-    set({ items, transactionDiscount, cartSessionId: crypto.randomUUID(), cartLinesRemovedThisSession: 0 });
+    set({ items, transactionDiscount, cartSessionId: crypto.randomUUID(), cartLinesRemovedThisSession: 0, lastAddedLineId: null, lastAddedNonce: 0 });
   },
 
   replaceReturnItems: (newReturnItems) => {

@@ -5,12 +5,15 @@ declare(strict_types=1);
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Treasury\Presentation\Controllers\BankReconciliationController;
+use App\Modules\Treasury\Presentation\Controllers\CashPositionController;
 use App\Modules\Treasury\Presentation\Controllers\MultiPaymentController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentInstrumentController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentMethodController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentRefundController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentRepositoryController;
+use App\Modules\Treasury\Presentation\Controllers\RepositoryAdjustmentController;
+use App\Modules\Treasury\Presentation\Controllers\RepositoryMovementController;
 use App\Modules\Treasury\Presentation\Controllers\SmartPaymentController;
 use Illuminate\Support\Facades\Route;
 
@@ -41,6 +44,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:treasury.manage')
         ->name('payment-methods.update');
 
+    // Cash position — server-side aggregation over payment_repositories,
+    // grouped by type (Treasury spine Task 25; replaces the FE client-side sum).
+    Route::get('/treasury/cash-position', [CashPositionController::class, 'index'])
+        ->middleware('can:treasury.view')
+        ->name('treasury.cash-position');
+
     // Payment Repositories
     Route::get('/payment-repositories', [PaymentRepositoryController::class, 'index'])
         ->middleware('can:repositories.view')
@@ -58,6 +67,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:repositories.view')
         ->name('payment-repositories.transactions');
 
+    // Repository movements drill-down — paginated read side of the append-only
+    // repository_movements ledger (Treasury spine Task 26).
+    Route::get('/payment-repositories/{repository}/movements', [RepositoryMovementController::class, 'index'])
+        ->middleware('can:treasury.view')
+        ->name('payment-repositories.movements');
+
     Route::post('/payment-repositories', [PaymentRepositoryController::class, 'store'])
         ->middleware('can:repositories.manage')
         ->name('payment-repositories.store');
@@ -65,6 +80,12 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::patch('/payment-repositories/{repository}', [PaymentRepositoryController::class, 'update'])
         ->middleware('can:repositories.manage')
         ->name('payment-repositories.update');
+
+    // Gated manual repository (cash) adjustment — count-variance / correction
+    // (Treasury spine Task 23).
+    Route::post('/payment-repositories/{repository}/adjustments', [RepositoryAdjustmentController::class, 'store'])
+        ->middleware('can:treasury.adjust')
+        ->name('payment-repositories.adjustments.store');
 
     // Payment Instruments
     Route::get('/payment-instruments', [PaymentInstrumentController::class, 'index'])

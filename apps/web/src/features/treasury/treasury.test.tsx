@@ -27,6 +27,11 @@ vi.mock('../../lib/api', () => ({
   apiGet: mockApiGet,
   apiPost: mockApiPost,
   api: mockApi,
+  apiDelete: vi.fn(),
+  // PaymentDetailPage's refund mutations call this in onError — the new
+  // retry test (Wave 2A Item 1) is the first in this file to exercise a
+  // rejected mutation, so the real module's exports must be covered.
+  getErrorMessage: () => 'request failed',
 }))
 
 const createTestQueryClient = () =>
@@ -72,33 +77,64 @@ const mockPayments = [
   },
 ]
 
+// Mirrors `PaymentInstrumentController::formatInstrument` exactly — see
+// apps/api/app/Modules/Treasury/Presentation/Controllers/PaymentInstrumentController.php.
+// There is no `instrument_number`, `type`, `partner_name`, `issue_date`, or
+// `repository_name` on the real response (audit finding G3): a mock cementing
+// that phantom shape would hide the bug instead of catching it.
 const mockInstruments = [
   {
     id: '1',
-    instrument_number: 'CHK-001',
-    type: 'check',
-    amount: 2500.0,
-    issue_date: '2025-01-16',
-    maturity_date: '2025-02-16',
+    payment_method_id: 'method-2',
+    payment_method: { id: 'method-2', code: 'CHECK', name: 'Check' },
+    reference: 'CHK-001',
     partner_id: 'partner-2',
-    partner_name: 'Client Inc',
+    partner: { id: 'partner-2', name: 'Client Inc' },
+    drawer_name: null,
+    amount: '2500.000',
+    currency: 'TND',
+    received_date: '2025-01-16',
+    maturity_date: '2025-02-16',
+    expiry_date: null,
     status: 'received',
     repository_id: 'repo-1',
-    repository_name: 'Main Cash Register',
+    repository: { id: 'repo-1', code: 'CASH-01', name: 'Main Cash Register' },
+    bank_name: null,
+    bank_branch: null,
+    bank_account: null,
+    deposited_at: null,
+    deposited_to_id: null,
+    deposited_to: null,
+    cleared_at: null,
+    bounced_at: null,
+    bounce_reason: null,
     created_at: '2025-01-16T10:00:00Z',
   },
   {
     id: '2',
-    instrument_number: 'CHK-002',
-    type: 'check',
-    amount: 1000.0,
-    issue_date: '2025-01-10',
-    maturity_date: '2025-02-10',
+    payment_method_id: 'method-2',
+    payment_method: { id: 'method-2', code: 'CHECK', name: 'Check' },
+    reference: 'CHK-002',
     partner_id: 'partner-1',
-    partner_name: 'Acme Corp',
+    partner: { id: 'partner-1', name: 'Acme Corp' },
+    drawer_name: null,
+    amount: '1000.000',
+    currency: 'TND',
+    received_date: '2025-01-10',
+    maturity_date: '2025-02-10',
+    expiry_date: null,
     status: 'deposited',
     repository_id: 'repo-2',
-    repository_name: 'Bank Account',
+    repository: { id: 'repo-2', code: 'BANK-01', name: 'Bank Account' },
+    bank_name: null,
+    bank_branch: null,
+    bank_account: null,
+    deposited_at: '2025-01-20T10:00:00Z',
+    deposited_to_id: 'repo-2',
+    deposited_to: { id: 'repo-2', code: 'BANK-01', name: 'Bank Account' },
+    cleared_at: null,
+    bounced_at: null,
+    bounce_reason: null,
     created_at: '2025-01-10T10:00:00Z',
   },
 ]
@@ -374,7 +410,8 @@ describe('Treasury Management', () => {
 
   describe('InstrumentListPage', () => {
     it('renders the instrument list page with title', () => {
-      mockApi.get.mockResolvedValue({ data: { data: [], meta: { total: 0 } } })
+      // The real endpoint returns a plain `{ data: [...] }` — no `meta`.
+      mockApi.get.mockResolvedValue({ data: { data: [] } })
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -393,7 +430,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays list of instruments', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: mockInstruments, meta: { total: 2 } } })
+      mockApi.get.mockResolvedValue({ data: { data: mockInstruments } })
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -404,7 +441,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays empty state when no instruments', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: [], meta: { total: 0 } } })
+      mockApi.get.mockResolvedValue({ data: { data: [] } })
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -414,7 +451,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays instrument status badges', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: mockInstruments, meta: { total: 2 } } })
+      mockApi.get.mockResolvedValue({ data: { data: mockInstruments } })
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -425,7 +462,7 @@ describe('Treasury Management', () => {
     })
 
     it('displays maturity dates', async () => {
-      mockApi.get.mockResolvedValue({ data: { data: mockInstruments, meta: { total: 2 } } })
+      mockApi.get.mockResolvedValue({ data: { data: mockInstruments } })
 
       render(<InstrumentListPage />, { wrapper: TestWrapper })
 
@@ -941,7 +978,12 @@ describe('Treasury Management', () => {
       })
     })
 
-    it('submits full refund with reason', async () => {
+    // UUID v4 shape (crypto.randomUUID() output) — used to assert the
+    // idempotency key (Task 18) is a real client-minted UUID, not an
+    // incidental string.
+    const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+    it('submits full refund with reason and a UUID refund_request_id', async () => {
       setupPaymentMocks(mockPaymentDetail)
       mockApi.post.mockResolvedValue({ data: { data: {}, message: 'Refund successful' } })
       const user = userEvent.setup()
@@ -967,15 +1009,17 @@ describe('Treasury Management', () => {
       await user.click(screen.getByRole('button', { name: /confirm/i }))
 
       await waitFor(() => {
-        // The ID from useParams mock is 'instrument-1', so check for that
         expect(mockApi.post).toHaveBeenCalledWith(
           expect.stringContaining('/refund'),
-          expect.objectContaining({ reason: 'Customer requested refund' })
+          expect.objectContaining({
+            reason: 'Customer requested refund',
+            refund_request_id: expect.stringMatching(UUID_V4_REGEX),
+          })
         )
       })
     })
 
-    it('submits partial refund with amount and reason', async () => {
+    it('submits partial refund with amount, reason, and a UUID refund_request_id', async () => {
       setupPaymentMocks(mockPaymentDetail)
       mockApi.post.mockResolvedValue({ data: { data: {}, message: 'Partial refund successful' } })
       const user = userEvent.setup()
@@ -997,12 +1041,92 @@ describe('Treasury Management', () => {
       await user.click(screen.getByRole('button', { name: /confirm/i }))
 
       await waitFor(() => {
-        // The ID comes from useParams mock, check for partial-refund endpoint
         expect(mockApi.post).toHaveBeenCalledWith(
           expect.stringContaining('/partial-refund'),
-          expect.objectContaining({ amount: '500', reason: 'Partial return' })
+          expect.objectContaining({
+            amount: '500',
+            reason: 'Partial return',
+            refund_request_id: expect.stringMatching(UUID_V4_REGEX),
+          })
         )
       })
+    })
+
+    it('mints a DIFFERENT refund_request_id for two separate dialog-opens (each open is a new intent)', async () => {
+      setupPaymentMocks(mockPaymentDetail)
+      mockApi.post.mockResolvedValue({ data: { data: {}, message: 'Refund successful' } })
+      const user = userEvent.setup()
+
+      render(<PaymentDetailPage />, { wrapper: TestWrapper })
+
+      const openAndSubmit = async (reason: string) => {
+        await waitFor(() => {
+          const buttons = screen.getAllByRole('button', { name: /refund/i })
+          expect(buttons.length).toBeGreaterThanOrEqual(1)
+        })
+        const buttons = screen.getAllByRole('button', { name: /refund/i })
+        const refundButton = buttons.find(btn => btn.textContent?.toLowerCase().trim() === 'refund')
+        await user.click(refundButton!)
+        await waitFor(() => {
+          expect(screen.getByLabelText(/reason/i)).toBeInTheDocument()
+        })
+        await user.type(screen.getByLabelText(/reason/i), reason)
+        await user.click(screen.getByRole('button', { name: /confirm/i }))
+        await waitFor(() => {
+          expect(mockApi.post).toHaveBeenCalledWith(
+            expect.stringContaining('/refund'),
+            expect.objectContaining({ reason })
+          )
+        })
+      }
+
+      await openAndSubmit('First open')
+      const firstId = (mockApi.post.mock.calls[0][1] as { refund_request_id: string }).refund_request_id
+
+      await openAndSubmit('Second open')
+      const secondId = (mockApi.post.mock.calls[1][1] as { refund_request_id: string }).refund_request_id
+
+      expect(firstId).toMatch(UUID_V4_REGEX)
+      expect(secondId).toMatch(UUID_V4_REGEX)
+      expect(secondId).not.toBe(firstId)
+    })
+
+    it('keeps the SAME refund_request_id when retrying after a failed submission from the same dialog-open', async () => {
+      setupPaymentMocks(mockPaymentDetail)
+      mockApi.post.mockRejectedValueOnce(new Error('network error'))
+      mockApi.post.mockResolvedValueOnce({ data: { data: {}, message: 'Refund successful' } })
+      const user = userEvent.setup()
+
+      render(<PaymentDetailPage />, { wrapper: TestWrapper })
+
+      await waitFor(() => {
+        const buttons = screen.getAllByRole('button', { name: /refund/i })
+        expect(buttons.length).toBeGreaterThanOrEqual(1)
+      })
+      const buttons = screen.getAllByRole('button', { name: /refund/i })
+      const refundButton = buttons.find(btn => btn.textContent?.toLowerCase().trim() === 'refund')
+      await user.click(refundButton!)
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/reason/i)).toBeInTheDocument()
+      })
+      await user.type(screen.getByLabelText(/reason/i), 'Retry me')
+
+      // First submission attempt fails — the modal stays open (onError only toasts).
+      await user.click(screen.getByRole('button', { name: /confirm/i }))
+      await waitFor(() => {
+        expect(mockApi.post).toHaveBeenCalledTimes(1)
+      })
+
+      // Retry from the SAME open — must carry the SAME refund_request_id.
+      await user.click(screen.getByRole('button', { name: /confirm/i }))
+      await waitFor(() => {
+        expect(mockApi.post).toHaveBeenCalledTimes(2)
+      })
+
+      const firstAttemptId = (mockApi.post.mock.calls[0][1] as { refund_request_id: string }).refund_request_id
+      const retryId = (mockApi.post.mock.calls[1][1] as { refund_request_id: string }).refund_request_id
+      expect(retryId).toBe(firstAttemptId)
     })
   })
 

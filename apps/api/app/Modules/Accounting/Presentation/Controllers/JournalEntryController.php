@@ -37,7 +37,7 @@ class JournalEntryController extends Controller
 
         $entries = JournalEntry::query()
             ->where('tenant_id', $tenantId)
-            ->with('lines')
+            ->with('lines.account')
             ->orderByDesc('entry_date')
             ->orderByDesc('created_at')
             ->paginate(20);
@@ -112,7 +112,7 @@ class JournalEntryController extends Controller
                 ]);
             }
 
-            return $entry->load('lines');
+            return $entry->load('lines.account');
         });
 
         $this->dispatchJournalEntryCreatedEvent($entry);
@@ -130,7 +130,7 @@ class JournalEntryController extends Controller
 
         $entry = JournalEntry::query()
             ->where('tenant_id', $tenantId)
-            ->with('lines')
+            ->with('lines.account')
             ->findOrFail($id);
 
         return response()->json([
@@ -148,7 +148,7 @@ class JournalEntryController extends Controller
 
         $entry = JournalEntry::query()
             ->where('tenant_id', $tenantId)
-            ->with('lines')
+            ->with('lines.account')
             ->findOrFail($id);
 
         if ($entry->status !== JournalEntryStatus::Draft) {
@@ -163,7 +163,7 @@ class JournalEntryController extends Controller
         $this->generalLedgerService->postEntry($entry, $user, $company->currency);
 
         /** @var JournalEntry $freshEntry */
-        $freshEntry = $entry->fresh(['lines']);
+        $freshEntry = $entry->fresh(['lines.account']);
 
         return response()->json([
             'data' => JournalEntryData::fromModel($freshEntry)->toArray(),

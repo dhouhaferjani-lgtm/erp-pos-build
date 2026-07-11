@@ -169,6 +169,14 @@ final readonly class CashMovementsReportService
                             AND direction_lines.account_id = payment_repositories.gl_account_id
                             AND direction_lines.credit > 0
                     ) THEN ?
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM journal_entries as refund_entries
+                        WHERE refund_entries.id = payments.journal_entry_id
+                            AND refund_entries.company_id = payments.company_id
+                            AND refund_entries.status = ?
+                            AND refund_entries.source_type = ?
+                    ) THEN ?
                     WHEN payments.payment_type IN (?, ?) THEN ?
                     ELSE ?
                 END as direction',
@@ -178,6 +186,14 @@ final readonly class CashMovementsReportService
                     CashMovementDirection::In->value,
                     JournalEntryStatus::Posted->value,
                     ...self::PAYMENT_BACKED_SOURCE_TYPES,
+                    CashMovementDirection::Out->value,
+                    // A POS refund leg keeps payment_type=POS (indistinguishable
+                    // from a sale on that column), so it would fall to ELSE=In
+                    // and report a phantom inflow. It is linked via
+                    // journal_entry_id to its `pos_receipt_refund` reversal
+                    // entry — resolve that leg to Out.
+                    JournalEntryStatus::Posted->value,
+                    CashMovementSourceType::PosReceiptRefund->value,
                     CashMovementDirection::Out->value,
                     PaymentType::Refund->value,
                     PaymentType::SupplierPayment->value,
@@ -245,7 +261,15 @@ final readonly class CashMovementsReportService
                     ->from('pos_receipts')
                     ->join('payments as represented_pos_payments', 'represented_pos_payments.fiscal_event_id', '=', 'pos_receipts.fiscal_event_id')
                     ->whereColumn('pos_receipts.id', 'journal_entries.source_id')
-                    ->where('journal_entries.source_type', CashMovementSourceType::PosReceipt->value)
+                    // Suppress BOTH the sale GL line (`pos_receipt`) and the
+                    // refund reversal GL line (`pos_receipt_refund`): each is
+                    // already represented by its POS Payment leg on the
+                    // payments side, so emitting the GL line too would
+                    // double-count the cash move.
+                    ->whereIn('journal_entries.source_type', [
+                        CashMovementSourceType::PosReceipt->value,
+                        CashMovementSourceType::PosReceiptRefund->value,
+                    ])
                     ->whereNotNull('pos_receipts.fiscal_event_id')
                     ->where('pos_receipts.company_id', $companyId)
                     ->where('represented_pos_payments.company_id', $companyId)

@@ -12,6 +12,7 @@ import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 
 import { priceTtcFromHt, resolveMarginState } from './pricingMath'
 import { PricingModeCalculator } from './PricingModeCalculator'
+import type { DiscountPolicyVerdict as SharedDiscountPolicyVerdict } from '@/features/products/sections'
 
 export interface PricingProduct {
   id: string
@@ -25,28 +26,11 @@ export interface PricingProduct {
   effective_margins?: {
     target_margin: string
     minimum_margin: string
-    source: string
+    source?: string
   } | null
 }
 
-export interface DiscountPolicyVerdict {
-  allowed: boolean
-  blocksSale: boolean
-  severity: 'info' | 'warn' | 'block'
-  requiresPermission: string | null
-  maxDiscountPercent: string
-  discountPercent: string
-  floorPriceNet: string | null
-  floorBasis: string
-  floorEnforcement: string
-  mode: string
-  overridable: boolean
-  requiresReason: boolean
-  policyVersion: string
-  policyAsOf: string
-  reasons: string[]
-  meta: Record<string, unknown>
-}
+export type DiscountPolicyVerdict = SharedDiscountPolicyVerdict
 
 interface PricingIntelligencePanelProps {
   product: PricingProduct

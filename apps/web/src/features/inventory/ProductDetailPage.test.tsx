@@ -15,6 +15,7 @@ const mockApiDelete = vi.hoisted(() => vi.fn())
 const mockNavigate = vi.hoisted(() => vi.fn())
 const mockHasPermission = vi.hoisted(() => vi.fn())
 const mockUseEnrichmentFastPath = vi.hoisted(() => vi.fn())
+const mockProductConfig = vi.hoisted(() => ({ isOtospex: false }))
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -58,7 +59,7 @@ vi.mock('react-i18next', () => ({
 
 // ProductConfigContext drives the isOtospex branch.
 vi.mock('@/contexts/ProductConfigContext', () => ({
-  useProductConfig: () => ({ isOtospex: false }),
+  useProductConfig: () => ({ isOtospex: mockProductConfig.isOtospex }),
 }))
 
 // Child tabs are owned by another agent — stub them.
@@ -68,8 +69,11 @@ vi.mock('./components/ProductMovementsTab', () => ({
 vi.mock('./components/ProductDocumentsTab', () => ({
   ProductDocumentsTab: () => <div data-testid="documents-tab" />,
 }))
-vi.mock('./components', () => ({
+vi.mock('@/features/inventory/components/ProductStockLevels', () => ({
   ProductStockLevels: () => <div data-testid="stock-levels" />,
+}))
+vi.mock('@/features/products/components/ProductImageSection', () => ({
+  ProductImageSection: () => <div data-testid="product-image-section" />,
 }))
 vi.mock('../products/components', () => ({
   ProductPrimaryImageDisplay: () => <div data-testid="primary-image" />,
@@ -149,6 +153,7 @@ function productFixture() {
 
 describe('ProductDetailPage', () => {
   beforeEach(() => {
+    mockProductConfig.isOtospex = false
     setTenant('tenant-1', 'company-1')
     mockApiGet.mockReset()
     mockApiPost.mockReset()
@@ -262,6 +267,26 @@ describe('ProductDetailPage', () => {
 
     await screen.findByRole('heading', { level: 1, name: 'Brake Pad' })
     expect(mockApiPost).not.toHaveBeenCalled()
+  })
+
+  it('renders canonical shared order and data-presence-gates the automotive extension', async () => {
+    mockProductConfig.isOtospex = true
+    mockApiGet.mockResolvedValue({
+      data: { data: { ...productFixture(), oem_numbers: ['OEM-1'] } },
+    })
+
+    const firstRender = renderProductDetail()
+    await screen.findByRole('heading', { level: 1, name: 'Brake Pad' })
+    const shared = Array.from(firstRender.container.querySelectorAll('[data-product-section-key]'))
+      .map((node) => node.getAttribute('data-product-section-key'))
+    expect(shared).toEqual(['hero', 'general', 'pricing', 'inventory', 'suppliers', 'media'])
+    expect(firstRender.container.querySelector('[data-product-extension-key="automotive"]')).not.toBeNull()
+    firstRender.unmount()
+
+    mockApiGet.mockResolvedValue({ data: { data: productFixture() } })
+    const emptyAutomotive = renderProductDetail()
+    await screen.findByRole('heading', { level: 1, name: 'Brake Pad' })
+    expect(emptyAutomotive.container.querySelector('[data-product-extension-key="automotive"]')).toBeNull()
   })
 })
 

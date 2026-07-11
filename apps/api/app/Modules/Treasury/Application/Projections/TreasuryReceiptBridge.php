@@ -12,6 +12,9 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
@@ -19,6 +22,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -120,6 +124,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         private readonly GeneralLedgerService $generalLedgerService,
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentMethodResolver $paymentMethodResolver,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     public function name(): string
@@ -162,16 +167,14 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
 
     public function apply(FiscalEvent $event): void
     {
-        // Fast-path idempotency probe. The race-safety fence in production
-        // is the Task 23 projection-row `lockForUpdate()`; this check is
-        // a cheap operator-replay short-circuit so we don't open a
-        // transaction when an existing pos-origin Payment is already
-        // visible for the event. Under concurrent dispatch bypassing the
-        // Task 23 lock, the probe is not a substitute for the lock and
-        // is documented as such in the class docblock.
-        if ($this->paymentsForEventExist($event)) {
-            return;
-        }
+        // Task 20 (complete-set replay, review F3/F4): the pre-spine "any
+        // pos-origin Payment exists for this event" probe is GONE — it was a
+        // partial-replay hole (if only SOME tender legs were written, the
+        // whole event was skipped and the remaining legs never landed).
+        // Idempotency is now PER-LEG (see projectPaymentLineFromCanonical):
+        // every canonical tender leg is validated to exist, missing legs are
+        // written, present legs are idempotent hits. So a partial prior write
+        // is COMPLETED, not skipped.
 
         // The verified-event payload is always present on a successfully-
         // parsed SALE_RECEIPT. Defensive bail-out kept symmetric with
@@ -259,12 +262,41 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 );
             }
 
-            // Re-check inside the transaction. With the advisory lock
-            // above, the second waiter sees the first's committed rows
-            // here and returns cleanly. Without the lock (SQLite tests,
-            // future driver migrations), this is the only defense
-            // against double-write — keep it.
-            if ($this->paymentsForEventExist($event)) {
+            // Task 20 — no inner "any payment exists" re-check here anymore.
+            // Per-leg idempotency (a partial UNIQUE on
+            // payments(company_id, idempotency_key) + the movement port's
+            // per-key record()) makes each leg independently replay-safe, so
+            // the advisory lock above is now purely a concurrency serializer:
+            // the second waiter sees each committed leg as an idempotent hit.
+
+            // Task 20 review Fix 1 (MAJOR) — legacy null-key fallback.
+            // Payments written by the PRE-Task-20 bridge carry
+            // `origin = Pos` + `fiscal_event_id = $event->id` but NO
+            // `idempotency_key` (the per-leg key scheme did not exist yet, and
+            // Task 20 shipped no backfill). The per-leg lookup in
+            // projectPaymentLineFromCanonical() keys on
+            // `payments.idempotency_key = 'fiscal_event:{id}:payment:{i}'`, so
+            // it would MISS every legacy row → take the CREATE branch → write a
+            // duplicate Payment + a duplicate POS-revenue GL post
+            // (journal_entries(source_type, source_id) is NOT uniquely
+            // constrained) + a duplicate balance movement. Fiscal projections
+            // are redelivery-driven, so a pre-Task-20-projected event
+            // redelivered after cutover is a silent wrong-money defect that
+            // clean-DB tests never exercise.
+            //
+            // SAFE fix: recognize the legacy event at the EVENT level and treat
+            // the WHOLE event as already-settled — do NOT attempt to backfill or
+            // guess per-leg ordinals for the null-key rows. New (post-Task-20)
+            // events stamp per-leg keys on every row, so this probe finds
+            // nothing for them and they continue down the per-leg path below.
+            $legacyNullKeyPaymentExists = Payment::query()
+                ->where('company_id', $event->company_id)
+                ->where('fiscal_event_id', $event->id)
+                ->where('origin', PaymentOrigin::Pos)
+                ->whereNull('idempotency_key')
+                ->exists();
+
+            if ($legacyNullKeyPaymentExists) {
                 return;
             }
 
@@ -277,10 +309,23 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             // default-repository lookup (see resolveDefaultRepository).
             $view = $this->canonicalReader->forSaleReceipt($event);
 
+            // Task 21 — a refund/void rides the SALE_RECEIPT event carrying
+            // `invoice_type_code='REFUND'` (or 'VOID') + a non-null
+            // `original_receipt_reference` (there is NO separate REFUND event
+            // type — REFUND_RECEIPT/SALE_VOID are RESERVED_UNREACHABLE). Every
+            // money field in the payload is NON-NEGATIVE (§6), so the refund
+            // signal is the invoice_type_code, NOT a negative amount. For a
+            // refund each tender leg pays cash OUT of the drawer and posts a GL
+            // reversal of the sale entry; a plain SALE keeps the Task-20 IN +
+            // sale-GL behavior. Decided ONCE from the immutable payload so the
+            // whole receipt's legs are consistent.
+            $invoiceTypeCode = $view->payload->invoiceTypeCode;
+            $isRefund = $invoiceTypeCode === 'REFUND' || $invoiceTypeCode === 'VOID';
+
             $totalLines = count($view->payments);
             $index = 0;
             foreach ($view->payments as $payment) {
-                $this->projectPaymentLineFromCanonical($event, $receipt, $payment, $index, $totalLines);
+                $this->projectPaymentLineFromCanonical($event, $receipt, $payment, $index, $totalLines, $isRefund);
                 $index++;
             }
         });
@@ -322,9 +367,22 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         PaymentDTO $line,
         int $index,
         int $totalLines,
+        bool $isRefund,
     ): void {
         $amount = $line->amount;
         $methodCode = $line->methodCode;
+
+        // The canonical PaymentDTO carries `amount` as a plain string
+        // (bcformat at currency_scale). Fail loud on a non-numeric value —
+        // it can never reach the money-movement port (which requires
+        // numeric-string); the `is_numeric` guard also narrows the type.
+        if (! is_numeric($amount)) {
+            throw new RuntimeException(sprintf(
+                'TreasuryReceiptBridge: payment amount %s is not numeric for fiscal_event %s',
+                $amount,
+                $event->id,
+            ));
+        }
 
         // Resolve payment_method_id via the Shared/Contracts seam (the
         // same surface PosCoreReceiptProjection uses). Tenant-scoped
@@ -385,100 +443,133 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             ));
         }
 
-        // Create the Treasury `Payment` row stamped with origin=pos +
-        // fiscal_event_id (spec §13 writer row 1). Both `payment_method_id`
-        // and `repository_id` were resolved through tenant-scoped lookups
-        // above — using the verified `$paymentMethod->id` / `$repository->id`
-        // is belt-and-braces (the payload value is already validated; this
-        // makes a code regression that drops the gate fail-loud in code
-        // review rather than silently in production).
-        $payment = Payment::create([
-            'id' => Str::uuid()->toString(),
-            'tenant_id' => $event->tenant_id,
-            'company_id' => $event->company_id,
-            'partner_id' => $receipt->partner_id,
-            'payment_method_id' => $paymentMethod->id,
-            'repository_id' => $repository->id,
-            'amount' => $amount,
-            'currency' => $receipt->currency,
-            'payment_date' => $receipt->posted_at,
-            'status' => PaymentStatus::Completed,
-            'payment_type' => PaymentType::POS,
-            // §13 row 1 — both columns stamped on the same write.
-            'origin' => PaymentOrigin::Pos,
-            'fiscal_event_id' => $event->id,
-            'reference' => "POS Receipt {$receipt->receipt_number} - Payment ".($index + 1),
-            'notes' => 'POS payment ('.($index + 1).' of '.$totalLines.') [fiscal_event_bridge]',
-        ]);
+        // Task 20 — PER-LEG idempotency key. The canonical index is the
+        // POSITION of this payment in the sealed, immutable
+        // `payload.payments[]` array (both this bridge and
+        // PosCoreReceiptProjection iterate the SAME canonical `$view->payments`
+        // in the same order — §15 Q2). It is STABLE across replays because the
+        // fiscal event payload is immutable, so no new column is needed. The
+        // key is stamped on `payments.idempotency_key` (partial UNIQUE on
+        // (company_id, idempotency_key)) so a replay of an already-written leg
+        // is a clean hit, while a partial prior write (only SOME legs) is
+        // COMPLETED — the missing legs fall through to the create branch.
+        $legKey = sprintf('fiscal_event:%s:payment:%d', $event->id, $index);
 
-        // Create the GL entry + post it immediately. POS payments are
-        // direct to revenue (no draft / no AR account). The GL service
-        // wraps its own DB::transaction → nested savepoint under our
-        // outer transaction. A throw here rolls the entire bridge call
-        // back atomically.
-        $journalEntry = $this->generalLedgerService->createPOSPaymentEntry(
-            payment: $payment,
-            receipt: $receipt,
-            repository: $repository,
-        );
+        $existing = Payment::query()
+            ->where('company_id', $event->company_id)
+            ->where('idempotency_key', $legKey)
+            ->first();
 
-        // The GL service expects a cashier to attribute the post to;
-        // mirror the legacy ReceiptPaymentService behaviour — use the
-        // receipt's cashier directly. The Receipt model declares cashier
-        // as a non-null `User` (FK is `restrictOnDelete` on the migration),
-        // so a missing user would have surfaced before reaching this
-        // point (the POS-core projector that wrote the receipt row would
-        // have thrown on the FK).
-        // Pass the receipt currency explicitly: this projector runs on a
-        // Horizon worker where no CompanyContext is bound, and the GL
-        // service's no-arg scale resolution fails loud there (F-RES-1).
-        $this->generalLedgerService->postEntry($journalEntry, $receipt->cashier, $receipt->currency);
-
-        // Link the journal entry back onto the Payment for downstream
-        // navigation. Single UPDATE — no immutability triggers exist on
-        // `payments` as of the migration set through 2026_05_17_*. If a
-        // future migration adds an immutability trigger to
-        // `payments.journal_entry_id` (or to `origin` / `fiscal_event_id`
-        // per a §13 hardening), this single UPDATE must move into the
-        // bridge's idempotency window or use `forceSaveQuietly()` — see
-        // Task 11's `pos_receipts` immutability pattern.
-        $payment->journal_entry_id = $journalEntry->id;
-        $payment->save();
-    }
-
-    /**
-     * Idempotency probe: any Treasury Payment row already linked to this
-     * fiscal event with origin=pos. The (fiscal_event_id, origin=pos)
-     * tuple is what the bridge writes; a row with that shape proves a
-     * prior apply() completed for this event.
-     *
-     * Task 22 round-2 (Opus F5 P2): legacy rows pre-dating Task 12 are
-     * backfilled to `origin = unknown_legacy` by
-     * `2026_05_17_120000_backfill_legacy_payment_origin.php`; they are
-     * correctly skipped by the `origin = pos` predicate here. (Pre-
-     * round-2 those rows kept `origin = NULL` and were also skipped by
-     * this predicate — the round-2 backfill closes the spec §13
-     * divergence without changing the probe's behavior.)
-     */
-    private function paymentsForEventExist(FiscalEvent $event): bool
-    {
-        try {
-            return Payment::query()
-                ->where('fiscal_event_id', $event->id)
-                ->where('origin', PaymentOrigin::Pos)
-                ->exists();
-        } catch (QueryException $e) {
-            // Defensive: a malformed UUID smuggled into $event->id would
-            // throw on PG (uuid column at the driver layer). Treat as
-            // "no rows match" — the wrapping caller's downstream writes
-            // would surface their own FK / type errors clearly.
-            Log::warning('TreasuryReceiptBridge: idempotency probe failed', [
+        if ($existing instanceof Payment) {
+            // Leg already written on a prior apply(). Do NOT create a second
+            // Payment or post a second GL entry — reuse the existing GL link.
+            // The movement port record() below is idempotent on the same leg
+            // key, so it is either a clean hit (movement already there) or it
+            // completes a partial write (Payment+GL landed but the movement
+            // never did) by linking to the EXISTING journal entry.
+            $payment = $existing;
+            $journalEntryId = $existing->journal_entry_id;
+        } else {
+            // Create the Treasury `Payment` row stamped with origin=pos +
+            // fiscal_event_id (spec §13 writer row 1). Both `payment_method_id`
+            // and `repository_id` were resolved through tenant-scoped lookups
+            // above — using the verified `$paymentMethod->id` / `$repository->id`
+            // is belt-and-braces.
+            $payment = Payment::create([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $event->tenant_id,
+                'company_id' => $event->company_id,
+                'partner_id' => $receipt->partner_id,
+                'payment_method_id' => $paymentMethod->id,
+                'repository_id' => $repository->id,
+                'amount' => $amount,
+                'currency' => $receipt->currency,
+                'payment_date' => $receipt->posted_at,
+                'status' => PaymentStatus::Completed,
+                'payment_type' => PaymentType::POS,
+                // §13 row 1 — both columns stamped on the same write.
+                'origin' => PaymentOrigin::Pos,
                 'fiscal_event_id' => $event->id,
-                'error' => $e->getMessage(),
+                'idempotency_key' => $legKey,
+                'reference' => "POS Receipt {$receipt->receipt_number} - Payment ".($index + 1),
+                'notes' => 'POS payment ('.($index + 1).' of '.$totalLines.') [fiscal_event_bridge]',
             ]);
 
-            return false;
+            // Create the GL entry + post it SYNCHRONOUSLY in-transaction
+            // (PostingMode::SynchronousInTransaction via postEntryNow) so the
+            // GL post + the repository movement below commit or roll back as
+            // one unit (spine BLOCKER-1: postEntryNow takes the company
+            // advisory lock BEFORE the movement port takes the repo row lock).
+            // POS payments are direct to revenue (no draft / no AR account).
+            //
+            // Task 21 — for a refund/void the sale entry is REVERSED (Dr Revenue
+            // / Cr Cash) instead of posted (Dr Cash / Cr Revenue). Both helpers
+            // return a Draft entry that postEntryNow commits below.
+            $journalEntry = $isRefund
+                ? $this->generalLedgerService->createPOSRefundReversalEntry(
+                    payment: $payment,
+                    receipt: $receipt,
+                    repository: $repository,
+                )
+                : $this->generalLedgerService->createPOSPaymentEntry(
+                    payment: $payment,
+                    receipt: $receipt,
+                    repository: $repository,
+                );
+
+            // Pass the receipt currency explicitly: this projector runs on a
+            // Horizon worker where no CompanyContext is bound, and the GL
+            // service's no-arg scale resolution fails loud there (F-RES-1).
+            $this->generalLedgerService->postEntryNow($journalEntry, $receipt->cashier, $receipt->currency);
+
+            $payment->journal_entry_id = $journalEntry->id;
+            $payment->save();
+
+            $journalEntryId = $journalEntry->id;
         }
+
+        // Task 20 — move the repository balance through the single write port,
+        // ONE movement per tender leg keyed on the canonical index. Device
+        // origin: a SALE_RECEIPT is authored on the offline POS device, so the
+        // leg carries `allowWhileFrozen = true` — an offline device must never
+        // poison the fiscal-projection queue if the repo was frozen server-side
+        // after the device authored the sale. This is decided from the EVENT
+        // TYPE (device vs server-only), never inferred from the movement
+        // sourceType. record() is idempotent on the leg key.
+        //
+        // Task 21 — a refund/void tender leg pays cash OUT of the drawer, so
+        // the movement direction is Out (the GL reversal above already credited
+        // cash). A plain SALE keeps direction In. sourceType stays FiscalEvent +
+        // sourceId=event->id + idempotencyLeg=payment:{index} so the movement
+        // idempotency key is the SAME canonical per-leg key a sale leg for this
+        // event would use (stable across replays; the invoice_type_code is
+        // immutable on the sealed payload). The direction Out + GL reversal is
+        // the ONLY difference from the normal-sale path.
+        $this->movementService->record(new MovementIntent(
+            repositoryId: $repository->id,
+            tenantId: $event->tenant_id,
+            companyId: $event->company_id,
+            direction: $isRefund ? MovementDirection::Out : MovementDirection::In,
+            amount: $amount,
+            // Task 20 review Fix 2 (MINOR) — pass the TENDER/RECEIPT currency
+            // (the currency `$amount` is denominated in), NOT the repository
+            // currency. The port's CurrencyMismatchException guard compares
+            // `$repo->currency !== $intent->currency`; passing the repo currency
+            // here makes that comparison trivially always-equal and silently
+            // disarms the F12 safety check. Today receipt currency == repo
+            // currency so behavior is unchanged, but the guard is restored.
+            currency: $receipt->currency,
+            sourceType: MovementSourceType::FiscalEvent,
+            sourceId: $event->id,
+            idempotencyLeg: sprintf('payment:%d', $index),
+            journalEntryId: $journalEntryId,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: $payment->created_by ?? $receipt->cashier_id,
+            notes: null,
+            allowWhileFrozen: ! $event->event_type->isServerOnly(),
+        ));
     }
 
     /**

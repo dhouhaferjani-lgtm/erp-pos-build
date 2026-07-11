@@ -190,3 +190,42 @@ describe('CartLineItem collapse/expand', () => {
     expect(onRemove).toHaveBeenCalledWith('line-1');
   });
 });
+
+describe('CartLineItem — added-line pulse (cart-always-foreground v1)', () => {
+  it('renders no pulse overlay without a token', () => {
+    const { queryByTestId } = render(
+      <CartLineItem item={baseItem} onUpdateQuantity={vi.fn()} onRemove={vi.fn()} />,
+    );
+    expect(queryByTestId('cart-line-pulse')).toBeNull();
+  });
+
+  it('renders the token-based pulse overlay when pulseToken > 0', () => {
+    const { getByTestId } = render(
+      <CartLineItem item={baseItem} onUpdateQuantity={vi.fn()} onRemove={vi.fn()} pulseToken={1} />,
+    );
+    const pulse = getByTestId('cart-line-pulse');
+    expect(pulse.className).toContain('ez-line-pulse');
+    expect(pulse.className).toContain('pointer-events-none');
+    expect(pulse).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('clears the overlay on animationend', () => {
+    const { getByTestId, queryByTestId } = render(
+      <CartLineItem item={baseItem} onUpdateQuantity={vi.fn()} onRemove={vi.fn()} pulseToken={1} />,
+    );
+    fireEvent.animationEnd(getByTestId('cart-line-pulse'));
+    expect(queryByTestId('cart-line-pulse')).toBeNull();
+  });
+
+  it('re-fires when the token changes (repeat add of the same line)', () => {
+    const { getByTestId, queryByTestId, rerender } = render(
+      <CartLineItem item={baseItem} onUpdateQuantity={vi.fn()} onRemove={vi.fn()} pulseToken={1} />,
+    );
+    fireEvent.animationEnd(getByTestId('cart-line-pulse'));
+    expect(queryByTestId('cart-line-pulse')).toBeNull();
+    rerender(
+      <CartLineItem item={baseItem} onUpdateQuantity={vi.fn()} onRemove={vi.fn()} pulseToken={2} />,
+    );
+    expect(getByTestId('cart-line-pulse')).toBeInTheDocument();
+  });
+});

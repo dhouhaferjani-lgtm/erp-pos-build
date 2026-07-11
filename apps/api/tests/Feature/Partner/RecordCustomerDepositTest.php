@@ -314,7 +314,11 @@ final class RecordCustomerDepositTest extends TestCase
             'company_id' => $this->company->id,
             'code' => 'DRAWER-1',
             'name' => 'Drawer 1',
-            'account_id' => $cashAccount->id,
+            // Canonical cash GL account is gl_account_id (account_id is the dead
+            // legacy column, always NULL in production — 53ec7e1c8). A ledgered
+            // repository lets the deposit's customer-advance JE post, so the cash
+            // movement carries it and treasury:reconcile stays green (Task 24 Fix A).
+            'gl_account_id' => $cashAccount->id,
             'is_active' => true,
         ]);
     }

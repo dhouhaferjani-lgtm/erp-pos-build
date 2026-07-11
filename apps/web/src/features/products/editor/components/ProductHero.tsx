@@ -1,149 +1,69 @@
 import { ImageIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { bcadd, bccomp, bcdiv, bcmul, bcsub } from '@/lib/decimal'
-import { formatCurrency, formatQuantity } from '@/lib/format'
+
+import { textColors, tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
-import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
+import { withProductHeroImageVariant } from '../../productHeroImage'
+import { ProductHeroShell } from '../../sections/ProductHeroShell'
 
-interface ProductHeroBrand {
-  id?: string
-  name: string
-  source?: string | null
-}
+export type ProductHeroProduct = Pick<
+  App.Modules.Product.Application.DTOs.ProductData,
+  | 'id'
+  | 'name'
+  | 'sku'
+  | 'barcode'
+  | 'is_active'
+  | 'primary_image_url'
+  | 'brand'
+  | 'brand_source'
+  | 'category'
+>
 
-interface ProductHeroCategory {
-  id?: string
-  name: string
-}
-
-export interface ProductHeroProduct {
-  id: string
-  name: string
-  sku: string
-  barcode: string | null
-  is_active: boolean
-  sale_price: string | null
-  cost_price: string | null
-  tax_rate: string | null
-  primary_image_url?: string | null
-  stock_quantity?: string | null
-  brand?: ProductHeroBrand | null
-  category?: ProductHeroCategory | null
-}
-
-interface ProductHeroProps {
-  product: ProductHeroProduct
-  currency: string
-  locale: string
-}
-
-function withMdVariant(url: string | null | undefined): string | null {
-  if (url === null || url === undefined || url === '') return null
-  if (url.includes('variant=')) return url
-  return `${url}${url.includes('?') ? '&' : '?'}variant=md`
-}
-
-// `sale_price` is the canonical HT (net) price — spec Rev 3 R3-6. TTC is derived from it,
-// and margin is computed net-to-net against WAC (not off a TTC-back-solved HT).
-function salePriceIncludingTax(product: ProductHeroProduct): string | null {
-  if (product.sale_price === null) return null
-  const taxRate = product.tax_rate ?? '0'
-  const factor = bcadd('1', bcdiv(taxRate, '100', 6), 6)
-  return bcmul(product.sale_price, factor, 3)
-}
-
-function marginPercent(product: ProductHeroProduct): string | null {
-  if (product.sale_price === null || product.cost_price === null || bccomp(product.cost_price, '0') <= 0) {
-    return null
-  }
-
-  return bcmul(bcdiv(bcsub(product.sale_price, product.cost_price, 4), product.cost_price, 4), '100', 1)
-}
-
-function formatMaybeCurrency(value: string | null, currency: string, locale: string): string {
-  if (value === null) return '-'
-  return formatCurrency(value, { currency, locale })
-}
-
-export function ProductHero({ product, currency, locale }: ProductHeroProps) {
+export function ProductHero({ product }: { product: ProductHeroProduct }) {
   const { t } = useTranslation(['inventory', 'common'])
-  const imageUrl = withMdVariant(product.primary_image_url)
-  const priceHt = product.sale_price
-  const priceTtc = salePriceIncludingTax(product)
-  const margin = marginPercent(product)
-  const stockQuantity = product.stock_quantity !== null && product.stock_quantity !== undefined
-    ? formatQuantity(product.stock_quantity, 4, locale)
-    : '-'
-
-  const stripItems = [
-    { label: t('inventory:products.onHandShort'), value: stockQuantity },
-    { label: t('inventory:products.costWac'), value: formatMaybeCurrency(product.cost_price, currency, locale) },
-    { label: t('inventory:products.marginPercent'), value: margin !== null ? `${margin}%` : '-' },
-    { label: t('inventory:products.priceHt'), value: formatMaybeCurrency(priceHt, currency, locale) },
-    { label: t('inventory:products.priceTtc'), value: formatMaybeCurrency(priceTtc, currency, locale) },
-  ]
+  const imageUrl = withProductHeroImageVariant(product.primary_image_url)
 
   return (
-    <section className={`overflow-hidden rounded-lg border ${borderColors.light} ${colors.white}`}>
-      <div className={cn('p-5', tokens.productHero.band)}>
-        <div className="grid gap-5 md:grid-cols-[176px_minmax(0,1fr)]">
-          <div className={cn('flex h-44 w-44 items-center justify-center overflow-hidden rounded-lg border', borderColors.dark, tokens.productHero.imageSlot)}>
-            {imageUrl !== null ? (
-              <img src={imageUrl} alt={product.name} className="h-full w-full object-cover" />
-            ) : (
-              <ImageIcon className={cn('h-12 w-12', tokens.productHero.imageIcon)} aria-hidden="true" />
+    <ProductHeroShell
+      image={imageUrl !== null ? (
+        <img src={imageUrl} alt={product.name} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center">
+          <ImageIcon className="h-12 w-12" aria-hidden="true" />
+        </div>
+      )}
+      identity={(
+        <div className="min-w-0">
+          <h2 className={cn('truncate text-2xl font-semibold', textColors.inverse)}>{product.name}</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className={cn('rounded-md px-2 py-1 font-mono text-xs', tokens.productHero.mutedChip)}>
+              {t('inventory:products.sku')}: {product.sku}
+            </span>
+            {product.barcode !== null && product.barcode !== '' && (
+              <span className={cn('rounded-md px-2 py-1 font-mono text-xs', tokens.productHero.mutedChip)}>
+                {product.barcode}
+              </span>
             )}
-          </div>
-
-          <div className="min-w-0 space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className={cn('truncate text-2xl font-semibold', textColors.inverse)}>{product.name}</h2>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className={cn('rounded-md px-2 py-1 font-mono text-xs', tokens.productHero.mutedChip)}>
-                    {t('inventory:products.sku')}: {product.sku}
-                  </span>
-                  {product.barcode !== null && product.barcode !== '' && (
-                    <span className={cn('rounded-md px-2 py-1 font-mono text-xs', tokens.productHero.mutedChip)}>
-                      {product.barcode}
-                    </span>
-                  )}
-                  <span className={cn(tokens.statusBadge.base, product.is_active ? tokens.statusBadge.completed : tokens.statusBadge.cancelled)}>
-                    {product.is_active ? t('common:status.active') : t('common:status.inactive')}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {product.brand !== null && product.brand !== undefined && (
-                <span className={cn('rounded-md px-2.5 py-1 text-xs font-medium', tokens.productHero.chip)}>
-                  {product.brand.name}{product.brand.source === 'enriched' ? ' \u2726' : ''}
-                </span>
-              )}
-              {product.category !== null && product.category !== undefined && (
-                <span className={cn('rounded-md px-2.5 py-1 text-xs font-medium', tokens.productHero.chip)}>
-                  {product.category.name}
-                </span>
-              )}
-            </div>
+            <span className={cn(tokens.statusBadge.base, product.is_active ? tokens.statusBadge.completed : tokens.statusBadge.cancelled)}>
+              {product.is_active ? t('common:status.active') : t('common:status.inactive')}
+            </span>
           </div>
         </div>
-      </div>
-
-      <div className={`${colors.neutral[50]} px-5 py-4`}>
-        <div className={cn('mb-3 text-xs font-semibold uppercase tracking-wide', textColors.tertiary)}>
-          {t('inventory:products.readyToSell')}
+      )}
+      enrichment={(
+        <div className="flex flex-wrap items-center gap-2 text-start">
+          {product.brand !== null && product.brand !== undefined && (
+            <span className={cn('rounded-md px-2.5 py-1 text-xs font-medium', tokens.productHero.chip)}>
+              {product.brand.name}{product.brand_source === 'enriched' ? ' ✦' : ''}
+            </span>
+          )}
+          {product.category !== null && product.category !== undefined && (
+            <span className={cn('rounded-md px-2.5 py-1 text-xs font-medium', tokens.productHero.chip)}>
+              {product.category.name}
+            </span>
+          )}
         </div>
-        <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {stripItems.map((item) => (
-            <div key={item.label} className={`rounded-md border ${borderColors.light} ${colors.white} px-3 py-2`}>
-              <dt className={cn('text-xs', textColors.tertiary)}>{item.label}</dt>
-              <dd className={cn('mt-1 text-sm font-semibold tabular-nums', textColors.primary)}>{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </section>
+      )}
+    />
   )
 }

@@ -17,6 +17,11 @@ vi.mock('react-i18next', () => ({
 // router
 const mockNavigate = vi.fn()
 let mockParams: Record<string, string> = {}
+const mockSectionGates = vi.hoisted(() => ({
+  isOtospex: false,
+  vertical: 'generic',
+  hasLoyalty: false,
+}))
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => mockParams,
@@ -89,12 +94,12 @@ vi.mock('../../hooks/usePermissions', () => ({
 
 vi.mock('../../contexts/CompanyConfigContext', () => ({
   useCompanyConfig: () => ({
-    config: { vertical: 'generic' },
-    hasModule: (name: string) => name === 'Inventory',
+    config: { vertical: mockSectionGates.vertical },
+    hasModule: (name: string) => name === 'Inventory' || (name === 'Loyalty' && mockSectionGates.hasLoyalty),
   }),
 }))
 vi.mock('../../contexts/ProductConfigContext', () => ({
-  useProductConfig: () => ({ isOtospex: false }),
+  useProductConfig: () => ({ isOtospex: mockSectionGates.isOtospex }),
 }))
 vi.mock('../../hooks/useCurrency', () => ({
   useCurrency: () => ({ currency: 'EUR', decimals: 2, locale: 'fr-FR' }),
@@ -168,6 +173,9 @@ vi.mock('../uom/components/UnitDropdown', () => ({
 }))
 
 beforeEach(() => {
+  mockSectionGates.isOtospex = false
+  mockSectionGates.vertical = 'generic'
+  mockSectionGates.hasLoyalty = false
   mockParams = {}
   mockNavigate.mockReset()
   mockMutateAsync.mockReset()
@@ -269,7 +277,7 @@ describe('ProductForm (canonical layout)', () => {
 
   it('renders the sale price field via MoneyInput', () => {
     render(<ProductForm />)
-    const priceInput = screen.getByLabelText('inventory:products.salePrice', {
+    const priceInput = screen.getByLabelText('inventory:products.priceHt', {
       exact: false,
     })
     // MoneyInput renders type="number" + inputMode="decimal"; the original raw
@@ -620,6 +628,27 @@ describe('ProductForm (Direction-A editor layout smoke)', () => {
     expect(container.querySelector('#section-suppliers')).not.toBeNull()
   })
 
+  it('renders the canonical shared order and page-level extension gates', () => {
+    const defaultRender = render(<ProductForm />)
+    const shared = Array.from(defaultRender.container.querySelectorAll('[data-product-section-key]'))
+      .map((node) => node.getAttribute('data-product-section-key'))
+    expect(shared).toEqual(['hero', 'general', 'pricing', 'inventory', 'suppliers', 'media'])
+    expect(defaultRender.container.querySelectorAll('[data-product-extension-key]')).toHaveLength(0)
+    defaultRender.unmount()
+
+    mockSectionGates.isOtospex = true
+    const automotiveRender = render(<ProductForm />)
+    expect(automotiveRender.container.querySelector('[data-product-extension-key="automotive"]')).not.toBeNull()
+    automotiveRender.unmount()
+
+    mockSectionGates.isOtospex = false
+    mockSectionGates.vertical = 'parapharmacy'
+    mockSectionGates.hasLoyalty = true
+    const verticalRender = render(<ProductForm />)
+    expect(verticalRender.container.querySelector('[data-product-extension-key="pharmacy"]')).not.toBeNull()
+    expect(verticalRender.container.querySelector('[data-product-extension-key="loyalty"]')).not.toBeNull()
+  })
+
   it('renders the related-operations rail and the before-publish checklist', () => {
     render(<ProductForm />)
     expect(
@@ -660,14 +689,14 @@ describe('ProductForm (Pricing & Tax parity)', () => {
     expect(purchasePriceInput).toHaveAttribute('id', 'purchase_price')
   })
 
-  it('renders Purchase Price BEFORE Sale Price in the Pricing section', () => {
+  it('renders Purchase Price BEFORE the canonical HT sale price in the Pricing section', () => {
     const { container } = render(<ProductForm />)
     const pricingSection = container.querySelector('#section-pricing')
     expect(pricingSection).not.toBeNull()
     const inputs = pricingSection!.querySelectorAll('input[type="number"]')
-    // purchase_price should be first, sale_price second
+    const inputIds = Array.from(inputs, input => input.id)
     expect(inputs[0]).toHaveAttribute('id', 'purchase_price')
-    expect(inputs[1]).toHaveAttribute('id', 'sale_price')
+    expect(inputIds.indexOf('purchase_price')).toBeLessThan(inputIds.indexOf('sale_price_ht'))
   })
 
   it('renders the ready-to-sell margin input EMPTY when both prices are empty (default state)', () => {
@@ -680,11 +709,13 @@ describe('ProductForm (Pricing & Tax parity)', () => {
   it('shows Margin when both purchase_price and sale_price are entered', () => {
     render(<ProductForm />)
     const purchaseInput = screen.getByLabelText(/inventory:products\.purchasePrice/i, { exact: false })
-    const saleInput = screen.getByLabelText(/inventory:products\.salePrice/i, { exact: false })
+    const saleInput = screen.getByLabelText(/inventory:products\.priceHt/i, { exact: false })
 
     // sale=100, purchase=60 → margin = (100−60)/100×100 = 40.0%
     fireEvent.change(purchaseInput, { target: { value: '60' } })
+    fireEvent.focus(saleInput)
     fireEvent.change(saleInput, { target: { value: '100' } })
+    fireEvent.blur(saleInput)
 
     // The margin field should now appear
     expect(screen.getByLabelText(/inventory:products\.margin/i, { exact: false })).toBeInTheDocument()
@@ -707,11 +738,15 @@ describe('ProductForm (Pricing & Tax parity)', () => {
   it('empties the margin value when sale_price is cleared back to empty', () => {
     render(<ProductForm />)
     const purchaseInput = screen.getByLabelText(/inventory:products\.purchasePrice/i, { exact: false })
-    const saleInput = screen.getByLabelText(/inventory:products\.salePrice/i, { exact: false })
+    const saleInput = screen.getByLabelText(/inventory:products\.priceHt/i, { exact: false })
 
     fireEvent.change(purchaseInput, { target: { value: '60' } })
+    fireEvent.focus(saleInput)
     fireEvent.change(saleInput, { target: { value: '100' } })
+    fireEvent.blur(saleInput)
+    fireEvent.focus(saleInput)
     fireEvent.change(saleInput, { target: { value: '' } })
+    fireEvent.blur(saleInput)
     expect((screen.getByLabelText('inventory:products.marginPercent') as HTMLInputElement).value).toBe('')
   })
 

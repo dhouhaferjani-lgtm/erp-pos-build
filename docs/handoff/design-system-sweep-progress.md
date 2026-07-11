@@ -641,3 +641,7 @@ Executed by 6 parallel implementation agents + orchestrator integration, per `do
 - Per-lane suites, default pool: treasury 25f/187t; finance 22f/127t; scheduling 5f/12t; workshop+menu 27f/115t; ingestions/purchases/enrichment/owner-dashboard 36f/212t; channels/withholding/progression 15f/59t; atoms 9f/76t. All green.
 
 New shared-shape components: none.
+
+## origin/dev integration merge (2026-07-11, orchestrator)
+
+Merged origin/dev (108 commits, incl. product-section unification + treasury spine) into the branch. 9 conflicted files, resolved by rule "newer functional structure wins; sweep styling re-applied where lines survive": take-theirs for ProductForm(+4 tests; theirs' ProductSectionStack refactor deletes the code we had tokenized), ProductEditHero, ProductImageSection, RepositoryDetailPage (theirs' RepositoryMovementsTab supersedes our inline DataTable conversion); take-ours for EnrichmentCapturePanel (our atom conversions) + re-applied theirs' EnrichmentAttributeRow type-import change. Post-merge: typecheck clean; eslint 0 errors (origin/dev's new code passes the color ERROR rules); tanstack 0; design audit surfaced 9 new + 5 stale entries — ALL from origin/dev's post-merge-base code (product hero custom controls, movements-tab raw table, re-fingerprints) — baselined honestly at 767 acknowledged (origin/dev-native debt, not sweep regressions; convert in the post-merge burn-down).

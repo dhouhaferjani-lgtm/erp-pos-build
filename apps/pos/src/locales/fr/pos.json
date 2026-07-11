@@ -359,7 +359,9 @@
     "required": "Veuillez compléter toutes les sélections requises",
     "selectUpTo": "Sélectionner jusqu'à {{max}}",
     "customize": "Personnaliser",
-    "selected": "Sélectionnés"
+    "selected": "Sélectionnés",
+    "cancel": "Annuler",
+    "lineGone": "Ligne introuvable — le panier a changé"
   },
   "variants": {
     "chooseVariant": "Choisir une variante",

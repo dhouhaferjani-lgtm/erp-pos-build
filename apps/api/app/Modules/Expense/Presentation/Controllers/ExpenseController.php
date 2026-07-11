@@ -9,9 +9,11 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Expense\Application\DTOs\PayExpenseRequestData;
 use App\Modules\Expense\Application\Exceptions\LinkedCostException;
 use App\Modules\Expense\Application\Services\ExpenseService;
 use App\Modules\Expense\Presentation\Requests\ExpenseRequest;
+use App\Modules\Expense\Presentation\Requests\PayExpenseRequest;
 use App\Modules\Expense\Presentation\Resources\ExpenseResource;
 use App\Modules\Identity\Domain\User;
 use App\Shared\Contracts\Document\OperationResolverInterface;
@@ -19,6 +21,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 
 /**
  * Controller for expense management endpoints.
@@ -236,6 +239,46 @@ class ExpenseController extends Controller
 
         return response()->json([
             'message' => __('messages.expense_posted'),
+            'data' => new ExpenseResource($expense->load([
+                'expenseMetadata.category',
+                'expenseMetadata.paymentMethod',
+                'expenseMetadata.paymentRepository',
+            ])),
+        ]);
+    }
+
+    /**
+     * Settle a posted, unpaid expense (pay down the AP liability).
+     */
+    public function pay(PayExpenseRequest $request, string $id): JsonResponse
+    {
+        $companyId = $this->companyContext->requireCompanyId();
+
+        if (! Str::isUuid($id)) {
+            abort(404);
+        }
+
+        $expense = Document::where('type', DocumentType::Expense)
+            ->where('id', $id)
+            ->where('company_id', $companyId)
+            ->with('expenseMetadata')
+            ->firstOrFail();
+
+        /** @var User $user */
+        $user = $request->user();
+
+        $data = PayExpenseRequestData::fromArray($request->validated());
+
+        try {
+            $expense = $this->expenseService->settle($expense, $data, $user);
+        } catch (\DomainException $exception) {
+            return response()->json([
+                'error' => $exception->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => __('messages.expense_settled'),
             'data' => new ExpenseResource($expense->load([
                 'expenseMetadata.category',
                 'expenseMetadata.paymentMethod',

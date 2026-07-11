@@ -1,21 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ProductHero } from './ProductHero'
+import { makeProductSectionProduct } from '../../sections/__fixtures__/productSectionProduct'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => ({
-      'inventory:products.onHandShort': 'On hand',
-      'inventory:products.costWac': 'WAC',
-      'inventory:products.marginPercent': 'Margin %',
-      'inventory:products.priceHt': 'Sale price (excl. tax)',
-      'inventory:products.priceTtc': 'Sale price (incl. tax)',
-      'inventory:products.readyToSell': 'Ready to sell',
-      'inventory:products.barcode': 'Barcode',
       'inventory:products.sku': 'SKU',
-      'inventory:products.status': 'Status',
-      'inventory:products.brand': 'Brand',
-      'inventory:products.category': 'Category',
       'common:status.active': 'Active',
       'common:status.inactive': 'Inactive',
     }[key] ?? key),
@@ -23,26 +14,27 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('ProductHero', () => {
-  it('renders the md primary image and read-only ready-to-sell strip', () => {
+  it('renders identity and primary image without pricing or cost facts', () => {
+    const product = makeProductSectionProduct({
+      id: 'product-1',
+      name: 'Crème solaire SPF50',
+      sku: 'CS-050',
+      barcode: '6194000123456',
+      is_active: true,
+      primary_image_url: '/media/product/serve?signature=abc',
+      brand: {
+        id: 'brand-1',
+        name: 'Avène',
+        slug: 'avene',
+        country_of_origin: 'FR',
+        website_url: null,
+        is_active: true,
+      },
+      brand_source: 'enriched',
+    })
+
     render(
-      <ProductHero
-        product={{
-          id: 'product-1',
-          name: 'Crème solaire SPF50',
-          sku: 'CS-050',
-          barcode: '6194000123456',
-          is_active: true,
-          sale_price: '14.280',
-          cost_price: '8.500',
-          tax_rate: '19.00',
-          primary_image_url: '/media/product/serve?signature=abc',
-          stock_quantity: '24.0000',
-          brand: { id: 'brand-1', name: 'Avène', source: 'enriched' },
-          category: { id: 'category-1', name: 'Soin solaire' },
-        }}
-        currency="TND"
-        locale="fr-TN"
-      />,
+      <ProductHero product={product} />,
     )
 
     expect(screen.getByRole('img', { name: 'Crème solaire SPF50' })).toHaveAttribute(
@@ -52,12 +44,11 @@ describe('ProductHero', () => {
     expect(screen.getByRole('heading', { name: 'Crème solaire SPF50' })).toBeInTheDocument()
     expect(screen.getByText('6194000123456')).toBeInTheDocument()
     expect(screen.getByText('Avène ✦')).toBeInTheDocument()
-    expect(screen.getByText('Soin solaire')).toBeInTheDocument()
-    expect(screen.getByText('24')).toBeInTheDocument()
-    // sale_price 14.280 is canonical HT (R3-6): margin = (14.280 - 8.500)/8.500 = 68.0%;
-    // HT = 14,280; TTC = 14.280 × 1.19 = 16,993.
-    expect(screen.getByText('68.0%')).toBeInTheDocument()
-    expect(screen.getByText('14,280 TND')).toBeInTheDocument()
-    expect(screen.getByText('16,993 TND')).toBeInTheDocument()
+    expect(screen.getByText('Braking')).toBeInTheDocument()
+    expect(screen.queryByText('24')).not.toBeInTheDocument()
+    expect(screen.queryByText('68.0%')).not.toBeInTheDocument()
+    expect(screen.queryByText('14,280 TND')).not.toBeInTheDocument()
+    expect(screen.queryByText('16,993 TND')).not.toBeInTheDocument()
+    expect(screen.queryByText('inventory:products.costWac')).not.toBeInTheDocument()
   })
 })

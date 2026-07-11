@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Accounting;
 
+use App\Modules\Accounting\Application\Services\FiscalPeriodResolverService;
 use App\Modules\Accounting\Application\Services\GeneralLedgerHashService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
@@ -288,6 +289,7 @@ final class POSAccountChargeJournalEntryTest extends TestCase
             $balanceService,
             $this->mockCurrencyScale(3),
             new GeneralLedgerHashService($this->mockCurrencyScale(3)),
+            new FiscalPeriodResolverService,
         );
     }
 

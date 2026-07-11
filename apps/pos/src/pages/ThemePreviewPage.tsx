@@ -27,7 +27,7 @@ import { ProductGrid } from '@/components/organisms/ProductGrid';
 import { ProductCard } from '@/components/molecules/ProductCard';
 import { ProductListRow } from '@/components/organisms/ProductGrid/ProductListRow';
 import { ProductTable } from '@/components/organisms/ProductGrid/ProductTable';
-import { ProductDetailDrawer, ProductDetailSheet, type DetailTab } from '@/components/organisms/ProductDetailDrawer';
+import { ProductDetailSheet, type DetailTab } from '@/components/organisms/ProductDetailDrawer';
 import { PaymentSummary } from '@/components/pos/PaymentSummary';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { ShiftClosurePage } from '@/pages/ShiftClosurePage';
@@ -366,9 +366,9 @@ export function ThemePreviewPage() {
   const [nav, setNav] = useState('caisse');
   const [expandedLine, setExpandedLine] = useState<string | null>('l2');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [detailProduct, setDetailProduct] = useState<POSProduct | null>(null);
+  const [panePreviewProduct, setPanePreviewProduct] = useState<POSProduct>(SELL_PRODUCTS[0]!);
   // Inline (no-overlay) drawer-sheet preview — headless visual verification.
-  const [drawerPreviewTab, setDrawerPreviewTab] = useState<DetailTab>('details');
+  const [panePreviewTab, setPanePreviewTab] = useState<DetailTab>('details');
   // Sell-screen preview state
   const displayMode = useSettingsStore((s) => s.displayMode);
   const setDisplayMode = useSettingsStore((s) => s.setDisplayMode);
@@ -763,34 +763,25 @@ export function ThemePreviewPage() {
                 cartQuantities={Object.fromEntries(gridCart.map((id) => [id, 1]))}
                 filters={gridFilters}
                 onFiltersChange={setGridFilters}
-                onViewDetails={setDetailProduct}
+                onViewDetails={setPanePreviewProduct}
               />
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                size="md"
-                data-testid="open-product-detail-preview"
-                onClick={() => setDetailProduct(SELL_PRODUCTS[0] ?? null)}
-              >
-                Ouvrir fiche produit
-              </Button>
             </div>
           </Section>
         </div>
 
         <div className="lg:col-span-2">
-          <Section title="Fiche produit — sheet rendu inline (sans overlay, pour capture headless)">
+          <Section title="Fiche produit — variante pane (~840px, cart-always-foreground)">
             <div
-              data-testid="product-drawer-preview"
-              className="overflow-x-auto rounded-panel border border-border-subtle bg-surface-canvas p-6"
+              data-testid="product-pane-preview"
+              className="h-[640px] w-[840px] max-w-full overflow-hidden rounded-panel border border-border-subtle bg-surface-canvas p-2"
             >
               <ProductDetailSheet
-                product={SELL_PRODUCTS[0]!}
+                variant="pane"
+                product={panePreviewProduct}
                 onClose={() => undefined}
                 locationStock={{ available: '14.0000', incoming_transfer: '0.0000', incoming_po: '0.0000' }}
-                activeTab={drawerPreviewTab}
-                onTabChange={setDrawerPreviewTab}
+                activeTab={panePreviewTab}
+                onTabChange={setPanePreviewTab}
               />
             </div>
           </Section>
@@ -820,7 +811,7 @@ export function ThemePreviewPage() {
                   isInCart={(densityCart[p.id] ?? 0) > 0}
                   cartQuantity={densityCart[p.id]}
                   onAddToCart={addDensityCart}
-                  onViewDetails={setDetailProduct}
+                  onViewDetails={setPanePreviewProduct}
                 />
               ))}
             </div>
@@ -837,7 +828,7 @@ export function ThemePreviewPage() {
                   key={p.id}
                   product={p}
                   onAddToCart={addDensityCart}
-                  onViewDetails={setDetailProduct}
+                  onViewDetails={setPanePreviewProduct}
                 />
               ))}
             </div>
@@ -852,7 +843,7 @@ export function ThemePreviewPage() {
               <ProductTable
                 products={LARGE_CATALOG}
                 onAddToCart={addDensityCart}
-                onViewDetails={setDetailProduct}
+                onViewDetails={setPanePreviewProduct}
               />
             </div>
           </Section>
@@ -931,12 +922,6 @@ export function ThemePreviewPage() {
           </div>
         </Section>
       </div>
-
-      <ProductDetailDrawer
-        isOpen={detailProduct !== null}
-        product={detailProduct}
-        onClose={() => setDetailProduct(null)}
-      />
     </div>
   );
 }

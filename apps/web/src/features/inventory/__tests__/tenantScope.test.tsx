@@ -275,7 +275,7 @@ describe('inventory queryKey shapes', () => {
         <CatalogLookupProbe />
         <ProductDocumentsTab productId="prod-1" />
         <ProductMovementsTab productId="prod-1" />
-        <ProductStockLevels productId="prod-1" costPrice="10.00" />
+        <ProductStockLevels productId="prod-1" costPrice="10.00" canViewCostPrices />
         <PriceInputWithMargin productId="prod-1" value={20} onChange={() => {}} />
       </>,
       { queryClient },

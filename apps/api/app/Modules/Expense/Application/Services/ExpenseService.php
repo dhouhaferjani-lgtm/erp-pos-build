@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Expense\Application\Services;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\PostingMode;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
@@ -13,16 +16,24 @@ use App\Modules\Document\Domain\Enums\CostApplicationPath;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\LandedCostSplitMethod;
+use App\Modules\Expense\Application\DTOs\PayExpenseRequestData;
 use App\Modules\Expense\Application\Exceptions\LinkedCostException;
 use App\Modules\Expense\Domain\Enums\ExpenseKind;
 use App\Modules\Expense\Domain\ExpenseMetadata;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Document\OperationResolverInterface;
 use App\Shared\Contracts\Inventory\LinkedCostApplicatorInterface;
-use App\Shared\Contracts\Treasury\RepositoryInflowInterface;
-use App\Shared\Contracts\Treasury\RepositoryOutflowInterface;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -33,12 +44,11 @@ final class ExpenseService
 {
     public function __construct(
         private readonly GeneralLedgerService $glService,
-        private readonly RepositoryOutflowInterface $outflow,
-        private readonly RepositoryInflowInterface $inflow,
         private readonly CompanyContext $companyContext,
         private readonly OperationResolverInterface $operationResolver,
         private readonly LinkedCostApplicatorInterface $linkedCostApplicator,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     /**
@@ -172,28 +182,81 @@ final class ExpenseService
                 $application = $this->linkedCostApplicator->apply($expense, $cost, $user);
                 $expense->payload = array_merge($expense->payload ?? [], ['linked_cost_application' => $application]);
                 $expense->save();
-                $this->glService->createLinkedCostCapitalizationEntry(
+
+                // Post the capitalization entry SYNCHRONOUSLY, in-transaction, so it
+                // returns the posted entry and — per the global lock order (spine
+                // BLOCKER-1) — takes the GL company advisory lock BEFORE the movement
+                // port takes the repository row lock below.
+                $entry = $this->glService->createLinkedCostCapitalizationEntry(
                     $expense->loadMissing('expenseMetadata.paymentRepository'),
                     $cost,
                     $this->ledgerApplication($application, (string) $expense->currency),
                     $user,
+                    PostingMode::SynchronousInTransaction,
                 );
-            } else {
-                // Create GL entry
-                $this->glService->createFromExpense($expense, $user);
-            }
 
-            // Decrement treasury cash balance when the expense is paid and linked
-            // to a payment repository. Amount and currency are passed as strings
-            // so the port handles all bcmath/scale operations (Rule 19).
-            if ($metadata?->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
-                $this->outflow->applyOutflow(
-                    $metadata->payment_repository_id,
-                    $expense->tenant_id,
-                    $expense->company_id,
-                    $expense->total,
-                    (string) $expense->currency,
-                );
+                // The capitalization entry above already CREDITS Cash in the GL, so
+                // this movement records ONLY the treasury balance decrement + links to
+                // that same capitalization JE — it must NOT re-post cash. This REPLACES
+                // the legacy outflow: the write port is the single writer of the repo
+                // balance + append-only movement row, atomically with the GL post. The
+                // 'linked_cost' idempotency leg is distinct from the standard-expense
+                // 'main' leg so the two post() branches can never collide. Amount and
+                // currency are passed as strings so the port owns all bcmath/scale work.
+                if ($metadata->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
+                    $this->movementService->record(new MovementIntent(
+                        repositoryId: $metadata->payment_repository_id,
+                        tenantId: $expense->tenant_id,
+                        companyId: $expense->company_id,
+                        direction: MovementDirection::Out,
+                        amount: $expense->total,
+                        currency: (string) $expense->currency,
+                        sourceType: MovementSourceType::Expense,
+                        sourceId: $expense->id,
+                        idempotencyLeg: 'linked_cost',
+                        journalEntryId: $entry->id,
+                        occurredAt: null,
+                        reasonCode: null,
+                        reversesMovementId: null,
+                        createdBy: $user->id,
+                        notes: null,
+                        allowWhileFrozen: false,
+                    ));
+                }
+            } else {
+                // Post the expense GL entry SYNCHRONOUSLY, in-transaction, so it
+                // returns the posted entry and — per the global lock order
+                // (BLOCKER-1) — takes the GL company advisory lock BEFORE the
+                // movement port takes the repository row lock below.
+                $entry = $this->glService->createFromExpense($expense, $user, PostingMode::SynchronousInTransaction);
+
+                // Move treasury cash ONLY for a PAID expense linked to a payment
+                // repository. This REPLACES the old inline outflow: the write port
+                // is the single writer of the repository balance + append-only
+                // movement row, atomically with the GL post above. An UNPAID
+                // expense moved no money — it booked an AP liability in the GL and
+                // records no movement (Wave D bug fix). Amount/currency are passed
+                // as strings so the port owns all bcmath/scale operations (Rule 19).
+                if ($metadata?->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
+                    $this->movementService->record(new MovementIntent(
+                        repositoryId: $metadata->payment_repository_id,
+                        tenantId: $expense->tenant_id,
+                        companyId: $expense->company_id,
+                        direction: MovementDirection::Out,
+                        amount: $expense->total,
+                        currency: (string) $expense->currency,
+                        sourceType: MovementSourceType::Expense,
+                        sourceId: $expense->id,
+                        idempotencyLeg: 'main',
+                        journalEntryId: $entry->id,
+                        occurredAt: null,
+                        reasonCode: null,
+                        reversesMovementId: null,
+                        createdBy: $user->id,
+                        notes: null,
+                        allowWhileFrozen: false,
+                    ));
+                }
             }
 
             $freshExpense = $expense->fresh(['expenseMetadata']);
@@ -202,6 +265,164 @@ final class ExpenseService
             }
 
             return $freshExpense;
+        });
+    }
+
+    /**
+     * Settle a posted, unpaid expense: pay down the AP liability booked by
+     * {@see post()} — POST /expenses/{id}/pay (Wave D, Task 15).
+     *
+     * Posts `Dr AP-liability (SupplierPayable) / Cr Cash` (via the dedicated
+     * `createExpenseSettlementJournalEntry` helper, which mirrors Task 14's AP
+     * booking with the SAME nullable partner, `SynchronousInTransaction`)
+     * and writes an `out` movement through the treasury write port, keyed on
+     * idempotency leg `settlement` — distinct from `post()`'s `main` leg, so
+     * settlement is idempotent independently of the original post.
+     *
+     * Retry-safety: the movement port's idempotency guard does NOT protect
+     * the GL post (a replayed intent returns the OLD movement without
+     * checking `journal_entry_id` — see {@see TreasuryMovementServiceInterface}).
+     * A caller that posted a fresh GL entry and then replayed the same
+     * intent would orphan that entry. So this method checks for an existing
+     * settlement movement BEFORE creating any GL entry and short-circuits as
+     * a no-op retry when one is found.
+     */
+    public function settle(Document $expense, PayExpenseRequestData $data, User $user): Document
+    {
+        if ($expense->status !== DocumentStatus::Posted) {
+            throw new \DomainException('Only a posted expense can be settled.');
+        }
+
+        return DB::transaction(function () use ($expense, $data, $user): Document {
+            // Defense-in-depth tenant/company scoping (Fix 4). expense_metadata
+            // has no tenant/company columns of its own, so pin the row through
+            // its document to refuse a document_id smuggled from another tenant.
+            $metadata = ExpenseMetadata::query()
+                ->where('document_id', $expense->id)
+                ->whereHas('document', function (Builder $query) use ($expense): void {
+                    $query->whereRaw('tenant_id = ?', [$expense->tenant_id])
+                        ->whereRaw('company_id = ?', [$expense->company_id]);
+                })
+                ->lockForUpdate()
+                ->first();
+
+            if ($metadata === null) {
+                throw new \DomainException('This expense has no payment metadata to settle.');
+            }
+
+            // Only the AP-booking kind is settleable via /pay. post() branches on
+            // ExpenseKind::LinkedCost → createLinkedCostCapitalizationEntry, which
+            // CREDITS Cash (never SupplierPayable) regardless of is_paid; every
+            // other kind (Generic/default) reaches createFromExpense and, when
+            // unpaid, books Cr SupplierPayable. Reversing an AP that was never
+            // credited would fabricate a phantom liability reversal and
+            // double-decrement cash — so reject linked-cost settlement outright.
+            // This condition matches post()'s own branch exactly.
+            if ($metadata->expense_kind === ExpenseKind::LinkedCost) {
+                throw new \DomainException('Only standard expenses booking an accounts-payable liability can be settled via /pay; linked-cost expenses are settled at capitalization.');
+            }
+
+            $settlementKey = MovementSourceType::Expense->value.':'.$expense->id.':settlement';
+            $alreadySettled = RepositoryMovement::query()
+                ->where('tenant_id', $expense->tenant_id)
+                ->where('company_id', $expense->company_id)
+                ->where('idempotency_key', $settlementKey)
+                ->exists();
+
+            if ($alreadySettled) {
+                // Idempotent retry: the settlement was already recorded by a
+                // prior call. Do NOT create a second GL entry — return the
+                // current state as-is.
+                $fresh = $expense->fresh(['expenseMetadata']);
+                if ($fresh === null) {
+                    throw new \RuntimeException('Failed to refresh expense after settlement retry.');
+                }
+
+                return $fresh;
+            }
+
+            if ($metadata->is_paid === true) {
+                throw new \DomainException('This expense has already been paid.');
+            }
+
+            // Business-rule failure (unknown/foreign repository) → 422, matching
+            // the other settlement guards, rather than the 404 firstOrFail would
+            // raise (Fix 3). The lookup is already tenant/company-scoped.
+            $repository = PaymentRepository::query()
+                ->where('tenant_id', $expense->tenant_id)
+                ->where('company_id', $expense->company_id)
+                ->whereKey($data->paymentRepositoryId)
+                ->first();
+
+            if ($repository === null) {
+                throw new \DomainException('The selected payment repository was not found for this company.');
+            }
+
+            $creditAccount = match ($repository->type) {
+                RepositoryType::BankAccount => Account::findByPurposeOrFail($expense->company_id, SystemAccountPurpose::Bank),
+                default => Account::findByPurposeOrFail($expense->company_id, SystemAccountPurpose::Cash),
+            };
+
+            $vendorName = $metadata->vendor_name ?? 'General Expense';
+
+            // Dr AP-liability (SupplierPayable) / Cr Cash-or-Bank, posted
+            // SYNCHRONOUSLY in-transaction so it takes the GL company advisory
+            // lock BEFORE the movement port's repository row lock below — the
+            // same global lock order as post() (spine BLOCKER-1).
+            //
+            // Use the dedicated expense-settlement helper (NOT
+            // createSupplierPaymentJournalEntry, whose $partnerId is non-nullable):
+            // documents.partner_id is nullable, so a petty-cash / anonymous-vendor
+            // expense booked its AP line with a NULL partner in post(). The
+            // settlement must mirror that AP booking with the SAME (nullable)
+            // partner — passing null into the non-null helper would TypeError → 500
+            // (Fix 1).
+            $entry = $this->glService->createExpenseSettlementJournalEntry(
+                companyId: $expense->company_id,
+                partnerId: $expense->partner_id,
+                expenseId: $expense->id,
+                amount: (string) ($expense->total ?? '0'),
+                paymentMethodAccountId: $creditAccount->id,
+                date: Carbon::parse($data->paymentDate),
+                user: $user,
+                description: "Expense settlement: {$expense->document_number} - {$vendorName}",
+                currencyCode: (string) $expense->currency,
+                mode: PostingMode::SynchronousInTransaction,
+            );
+
+            $this->movementService->record(new MovementIntent(
+                repositoryId: $repository->id,
+                tenantId: $expense->tenant_id,
+                companyId: $expense->company_id,
+                direction: MovementDirection::Out,
+                amount: (string) ($expense->total ?? '0'),
+                currency: (string) $expense->currency,
+                sourceType: MovementSourceType::Expense,
+                sourceId: $expense->id,
+                idempotencyLeg: 'settlement',
+                journalEntryId: $entry->id,
+                occurredAt: null,
+                reasonCode: null,
+                reversesMovementId: null,
+                createdBy: $user->id,
+                notes: null,
+                allowWhileFrozen: false,
+            ));
+
+            $metadata->update([
+                'is_paid' => true,
+                'paid_at' => now(),
+                'payment_repository_id' => $repository->id,
+                'payment_method_id' => $data->paymentMethodId ?? $metadata->payment_method_id,
+                'payment_date' => $data->paymentDate,
+            ]);
+
+            $fresh = $expense->fresh(['expenseMetadata']);
+            if ($fresh === null) {
+                throw new \RuntimeException('Failed to refresh expense after settlement.');
+            }
+
+            return $fresh;
         });
     }
 
@@ -271,11 +492,18 @@ final class ExpenseService
             ]);
 
             $application = $this->linkedCostApplicator->reverse($expense, $originalCost, $reversalCost, $user);
+
+            // Post the reversal entry SYNCHRONOUSLY, in-transaction, so it returns the
+            // posted entry and takes the GL company advisory lock BEFORE the movement
+            // port takes the repository row lock below (spine BLOCKER-1 lock order).
+            // This reversal DEBITS the payment (cash) account — money returns to the
+            // books — so the inflow movement below links to a real reversing JE.
             $entry = $this->glService->createLinkedCostCapitalizationReversalEntry(
                 $expense->loadMissing('expenseMetadata.paymentRepository'),
                 $reversalCost,
                 $this->ledgerApplication($application, (string) $expense->currency),
                 $user,
+                PostingMode::SynchronousInTransaction,
             );
 
             $originalCost->reversed_at = now();
@@ -283,13 +511,30 @@ final class ExpenseService
 
             $cashReversed = false;
             if ($metadata->is_paid === true && $metadata->payment_repository_id !== null && $expense->total !== null) {
-                $this->inflow->applyInflow(
-                    $metadata->payment_repository_id,
-                    $expense->tenant_id,
-                    $expense->company_id,
-                    $expense->total,
-                    (string) $expense->currency,
-                );
+                // REPLACES the legacy inflow: the write port is the single writer of
+                // the repo balance + append-only movement row, atomically with the
+                // reversal GL post above. Keyed on the ORIGINAL expense id + the
+                // 'reversal' idempotency leg (distinct from post()'s 'linked_cost'),
+                // so a given expense's cash reversal is recorded exactly once. Amount
+                // and currency pass as strings so the port owns all bcmath/scale work.
+                $this->movementService->record(new MovementIntent(
+                    repositoryId: $metadata->payment_repository_id,
+                    tenantId: $expense->tenant_id,
+                    companyId: $expense->company_id,
+                    direction: MovementDirection::In,
+                    amount: $expense->total,
+                    currency: (string) $expense->currency,
+                    sourceType: MovementSourceType::Expense,
+                    sourceId: $expense->id,
+                    idempotencyLeg: 'reversal',
+                    journalEntryId: $entry->id,
+                    occurredAt: null,
+                    reasonCode: null,
+                    reversesMovementId: null,
+                    createdBy: $user->id,
+                    notes: null,
+                    allowWhileFrozen: false,
+                ));
                 $cashReversed = true;
             }
 

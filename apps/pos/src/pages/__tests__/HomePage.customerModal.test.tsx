@@ -151,7 +151,7 @@ vi.mock('@/components/organisms/LineDiscountModal', () => ({
 }));
 
 vi.mock('@/components/organisms/ModifierSelectionModal', () => ({
-  ModifierSelectionModal: () => null,
+  ModifierComposerSheet: () => null,
 }));
 
 vi.mock('@/components/organisms/QuantityNumpad', () => ({

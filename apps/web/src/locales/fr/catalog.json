@@ -24,6 +24,7 @@
     },
     "subtitle": "Scannez un code-barres pour pré-remplir depuis Synerivia, ou saisissez manuellement.",
     "sectionLabels": {
+      "hero": "Produit",
       "general": "Général",
       "pricing": "Prix & Taxes",
       "inventory": "Stock & Unités",

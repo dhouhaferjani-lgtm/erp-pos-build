@@ -256,6 +256,42 @@ class FiscalPeriodResolverService
     }
 
     /**
+     * Check whether a date falls within a fiscal period that EXISTS and is
+     * CLOSED (or Locked — see {@see FiscalPeriod::isClosed()}).
+     *
+     * Guard semantics (Treasury spine BLOCKER-2): this is deliberately NOT
+     * the inverse of {@see isDateInOpenPeriod()}. That method returns false
+     * both when a period is closed AND when no period exists at all for the
+     * date — collapsing those two very different situations into one
+     * boolean. Reusing it to gate posting would reject postings for any
+     * company that hasn't configured fiscal periods yet (absence of
+     * configuration is not the same as a deliberately closed period).
+     *
+     * This method distinguishes them: it returns true ONLY when a period
+     * exists for the date AND that period is closed. Absence of any period
+     * for the date returns false (posting is allowed).
+     *
+     * @param  string  $companyId  UUID of the company
+     * @param  Carbon  $date  The entry date to validate
+     * @return bool True only if a period exists for the date and is closed
+     */
+    public function isDateInClosedPeriod(string $companyId, Carbon $date): bool
+    {
+        // Order-independent: return true iff a covering period whose status is
+        // Closed OR Locked EXISTS. The previous ->first()->isClosed() form was
+        // row-order-dependent — with two periods overlapping the date it could
+        // sample an Open period and wrongly allow a post into a date that is
+        // ALSO covered by a Closed period. The whereIn([Closed, Locked]) mirrors
+        // FiscalPeriod::isClosed() exactly (Locked is treated as closed too).
+        return FiscalPeriod::query()
+            ->where('company_id', $companyId)
+            ->where('start_date', '<=', $date)
+            ->where('end_date', '>=', $date)
+            ->whereIn('status', [PeriodStatus::Closed, PeriodStatus::Locked])
+            ->exists();
+    }
+
+    /**
      * Get all open periods for a fiscal year.
      *
      * Useful for UI dropdowns showing available periods for transaction posting.

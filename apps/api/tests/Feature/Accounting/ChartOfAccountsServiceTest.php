@@ -238,6 +238,82 @@ class ChartOfAccountsServiceTest extends TestCase
         $this->assertNull($account->system_purpose);
     }
 
+    /**
+     * Audit fix 4 (K2): the adjustment endpoint books count-variance /
+     * correction adjustments against PaymentToleranceExpense (658) /
+     * PaymentToleranceIncome (758). Previously only the generic chart wired
+     * these purposes — the Tunisia (PCN) chart did not, causing a 500 for any
+     * real TN tenant. See TunisiaChartOfAccountsSeeder codes 6580/7580.
+     */
+    public function test_tunisia_chart_includes_payment_tolerance_accounts(): void
+    {
+        $company = $this->createCompany('TN');
+
+        $this->service->seedForCompany($company);
+
+        $expenseAccount = Account::findByPurpose($company->id, SystemAccountPurpose::PaymentToleranceExpense);
+        $this->assertNotNull($expenseAccount, 'TN chart must map a payment-tolerance expense account (658)');
+        $this->assertSame('6580', $expenseAccount->code);
+        $this->assertSame(AccountType::Expense, $expenseAccount->type);
+
+        $incomeAccount = Account::findByPurpose($company->id, SystemAccountPurpose::PaymentToleranceIncome);
+        $this->assertNotNull($incomeAccount, 'TN chart must map a payment-tolerance income account (758)');
+        $this->assertSame('7580', $incomeAccount->code);
+        $this->assertSame(AccountType::Revenue, $incomeAccount->type);
+    }
+
+    /**
+     * Same K2 gap for the France (PCG) chart — see FranceChartOfAccountsSeeder
+     * codes 6580/7580, sibling of the existing 6585/7585 purchase-price
+     * variance accounts.
+     */
+    public function test_france_chart_includes_payment_tolerance_accounts(): void
+    {
+        $company = $this->createCompany('FR');
+
+        $this->service->seedForCompany($company);
+
+        $expenseAccount = Account::findByPurpose($company->id, SystemAccountPurpose::PaymentToleranceExpense);
+        $this->assertNotNull($expenseAccount, 'FR chart must map a payment-tolerance expense account (658)');
+        $this->assertSame('6580', $expenseAccount->code);
+        $this->assertSame(AccountType::Expense, $expenseAccount->type);
+
+        $incomeAccount = Account::findByPurpose($company->id, SystemAccountPurpose::PaymentToleranceIncome);
+        $this->assertNotNull($incomeAccount, 'FR chart must map a payment-tolerance income account (758)');
+        $this->assertSame('7580', $incomeAccount->code);
+        $this->assertSame(AccountType::Revenue, $incomeAccount->type);
+    }
+
+    /**
+     * Both country seeders re-check by code AND by system_purpose before
+     * inserting (existing upsert-style guard) — re-running the seeder for the
+     * same company must not create duplicate 6580/7580 accounts.
+     */
+    public function test_seeding_tunisia_chart_twice_does_not_duplicate_payment_tolerance_accounts(): void
+    {
+        $company = $this->createCompany('TN');
+
+        $this->service->seedForCompany($company);
+        $countAfterFirstRun = Account::where('company_id', $company->id)->count();
+
+        $this->service->seedForCompany($company);
+        $countAfterSecondRun = Account::where('company_id', $company->id)->count();
+
+        $this->assertSame($countAfterFirstRun, $countAfterSecondRun);
+        $this->assertSame(
+            1,
+            Account::where('company_id', $company->id)
+                ->where('system_purpose', SystemAccountPurpose::PaymentToleranceExpense->value)
+                ->count()
+        );
+        $this->assertSame(
+            1,
+            Account::where('company_id', $company->id)
+                ->where('system_purpose', SystemAccountPurpose::PaymentToleranceIncome->value)
+                ->count()
+        );
+    }
+
     public function test_get_supported_countries_returns_tunisia_and_france(): void
     {
         $countries = $this->service->getSupportedCountries();

@@ -241,6 +241,8 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '641', 'name' => 'Rémunérations du personnel', 'type' => 'expense', 'parent_code' => '64'],
             ['code' => '645', 'name' => 'Charges de sécurité sociale et de prévoyance', 'type' => 'expense', 'parent_code' => '64'],
             ['code' => '65', 'name' => 'Autres charges de gestion courante', 'type' => 'expense', 'parent_code' => '6'],
+            ['code' => '6580', 'name' => 'Écart de règlement (charges)', 'type' => 'expense', 'parent_code' => '65',
+                'system_purpose' => SystemAccountPurpose::PaymentToleranceExpense->value, 'is_system' => true],
             ['code' => '6585', 'name' => 'Écart sur prix d\'achat', 'type' => 'expense', 'parent_code' => '65',
                 'system_purpose' => SystemAccountPurpose::PurchasePriceVarianceExpense->value, 'is_system' => true],
             ['code' => '66', 'name' => 'Charges financières', 'type' => 'expense', 'parent_code' => '6'],
@@ -262,6 +264,8 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '7071', 'name' => 'Ventes de marchandises - Pièces automobiles', 'type' => 'revenue', 'parent_code' => '707'],
             ['code' => '708', 'name' => 'Produits des activités annexes', 'type' => 'revenue', 'parent_code' => '70'],
             ['code' => '709', 'name' => 'Rabais, remises et ristournes accordés', 'type' => 'revenue', 'parent_code' => '70'],
+            ['code' => '7580', 'name' => 'Écart de règlement (produits)', 'type' => 'revenue', 'parent_code' => '75',
+                'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],
 
             // Voucher accounting — EU Directive 2016/1065 MPV layer (non-taxable; Phase 1)
             ['code' => '7091', 'name' => 'Remboursements clients - Virements bons d\'achat', 'type' => 'expense', 'parent_code' => '70',

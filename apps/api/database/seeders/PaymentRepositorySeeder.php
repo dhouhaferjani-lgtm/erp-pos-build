@@ -8,9 +8,14 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class PaymentRepositorySeeder extends Seeder
@@ -67,17 +72,83 @@ class PaymentRepositorySeeder extends Seeder
         foreach ($repositories as $repo) {
             $glAccountId = $this->resolveGlAccountId($repo['type'], $cashAccount, $bankAccount);
 
-            PaymentRepository::create([
-                'id' => Str::uuid()->toString(),
+            // Cutover-hardening (Fix 1): repositories are BORN at balance 0 — the
+            // direct-balance-write trigger now guards INSERTs too, rejecting a
+            // non-zero opening balance minted with no backing movement. Strip the
+            // seed's `balance` from the INSERT attributes; the model default (0)
+            // satisfies the INSERT guard.
+            $openingBalance = $repo['balance'];
+            unset($repo['balance']);
+
+            $repositoryId = Str::uuid()->toString();
+
+            // forceCreate: the remaining columns (code/name/type/bank_*) are set;
+            // `balance` is port-managed and defaults to 0 on the INSERT.
+            PaymentRepository::forceCreate([
+                'id' => $repositoryId,
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
                 'account_id' => $glAccountId,
                 'gl_account_id' => $glAccountId,
                 ...$repo,
             ]);
+
+            // A non-zero opening balance is established through the PORT — this
+            // sets the cached balance AND lays down the backing `opening_balance`
+            // movement so the ledger reconciles (spec §4: opening_balance legs are
+            // JE-nullable). Resolving the port via the container is acceptable in a
+            // seeder (NOT in app/ prod code, which must constructor-inject).
+            if (bccomp($openingBalance, '0', 3) === 1) {
+                $this->recordOpeningBalance(
+                    repositoryId: $repositoryId,
+                    tenantId: $tenant->id,
+                    companyId: $company->id,
+                    currency: $company->currency,
+                    amount: $openingBalance,
+                );
+            }
         }
 
         $this->command->info('Created '.count($repositories).' payment repositories for '.$company->name);
+    }
+
+    /**
+     * Establish a repository's opening balance via the treasury movement port, so
+     * the cached balance is backed by an `opening_balance` movement (spec §4/§5).
+     *
+     * @param  numeric-string  $amount
+     */
+    private function recordOpeningBalance(
+        string $repositoryId,
+        string $tenantId,
+        string $companyId,
+        string $currency,
+        string $amount,
+    ): void {
+        /** @var TreasuryMovementServiceInterface $port */
+        $port = app(TreasuryMovementServiceInterface::class);
+
+        // MED-9: the port requires an owning outer transaction (so its balance
+        // write + the `SET LOCAL` GUC are atomic). `sourceId` is the repository id
+        // — a stable, per-repository natural key for the single opening leg.
+        DB::transaction(fn () => $port->record(new MovementIntent(
+            repositoryId: $repositoryId,
+            tenantId: $tenantId,
+            companyId: $companyId,
+            direction: MovementDirection::In,
+            amount: $amount,
+            currency: $currency,
+            sourceType: MovementSourceType::OpeningBalance,
+            sourceId: $repositoryId,
+            idempotencyLeg: 'opening',
+            journalEntryId: null,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: null,
+            notes: 'Seeded opening balance',
+            allowWhileFrozen: false,
+        )));
     }
 
     /**
@@ -102,7 +173,7 @@ class PaymentRepositorySeeder extends Seeder
      *     account_number: string|null,
      *     iban: string|null,
      *     bic: string|null,
-     *     balance: string,
+     *     balance: numeric-string,
      *     is_active: bool
      * }>
      */

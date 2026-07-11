@@ -66,6 +66,18 @@ server {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
+    # ES module scripts (e.g. pdf.js worker: pdf.worker.min-*.mjs).
+    # Stock nginx mime.types has no .mjs entry, so it falls through to
+    # default_type application/octet-stream — browsers enforce strict MIME
+    # checking for module scripts and refuse to execute it. Scoped location
+    # (not a global mime.types edit) so it doesn't disturb any other type.
+    location ~* \.mjs$ {
+        default_type application/javascript;
+        expires 1y;
+        access_log off;
+        add_header Cache-Control "public, immutable";
+    }
+
     # Cache static assets aggressively
     location ~* \.(?:css|js|woff|woff2|ttf|eot|ico)$ {
         expires 1y;

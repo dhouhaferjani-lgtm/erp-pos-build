@@ -24,6 +24,7 @@ interface RegisterResponseUser {
   email: string
   tenantId: string
   roles: string[]
+  permissions: string[]
 }
 
 interface RegisterResponse {
@@ -93,6 +94,7 @@ export function RegisterPage() {
         email: data.user.email,
         tenant_id: data.user.tenantId,
         roles: data.user.roles,
+        permissions: data.user.permissions,
         email_verified_at: null,
       }
       setAuth(user, data.token)

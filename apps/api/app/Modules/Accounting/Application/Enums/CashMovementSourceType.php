@@ -9,5 +9,6 @@ enum CashMovementSourceType: string
     case CustomerPayment = 'customer_payment';
     case Payment = 'payment';
     case PosReceipt = 'pos_receipt';
+    case PosReceiptRefund = 'pos_receipt_refund';
     case SupplierPayment = 'supplier_payment';
 }

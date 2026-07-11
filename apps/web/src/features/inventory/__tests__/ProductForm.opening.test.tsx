@@ -278,7 +278,7 @@ describe('ProductForm opening-stock section gate', () => {
       expect(screen.getAllByDisplayValue('Opening Test Product').length).toBeGreaterThan(0)
     })
 
-    expect(screen.getByTestId('ready-to-sell-strip')).toBeInTheDocument()
+    expect(document.querySelector('#section-inventory')).not.toBeNull()
     expect(screen.queryByTestId('opening-section')).not.toBeInTheDocument()
     expect(screen.queryByTestId('opening-qty-input')).not.toBeInTheDocument()
 
@@ -307,7 +307,7 @@ describe('ProductForm opening-stock section gate', () => {
       expect(screen.getAllByDisplayValue('Opening Test Product').length).toBeGreaterThan(0)
     })
 
-    expect(screen.getByTestId('ready-to-sell-strip')).toBeInTheDocument()
+    expect(document.querySelector('#section-inventory')).not.toBeNull()
     expect(screen.queryByTestId('opening-section')).not.toBeInTheDocument()
 
     // Qty input must be enabled (can_enter_opening = true)
@@ -317,10 +317,9 @@ describe('ProductForm opening-stock section gate', () => {
     expect(screen.queryByTestId('opening-reset-btn')).not.toBeInTheDocument()
   })
 
-  it('moves opening controls into the ready-to-sell strip and removes the opening card', async () => {
-    mockHasPermission.mockImplementation((p: string) => (
-      p === 'inventory.adjust' || p === 'pricing.view_cost_prices'
-    ))
+  it('moves opening controls into the canonical inventory card and keeps cost in pricing', async () => {
+    mockHasPermission.mockImplementation((permission: string) =>
+      permission === 'inventory.adjust' || permission === 'pricing.view_cost_prices')
 
     renderWithProviders(<ProductForm />, {
       route: '/inventory/products/new',
@@ -328,19 +327,19 @@ describe('ProductForm opening-stock section gate', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText('inventory:products.readyToSell')).toBeInTheDocument()
+      expect(screen.getByTestId('opening-qty-input')).toBeInTheDocument()
     })
 
-    const strip = screen.getByTestId('ready-to-sell-strip')
-    expect(within(strip).getByTestId('opening-qty-input')).toBeEnabled()
-    expect(within(strip).getByLabelText('inventory:products.costHt')).toBeInTheDocument()
+    const inventorySection = document.querySelector('#section-inventory')
+    if (!(inventorySection instanceof HTMLElement)) throw new Error('Expected inventory section')
+    expect(within(inventorySection).getByTestId('opening-qty-input')).toBeEnabled()
+    expect(screen.getByLabelText('inventory:products.purchasePrice')).toBeInTheDocument()
     expect(screen.queryByTestId('opening-section')).not.toBeInTheDocument()
   })
 
-  it('keeps stored TTC authoritative while recalculating HT and margin with cost markup math', async () => {
-    mockHasPermission.mockImplementation((p: string) => (
-      p === 'inventory.adjust' || p === 'pricing.view_cost_prices'
-    ))
+  it('keeps HT canonical while blur-committing TTC and margin with cost markup math', async () => {
+    mockHasPermission.mockImplementation((permission: string) =>
+      permission === 'inventory.adjust' || permission === 'pricing.view_cost_prices')
 
     renderWithProviders(<ProductForm />, {
       route: '/inventory/products/new',
@@ -348,23 +347,21 @@ describe('ProductForm opening-stock section gate', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('ready-to-sell-strip')).toBeInTheDocument()
+      expect(document.querySelector('#section-pricing')).not.toBeNull()
     })
 
-    fireEvent.change(screen.getByLabelText('inventory:products.costHt'), {
+    fireEvent.change(screen.getByLabelText('inventory:products.purchasePrice'), {
       target: { value: '8.500' },
     })
-    const priceTtcInput = screen.getByLabelText('inventory:products.priceTtc')
-    fireEvent.focus(priceTtcInput)
-    fireEvent.change(priceTtcInput, {
+    const ttcInput = screen.getByLabelText('inventory:products.priceTtc')
+    fireEvent.focus(ttcInput)
+    fireEvent.change(ttcInput, {
       target: { value: '14.280' },
     })
-    fireEvent.blur(priceTtcInput)
+    fireEvent.blur(ttcInput)
 
-    await waitFor(() => {
-      expect(screen.getByLabelText('inventory:products.priceHt')).toHaveValue(14.28)
-      expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue(68)
-    })
+    expect(screen.getByLabelText('inventory:products.priceHt')).toHaveValue(14.28)
+    expect(screen.getByLabelText('inventory:products.marginPercent')).toHaveValue(68)
 
     const marginInput = screen.getByLabelText('inventory:products.marginPercent')
     fireEvent.focus(marginInput)
@@ -373,10 +370,8 @@ describe('ProductForm opening-stock section gate', () => {
     })
     fireEvent.blur(marginInput)
 
-    await waitFor(() => {
-      expect(screen.getByLabelText('inventory:products.priceHt')).toHaveValue(12.002)
-      expect(screen.getByLabelText('inventory:products.priceTtc')).toHaveValue(12.002)
-    })
+    expect(screen.getByLabelText('inventory:products.priceHt')).toHaveValue(12.002)
+    expect(screen.getByLabelText('inventory:products.priceTtc')).toHaveValue(12.002)
   })
 
   it('renders edit hero primary image with md variant and accepted enrichment state', async () => {

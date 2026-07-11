@@ -333,7 +333,9 @@ class PaymentTest extends TestCase
 
         $bankAccount = Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::Bank);
 
-        $repository = PaymentRepository::create([
+        // factory() is unguarded, so it seeds the port-managed (non-fillable)
+        // `balance` on INSERT (Task 22).
+        $repository = PaymentRepository::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'BANK-AP',
@@ -588,7 +590,9 @@ class PaymentTest extends TestCase
         ]);
 
         // Repository WITHOUT a ledger account — cash would move with no 401 entry.
-        $repository = PaymentRepository::create([
+        // factory() is unguarded, so it seeds the port-managed (non-fillable)
+        // `balance` on INSERT (Task 22).
+        $repository = PaymentRepository::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'CASH-NOLEDGER',

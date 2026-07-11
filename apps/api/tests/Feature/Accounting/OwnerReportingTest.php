@@ -11,6 +11,7 @@ use App\Modules\Compliance\Domain\CompanyFraudSettings;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
@@ -446,29 +447,54 @@ final class OwnerReportingTest extends TestCase
         Sanctum::actingAs($this->owner);
 
         // 11 sale receipts -> only the newest 10 must be returned, newest first.
+        $originalReceipt = null;
         foreach (range(1, 11) as $minute) {
-            $this->seedReceipt(
+            $saleReceipt = $this->seedReceipt(
                 $minute % 2 === 0 ? $this->locationA : $this->locationB,
                 $minute % 2 === 0 ? $this->terminalA : $this->terminalB,
                 sprintf('2026-07-03 10:%02d:00', $minute),
                 '10.000',
             );
+            $originalReceipt ??= $saleReceipt;
         }
 
-        // Excluded rows: voided, training, and return receipts.
-        $voided = $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 11:30:00', '999.000');
-        Receipt::query()->whereKey($voided->id)->update(['is_voided' => true]);
+        // Excluded rows: voided, training, and return receipts. Seeded already-voided /
+        // already-Return AT INSERT TIME (never via a post-create update()) — pos_receipts
+        // rows are sealed on insert, and the fiscal-immutability trigger correctly rejects
+        // an update that flips is_voided/receipt_type without also transitioning
+        // fiscal_status. See the seedReceipt() docblock.
+        $voided = $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 11:30:00', '999.000', overrides: [
+            // pos_receipts_void_logic CHECK constraint requires voided_at/voided_by
+            // whenever is_voided is true, at INSERT time.
+            'is_voided' => true,
+            'voided_at' => '2026-07-03 11:31:00',
+            'voided_by' => $this->owner->id,
+        ]);
         $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 11:40:00', '888.000', trainingFlag: true);
-        $return = $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 11:50:00', '777.000');
-        Receipt::query()->whereKey($return->id)->update(['receipt_type' => ReceiptType::Return->value]);
+        // pos_receipts_return_logic CHECK constraint requires original_receipt_id and
+        // return_reason whenever receipt_type is 'return', at INSERT time.
+        $return = $this->seedReceipt($this->locationA, $this->terminalA, '2026-07-03 11:50:00', '777.000', overrides: [
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $originalReceipt->id,
+            'return_reason' => ReturnReason::CustomerChangedMind,
+        ]);
 
         // A receipt with a line to verify items_count.
         $product = Product::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'name' => 'Vitamin C']);
         $withLine = $this->seedReceiptWithLine($product, $this->locationA, $this->terminalA, '2026-07-03 12:00:00', '86.400', '3.000');
 
-        // Open shifts: two on location A, one closed on location B.
+        // Open shifts: two on location A (on two DIFFERENT terminals — the
+        // pos_shifts_one_open_per_terminal partial unique index enforces exactly one
+        // OPEN shift per terminal on real Postgres; sqlite doesn't create this
+        // PG-only partial index at all, so it silently tolerated two OPEN rows on the
+        // same terminal there), one closed on location B.
+        $terminalA2 = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->locationA->id,
+        ]);
         $this->seedShift($this->terminalA, 101, ShiftStatus::Open);
-        $this->seedShift($this->terminalA, 102, ShiftStatus::Open);
+        $this->seedShift($terminalA2, 102, ShiftStatus::Open);
         $this->seedShift($this->terminalB, 103, ShiftStatus::Closed);
 
         $response = $this->getJson('/api/v1/reports/sales/live', $this->companyHeaders());
@@ -525,9 +551,18 @@ final class OwnerReportingTest extends TestCase
         return ['X-Company-Id' => $this->company->id];
     }
 
-    private function seedReceipt(Location $location, Terminal $terminal, string $postedAt, string $total, bool $trainingFlag = false): Receipt
+    /**
+     * @param  array<string, mixed>  $overrides  Applied to the factory `create()` call itself
+     *                                           (i.e. present at INSERT time), never via a post-create `update()`. `pos_receipts` rows are
+     *                                           sealed (`fiscal_status = 'fiscalized'`) the moment they're inserted, and the
+     *                                           `prevent_receipt_modification()` PG trigger only allows the `fiscalized -> voided`
+     *                                           `fiscal_status` transition on UPDATE — it correctly rejects an `is_voided`-only update that
+     *                                           leaves `fiscal_status` unchanged. Voided/returned fixture receipts must therefore be built
+     *                                           already-voided/already-Return at insert time.
+     */
+    private function seedReceipt(Location $location, Terminal $terminal, string $postedAt, string $total, bool $trainingFlag = false, array $overrides = []): Receipt
     {
-        $receipt = Receipt::factory()->create([
+        $receipt = Receipt::factory()->create(array_merge([
             'tenant_id' => $this->tenant->id,
             'company_id' => $location->company_id,
             'location_id' => $location->id,
@@ -540,7 +575,7 @@ final class OwnerReportingTest extends TestCase
             'tax_amount' => '0.000',
             'total' => $total,
             'training_flag' => $trainingFlag,
-        ]);
+        ], $overrides));
 
         $this->seedPayment($receipt, $this->cashMethod, 'cash', $total);
 

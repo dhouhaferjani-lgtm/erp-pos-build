@@ -4,17 +4,16 @@ import type React from 'react'
 import { useTranslation } from 'react-i18next'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
-import { Button, Input } from '@/components/atoms'
+import { Button } from '@/components/atoms/Button/Button'
+import { Input } from '@/components/atoms/Input/Input'
+import type { EnrichmentAttributeRow } from '@/features/products/enrichmentCaptureTypes'
 import {
   MAX_PHOTO_BYTES,
   type UploadedPhoto,
   uploadEnrichmentPhoto,
 } from '../api/enrichmentPhotos'
 
-export interface EnrichmentAttributeRow {
-  key: string
-  value: string
-}
+export type { EnrichmentAttributeRow } from '@/features/products/enrichmentCaptureTypes'
 
 interface EnrichmentCapturePanelProps {
   photos: UploadedPhoto[]

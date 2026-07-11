@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Domain\Services;
 
+use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
@@ -16,6 +20,7 @@ use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Support\Facades\DB;
 
 final class VendorRefundService
@@ -23,6 +28,7 @@ final class VendorRefundService
     public function __construct(
         private readonly GeneralLedgerService $glService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     /**
@@ -93,11 +99,14 @@ final class VendorRefundService
                 ->where('company_id', $lockedPo->company_id)
                 ->findOrFail($paymentMethodId);
 
+            // NOT locked here (Task 18): the movement port takes the repository
+            // row lock inside record(), AFTER the GL post takes the company
+            // advisory lock — the global lock order (advisory -> repo, BLOCKER-1).
+            // Pre-locking the repo here would invert that order.
             /** @var PaymentRepository $resolvedRepository */
             $resolvedRepository = PaymentRepository::query()
                 ->where('tenant_id', $lockedPo->tenant_id)
                 ->where('company_id', $lockedPo->company_id)
-                ->lockForUpdate()
                 ->findOrFail($repositoryId);
 
             // Create refund payment record
@@ -140,34 +149,79 @@ final class VendorRefundService
             // PO status stays confirmed — never transition to paid
             $lockedPo->save();
 
-            // Update repository balance (money going out). The repository
-            // was already resolved + locked above under the PO's tenant/
-            // company scope (Codex round-2 Finding 12), so we can update
-            // directly without a second query. Cross-tenant repositories
-            // never reach this point — they throw ModelNotFoundException
-            // before Payment::create.
-            /** @var numeric-string $repoBalance */
-            $repoBalance = $resolvedRepository->balance ?? '0.00';
-            $resolvedRepository->balance = bcsub($repoBalance, $amount, $scale);
-            $resolvedRepository->save();
-
-            // Create GL reversal if repository has a GL account.
-            if ($resolvedRepository->gl_account_id !== null) {
-                $journalEntry = $this->glService->reverseSupplierAdvanceJournalEntry(
-                    companyId: $lockedPo->company_id,
-                    partnerId: $lockedPo->partner_id,
-                    refundId: $payment->id,
-                    amount: $amount,
-                    paymentMethodAccountId: $resolvedRepository->gl_account_id,
-                    date: now(),
-                    description: "Supplier advance refund - {$lockedPo->document_number}".($reason ? " - {$reason}" : ''),
-                    postedByUserId: $userId,
-                    currencyCode: $payment->currency,
+            // A cash movement is about to leave this repository. The spine §9.2
+            // reconciliation invariant requires every cash movement to carry a
+            // linked journal_entry_id. Refund is NOT exempt in
+            // ReconcileTreasuryCommand::isJournalEntryExempt(), so a repository
+            // with no gl_account_id has no GL account to post the reversal to —
+            // refuse rather than record a null-JE movement that would freeze the
+            // repo at the next `treasury:reconcile` (mirrors the guard in
+            // PaymentRefundService::postRefundGlAndMovement).
+            if ($resolvedRepository->gl_account_id === null) {
+                throw new \DomainException(
+                    "a refund cash movement requires a GL-linked repository; repository {$resolvedRepository->id} has no gl_account_id"
                 );
-
-                $payment->journal_entry_id = $journalEntry->id;
-                $payment->save();
             }
+
+            // Post the GL reversal SYNCHRONOUSLY (in-transaction) FIRST — so its
+            // company advisory lock is taken before the movement port's
+            // repository row lock (BLOCKER-1). This REPLACES the old inline
+            // `$resolvedRepository->balance = bcsub(...)` write; the movement
+            // port below is now the single writer of the repository balance +
+            // the append-only movement row. ALWAYS posted now that the guard
+            // above has ruled out an unledgered repository — no null-JE refund
+            // movement is reachable.
+            $journalEntry = $this->glService->reverseSupplierAdvanceJournalEntry(
+                companyId: $lockedPo->company_id,
+                partnerId: $lockedPo->partner_id,
+                refundId: $payment->id,
+                amount: $amount,
+                paymentMethodAccountId: $resolvedRepository->gl_account_id,
+                date: now(),
+                description: "Supplier advance refund - {$lockedPo->document_number}".($reason ? " - {$reason}" : ''),
+                postedByUserId: $userId,
+                currencyCode: $payment->currency,
+                mode: PostingMode::SynchronousInTransaction,
+            );
+
+            $journalEntryId = $journalEntry->id;
+            $payment->journal_entry_id = $journalEntry->id;
+            $payment->save();
+
+            // Move the cash OUT of the repository through the single write port
+            // (money returned to the company from the supplier — the pre-migration
+            // inline write DECREMENTED the balance, so the direction is Out). The
+            // port takes the repository row lock, advances its gapless ordinal and
+            // updates the cached balance atomically with the GL post above.
+            // sourceType Refund; sourceId is the refund payment id (freshly minted
+            // per call, so the idempotency key is naturally unique).
+            $this->movementService->record(new MovementIntent(
+                repositoryId: $resolvedRepository->id,
+                tenantId: $lockedPo->tenant_id,
+                companyId: $lockedPo->company_id,
+                direction: MovementDirection::Out,
+                amount: $amount,
+                // Task 20 review Fix 2 (MINOR) pattern, aligned here: pass the
+                // PAYMENT's own currency (the currency `$amount` is denominated
+                // in — stamped on the Payment row above from $lockedPo->currency),
+                // NOT the repository's cached currency. Passing the repo currency
+                // makes the port's CurrencyMismatchException guard
+                // (`$repo->currency !== $intent->currency`) trivially always-equal
+                // and silently disarms it (see TreasuryReceiptBridge,
+                // TreasuryAccountPaymentBridge). Currencies match today so
+                // behavior is unchanged; the guard is restored.
+                currency: $payment->currency,
+                sourceType: MovementSourceType::Refund,
+                sourceId: $payment->id,
+                idempotencyLeg: 'main',
+                journalEntryId: $journalEntryId,
+                occurredAt: null,
+                reasonCode: null,
+                reversesMovementId: null,
+                createdBy: $userId,
+                notes: null,
+                allowWhileFrozen: false,
+            ));
 
             return $payment;
         });

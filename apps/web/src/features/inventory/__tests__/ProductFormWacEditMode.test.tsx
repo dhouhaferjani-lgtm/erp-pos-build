@@ -77,9 +77,7 @@ vi.mock('@/hooks/useTaxConfigName', () => ({
 }))
 
 vi.mock('@/hooks/usePermissions', () => ({
-  usePermissions: () => ({
-    hasPermission: (permission: string) => permission === 'pricing.view_cost_prices',
-  }),
+  usePermissions: () => ({ hasPermission: () => true }),
 }))
 
 vi.mock('@/components/molecules/TaxConfigurationField', () => ({

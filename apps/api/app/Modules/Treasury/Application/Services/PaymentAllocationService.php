@@ -293,8 +293,14 @@ class PaymentAllocationService
                     $payment->save();
                 }
 
-                // Create advance entry for sales order allocations (prepayments)
-                if (bccomp($allocatedToOrders, '0', $this->scale($payment->currency)) > 0 && $actor instanceof User) {
+                // Create advance entry for sales order allocations (prepayments).
+                // NO actor gate (Task 24 Fix A): cash moved, so the GL consequence
+                // must post even when the actor can't be resolved (an offline
+                // ACCOUNT_PAYMENT whose cashier is not a company member) — otherwise
+                // the bridge records a cash movement with a null journal_entry_id and
+                // the treasury reconcile freezes the drawer. A null actor posts the
+                // advance as a SYSTEM-generated entry.
+                if (bccomp($allocatedToOrders, '0', $this->scale($payment->currency)) > 0) {
                     $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
                         companyId: $payment->company_id,
                         partnerId: $payment->partner_id,
@@ -302,7 +308,7 @@ class PaymentAllocationService
                         amount: $allocatedToOrders,
                         paymentMethodAccountId: $payment->repository->gl_account_id,
                         date: $payment->payment_date,
-                        user: $actor,
+                        user: $actor instanceof User ? $actor : null,
                         description: "Prepayment on order - {$payment->reference}",
                         currencyCode: $payment->currency
                     );
@@ -322,28 +328,45 @@ class PaymentAllocationService
             $advanceJournalEntryId = null;
 
             if (bccomp($excessAmount, '0', 4) > 0 && $payment->repository && $payment->repository->gl_account_id) {
-                if ($actor instanceof User) {
-                    // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer Advance)
-                    $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
-                        companyId: $payment->company_id,
-                        partnerId: $payment->partner_id,
-                        advanceId: $payment->id,
-                        amount: bcsub($excessAmount, '0', $this->scale($payment->currency)), // Format to currency scale
-                        paymentMethodAccountId: $payment->repository->gl_account_id,
-                        date: $payment->payment_date,
-                        user: $actor,
-                        description: "Customer advance from payment {$payment->reference}",
-                        currencyCode: $payment->currency
-                    );
+                // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer
+                // Advance). NO actor gate (Task 24 Fix A): cash moved, so the excess
+                // must post its 419 customer-advance consequence even when the actor
+                // can't be resolved (an offline ACCOUNT_PAYMENT whose cashier is not a
+                // company member). A null actor posts it as a SYSTEM-generated entry —
+                // otherwise the bridge records a cash movement carrying a null
+                // journal_entry_id and the treasury reconcile freezes the drawer.
+                $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
+                    companyId: $payment->company_id,
+                    partnerId: $payment->partner_id,
+                    advanceId: $payment->id,
+                    amount: bcsub($excessAmount, '0', $this->scale($payment->currency)), // Format to currency scale
+                    paymentMethodAccountId: $payment->repository->gl_account_id,
+                    date: $payment->payment_date,
+                    user: $actor instanceof User ? $actor : null,
+                    description: "Customer advance from payment {$payment->reference}",
+                    currencyCode: $payment->currency
+                );
 
-                    $advanceJournalEntryId = $advanceEntry->id;
+                $advanceJournalEntryId = $advanceEntry->id;
 
-                    // Update payment type if this is a pure advance (no allocations)
-                    if (bccomp($totalAllocated, '0', 4) === 0) {
-                        $payment->payment_type = PaymentType::Advance;
-                        $payment->save();
-                    }
+                // Reconciliation-readiness (spec §9.2): when the advance/excess JE
+                // is the payment's ONLY journal entry (a PURE advance — no invoice
+                // or order allocation posted an entry above), link + persist it as
+                // the payment's journal entry. The deposit/account bridges record
+                // the cash movement with `payment->journal_entry_id`; without this
+                // a plain customer deposit would record a null-JE cash movement even
+                // though the 419 customer-advance JE exists — freezing the repo at
+                // Wave-F reconcile.
+                if ($journalEntryId === null && $payment->journal_entry_id === null) {
+                    $payment->journal_entry_id = $advanceJournalEntryId;
                 }
+
+                // Update payment type if this is a pure advance (no allocations)
+                if (bccomp($totalAllocated, '0', 4) === 0) {
+                    $payment->payment_type = PaymentType::Advance;
+                }
+
+                $payment->save();
             }
 
             return [

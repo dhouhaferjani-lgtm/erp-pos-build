@@ -92,15 +92,13 @@ vi.mock('../../catalog/components/ProductVariantMatrixEditor', () => ({
   ProductVariantMatrixEditor: () => null,
 }))
 
-// ── ProductImageSection + CreateModeImageBuffer mocks ────────────────────────
-vi.mock('../../products/components/ProductImageSection', () => ({
-  ProductImageSection: () => <div data-testid="product-image-section" />,
-}))
-vi.mock('../../products/components/ParapharmacyMetadataFields', () => ({
-  ParapharmacyMetadataFields: () => null,
-}))
-vi.mock('../../products/components/CreateModeImageBuffer', () => ({
-  CreateModeImageBuffer: () => <div data-testid="create-mode-image-buffer" />,
+// ── Shared media section integration boundary ────────────────────────────────
+vi.mock('../../products/sections/ProductMediaSection', () => ({
+  ProductMediaSection: () => (
+    <section id="section-media">
+      <div data-testid="media-product-image-section" />
+    </section>
+  ),
 }))
 
 // ── Platform submission ───────────────────────────────────────────────────────
@@ -131,7 +129,7 @@ describe('ProductForm — Media section (edit mode, id=prod-abc-123)', () => {
 
   it('mounts ProductImageSection inside the Media section (no-regression)', () => {
     render(<ProductForm />)
-    expect(screen.getByTestId('product-image-section')).toBeInTheDocument()
+    expect(screen.getByTestId('media-product-image-section')).toBeInTheDocument()
   })
 
   it('does NOT show the "save first" helper in edit mode', () => {
