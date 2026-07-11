@@ -1,7 +1,19 @@
 # CODEX HANDOVER — Treasury UI Gaps (Repository Adjustment + Expense Pay)
 
-> **Date:** 2026-07-10. **Runner:** Codex desktop (CLI-brokered Codex cannot write to `apps/erp.*` worktrees). **Post-run:** Claude session takes over for gate review + merge — do NOT merge to dev or push yourself.
+> **Date:** 2026-07-10 · **AUTONOMOUS-GATES REVISION 2026-07-12** (owner order): gates run INSIDE this workflow via `claude -p` — no human wait; see "Autonomous audit gates" below, which SUPERSEDES the "Hard-stop gates" section at the bottom. **Runner:** Codex desktop (CLI-brokered Codex cannot write to `apps/erp.*` worktrees). Do NOT merge to dev or push yourself — when Gate 2 closes, leave the worktree and report; the Claude session runs the final review and owns the merge.
 > **Track:** Track 1 of a parallel work plan. Both backends are ALREADY SHIPPED, verified, and merged to `dev` (Treasury spine, `feat/treasury-spine` history). This brief is FRONTEND-ONLY: two missing UI surfaces over existing, working endpoints. Do not touch `apps/api/**` except tests you add for FE-adjacent contract checks — there should be none needed.
+> **⚠️ STALENESS (2026-07-12):** origin/dev has moved a lot since this brief was written — the design-system unification sweep AND treasury Phase ② (instrument portfolio) are both merged. Consequences: (a) `RepositoryDetailPage.tsx` was restyled by the sweep and already has a Movements tab — RE-VERIFY every line anchor in this brief before editing (cited line numbers are hints, not gospel); (b) POST-SWEEP conventions are mandatory: canonical `Input/Select/Textarea/Button` atoms, `PageHeader` pattern, design tokens only, and `node apps/web/tools/audit-design-system.mjs` must report **0 new** at every gate; (c) base the worktree on CURRENT origin/dev (`git fetch origin dev` first).
+
+## Autonomous audit gates (SUPERSEDES "Hard-stop gates" below)
+
+At each of the two gates (end of Wave A, end of Wave B) you do NOT wait for a human:
+
+1. Commit everything, run the §2 verification commands, tag `tug-gate-<N>-rc<attempt>`.
+2. Run from the worktree root (**Opus is the standard reviewer**):
+   `claude -p --model claude-opus-4-8 "ADVERSARIAL GATE REVIEW, Treasury UI Gaps, GATE <N>. Review ONLY the diff git diff <prev-tag-or-origin/dev>..HEAD against docs/handoff/CODEX-treasury-ui-gaps-2026-07-10.md §1 ground rules + Wave <A|B> acceptance criteria. Verify with file:line citations; hunt: error-envelope mishandling (the two 422 shapes), double-unwrap, parseFloat/Number on money, missing tenantScopedKey, hardcoded colors, missing i18n en+fr, permission-gating gaps, design-audit regressions. Write the review to docs/handoff/gate-reviews-tug/GATE-<N>-rc<attempt>.md ending 'VERDICT: APPROVE' or 'VERDICT: CHANGES-REQUIRED' with numbered severity findings."`
+3. **Escalation (owner tiering):** re-run the same prompt with `--model claude-fable-5` ONLY on a BLOCKER/HIGH touching a money-adjacent contract (wrong adjustment/expense-pay payloads, amount handling, invalidation that could show stale balances). This track is FE-only — escalation should be rare.
+4. CHANGES-REQUIRED → fix test-first, bump rc, re-run until APPROVE. 3 consecutive rc failures on the same BLOCKER → STOP and report.
+5. APPROVE → tag `tug-gate-<N>`, log verdict + review path in `docs/handoff/treasury-ui-gaps-progress.md`, continue. After Gate 2: leave the worktree intact and report done.
 
 ---
 

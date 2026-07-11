@@ -1,8 +1,20 @@
 # CODEX HANDOVER — Bank Reference Directory + Account Verification (Track 2, Phases 1–3)
 
-> **Date:** 2026-07-10. **Runner:** Codex desktop (CLI-brokered Codex cannot write to `apps/erp.*` worktrees). **Post-run:** Claude session takes over for the three gate reviews below + merge — do NOT merge to dev or push yourself.
+> **Date:** 2026-07-10 · **AUTONOMOUS-GATES REVISION 2026-07-12** (owner order): the three gates run INSIDE this workflow via `claude -p` — no human wait; see "Autonomous audit gates" below, which SUPERSEDES every "stop here for adversarial review" instruction in §4. **Runner:** Codex desktop (CLI-brokered Codex cannot write to `apps/erp.*` worktrees). Do NOT merge to dev or push yourself — after Gate 3, leave the worktree and report; the Claude session runs the final review and owns the merge.
 > **Spec (read first):** `docs/superpowers/specs/2026-06-30-bank-reference-and-account-verification-design.md` — approved design, phases 1–4. **This brief scopes ONLY phases 1–3.**
 > **Branch:** `feat/bank-reference-verification`, worktree `../erp.banks` (already exists, checked out at `6d77e16ee` — just the design-doc commit).
+> **⚠️ STALENESS (2026-07-12):** origin/dev has moved further since §1 was written (design-system sweep + treasury Phase ② both merged) — the branch is now even more behind; the §1 rebase-first instruction is MORE critical, and §2's verified line anchors must be re-verified after the rebase. Post-sweep FE conventions are mandatory for `BankPicker` (canonical atoms, tokens, 0 new design-audit findings). Bonus interlock: treasury Phase ② shipped `payment_instruments.bank_id` as a plain uuid awaiting YOUR `banks` table — do NOT wire it (that's a Phase-②-side follow-up after this track merges); just be aware the column exists.
+
+## Autonomous audit gates (SUPERSEDES §4's stop-for-review instructions)
+
+At each of the three gates (end of Phases 1, 2, 3) you do NOT wait for a human:
+
+1. Commit everything, run the §5-relevant verification, tag `bank-gate-<N>-rc<attempt>`.
+2. Run from the worktree root (**Opus is the standard reviewer**):
+   `claude -p --model claude-opus-4-8 "ADVERSARIAL GATE REVIEW, Bank Directory, GATE <N> (Phase <N> scope per docs/handoff/CODEX-bank-directory-2026-07-10.md §4). Review ONLY the diff git diff <prev-tag-or-origin/dev>..HEAD against the brief §3 ground rules + §5 verification contract + the design doc. Verify with file:line citations; hunt: int/float leakage in the mod-97 RIB/IBAN math (must be bcmath/GMP on strings end-to-end), module-boundary violations (Partner importing Treasury internals instead of the Shared contract), seeder non-idempotency, hard-blocking validation where warn-but-allow is specced, missing i18n, hardcoded colors, wrong middleware tuple. Write the review to docs/handoff/gate-reviews-bank/GATE-<N>-rc<attempt>.md ending 'VERDICT: APPROVE' or 'VERDICT: CHANGES-REQUIRED' with numbered severity findings."`
+3. **Escalation (owner tiering):** re-run the same prompt with `--model claude-fable-5` ONLY when the Opus review returns a BLOCKER/HIGH on the **validator math** (mod-97 correctness, int-overflow on 20+-digit strings, check-digit derivation — this brief's §3.10 names it the highest-stakes surface and static-analysis guards do NOT cover it) or declares uncertainty about it. Everything else stays on Opus.
+4. CHANGES-REQUIRED → fix test-first, bump rc, re-run until APPROVE. 3 consecutive rc failures on the same BLOCKER → STOP and report.
+5. APPROVE → tag `bank-gate-<N>`, log verdict + review path in `docs/handoff/bank-directory-progress.md`, continue. After Gate 3: leave the worktree intact and report done.
 
 ---
 
