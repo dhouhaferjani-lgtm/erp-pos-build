@@ -317,3 +317,14 @@
 - Fable escalation: not triggered. Neither pass found a BLOCKER/HIGH, money-path uncertainty, or a recorded money-path deviation.
 - Approved LOW carry-forwards: canonical REFUND/VOID validation already makes a missing original reference structurally invalid, but a coverage pin or explicit alert routing may improve dead-letter ergonomics; preserve actor requirements at interactive customer-direction call sites after the shared GL builders gained safe synchronous null-actor worker support. Numeric refund amount matching remains correct while the column is decimal.
 - Final verdict: `VERDICT: APPROVE`.
+
+### Task 19 — Maturing-instruments endpoint and forward buckets
+
+- Status: complete.
+- Files touched: new `MaturingInstrumentsController`; Treasury routes; new focused `MaturingInstrumentsTest`; this progress log.
+- RED: both API tests returned 404 before the route/controller existed.
+- GREEN: focused task path — PASS, 2 tests / 29 assertions. Task plus existing payment-instrument API regressions — PASS, 20 tests / 78 assertions.
+- Verification: targeted PHPStan on controller/routes/test — zero errors; Pint dirty test — pass; `php artisan route:list --path=treasury/maturing-instruments` shows the single guarded GET route; `git diff --check` — pass.
+- Bucket evidence: one company-scoped query selects only Received/Deposited instruments; null maturity maps to `d0_7`, past dates to overdue, and the forward 0–7/8–30/31–60/61–90/90+ boundaries produce per-bucket count/`total_in`/`total_out` plus grand totals as company-scale decimal strings using bcmath only.
+- Row/filter evidence: rows expose bucket and certainty (`portfolio` for Received, `remitted` for Deposited); from/to, direction, kind, repository, partner, and needs-details filters compose under tenant+company predicates. Cleared and foreign-company rows are excluded.
+- Deviations: none.

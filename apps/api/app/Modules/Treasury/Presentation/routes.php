@@ -7,6 +7,7 @@ use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Treasury\Presentation\Controllers\BankReconciliationController;
 use App\Modules\Treasury\Presentation\Controllers\CashPositionController;
 use App\Modules\Treasury\Presentation\Controllers\InstrumentRemittanceController;
+use App\Modules\Treasury\Presentation\Controllers\MaturingInstrumentsController;
 use App\Modules\Treasury\Presentation\Controllers\MultiPaymentController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentController;
 use App\Modules\Treasury\Presentation\Controllers\PaymentInstrumentController;
@@ -50,6 +51,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/treasury/cash-position', [CashPositionController::class, 'index'])
         ->middleware('can:treasury.view')
         ->name('treasury.cash-position');
+
+    Route::get('/treasury/maturing-instruments', [MaturingInstrumentsController::class, 'index'])
+        ->middleware('can:instruments.view')
+        ->name('treasury.maturing-instruments');
 
     // Payment Repositories
     Route::get('/payment-repositories', [PaymentRepositoryController::class, 'index'])
