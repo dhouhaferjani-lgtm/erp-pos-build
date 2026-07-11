@@ -7,6 +7,7 @@ namespace Tests\Feature\Treasury;
 use App\Models\Country;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
 use App\Modules\Accounting\Domain\JournalEntry;
@@ -368,6 +369,22 @@ final class InstrumentBounceTest extends TestCase
             'repository_id' => $context['safe']->id,
         ]);
         $payment->update(['instrument_id' => $instrument->id]);
+        $portfolioAccount = Account::query()
+            ->where('company_id', $context['company']->id)
+            ->where('code', $kind === InstrumentKind::Cheque ? '5312' : '413')
+            ->firstOrFail();
+        $receiptEntry = app(GeneralLedgerService::class)->createPaymentReceivedJournalEntry(
+            companyId: $context['company']->id,
+            partnerId: $context['partner']->id,
+            paymentId: $payment->id,
+            amount: $amount,
+            paymentMethodAccountId: $portfolioAccount->id,
+            date: now(),
+            user: $context['user'],
+            currencyCode: 'TND',
+            mode: PostingMode::SynchronousInTransaction,
+        );
+        $payment->update(['journal_entry_id' => $receiptEntry->id]);
         PaymentAllocation::query()->create([
             'payment_id' => $payment->id,
             'document_id' => $document->id,
