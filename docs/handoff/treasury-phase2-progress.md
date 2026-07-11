@@ -341,3 +341,14 @@
 - Direction/timing evidence: outbound Received paper feeds Money-Out; inbound null-maturity paper is due today with `days_until_due=0`; Received certainty is `portfolio`, Deposited certainty is `remitted`; overdue/pending instruments inside the requested end window merge with document lines under deterministic due-date/reference ordering.
 - DTO/file-list seam: the binding interface adds `source` and `certainty`, so the TypeScript-transformed DTO and its existing typed frontend fixture necessarily changed although the plan's Files list named only the service/test. Existing document lines explicitly emit `source=document`, `certainty=null`.
 - Money-path deviation: none. This is a read-only report; all sums remain decimal strings using bcmath and explicit currency scales.
+
+### Task 21 — Scheduled pre-maturity alerts
+
+- Status: complete.
+- Files touched: new `InstrumentMaturityAlertsCommand`; new country-settings migration; `CountryPaymentSettings`; `TreasuryServiceProvider`; console schedule; new focused `InstrumentMaturityAlertsTest`; this progress log.
+- RED: the focused path failed all 3 tests because `instrument_alert_days` did not exist, the command was unregistered, and no 06:30 schedule existed.
+- GREEN: focused task path — PASS, 3 tests / 17 assertions (the repository's PHPUnit deprecation display remains informational).
+- Verification: targeted PHPStan over command/model/test — zero errors; targeted Pint test — pass; `git diff --check` — pass; `schedule:list` contains `treasury:instrument-maturity-alerts` at cron `30 6 * * *`.
+- Alert evidence: the per-country nullable smallint overrides the default 7-day window; inbound Received instruments mature on/before today+window, while inbound Deposited instruments alert only when strictly more than the window overdue. Outbound and boundary-excluded rows do not enter the payload. Every company invocation records one `treasury.instrument.maturity_alert` audit event with counts, sorted IDs, window, and as-of date, then logs a warning; same-day reruns intentionally create a second event.
+- Failure-isolation evidence: companies are processed deterministically under `TenantScopedCommand::forEachTenant`; a thrown alert-channel failure for one company is logged, yields a non-zero command exit, and does not prevent a later company from receiving its audit event. The scheduler runs in-process with `withoutOverlapping()` so that exit remains observable.
+- Money-path deviation: none. The command is read-only except for audit/log alerting and never touches repositories, movements, or journals.

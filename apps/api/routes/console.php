@@ -61,6 +61,12 @@ Schedule::command('treasury:reconcile')
         Log::error('treasury:reconcile exited non-zero — this run either detected drift (one or more payment repositories were FROZEN) or one or more repository/tenant checks failed with an error (left un-frozen), or both; it is NOT known which from this signal alone. Check the treasury.reconcile.drift audit_events for freezes AND the application error log (treasury.reconcile.error / forEachTenant tenant-iteration failures) for check errors before assuming either outcome. A frozen drawer stays locked until an operator clears the freeze; an errored repository was simply skipped this run and should be re-checked.');
     });
 
+// Schedule: alert on instruments approaching remittance or overdue settlement.
+// Run in-process so the scheduler observes the command's partial-failure exit.
+Schedule::command('treasury:instrument-maturity-alerts')
+    ->dailyAt('06:30')
+    ->withoutOverlapping();
+
 // Schedule: Expire old stock reservations every 15 minutes
 Schedule::job(ExpireReservationsJob::class)
     ->everyFifteenMinutes()

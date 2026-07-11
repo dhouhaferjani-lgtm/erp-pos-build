@@ -26,6 +26,7 @@ class CountryPaymentSettings extends Model
         'realized_fx_loss_purpose',
         'cash_discount_enabled',
         'sales_discount_purpose',
+        'instrument_alert_days',
     ];
 
     protected $casts = [
@@ -33,6 +34,7 @@ class CountryPaymentSettings extends Model
         'payment_tolerance_percentage' => 'string',
         'max_payment_tolerance_amount' => 'string',
         'cash_discount_enabled' => 'boolean',
+        'instrument_alert_days' => 'integer',
     ];
 
     /**
