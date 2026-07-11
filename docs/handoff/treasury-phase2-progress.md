@@ -180,3 +180,16 @@
 - Compatibility evidence: immediate cash still posts to the repository GL account and writes one movement; `has_maturity + InstrumentKind::Other` remains on that same immediate path with no instrument.
 - Currency note: single-payment currency now defaults to the active company currency. The remaining Task-14 literal sweep stays assigned to Task 14.
 - Money-path deviation: none. Receipt-time deferred tenders post portfolio GL only and never call the movement port.
+
+### Task 14 — Supplier registration, side-door blocks, and refund guards
+
+- Status: complete.
+- Files touched: single/multi payment controllers; payment refund service; new en/fr Treasury backend translations; focused deferred-guard test; this progress log. `Payment::instrument()` already existed with the correct typed relation, so no model edit was needed.
+- RED: `./vendor/bin/phpunit tests/Feature/Treasury/DeferredTenderGuardsTest.php` — expected missing outbound-instrument error and side-door acceptance failure. The first refund fixture initially mutated one payment across three operations and was corrected to independent payments so each guard was tested at the true pre-write boundary.
+- GREEN: task path — PASS, 7 tests / 25 assertions. Task + deferred-customer + multipayment + payment/refund/spine/supplier/event regressions — PASS, 86 tests / 318 assertions before the final four-cash-side-door pin; that added pin passes in the 7-test task path.
+- Verification: targeted PHPStan on all three production files and the task test — zero errors; Pint — pass; `git diff --check` — pass; `rg "?? 'TND'" PaymentController.php` returns no matches.
+- Supplier evidence: Cheque/Effet supplier payments retain the Phase-1 cash-out path and Cr-bank GL line, while atomically adding a linked outbound Received instrument; `InstrumentKind::Other` remains byte-shape compatible and creates no instrument.
+- Side-door evidence: `storeMultiple`, split payment, deposit, and payment-on-account reject Cheque/Effet maturity methods with the translated `DEFERRED_METHOD_NOT_SUPPORTED` response; a single test runs all four with an immediate method and proves they still return 201.
+- Refund evidence: full refund, partial refund, and reverse read the linked instrument before any write and reject Received/Deposited/Bounced instruments with the settle-first message. A real deferred payment is remitted, cleared into the bank, then successfully refunded with an Out movement from that bank repository.
+- API/currency evidence: `formatPayment` exposes `dishonored_at`; all remaining `PaymentController` TND fallbacks now use active-company currency.
+- Money-path deviation: none. Supplier direction keeps cash movement/GL intact; customer pending paper cannot enter a cash undo path until cleared.

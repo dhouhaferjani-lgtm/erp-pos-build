@@ -543,6 +543,7 @@ class PaymentController extends Controller
         }
 
         $isDeferredCustomer = ! $isSupplierPayment && $deferredKind !== null;
+        $isDeferredSupplier = $isSupplierPayment && $deferredKind !== null;
         $portfolioDebitAccountId = null;
         if ($isDeferredCustomer) {
             $hasInlineInstrument = isset($validated['instrument']) && is_array($validated['instrument']);
@@ -598,6 +599,19 @@ class PaymentController extends Controller
                         'error' => ['code' => 'INVALID_INSTRUMENT', 'message' => 'Supplied instrument is not eligible for this payment.'],
                     ], 422);
                 }
+            }
+        }
+        if ($isDeferredSupplier) {
+            $instrumentData = $validated['instrument'] ?? null;
+            if (! is_array($instrumentData) || ! isset($instrumentData['reference'])) {
+                return response()->json([
+                    'error' => ['code' => 'INSTRUMENT_REQUIRED', 'message' => 'Supplier deferred tenders require instrument details.'],
+                ], 422);
+            }
+            if ($deferredKind === InstrumentKind::Effet && empty($instrumentData['maturity_date'])) {
+                return response()->json([
+                    'error' => ['code' => 'MATURITY_REQUIRED', 'message' => 'Effet instruments require a maturity date.'],
+                ], 422);
             }
         }
 
@@ -689,6 +703,7 @@ class PaymentController extends Controller
                 $portfolioDebitAccountId,
                 $paymentCurrency,
                 $paymentMethod,
+                $isDeferredSupplier,
             ) {
                 $instrument = null;
                 if ($isDeferredCustomer) {
@@ -734,6 +749,30 @@ class PaymentController extends Controller
                             createdBy: $user->id,
                         ));
                     }
+                }
+                if ($isDeferredSupplier) {
+                    $instrumentData = $validated['instrument'];
+                    $instrument = $this->instrumentLifecycle->receive(new ReceiveInstrumentData(
+                        tenantId: $tenantId,
+                        companyId: $companyId,
+                        paymentMethodId: $paymentMethod->id,
+                        kind: $deferredKind,
+                        direction: InstrumentDirection::Outbound,
+                        origin: InstrumentOrigin::Web,
+                        reference: (string) $instrumentData['reference'],
+                        amount: $paymentAmount,
+                        currency: $paymentCurrency,
+                        repositoryId: (string) $validated['repository_id'],
+                        partnerId: (string) $validated['partner_id'],
+                        drawerName: isset($instrumentData['drawer_name']) ? (string) $instrumentData['drawer_name'] : null,
+                        maturityDate: isset($instrumentData['maturity_date']) ? (string) $instrumentData['maturity_date'] : null,
+                        receivedDate: $validated['payment_date'],
+                        bankId: isset($instrumentData['bank_id']) ? (string) $instrumentData['bank_id'] : null,
+                        bankName: isset($instrumentData['bank_name']) ? (string) $instrumentData['bank_name'] : null,
+                        bankBranch: isset($instrumentData['bank_branch']) ? (string) $instrumentData['bank_branch'] : null,
+                        bankAccount: isset($instrumentData['bank_account']) ? (string) $instrumentData['bank_account'] : null,
+                        createdBy: $user->id,
+                    ));
                 }
 
                 // Determine payment type: advance if no allocations, otherwise document payment
@@ -1125,6 +1164,7 @@ class PaymentController extends Controller
      */
     private function storeMultiple(Request $request, User $user, string $tenantId, string $companyId): JsonResponse
     {
+        $companyCurrency = $this->companyContext->requireCompany()->currency;
         // Task 16b (spine Wave D, HIGH-7): idempotency short-circuit, checked
         // BEFORE validation and BEFORE the write transaction — mirrors store().
         // A retry with the same Idempotency-Key must return the ORIGINAL batch
@@ -1180,6 +1220,27 @@ class PaymentController extends Controller
             'payments.*.amount.regex' => 'Payment amount must have at most 3 decimal places.',
             'excess_allocations.*.amount.regex' => 'Excess allocation amount must have at most 3 decimal places.',
         ]);
+
+        $methodIds = [];
+        foreach ($validated['payments'] as $paymentLine) {
+            if (is_array($paymentLine) && isset($paymentLine['payment_method_id']) && is_string($paymentLine['payment_method_id'])) {
+                $methodIds[] = $paymentLine['payment_method_id'];
+            }
+        }
+        if (PaymentMethod::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereIn('id', $methodIds)
+            ->where('has_maturity', true)
+            ->whereIn('instrument_kind', [InstrumentKind::Cheque, InstrumentKind::Effet])
+            ->exists()) {
+            return response()->json([
+                'error' => [
+                    'code' => 'DEFERRED_METHOD_NOT_SUPPORTED',
+                    'message' => __('treasury.deferred_method_not_supported_on_this_path'),
+                ],
+            ], 422);
+        }
 
         // Get the primary document
         /** @var Document $primaryDocument */
@@ -1259,7 +1320,8 @@ class PaymentController extends Controller
                 $excessAmount,
                 $excessAllocationMethod,
                 $excessAllocations,
-                $idempotencyKey
+                $idempotencyKey,
+                $companyCurrency,
             ) {
                 $createdPayments = [];
 
@@ -1302,7 +1364,7 @@ class PaymentController extends Controller
                         'payment_method_id' => $paymentLine['payment_method_id'],
                         'repository_id' => $paymentLine['repository_id'] ?? null,
                         'amount' => $lineAmount,
-                        'currency' => $validated['currency'] ?? 'TND',
+                        'currency' => $validated['currency'] ?? $companyCurrency,
                         'payment_date' => $validated['payment_date'],
                         'status' => PaymentStatus::Completed,
                         'payment_type' => $paymentType,
@@ -1321,7 +1383,7 @@ class PaymentController extends Controller
                     // Dispatch PaymentRecorded event
                     $paymentId = $payment->id;
                     $paymentMethodId = $paymentLine['payment_method_id'];
-                    $currency = $validated['currency'] ?? 'TND';
+                    $currency = $validated['currency'] ?? $companyCurrency;
                     $partnerId = $validated['partner_id'];
                     DB::afterCommit(function () use ($paymentId, $tenantId, $companyId, $partnerId, $lineAmount, $currency, $paymentMethodId): void {
                         event(new PaymentRecorded(
@@ -1790,6 +1852,7 @@ class PaymentController extends Controller
             'unallocated_amount' => $payment->getUnallocatedAmount(),
             'reference' => $payment->reference,
             'notes' => $payment->notes,
+            'dishonored_at' => $payment->dishonored_at?->toIso8601String(),
             'allocations' => $payment->allocations->map(fn (PaymentAllocation $allocation) => [
                 'id' => $allocation->id,
                 'document_id' => $allocation->document_id,

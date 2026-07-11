@@ -10,10 +10,13 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Payment;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,6 +26,25 @@ class MultiPaymentController extends Controller
         private readonly MultiPaymentService $multiPaymentService,
         private readonly CompanyContext $companyContext
     ) {}
+
+    /** @param list<string> $methodIds */
+    private function rejectDeferredMethods(array $methodIds, string $tenantId, string $companyId): void
+    {
+        if (PaymentMethod::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereIn('id', $methodIds)
+            ->where('has_maturity', true)
+            ->whereIn('instrument_kind', [InstrumentKind::Cheque, InstrumentKind::Effet])
+            ->exists()) {
+            throw new HttpResponseException(response()->json([
+                'error' => [
+                    'code' => 'DEFERRED_METHOD_NOT_SUPPORTED',
+                    'message' => __('treasury.deferred_method_not_supported_on_this_path'),
+                ],
+            ], 422));
+        }
+    }
 
     /**
      * Task 19 (spine Wave D): resolve the client-supplied request-level idempotency
@@ -128,6 +150,13 @@ class MultiPaymentController extends Controller
         ], [
             'splits.*.amount.regex' => 'Split amount must have at most 3 decimal places.',
         ]);
+        $splits = $request->input('splits', []);
+        $this->rejectDeferredMethods(
+            array_values(collect(is_array($splits) ? $splits : [])->pluck('payment_method_id')
+                ->filter(fn ($id): bool => is_string($id))->values()->all()),
+            $tenantId,
+            $companyId,
+        );
 
         /** @var Document $document */
         $document = Document::query()
@@ -256,6 +285,8 @@ class MultiPaymentController extends Controller
         ], [
             'amount.regex' => 'Amount must have at most 3 decimal places.',
         ]);
+        $paymentMethodId = $request->input('payment_method_id');
+        $this->rejectDeferredMethods(is_string($paymentMethodId) ? [$paymentMethodId] : [], $tenantId, $companyId);
 
         try {
             /** @var User $user */
@@ -419,6 +450,10 @@ class MultiPaymentController extends Controller
                 'required',
                 ScopedExists::tenantAndCompany('partners', $tenantId, $companyId),
             ],
+            'payment_method_id' => [
+                'nullable',
+                ScopedExists::tenantAndCompany('payment_methods', $tenantId, $companyId),
+            ],
             'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^\d+(\.\d{1,3})?$/'],
             'currency' => ['required', 'string', 'size:3'],
             'reference' => ['nullable', 'string', 'max:255'],
@@ -426,6 +461,8 @@ class MultiPaymentController extends Controller
         ], [
             'amount.regex' => 'Amount must have at most 3 decimal places.',
         ]);
+        $paymentMethodId = $request->input('payment_method_id');
+        $this->rejectDeferredMethods(is_string($paymentMethodId) ? [$paymentMethodId] : [], $tenantId, $companyId);
 
         try {
             /** @var User $user */

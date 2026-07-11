@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
+use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
@@ -89,6 +90,7 @@ class PaymentRefundService
         if ($payment->status !== PaymentStatus::Completed) {
             throw new \RuntimeException('Only completed payments can be refunded');
         }
+        $this->assertInstrumentSettledForCashUndo($payment);
 
         // Task 18: a stable request id is REQUIRED for DB-level idempotency + the
         // movement key. The admin endpoint supplies a client UUID; direct callers
@@ -218,6 +220,7 @@ class PaymentRefundService
         if ($payment->status !== PaymentStatus::Completed) {
             throw new \RuntimeException('Only completed payments can be refunded');
         }
+        $this->assertInstrumentSettledForCashUndo($payment);
 
         // Validate refund amount (per-request bounds; the cumulative over-refund
         // guard runs under the original-payment lock inside the transaction).
@@ -478,7 +481,17 @@ class PaymentRefundService
      */
     public function canRefund(Payment $payment): bool
     {
-        return $payment->status === PaymentStatus::Completed;
+        if ($payment->status !== PaymentStatus::Completed) {
+            return false;
+        }
+
+        $instrument = $payment->instrument()->first();
+
+        return $instrument === null || ! in_array($instrument->status, [
+            InstrumentStatus::Received,
+            InstrumentStatus::Deposited,
+            InstrumentStatus::Bounced,
+        ], true);
     }
 
     /**
@@ -533,6 +546,7 @@ class PaymentRefundService
         if (! in_array($payment->status, [PaymentStatus::Completed, PaymentStatus::Failed], true)) {
             throw new \RuntimeException('Only completed or failed payments can be reversed');
         }
+        $this->assertInstrumentSettledForCashUndo($payment);
 
         DB::transaction(function () use ($payment, $reason): void {
             // Double-check inside transaction (another request may have reversed it)
@@ -560,6 +574,18 @@ class PaymentRefundService
                 ));
             });
         });
+    }
+
+    private function assertInstrumentSettledForCashUndo(Payment $payment): void
+    {
+        $instrument = $payment->instrument()->first();
+        if ($instrument !== null && in_array($instrument->status, [
+            InstrumentStatus::Received,
+            InstrumentStatus::Deposited,
+            InstrumentStatus::Bounced,
+        ], true)) {
+            throw new \RuntimeException('Settle the payment instrument first (bounce or cancel) before using the cash refund/reverse path.');
+        }
     }
 
     /**
