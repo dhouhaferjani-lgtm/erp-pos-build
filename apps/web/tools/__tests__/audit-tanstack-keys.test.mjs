@@ -197,9 +197,23 @@ describe('Gate C — TanStack queryKey scanner', () => {
   });
 
   describe('queryClient methods', () => {
-    it('flags unscoped queryClient.invalidateQueries', () => {
+    it('approves a bare array-literal prefix for queryClient.invalidateQueries', () => {
       const v = scanCode(`
         queryClient.invalidateQueries({ queryKey: ['users'] });
+      `, 'inline.ts');
+      expect(v).toEqual([]);
+    });
+
+    it('flags an opaque key for queryClient.invalidateQueries', () => {
+      const v = scanCode(`
+        queryClient.invalidateQueries({ queryKey: dynamicKey });
+      `, 'inline.ts');
+      expect(v).toHaveLength(1);
+    });
+
+    it('still flags a bare array-literal key for queryClient.fetchQuery', () => {
+      const v = scanCode(`
+        queryClient.fetchQuery({ queryKey: ['users'] });
       `, 'inline.ts');
       expect(v).toHaveLength(1);
     });
@@ -259,13 +273,13 @@ describe('Gate C — TanStack queryKey scanner', () => {
           useMutation({
             mutationFn: () => f(),
             onSuccess: () => {
-              queryClient.invalidateQueries({ queryKey: ['orders'] });
+              queryClient.fetchQuery({ queryKey: ['orders'] });
             },
           });
           useMutation({
             mutationFn: () => g(),
             onSuccess: () => {
-              queryClient.invalidateQueries({ queryKey: ['orders'] });
+              queryClient.fetchQuery({ queryKey: ['orders'] });
             },
           });
         }

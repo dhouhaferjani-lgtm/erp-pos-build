@@ -59,6 +59,8 @@ const QUERY_FACTORY_NAMES = new Set([
   'prefetchQuery',
 ]);
 
+const INVALIDATION_PREFIX_FACTORIES = new Set(['invalidateQueries']);
+
 const APPROVED_SCOPE_IDENTIFIERS = new Set([
   'tenantId',
   'currentCompanyId',
@@ -308,7 +310,10 @@ function checkOptionsObject(options, factoryName, sourceFile, relPath, out) {
   );
   if (queryKeyProp && ts.isPropertyAssignment(queryKeyProp)) {
     const initializer = queryKeyProp.initializer;
-    if (!queryKeyExpressionIsApproved(initializer)) {
+    const isInvalidationBarePrefix =
+      INVALIDATION_PREFIX_FACTORIES.has(factoryName) &&
+      ts.isArrayLiteralExpression(unwrapKeyExpression(initializer));
+    if (!queryKeyExpressionIsApproved(initializer) && !isInvalidationBarePrefix) {
       const startPos = queryKeyProp.getStart(sourceFile);
       const { line, character } = sourceFile.getLineAndCharacterOfPosition(startPos);
       // Byte-offset-into-source disambiguator matches the PHP scanner pattern
