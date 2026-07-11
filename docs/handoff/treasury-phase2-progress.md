@@ -132,3 +132,12 @@
 - `./vendor/bin/pint --dirty` — pass, no changes.
 - `git diff --check` — pass; worktree clean before the RC review commit.
 - Task 8/9 reconcile pins are included in the passing Treasury directory run.
+
+### Gate 1 verdict
+
+- RC attempts: 1.
+- Reviewer: `claude-opus-4-8`; escalation to Fable was not triggered because the verdict was APPROVE and there were no BLOCKER/HIGH findings or money-path uncertainty.
+- Review artifact: `docs/handoff/gate-reviews/GATE-1-rc1.md`.
+- Verdict: `VERDICT: APPROVE`.
+- Non-blocking carry-forwards: keep the linked-payment lock position explicit as Wave C adds refund/payment guards; consider a committed-fixture two-connection concurrency harness; strengthen the portfolio-account reservation assertion before reconcile check #4; remove legacy controller event dispatches in Task 11; perform controller-level pre-transaction portfolio-account validation in its assigned task.
+- Artifact note: the reviewer returned the complete report but its own sandbox could not create `docs/handoff/gate-reviews/`; the exact returned review body was persisted through the worktree editing path, with the required final verdict line.
