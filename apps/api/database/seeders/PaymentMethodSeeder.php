@@ -7,9 +7,9 @@ namespace Database\Seeders;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\FeeType;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
 
 class PaymentMethodSeeder extends Seeder
 {
@@ -36,8 +36,6 @@ class PaymentMethodSeeder extends Seeder
         $firstCompany = Company::first();
 
         if (! $tenant || ! $firstCompany) {
-            $this->command?->error('No tenant or company found. Please run DatabaseSeeder first.');
-
             return;
         }
 
@@ -52,14 +50,13 @@ class PaymentMethodSeeder extends Seeder
         $methods = $this->getCountryPaymentMethods($company->country_code);
 
         foreach ($methods as $method) {
-            PaymentMethod::create(array_merge([
-                'id' => Str::uuid()->toString(),
+            PaymentMethod::updateOrCreate([
                 'tenant_id' => $tenant->id,
                 'company_id' => $company->id,
-            ], $method));
+                'code' => $method['code'],
+            ], $method);
         }
 
-        $this->command?->info('Created '.count($methods).' payment methods for '.$company->country_code.' company: '.$company->name);
     }
 
     /**
@@ -106,6 +103,7 @@ class PaymentMethodSeeder extends Seeder
                 'name' => 'Chèque',
                 'is_physical' => true,
                 'has_maturity' => true,
+                'instrument_kind' => InstrumentKind::Cheque,
                 'requires_third_party' => false,
                 'is_push' => true,
                 'has_deducted_fees' => false,
@@ -122,6 +120,7 @@ class PaymentMethodSeeder extends Seeder
                 'name' => 'Traite',
                 'is_physical' => true,
                 'has_maturity' => true,
+                'instrument_kind' => InstrumentKind::Effet,
                 'requires_third_party' => false,
                 'is_push' => false,
                 'has_deducted_fees' => false,
@@ -213,6 +212,7 @@ class PaymentMethodSeeder extends Seeder
                 'name' => 'Chèque',
                 'is_physical' => true,
                 'has_maturity' => true,
+                'instrument_kind' => InstrumentKind::Cheque,
                 'requires_third_party' => false,
                 'is_push' => true,
                 'has_deducted_fees' => false,
@@ -261,6 +261,7 @@ class PaymentMethodSeeder extends Seeder
                 'name' => 'Prélèvement',
                 'is_physical' => false,
                 'has_maturity' => true,
+                'instrument_kind' => InstrumentKind::Other,
                 'requires_third_party' => false,
                 'is_push' => false,
                 'has_deducted_fees' => false,
@@ -277,6 +278,7 @@ class PaymentMethodSeeder extends Seeder
                 'name' => 'LCR (Lettre de Change Relevé)',
                 'is_physical' => true,
                 'has_maturity' => true,
+                'instrument_kind' => InstrumentKind::Effet,
                 'requires_third_party' => false,
                 'is_push' => false,
                 'has_deducted_fees' => false,
@@ -325,6 +327,7 @@ class PaymentMethodSeeder extends Seeder
                 'name' => 'Lettre de Change',
                 'is_physical' => true,
                 'has_maturity' => true,
+                'instrument_kind' => InstrumentKind::Effet,
                 'requires_third_party' => false,
                 'is_push' => false,
                 'has_deducted_fees' => false,
@@ -368,6 +371,7 @@ class PaymentMethodSeeder extends Seeder
                 'name' => 'Check',
                 'is_physical' => true,
                 'has_maturity' => true,
+                'instrument_kind' => InstrumentKind::Cheque,
                 'requires_third_party' => false,
                 'is_push' => true,
                 'has_deducted_fees' => false,

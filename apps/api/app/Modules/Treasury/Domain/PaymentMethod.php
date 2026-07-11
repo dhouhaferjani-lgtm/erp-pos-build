@@ -7,6 +7,7 @@ namespace App\Modules\Treasury\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\FeeType;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use Database\Factories\PaymentMethodFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -24,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property string $name
  * @property bool $is_physical
  * @property bool $has_maturity
+ * @property InstrumentKind|null $instrument_kind
  * @property bool $requires_third_party
  * @property bool $is_push
  * @property bool $has_deducted_fees
@@ -64,6 +66,7 @@ class PaymentMethod extends Model
         'name',
         'is_physical',
         'has_maturity',
+        'instrument_kind',
         'requires_third_party',
         'is_push',
         'has_deducted_fees',
@@ -87,6 +90,7 @@ class PaymentMethod extends Model
         return [
             'is_physical' => 'boolean',
             'has_maturity' => 'boolean',
+            'instrument_kind' => InstrumentKind::class,
             'requires_third_party' => 'boolean',
             'is_push' => 'boolean',
             'has_deducted_fees' => 'boolean',

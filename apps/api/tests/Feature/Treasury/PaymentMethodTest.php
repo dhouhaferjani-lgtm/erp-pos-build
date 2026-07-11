@@ -201,6 +201,7 @@ class PaymentMethodTest extends TestCase
             'name' => 'Post-dated Check',
             'is_physical' => true,
             'has_maturity' => true,
+            'instrument_kind' => 'cheque',
             'requires_third_party' => false,
             'is_push' => true,
             'has_deducted_fees' => false,
@@ -210,6 +211,7 @@ class PaymentMethodTest extends TestCase
         $response->assertStatus(201);
         $response->assertJsonPath('data.is_physical', true);
         $response->assertJsonPath('data.has_maturity', true);
+        $response->assertJsonPath('data.instrument_kind', 'cheque');
     }
 
     public function test_can_create_restricted_payment_method(): void
