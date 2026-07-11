@@ -7,6 +7,7 @@ namespace App\Modules\Replenishment\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
 use App\Modules\Replenishment\Application\Services\ReplenishmentFulfillmentService;
 use App\Modules\Replenishment\Presentation\Requests\CreatePoFromRequestsRequest;
 use App\Modules\Replenishment\Presentation\Requests\CreateTransferFromRequestsRequest;
@@ -36,13 +37,18 @@ final class ReplenishmentActionController extends Controller
             throw ValidationException::withMessages(['lines' => 'Lines are required.']);
         }
         $lines = $this->actionLines($rawLines);
-        $ids = $this->fulfillmentService->createTransfers(
-            $this->companyContext->requireTenantId(),
-            $companyId,
-            $sourceLocationId,
-            $user->id,
-            $lines,
-        );
+
+        try {
+            $ids = $this->fulfillmentService->createTransfers(
+                $this->companyContext->requireTenantId(),
+                $companyId,
+                $sourceLocationId,
+                $user->id,
+                $lines,
+            );
+        } catch (InsufficientStockException $e) {
+            return $this->insufficientStockResponse($e);
+        }
 
         return response()->json(['data' => ['transfer_ids' => $ids]]);
     }
@@ -135,5 +141,21 @@ final class ReplenishmentActionController extends Controller
         if (! DB::table('locations')->where('id', $locationId)->where('company_id', $companyId)->exists()) {
             throw ValidationException::withMessages([$field => 'Location does not belong to the active company.']);
         }
+    }
+
+    private function insufficientStockResponse(InsufficientStockException $e): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'INSUFFICIENT_STOCK',
+                'message' => $e->getMessage(),
+                'details' => [
+                    'product_id' => $e->productId,
+                    'location_id' => $e->locationId,
+                    'requested' => $e->requested,
+                    'available' => $e->available,
+                ],
+            ],
+        ], 422);
     }
 }

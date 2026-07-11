@@ -275,6 +275,29 @@ final class ReplenishmentActionsTest extends TestCase
         $this->assertSame(ReplenishmentStatus::Pending, $b->refresh()->status);
     }
 
+    public function test_create_transfer_returns_422_when_source_lacks_stock(): void
+    {
+        $request = $this->capture($this->shopA, $this->productA);
+        // Intentionally seed no stock at the source location.
+
+        $response = $this->action('create-transfer', [
+            'source_location_id' => $this->source->id,
+            'lines' => [
+                ['request_id' => $request->id, 'quantity' => '2.0000'],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'INSUFFICIENT_STOCK');
+        $response->assertJsonPath('error.details.product_id', $this->productA->id);
+        $response->assertJsonPath('error.details.location_id', $this->source->id);
+        $response->assertJsonPath('error.details.requested', '2.0000');
+        $response->assertJsonPath('error.details.available', '0.0000');
+
+        $this->assertSame(0, StockTransfer::query()->count());
+        $this->assertSame(ReplenishmentStatus::Pending, $request->refresh()->status);
+    }
+
     public function test_reject_requires_reason_and_closes_lines(): void
     {
         $request = $this->capture($this->shopA, $this->productA);

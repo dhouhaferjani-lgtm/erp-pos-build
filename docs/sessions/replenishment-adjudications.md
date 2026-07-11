@@ -55,6 +55,8 @@
 
 **Commit:** `d61eee22c`.
 
+**Note (Task 16 Step 2 deferral):** Task 16 Step 2 (Playwright live-browser verification) is UNVERIFIED — environment-blocked at gate time (:5173 down, :8010 serving another worktree) — and will be executed post-merge on the local dev stack before origin promotion.
+
 ## Gate D — route-manifest coherence
 
 **Discrepancy:** Preflight's deterministic route-manifest check found the two new replenishment routes and a pre-existing `/purchases/scans/new` route missing from `routes-web.yaml`; the generator has no scoped mode.

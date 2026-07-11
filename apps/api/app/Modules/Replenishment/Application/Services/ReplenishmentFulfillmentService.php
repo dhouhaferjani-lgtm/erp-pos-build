@@ -99,7 +99,7 @@ final class ReplenishmentFulfillmentService
             }
 
             return $transferIds;
-        });
+        }, attempts: 3);
     }
 
     /**
