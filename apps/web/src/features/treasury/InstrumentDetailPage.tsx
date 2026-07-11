@@ -183,7 +183,7 @@ export function InstrumentDetailPage() {
 
   const canRemit = instrument.status === 'received' && hasPermission('instruments.remit')
   const canTransfer = instrument.status === 'received' && hasPermission('instruments.transfer')
-  const canCancel = instrument.status === 'received' && hasPermission('instruments.update')
+  const canCancel = instrument.status === 'received' && hasPermission('instruments.cancel')
   const canClear = ['deposited', 'clearing'].includes(instrument.status) && hasPermission('instruments.clear')
   const canBounce = ['deposited', 'clearing', 'cleared'].includes(instrument.status) && hasPermission('instruments.bounce')
 
@@ -307,7 +307,7 @@ export function InstrumentDetailPage() {
       </Modal>
 
       <Modal isOpen={dialog === 'transfer'} onClose={() => { setDialog(null) }} title={t('treasury:instruments.transferTo')}>
-        <ModalContent><label className={tokens.label.base}>{t('treasury:instruments.selectRepository')}<Select aria-label={t('treasury:instruments.selectRepository')} value={selectedRepositoryId} onChange={(event) => { setSelectedRepositoryId(event.target.value) }}><option value="">{t('common:fields.selectOption')}</option>{repositories.map((repository) => repository.id === instrument.repository_id ? null : <option key={repository.id} value={repository.id}>{repository.name}</option>)}</Select></label></ModalContent>
+        <ModalContent><label className={tokens.label.base}>{t('treasury:instruments.selectRepository')}<Select aria-label={t('treasury:instruments.selectRepository')} value={selectedRepositoryId} onChange={(event) => { setSelectedRepositoryId(event.target.value) }}><option value="">{t('common:common.selectOption')}</option>{repositories.map((repository) => repository.id === instrument.repository_id ? null : <option key={repository.id} value={repository.id}>{repository.name}</option>)}</Select></label></ModalContent>
         <ModalFooter><Button variant="secondary" onClick={() => { setDialog(null) }}>{t('common:actions.cancel')}</Button><Button onClick={() => { transferMutation.mutate() }} disabled={!selectedRepositoryId || transferMutation.isPending}>{t('treasury:instruments.transfer')}</Button></ModalFooter>
       </Modal>
 

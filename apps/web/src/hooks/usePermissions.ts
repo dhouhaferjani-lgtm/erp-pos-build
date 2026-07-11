@@ -72,6 +72,7 @@ export const PERMISSIONS = {
   'instruments.clear': ['admin', 'treasury', 'accountant', 'manager'],
   'instruments.bounce': ['admin', 'treasury', 'accountant', 'manager'],
   'instruments.remit': ['admin', 'treasury', 'accountant', 'manager'],
+  'instruments.cancel': ['admin', 'treasury', 'accountant', 'manager'],
   'instruments.transfer': ['admin', 'treasury', 'accountant', 'manager'],
 
   // Treasury - Repositories

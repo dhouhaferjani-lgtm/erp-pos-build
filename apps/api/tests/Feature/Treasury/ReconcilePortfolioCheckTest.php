@@ -128,6 +128,32 @@ final class ReconcilePortfolioCheckTest extends TestCase
         $this->assertSame(0, AuditEvent::query()->where('event_type', 'treasury.reconcile.portfolio_drift')->count());
     }
 
+    public function test_pre_cutover_linked_instrument_with_post_cutover_remittance_is_one_excluded_circuit(): void
+    {
+        Carbon::setTestNow('2026-07-01 10:00:00');
+        $context = $this->context();
+        $effect = $this->linkedInstrument($context, InstrumentKind::Effet, InstrumentStatus::Received, '70.000');
+        $this->postPortfolioDebit($context, '413', '70.000');
+
+        $context['company']->forceFill(['phase2_cutover_at' => '2026-07-02 00:00:00'])->save();
+        Carbon::setTestNow('2026-07-03 10:00:00');
+
+        $remittances = app(InstrumentRemittanceService::class);
+        $slip = $remittances->createDraft(
+            $context['company']->id,
+            $context['tenant']->id,
+            $context['bank']->id,
+            RemittanceType::Collection,
+            InstrumentKind::Effet,
+            $context['user']->id,
+        );
+        $remittances->addLine($slip->id, $effect->id);
+        $remittances->remit($slip->id, $context['user']->id);
+
+        $this->assertSame(0, Artisan::call('treasury:reconcile', ['--tenant' => $context['tenant']->id]));
+        $this->assertSame(0, AuditEvent::query()->where('event_type', 'treasury.reconcile.portfolio_drift')->count());
+    }
+
     public function test_missing_portfolio_accounts_are_skipped_during_chart_reseed_window(): void
     {
         $tenant = Tenant::factory()->create();

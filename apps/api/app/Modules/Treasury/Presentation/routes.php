@@ -131,7 +131,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('payment-instruments.transfer');
 
     Route::post('/payment-instruments/{instrument}/cancel', [PaymentInstrumentController::class, 'cancel'])
-        ->middleware('can:instruments.update')
+        ->middleware('can:instruments.cancel')
         ->name('payment-instruments.cancel');
 
     Route::get('/instrument-remittances', [InstrumentRemittanceController::class, 'index'])

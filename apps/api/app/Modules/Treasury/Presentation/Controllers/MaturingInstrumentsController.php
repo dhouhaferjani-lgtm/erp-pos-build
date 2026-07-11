@@ -48,16 +48,39 @@ final class MaturingInstrumentsController extends Controller
         if (array_key_exists('needs_details', $validated)) {
             $query->where('needs_details', filter_var($validated['needs_details'], FILTER_VALIDATE_BOOLEAN));
         }
-        if (isset($validated['from'])) {
-            $query->whereDate('maturity_date', '>=', $validated['from']);
-        }
-        if (isset($validated['to'])) {
-            $query->whereDate('maturity_date', '<=', $validated['to']);
+        $today = CarbonImmutable::today($company->timezone);
+        $from = isset($validated['from']) ? CarbonImmutable::parse($validated['from'], $company->timezone) : null;
+        $to = isset($validated['to']) ? CarbonImmutable::parse($validated['to'], $company->timezone) : null;
+        $includesAtSight = ($from === null || ! $today->isBefore($from))
+            && ($to === null || ! $today->isAfter($to));
+
+        if ($from !== null || $to !== null) {
+            $query->where(function ($dateQuery) use ($from, $to, $includesAtSight): void {
+                if ($includesAtSight) {
+                    $dateQuery->whereNull('maturity_date')->orWhere(function ($datedQuery) use ($from, $to): void {
+                        if ($from !== null) {
+                            $datedQuery->whereDate('maturity_date', '>=', $from->toDateString());
+                        }
+                        if ($to !== null) {
+                            $datedQuery->whereDate('maturity_date', '<=', $to->toDateString());
+                        }
+                    });
+
+                    return;
+                }
+
+                $dateQuery->whereNotNull('maturity_date');
+                if ($from !== null) {
+                    $dateQuery->whereDate('maturity_date', '>=', $from->toDateString());
+                }
+                if ($to !== null) {
+                    $dateQuery->whereDate('maturity_date', '<=', $to->toDateString());
+                }
+            });
         }
 
         $instruments = $query->orderBy('maturity_date')->orderBy('id')->get();
         $scale = $this->scaleResolver->getScale($company->currency);
-        $today = CarbonImmutable::today($company->timezone);
         $buckets = $this->emptyBuckets($scale);
         $grandTotal = $this->emptyTotal($scale);
         $rows = [];

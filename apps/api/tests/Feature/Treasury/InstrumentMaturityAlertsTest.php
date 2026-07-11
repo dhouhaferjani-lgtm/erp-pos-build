@@ -137,6 +137,37 @@ final class InstrumentMaturityAlertsTest extends TestCase
         $this->assertMatchesRegularExpression('/30\s+6\s+\*\s+\*\s+\*/', $schedule);
     }
 
+    public function test_alert_boundary_uses_each_company_timezone(): void
+    {
+        Carbon::setTestNow('2026-07-11 23:30:00 UTC');
+
+        $tenant = Tenant::factory()->create();
+        Country::query()->firstOrCreate(
+            ['code' => 'TN'],
+            ['name' => 'Tunisia', 'currency_code' => 'TND', 'currency_symbol' => 'DT'],
+        );
+        $company = Company::factory()->tunisia()->create([
+            'tenant_id' => $tenant->id,
+            'timezone' => 'Pacific/Kiritimati',
+        ]);
+        $method = $this->method($tenant, $company);
+        CountryPaymentSettings::query()->updateOrCreate(['country_code' => 'TN'], [
+            'instrument_alert_days' => 0,
+        ]);
+        $instrument = $this->instrument($tenant, $company, $method, [
+            'maturity_date' => '2026-07-12',
+        ]);
+
+        $this->assertSame(0, Artisan::call('treasury:instrument-maturity-alerts'));
+
+        $event = AuditEvent::query()
+            ->where('company_id', $company->id)
+            ->where('event_type', 'treasury.instrument.maturity_alert')
+            ->sole();
+        $this->assertSame('2026-07-12', $event->payload['as_of_date']);
+        $this->assertSame([$instrument->id], $event->payload['received_due_ids']);
+    }
+
     private function method(Tenant $tenant, Company $company): PaymentMethod
     {
         return PaymentMethod::factory()->create([

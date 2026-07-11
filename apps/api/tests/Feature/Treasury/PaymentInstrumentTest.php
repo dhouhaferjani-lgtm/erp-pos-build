@@ -511,9 +511,17 @@ class PaymentInstrumentTest extends TestCase
             ->assertJsonPath('data.1.payload.reason', 'bank handoff');
     }
 
-    public function test_received_unlinked_instrument_can_be_cancelled_through_update_permission(): void
+    public function test_cancel_requires_dedicated_permission_not_update_permission(): void
     {
         $instrument = $this->instrument();
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/payment-instruments/{$instrument->id}/cancel", [
+                'reason' => 'Drawer requested cancellation',
+            ])
+            ->assertForbidden();
+
+        $this->user->givePermissionTo('instruments.cancel');
 
         $this->actingAs($this->user)
             ->postJson("/api/v1/payment-instruments/{$instrument->id}/cancel", [
@@ -610,7 +618,7 @@ class PaymentInstrumentTest extends TestCase
     {
         foreach (['manager', 'accountant'] as $roleName) {
             $role = Role::query()->where('name', $roleName)->firstOrFail();
-            foreach (['instruments.update', 'instruments.bounce', 'instruments.remit'] as $permission) {
+            foreach (['instruments.update', 'instruments.bounce', 'instruments.remit', 'instruments.cancel'] as $permission) {
                 $this->assertTrue($role->hasPermissionTo($permission));
             }
         }

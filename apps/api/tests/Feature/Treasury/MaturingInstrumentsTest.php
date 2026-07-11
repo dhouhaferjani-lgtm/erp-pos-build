@@ -142,6 +142,24 @@ final class MaturingInstrumentsTest extends TestCase
         $response->assertJsonPath('meta.grand_total.total_in', '12.000');
     }
 
+    public function test_date_window_treats_null_maturity_as_due_today(): void
+    {
+        $atSight = $this->instrument('9.000', InstrumentDirection::Inbound, null, InstrumentStatus::Received);
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/treasury/maturing-instruments?from=2026-07-11&to=2026-07-18')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $atSight->id)
+            ->assertJsonPath('data.0.bucket', 'd0_7')
+            ->assertJsonPath('meta.grand_total.total_in', '9.000');
+
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/treasury/maturing-instruments?from=2026-07-12&to=2026-07-18')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
     private function instrument(
         string $amount,
         InstrumentDirection $direction,

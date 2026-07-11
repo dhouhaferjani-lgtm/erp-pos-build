@@ -48,7 +48,7 @@ describe('Remittance', () => {
     render(<RemittanceCreatePage />, { wrapper })
 
     await screen.findByRole('option', { name: 'Main Bank' })
-    expect(screen.getByRole('option', { name: 'common:selectOption' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'common:common.selectOption' })).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText('treasury:remittances.bankRepository'), 'bank-1')
     await userEvent.selectOptions(screen.getByLabelText('treasury:remittances.kind'), 'cheque')
     await userEvent.click(await screen.findByRole('checkbox', { name: /CHK-1/ }))

@@ -45,7 +45,7 @@ php artisan tenants:seed --class='Database\Seeders\RolesAndPermissionsSeeder' --
 php artisan tenants:run permission:cache-reset
 ```
 
-This deploy adds `instruments.update`, `instruments.bounce`, and `instruments.remit`. The cache reset is mandatory because the Spatie permission cache key is tenant-blind; skipping it can leave accountant-equivalent users with stale 403 responses.
+This deploy adds `instruments.update`, `instruments.bounce`, `instruments.remit`, and `instruments.cancel`. The cache reset is mandatory because the Spatie permission cache key is tenant-blind; skipping it can leave accountant-equivalent users with stale 403 responses.
 
 ## 4. Restart application workers
 
@@ -56,7 +56,7 @@ Restart the API/queue release processes so they load the new projection and comm
 For each tenant/company:
 
 1. Confirm the seven chart codes above resolve for the company's country.
-2. Confirm the three new permission names exist and intended roles hold them.
+2. Confirm the four new permission names exist and intended roles hold them.
 3. Confirm `phase2_cutover_at` is non-null on brownfield companies.
 4. Register a non-cash paper instrument in a controlled smoke account and verify repository cash does not move at receipt/remittance.
 5. Run reconciliation:

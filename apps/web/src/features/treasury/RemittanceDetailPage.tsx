@@ -6,7 +6,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { Button, Input, MoneyInput, Select, StatusBadge, Textarea } from '@/components/atoms'
 import { PageHeader } from '@/components/molecules/PageHeader'
-import { DataTable } from '@/components/molecules/DataTable'
+import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable'
 import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal/Modal'
 import { usePermissions } from '@/hooks/usePermissions'
 import { api } from '@/lib/api'
@@ -80,11 +80,18 @@ export function RemittanceDetailPage() {
   const currency = slip.lines[0]?.instrument.currency ?? 'TND'
   const detailedRepository = repositories.find((repository) => repository.id === slip.bank_repository_id)
   const printSlip = { ...slip, bank_repository: detailedRepository ?? slip.bank_repository }
+  const columns: DataTableColumn<RemittanceLine>[] = [
+    { key: 'reference', header: t('treasury:remittances.reference'), render: (line) => <Link className={textColors.brand} to={`/treasury/instruments/${line.instrument_id}`}>{line.instrument.reference}</Link> },
+    { key: 'status', header: t('treasury:remittances.status'), render: (line) => <StatusBadge tone={line.line_status === 'bounced' ? 'danger' : line.line_status === 'cleared' ? 'success' : 'warning'}>{t(`treasury:remittances.lineStatuses.${line.line_status}`)}</StatusBadge> },
+    { key: 'amount', header: t('treasury:remittances.amount'), numeric: true, render: (line) => formatCurrency(line.amount, { currency: line.instrument.currency }) },
+    { key: 'actions', header: t('common:actions.actions'), render: (line) => line.line_status === 'pending' ? <div className="flex gap-2">{hasPermission('instruments.clear') ? <Button size="sm" onClick={() => { openLineDialog('clear', line) }}>{t('treasury:instruments.clear')}</Button> : null}{hasPermission('instruments.bounce') ? <Button size="sm" variant="danger" onClick={() => { openLineDialog('bounce', line) }}>{t('treasury:instruments.bounce')}</Button> : null}</div> : '—' },
+  ]
 
   return <div className="space-y-6">
     <PageHeader title={slip.number} subtitle={slip.bank_repository.name} breadcrumb={<Link className={cn('inline-flex items-center gap-2 text-sm', textColors.tertiary)} to="/treasury/remittances"><ArrowLeft className="h-4 w-4" />{t('common:actions.back')}</Link>} actions={<><StatusBadge tone={slip.status === 'closed' ? 'success' : slip.status === 'draft' ? 'warning' : 'info'}>{t(`treasury:remittances.statuses.${slip.status}`)}</StatusBadge>{slip.status === 'draft' && hasPermission('instruments.remit') ? <Button onClick={() => { void remitDraft() }} disabled={isSubmitting}>{t('treasury:remittances.remit')}</Button> : null}<Button variant="secondary" onClick={() => { window.print() }}><Printer className="h-4 w-4" />{t('treasury:remittances.print')}</Button></>} />
     <section className={tokens.card.base}>
-      <div className="overflow-x-auto"><DataTable className="min-w-full border-collapse text-left"><thead className={tokens.table.header}><tr><th className={cn('px-4 py-2 text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('treasury:remittances.reference')}</th><th className={cn('px-4 py-2 text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('treasury:remittances.status')}</th><th className={cn('px-4 py-2 text-right text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('treasury:remittances.amount')}</th><th className={cn('px-4 py-2 text-xs font-medium uppercase tracking-wide', textColors.tertiary)}>{t('common:actions.actions')}</th></tr></thead><tbody className={cn('divide-y', borderColors.divideDefault)}>{slip.lines.map((line) => <tr key={line.id} className={tokens.table.rowHover}><td className="px-4 py-3"><Link className={textColors.brand} to={`/treasury/instruments/${line.instrument_id}`}>{line.instrument.reference}</Link></td><td className="px-4 py-3"><StatusBadge tone={line.line_status === 'bounced' ? 'danger' : line.line_status === 'cleared' ? 'success' : 'warning'}>{t(`treasury:remittances.lineStatuses.${line.line_status}`)}</StatusBadge></td><td className="px-4 py-3 text-right tabular-nums">{formatCurrency(line.amount, { currency: line.instrument.currency })}</td><td className="px-4 py-3">{line.line_status === 'pending' ? <div className="flex gap-2">{hasPermission('instruments.clear') ? <Button size="sm" onClick={() => { openLineDialog('clear', line) }}>{t('treasury:instruments.clear')}</Button> : null}{hasPermission('instruments.bounce') ? <Button size="sm" variant="danger" onClick={() => { openLineDialog('bounce', line) }}>{t('treasury:instruments.bounce')}</Button> : null}</div> : '—'}</td></tr>)}</tbody><tfoot><tr><td className="px-4 py-3 font-semibold" colSpan={2}>{slip.lines.length}</td><td className="px-4 py-3 text-right font-semibold tabular-nums">{formatCurrency(total, { currency })}</td><td className="px-4 py-3" /></tr></tfoot></DataTable></div>
+      <div className="overflow-x-auto"><DataTable columns={columns} data={slip.lines} keyExtractor={(line) => line.id} className="min-w-full" /></div>
+      <div className={cn('flex items-center justify-between border-t px-4 py-3 font-semibold', borderColors.default)}><span>{slip.lines.length}</span><span className="tabular-nums">{formatCurrency(total, { currency })}</span></div>
     </section>
     <BordereauPrintView slip={printSlip} depositor={userName} />
 

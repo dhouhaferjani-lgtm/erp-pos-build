@@ -332,28 +332,30 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             '0',
         );
 
-        // Manual registration records custody but deliberately posts no receipt
-        // GL. Its later remit/clear/cancel entries must therefore be removed from
-        // both sides of this comparison as one coherent legacy/manual circuit;
-        // otherwise its first lifecycle JE would create permanent false drift.
-        return bcsub($fullBalance, $this->manualInstrumentGlNet($company, $accountId, $scale), $scale);
+        // Instruments outside the comparable population (manual registrations
+        // and pre-cutover rows) have no included receipt-side GL. Their later,
+        // post-cutover lifecycle entries must be removed as the same excluded
+        // circuit or they create permanent false drift.
+        return bcsub($fullBalance, $this->excludedInstrumentGlNet($company, $accountId, $scale), $scale);
     }
 
     /** @return numeric-string */
-    private function manualInstrumentGlNet(Company $company, string $accountId, int $scale): string
+    private function excludedInstrumentGlNet(Company $company, string $accountId, int $scale): string
     {
-        $manualQuery = PaymentInstrument::query()
+        $excludedQuery = PaymentInstrument::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
             ->where('direction', InstrumentDirection::Inbound)
-            ->whereNull('payment_id');
-        if ($company->phase2_cutover_at !== null) {
-            $manualQuery->where('created_at', '>=', $company->phase2_cutover_at);
-        }
+            ->where(function ($query) use ($company): void {
+                $query->whereNull('payment_id');
+                if ($company->phase2_cutover_at !== null) {
+                    $query->orWhere('created_at', '<', $company->phase2_cutover_at);
+                }
+            });
 
-        /** @var list<string> $manualIds */
-        $manualIds = $manualQuery->pluck('id')->all();
-        if ($manualIds === []) {
+        /** @var list<string> $excludedIds */
+        $excludedIds = $excludedQuery->pluck('id')->all();
+        if ($excludedIds === []) {
             return '0';
         }
 
@@ -363,7 +365,7 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             ->where('journal_entries.company_id', $company->id)
             ->where('journal_entries.status', JournalEntryStatus::Posted)
             ->where('journal_entries.source_type', 'instrument')
-            ->whereIn('journal_entries.source_id', $manualIds)
+            ->whereIn('journal_entries.source_id', $excludedIds)
             ->where('journal_lines.account_id', $accountId);
         if ($company->phase2_cutover_at !== null) {
             $directQuery->where('journal_entries.created_at', '>=', $company->phase2_cutover_at);
@@ -380,13 +382,13 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             '0',
         );
 
-        /** @var Collection<int, InstrumentRemittanceLine> $manualRemittanceLines */
-        $manualRemittanceLines = InstrumentRemittanceLine::query()
-            ->whereIn('instrument_id', $manualIds)
+        /** @var Collection<int, InstrumentRemittanceLine> $excludedRemittanceLines */
+        $excludedRemittanceLines = InstrumentRemittanceLine::query()
+            ->whereIn('instrument_id', $excludedIds)
             ->get(['remittance_id', 'amount']);
 
-        foreach ($manualRemittanceLines->groupBy('remittance_id') as $remittanceId => $remittanceLines) {
-            $manualAmount = $remittanceLines->reduce(
+        foreach ($excludedRemittanceLines->groupBy('remittance_id') as $remittanceId => $remittanceLines) {
+            $excludedAmount = $remittanceLines->reduce(
                 static fn (string $sum, InstrumentRemittanceLine $line): string => bcadd($sum, $line->amount, $scale),
                 '0',
             );
@@ -406,9 +408,9 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
             $remittanceEntryLines = $remittanceEntryQuery->get(['journal_lines.debit', 'journal_lines.credit']);
             foreach ($remittanceEntryLines as $line) {
                 if (bccomp($line->debit, '0', $scale) > 0) {
-                    $net = bcadd($net, $manualAmount, $scale);
+                    $net = bcadd($net, $excludedAmount, $scale);
                 } elseif (bccomp($line->credit, '0', $scale) > 0) {
-                    $net = bcsub($net, $manualAmount, $scale);
+                    $net = bcsub($net, $excludedAmount, $scale);
                 }
             }
         }

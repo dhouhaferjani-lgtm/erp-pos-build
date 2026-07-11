@@ -50,6 +50,21 @@ final class InstrumentLifecycleReceiveTest extends TestCase
         $this->assertDatabaseCount('repository_movements', 0);
     }
 
+    public function test_receive_rejects_currency_outside_the_company_currency(): void
+    {
+        $context = $this->context();
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Instrument currency must match company currency.');
+
+        try {
+            $this->service()->receive($this->receiveData($context, currency: 'EUR'));
+        } finally {
+            $this->assertDatabaseCount('payment_instruments', 0);
+            $this->assertDatabaseCount('instrument_events', 0);
+        }
+    }
+
     public function test_update_details_is_received_only_and_records_diff(): void
     {
         $context = $this->context();
@@ -168,7 +183,7 @@ final class InstrumentLifecycleReceiveTest extends TestCase
     /**
      * @param  array{tenant: Tenant, company: Company, user: User, partner: Partner, method: PaymentMethod, repository: PaymentRepository, otherRepository: PaymentRepository}  $context
      */
-    private function receiveData(array $context, bool $needsDetails = false): ReceiveInstrumentData
+    private function receiveData(array $context, bool $needsDetails = false, string $currency = 'TND'): ReceiveInstrumentData
     {
         return new ReceiveInstrumentData(
             tenantId: $context['tenant']->id,
@@ -179,7 +194,7 @@ final class InstrumentLifecycleReceiveTest extends TestCase
             origin: InstrumentOrigin::Web,
             reference: 'CHK-'.Str::upper(Str::random(8)),
             amount: '125.000',
-            currency: 'TND',
+            currency: $currency,
             repositoryId: $context['repository']->id,
             partnerId: $context['partner']->id,
             receivedDate: '2026-07-11',

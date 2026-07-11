@@ -150,4 +150,20 @@ describe('InstrumentDetailPage lifecycle', () => {
     expect(screen.queryByRole('button', { name: 'treasury:instruments.transfer' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'treasury:instruments.cancel' })).not.toBeInTheDocument()
   })
+
+  it('keeps cancellation separate from detail editing and uses the declared select placeholder', async () => {
+    instrumentState.status = 'received'
+    permissionState.allowed = new Set(['instruments.view', 'instruments.update', 'instruments.transfer'])
+    const page = renderPage()
+
+    await screen.findByRole('heading', { name: 'CHK-1' })
+    expect(screen.queryByRole('button', { name: 'treasury:instruments.cancel' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'treasury:instruments.transfer' }))
+    expect(screen.getByRole('option', { name: 'common:common.selectOption' })).toBeInTheDocument()
+
+    page.unmount()
+    permissionState.allowed = new Set(['instruments.view', 'instruments.cancel'])
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'treasury:instruments.cancel' })).toBeInTheDocument()
+  })
 })

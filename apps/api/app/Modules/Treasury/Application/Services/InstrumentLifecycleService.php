@@ -66,6 +66,14 @@ final readonly class InstrumentLifecycleService
     public function receive(ReceiveInstrumentData $data): PaymentInstrument
     {
         return DB::transaction(function () use ($data): PaymentInstrument {
+            $companyCurrency = DB::table('companies')
+                ->where('tenant_id', $data->tenantId)
+                ->where('id', $data->companyId)
+                ->value('currency');
+            if (! is_string($companyCurrency) || strtoupper($data->currency) !== strtoupper($companyCurrency)) {
+                throw new DomainException('Instrument currency must match company currency.');
+            }
+
             $amount = CurrencyScale::bcformatStrict(
                 $data->amount,
                 $this->scaleResolver->getScale($data->currency),

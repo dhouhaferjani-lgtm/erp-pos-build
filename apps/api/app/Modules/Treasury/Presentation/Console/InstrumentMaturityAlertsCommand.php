@@ -13,6 +13,7 @@ use App\Modules\Treasury\Domain\CountryPaymentSettings;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\PaymentInstrument;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -90,7 +91,7 @@ final class InstrumentMaturityAlertsCommand extends TenantScopedCommand
             ->value('instrument_alert_days');
         $windowDays = is_numeric($windowDays) ? max(0, (int) $windowDays) : 7;
 
-        $today = today();
+        $today = CarbonImmutable::today($company->timezone);
 
         /** @var list<string> $receivedDueIds */
         $receivedDueIds = PaymentInstrument::query()

@@ -90,7 +90,7 @@ export function RemittanceCreatePage() {
       {error ? <div className={cn(tokens.alert.base, tokens.alert.error)}>{error}</div> : null}
       <section className={tokens.card.base}>
         <div className="grid gap-4 md:grid-cols-2">
-          <label className={tokens.label.base}>{t('treasury:remittances.bankRepository')}<Select aria-label={t('treasury:remittances.bankRepository')} value={bankRepositoryId} disabled={repositoriesLoading} onChange={(event) => { setBankRepositoryId(event.target.value) }}><option value="">{t('common:selectOption')}</option>{repositories.map((repository) => <option key={repository.id} value={repository.id}>{repository.name}</option>)}</Select></label>
+          <label className={tokens.label.base}>{t('treasury:remittances.bankRepository')}<Select aria-label={t('treasury:remittances.bankRepository')} value={bankRepositoryId} disabled={repositoriesLoading} onChange={(event) => { setBankRepositoryId(event.target.value) }}><option value="">{t('common:common.selectOption')}</option>{repositories.map((repository) => <option key={repository.id} value={repository.id}>{repository.name}</option>)}</Select></label>
           <label className={tokens.label.base}>{t('treasury:remittances.kind')}<Select aria-label={t('treasury:remittances.kind')} value={kind} onChange={(event) => { setKind(event.target.value); setSelectedIds(new Set()) }}><option value="cheque">{t('treasury:instruments.kinds.cheque')}</option><option value="effet">{t('treasury:instruments.kinds.effet')}</option></Select></label>
         </div>
       </section>
