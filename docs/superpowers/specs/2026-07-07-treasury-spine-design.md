@@ -113,7 +113,7 @@ Permission `treasury.adjust` (seeded to admin/owner roles). Endpoint + minimal F
 
 - **Wire the closed-period guard**: `postEntry` and `record()` reject dates outside an open `FiscalPeriod` (`isDateInOpenPeriod` — exists, unwired). Closed periods therefore lock both GL and movements (FEC ValidDate discipline).
 - **Fix `chain_sequence`/JE-number allocation races**: sequence allocation under a company-scoped lock (the withholding chain and `fiscal_events` already do gapless correctly; GL is the outlier). FEC requires sequential `EcritureNum` — racy `max()+1` is both a correctness and a compliance defect.
-- **`journal_code` enum column on `journal_entries`** (FR journal codes: VT/AC/BQ/CA/OD mapping from `source_type`), populated going forward — makes future FEC export a query, not a migration. Exporter itself is out of scope.
+- **`journal_code` enum column on `journal_entries`**, populated going forward — makes future FEC export a query, not a migration. Declared FEC codes are `VT` (sales), `AC` (purchases), `BQ` (bank), `CA` (cash/POS), `EF` (payment-instrument portfolio operations whose source type is `instrument` or `instrument_remittance`), and `OD` (miscellaneous/default). Receipt-side payment entries retain their existing `BQ`/`CA` code; `EF` identifies only portfolio lifecycle postings. Exporter itself is out of scope.
 - debits==credits assertion: **already exists** (`:1984-1988`) — no work, covered by tests only.
 
 **`payment_repositories` schema changes (review F12/F14):**

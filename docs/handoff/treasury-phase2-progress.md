@@ -441,3 +441,13 @@
 - Harness deviations: the general fiscal dispatcher intentionally rejects device-authored SALE_RECEIPT events, so the test fixture followed the repository's canonical device path (POS core projection then Treasury bridge), matching focused integration tests. The in-app tab's CDP screenshot command timed out; a second isolated authenticated Playwright page captured the same live routes. Neither deviation changes production code or money behavior.
 - Product fix-forward: live UI exposed the bank placeholder as raw `fields.selectOption`. A focused assertion failed on the bad key, the component now uses the existing root `common:selectOption` in both locales, and the test is green (2 tests). Typecheck, targeted ESLint, design audit (753 acknowledged, **0 new**, 0 stale), and `git diff --check` all pass. No red station or carry-forward remains.
 - Money-path deviation: none. Every cash balance mutation occurred through `TreasuryMovementService` with a synchronous Posted JE; receipt/remittance/bounce-before-clear portfolio legs did not mutate repository cash.
+
+### Task 28 — Deploy notes and FEC declaration
+
+- Status: complete.
+- Files touched: new `docs/handoff/treasury-phase2-deploy-checklist.md`; Treasury Phase-2 spec deploy cross-reference; Treasury-spine FEC descriptive declaration; this progress log.
+- Deploy sequence documented: per-tenant additive migrations; explicit brownfield `phase2_cutover_at` verification; idempotent per-company chart provisioning through `ChartOfAccountsService`; all seven TN/non-TN portfolio/fee codes; `RolesAndPermissionsSeeder` for `instruments.update/bounce/remit`; mandatory per-tenant `permission:cache-reset`; worker restart; reconcile and maturity-alert smoke checks.
+- Safety guidance: the checklist forbids manual repository balance repair during chart provisioning and treats any non-zero reconcile result as a deployment stop. It states that the cutover watermark scopes reconcile check #4 only and does not restate historic movements/books.
+- FEC declaration: the canonical Treasury-spine descriptive section now lists `EF` alongside VT/AC/BQ/CA/OD, maps only `instrument` and `instrument_remittance` portfolio lifecycle entries to it, and explicitly preserves receipt-side payment journal coding. The deploy checklist repeats the operator-facing declaration and contre-passation rule.
+- Verification: all documented artisan commands and class names were checked against the current CLI/source; `git diff --check` passes; targeted link/path and required-token greps pass.
+- Deviations: none. Documentation only; no runtime or money-path code changed.

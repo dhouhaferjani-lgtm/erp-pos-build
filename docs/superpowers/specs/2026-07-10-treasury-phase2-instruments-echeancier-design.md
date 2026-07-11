@@ -330,7 +330,7 @@ All routes: `['api','auth:sanctum',SetPermissionsTeam::class,EnforceTokenTenantC
 ## 18. Migration, deploy, interlocks
 
 - Migrations additive + re-runnable (`hasColumn`/`hasTable` guards, `DROP IF EXISTS` trigger form). No production tenants; **staging brownfield note:** movements already recorded for pre-cutover check tenders stay (append-only, books not retroactively restated); pre-cutover-shaped legs never mint instruments (the §9 JE-debit probe — F5/T11). The `phase2_cutover_at` watermark's ONLY job is reconcile-#4 exclusion of pre-existing instrument rows and pre-cutover GL noise — replay-shape detection does NOT depend on it.
-- Deploy owes (standing): `tenants:migrate` per tenant, perm reseed + `permission:cache-reset`, chart-of-accounts seeder re-run (adds §3 accounts).
+- Deploy owes (standing): `tenants:migrate` per tenant, perm reseed + `permission:cache-reset`, chart-of-accounts seeder re-run (adds §3 accounts). The executable operator sequence and post-deploy checks are recorded in `docs/handoff/treasury-phase2-deploy-checklist.md`.
 - **Interlocks:** bank-directory track owns `banks` + `BankPicker`; instrument surfaces are THIS track (their brief §6 carve-out honored — `bank_id` lands here). treasury-ui-gaps track touches `RepositoryDetailPage`/`ExpenseDetailPage` only — no file overlap with §15. GL roadmap: §3 account seeding logged in the realignment log if the published chart shape counts as canonical.
 - Worktree off dev per rule 21; hard-stop adversarial gates per milestone (standing owner rule); implementation dispatch **gated by owner** — this spec+plan cycle ends before any code.
 
