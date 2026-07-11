@@ -40,6 +40,17 @@ class GenericChartOfAccountsSeeder extends Seeder
             if ($existing !== null) {
                 $accountIdMap[$account['code']] = (string) $existing->id;
 
+                // Re-run flag promotion: the seeder never rewrites existing rows, so a
+                // chart seeded BEFORE an account definition became is_system would keep
+                // the row unprotected forever. Promote ONLY the is_system flag (never
+                // name/type/purpose — user edits stay untouched) when the definition
+                // says system but the stored row is not.
+                if (($account['is_system'] ?? false) && ! (bool) $existing->is_system) {
+                    DB::table('accounts')
+                        ->where('id', $existing->id)
+                        ->update(['is_system' => true, 'updated_at' => $now]);
+                }
+
                 continue;
             }
 
@@ -122,8 +133,8 @@ class GenericChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::SupplierAdvance->value, 'is_system' => true],
             ['code' => '4100', 'name' => 'Customer Receivable', 'type' => 'asset', 'parent_code' => '4000',
                 'system_purpose' => SystemAccountPurpose::CustomerReceivable->value, 'is_system' => true],
-            ['code' => '413', 'name' => 'Effects Receivable', 'type' => 'asset', 'parent_code' => '4000'],
-            ['code' => '416', 'name' => 'Doubtful Receivables', 'type' => 'asset', 'parent_code' => '4000'],
+            ['code' => '413', 'name' => 'Effects Receivable', 'type' => 'asset', 'parent_code' => '4000', 'is_system' => true],
+            ['code' => '416', 'name' => 'Doubtful Receivables', 'type' => 'asset', 'parent_code' => '4000', 'is_system' => true],
             ['code' => '4180', 'name' => 'Uninvoiced Revenue', 'type' => 'asset', 'parent_code' => '4000',
                 'system_purpose' => SystemAccountPurpose::UninvoicedRevenue->value, 'is_system' => true],
             ['code' => '4190', 'name' => 'Customer Advance', 'type' => 'liability', 'parent_code' => '4000',
@@ -131,7 +142,7 @@ class GenericChartOfAccountsSeeder extends Seeder
             ['code' => '4400', 'name' => 'Tax Accounts', 'type' => 'liability', 'parent_code' => '4000'],
             ['code' => '4456', 'name' => 'VAT Deductible (Input)', 'type' => 'asset', 'parent_code' => '4400',
                 'system_purpose' => SystemAccountPurpose::VatDeductible->value, 'is_system' => true],
-            ['code' => '44566', 'name' => 'VAT Recoverable on Bank Fees', 'type' => 'asset', 'parent_code' => '4456'],
+            ['code' => '44566', 'name' => 'VAT Recoverable on Bank Fees', 'type' => 'asset', 'parent_code' => '4456', 'is_system' => true],
             ['code' => '4457', 'name' => 'VAT Collected (Output)', 'type' => 'liability', 'parent_code' => '4400',
                 'system_purpose' => SystemAccountPurpose::VatCollected->value, 'is_system' => true],
 
@@ -140,9 +151,9 @@ class GenericChartOfAccountsSeeder extends Seeder
             ['code' => '5100', 'name' => 'Bank Accounts', 'type' => 'asset', 'parent_code' => '5000',
                 'system_purpose' => SystemAccountPurpose::Bank->value, 'is_system' => true],
             ['code' => '511', 'name' => 'Values in Collection', 'type' => 'asset', 'parent_code' => '5000'],
-            ['code' => '5112', 'name' => 'Checks to Collect', 'type' => 'asset', 'parent_code' => '511'],
-            ['code' => '5113', 'name' => 'Effects in Collection', 'type' => 'asset', 'parent_code' => '511'],
-            ['code' => '5114', 'name' => 'Effects Discounted', 'type' => 'asset', 'parent_code' => '511'],
+            ['code' => '5112', 'name' => 'Checks to Collect', 'type' => 'asset', 'parent_code' => '511', 'is_system' => true],
+            ['code' => '5113', 'name' => 'Effects in Collection', 'type' => 'asset', 'parent_code' => '511', 'is_system' => true],
+            ['code' => '5114', 'name' => 'Effects Discounted', 'type' => 'asset', 'parent_code' => '511', 'is_system' => true],
             ['code' => '5300', 'name' => 'Cash', 'type' => 'asset', 'parent_code' => '5000',
                 'system_purpose' => SystemAccountPurpose::Cash->value, 'is_system' => true],
 
@@ -160,7 +171,7 @@ class GenericChartOfAccountsSeeder extends Seeder
                 'system_purpose' => SystemAccountPurpose::TravelExpense->value, 'is_system' => true],
             ['code' => '6256', 'name' => 'Meals & Entertainment', 'type' => 'expense', 'parent_code' => '6000',
                 'system_purpose' => SystemAccountPurpose::MealsExpense->value, 'is_system' => true],
-            ['code' => '627', 'name' => 'Bank Services and Fees', 'type' => 'expense', 'parent_code' => '6000'],
+            ['code' => '627', 'name' => 'Bank Services and Fees', 'type' => 'expense', 'parent_code' => '6000', 'is_system' => true],
             ['code' => '6280', 'name' => 'General Expenses', 'type' => 'expense', 'parent_code' => '6000',
                 'system_purpose' => SystemAccountPurpose::GeneralExpense->value, 'is_system' => true],
             ['code' => '6400', 'name' => 'Salaries & Wages', 'type' => 'expense', 'parent_code' => '6000'],

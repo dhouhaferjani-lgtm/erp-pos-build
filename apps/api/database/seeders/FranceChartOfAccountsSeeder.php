@@ -43,6 +43,17 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             if ($existing !== null) {
                 $accountIdMap[$account['code']] = (string) $existing->id;
 
+                // Re-run flag promotion: the seeder never rewrites existing rows, so a
+                // chart seeded BEFORE an account definition became is_system would keep
+                // the row unprotected forever. Promote ONLY the is_system flag (never
+                // name/type/purpose — user edits stay untouched) when the definition
+                // says system but the stored row is not.
+                if (($account['is_system'] ?? false) && ! (bool) $existing->is_system) {
+                    DB::table('accounts')
+                        ->where('id', $existing->id)
+                        ->update(['is_system' => true, 'updated_at' => $now]);
+                }
+
                 continue;
             }
 
@@ -164,8 +175,8 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '411', 'name' => 'Clients', 'type' => 'asset', 'parent_code' => '41',
                 'system_purpose' => SystemAccountPurpose::CustomerReceivable->value, 'is_system' => true],
             ['code' => '4111', 'name' => 'Clients - Ventes de biens ou de prestations de services', 'type' => 'asset', 'parent_code' => '411'],
-            ['code' => '413', 'name' => 'Clients - Effets à recevoir', 'type' => 'asset', 'parent_code' => '41'],
-            ['code' => '416', 'name' => 'Clients douteux ou litigieux', 'type' => 'asset', 'parent_code' => '41'],
+            ['code' => '413', 'name' => 'Clients - Effets à recevoir', 'type' => 'asset', 'parent_code' => '41', 'is_system' => true],
+            ['code' => '416', 'name' => 'Clients douteux ou litigieux', 'type' => 'asset', 'parent_code' => '41', 'is_system' => true],
             ['code' => '418', 'name' => 'Clients - Produits non encore facturés', 'type' => 'asset', 'parent_code' => '41'],
             ['code' => '419', 'name' => 'Clients créditeurs', 'type' => 'liability', 'parent_code' => '41'],
 
@@ -179,7 +190,7 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '44', 'name' => 'État et autres collectivités publiques', 'type' => 'liability', 'parent_code' => '4'],
             ['code' => '4456', 'name' => 'TVA déductible', 'type' => 'asset', 'parent_code' => '44',
                 'system_purpose' => SystemAccountPurpose::VatDeductible->value, 'is_system' => true],
-            ['code' => '44566', 'name' => 'TVA déductible sur autres biens et services', 'type' => 'asset', 'parent_code' => '4456'],
+            ['code' => '44566', 'name' => 'TVA déductible sur autres biens et services', 'type' => 'asset', 'parent_code' => '4456', 'is_system' => true],
             ['code' => '4457', 'name' => 'TVA collectée', 'type' => 'liability', 'parent_code' => '44',
                 'system_purpose' => SystemAccountPurpose::VatCollected->value, 'is_system' => true],
             ['code' => '44571', 'name' => 'TVA collectée', 'type' => 'liability', 'parent_code' => '4457'],
@@ -210,9 +221,9 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '512', 'name' => 'Banques', 'type' => 'asset', 'parent_code' => '51',
                 'system_purpose' => SystemAccountPurpose::Bank->value, 'is_system' => true],
             ['code' => '511', 'name' => 'Valeurs à l’encaissement', 'type' => 'asset', 'parent_code' => '51'],
-            ['code' => '5112', 'name' => 'Chèques à encaisser', 'type' => 'asset', 'parent_code' => '511'],
-            ['code' => '5113', 'name' => 'Effets à l’encaissement', 'type' => 'asset', 'parent_code' => '511'],
-            ['code' => '5114', 'name' => 'Effets à l’escompte', 'type' => 'asset', 'parent_code' => '511'],
+            ['code' => '5112', 'name' => 'Chèques à encaisser', 'type' => 'asset', 'parent_code' => '511', 'is_system' => true],
+            ['code' => '5113', 'name' => 'Effets à l’encaissement', 'type' => 'asset', 'parent_code' => '511', 'is_system' => true],
+            ['code' => '5114', 'name' => 'Effets à l’escompte', 'type' => 'asset', 'parent_code' => '511', 'is_system' => true],
             ['code' => '53', 'name' => 'Caisse', 'type' => 'asset', 'parent_code' => '5',
                 'system_purpose' => SystemAccountPurpose::Cash->value, 'is_system' => true],
             ['code' => '530', 'name' => 'Caisse', 'type' => 'asset', 'parent_code' => '53'],
@@ -237,7 +248,7 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '622', 'name' => 'Rémunérations d\'intermédiaires et honoraires', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '623', 'name' => 'Publicité, publications, relations publiques', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '626', 'name' => 'Frais postaux et de télécommunications', 'type' => 'expense', 'parent_code' => '62'],
-            ['code' => '627', 'name' => 'Services bancaires et assimilés', 'type' => 'expense', 'parent_code' => '62'],
+            ['code' => '627', 'name' => 'Services bancaires et assimilés', 'type' => 'expense', 'parent_code' => '62', 'is_system' => true],
             ['code' => '63', 'name' => 'Impôts, taxes et versements assimilés', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '6354', 'name' => 'Droits d\'enregistrement et de timbre', 'type' => 'expense', 'parent_code' => '63',
                 'system_purpose' => SystemAccountPurpose::PurchaseStampDuty->value, 'is_system' => true],
