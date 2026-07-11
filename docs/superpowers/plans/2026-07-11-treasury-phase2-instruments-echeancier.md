@@ -540,6 +540,10 @@ Full review: `reviews/2026-07-11-treasury-phase2-plan-adversarial-review.md` (tr
 | 16 | LOW | Dishonor-after-clear lacks in-test reconcile run | Task 9(c) |
 | 17 | LOW | Minor line-ref drift | Corrected where cited; re-grep note stands |
 
-## Execution Handoff
+## Execution Handoff (owner decision 2026-07-11: Codex desktop develops)
 
-Owner gates dispatch (handoff §mandate). When authorized: superpowers:subagent-driven-development in the `feat/treasury-instruments` worktree, per-task adversarial review (treasury-reviewer; fiscal-pos-reviewer on Wave E), hard-stop gates after Waves B, D, E, and H.
+**Executor:** Codex desktop, per `docs/handoff/CODEX-treasury-phase2-instruments-2026-07-11.md` (worktree `../erp.treasury-instruments`, branch `feat/treasury-instruments` off origin/dev AFTER the owner promotes the spec/plan/brief docs commits). Codex never merges or pushes.
+
+**Claude-side gate reviews (owner's tiering rule — Opus default, Fable 5 for crucial):** GATE 1 after Wave B, GATE 2 after Wave D, GATE 3 after Wave E — all **Fable 5** (money/fiscal paths, treasury-reviewer + fiscal-pos-reviewer lenses on Gate 3); GATE 4 after Wave H — **Opus** wave review + **one Fable 5 whole-branch final pass**. In-wave spot reviews: Opus.
+
+**Wave G precondition:** design-system unification sweep merged to dev → rebase → follow post-sweep PageHeader/token conventions (verified 2026-07-11: zero current file overlap with Wave G; the sweep's remaining PageHeader pass may add some — re-check before editing). Waves A–F have no overlap and need no waiting.
