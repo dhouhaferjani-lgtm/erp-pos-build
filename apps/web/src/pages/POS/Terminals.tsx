@@ -21,6 +21,7 @@ import { toast } from 'sonner'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * POS Terminals Management Page
@@ -181,17 +182,17 @@ export function TerminalsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
+          <h1 className={`text-2xl font-semibold ${colorTokens.text.primary}`}>
             {t('common:navigation.terminals')}
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
             {t('pos:terminal.pageDescription')}
           </p>
         </div>
         <button
           type="button"
           onClick={handleOpenCreateForm}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.variants.hoverBgBlue700} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2`}
         >
           <Plus className="h-4 w-4" />
           {t('pos:terminal.addTerminal')}
@@ -199,7 +200,7 @@ export function TerminalsPage() {
       </div>
 
       {/* Terminals List */}
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div className={`${colorTokens.surface.base} shadow rounded-lg overflow-hidden`}>
         <TerminalList
           terminals={terminals}
           isLoading={terminalsLoading}
@@ -218,17 +219,17 @@ export function TerminalsPage() {
           <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             {/* Backdrop - Semi-transparent overlay */}
             <div
-              className="fixed inset-0 bg-black/50 transition-opacity"
+              className={`fixed inset-0 ${colorTokens.surface.overlay} transition-opacity`}
               onClick={handleCloseForm}
               aria-hidden="true"
             />
 
             {/* Modal */}
-            <div className="relative z-10 transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
-              <div className="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+            <div className={`relative z-10 transform overflow-hidden rounded-lg ${colorTokens.surface.base} text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg`}>
+              <div className={`${colorTokens.surface.base} px-4 pb-4 pt-5 sm:p-6 sm:pb-4`}>
                 {/* Modal Header */}
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium leading-6 text-gray-900">
+                  <h3 className={`text-lg font-medium leading-6 ${colorTokens.text.primary}`}>
                     {editingTerminal
                       ? t('pos:terminal.editTerminal')
                       : t('pos:terminal.addTerminal')}
@@ -236,7 +237,7 @@ export function TerminalsPage() {
                   <button
                     type="button"
                     onClick={handleCloseForm}
-                    className="rounded-md text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`rounded-md ${colorTokens.text.disabled} ${colorTokens.intent.neutral.textHoverSubtle} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing}`}
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -260,26 +261,26 @@ export function TerminalsPage() {
 
       {/* Archive Confirmation Modal */}
       {archiveTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        <div className={`fixed inset-0 z-50 flex items-center justify-center ${colorTokens.surface.overlay}`}>
+          <div className={`${colorTokens.surface.base} rounded-lg shadow-xl w-full max-w-sm p-6`}>
+            <h3 className={`text-lg font-semibold ${colorTokens.text.primary} mb-2`}>
               {t('pos:terminal.confirmArchiveTitle')}
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className={`${colorTokens.text.muted} mb-6`}>
               {t('pos:terminal.confirmArchive', { resource: `${archiveTarget.name} (${archiveTarget.code})` })}
             </p>
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => { setArchiveTarget(null); }}
-                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className={`flex-1 px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} border ${colorTokens.border.default} rounded-lg ${colorTokens.variants.hoverBgGray50}`}
               >
                 {t('common:actions.cancel')}
               </button>
               <button
                 type="button"
                 onClick={() => void confirmArchive()}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-lg hover:bg-amber-700"
+                className={`flex-1 px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.caution.bgStrong} rounded-lg ${colorTokens.variants.hoverBgAmber700}`}
               >
                 {t('pos:terminal.archive')}
               </button>
@@ -290,26 +291,26 @@ export function TerminalsPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        <div className={`fixed inset-0 z-50 flex items-center justify-center ${colorTokens.surface.overlay}`}>
+          <div className={`${colorTokens.surface.base} rounded-lg shadow-xl w-full max-w-sm p-6`}>
+            <h3 className={`text-lg font-semibold ${colorTokens.text.primary} mb-2`}>
               {t('common:common.confirmDeleteTitle')}
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className={`${colorTokens.text.muted} mb-6`}>
               {t('common:common.confirmDelete', { resource: `${deleteTarget.name} (${deleteTarget.code})` })}
             </p>
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => { setDeleteTarget(null); }}
-                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className={`flex-1 px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} border ${colorTokens.border.default} rounded-lg ${colorTokens.variants.hoverBgGray50}`}
               >
                 {t('common:actions.cancel')}
               </button>
               <button
                 type="button"
                 onClick={() => void confirmDelete()}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700"
+                className={`flex-1 px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.danger.bgStrong} rounded-lg ${colorTokens.variants.hoverBgRed700}`}
               >
                 {t('common:actions.delete')}
               </button>
@@ -320,12 +321,12 @@ export function TerminalsPage() {
 
       {/* Deactivate Reason Modal */}
       {deactivateTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        <div className={`fixed inset-0 z-50 flex items-center justify-center ${colorTokens.surface.overlay}`}>
+          <div className={`${colorTokens.surface.base} rounded-lg shadow-xl w-full max-w-sm p-6`}>
+            <h3 className={`text-lg font-semibold ${colorTokens.text.primary} mb-2`}>
               {t('pos:terminal.deactivateTerminal')}
             </h3>
-            <p className="text-gray-600 mb-4">
+            <p className={`${colorTokens.text.muted} mb-4`}>
               {t('pos:terminal.deactivationReasonPrompt')}
             </p>
             <input
@@ -333,20 +334,20 @@ export function TerminalsPage() {
               value={deactivateReason}
               onChange={(e) => { setDeactivateReason(e.target.value); }}
               placeholder={t('pos:terminal.deactivationReasonPlaceholder')}
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
+              className={`w-full px-4 py-2 rounded-lg border ${colorTokens.border.default} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} mb-6`}
             />
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => { setDeactivateTarget(null); setDeactivateReason('') }}
-                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className={`flex-1 px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} border ${colorTokens.border.default} rounded-lg ${colorTokens.variants.hoverBgGray50}`}
               >
                 {t('common:actions.cancel')}
               </button>
               <button
                 type="button"
                 onClick={() => void confirmDeactivate()}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700"
+                className={`flex-1 px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.notice.bgStrong} rounded-lg ${colorTokens.intent.notice.bgStrongHover}`}
               >
                 {t('pos:terminal.deactivate')}
               </button>

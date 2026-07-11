@@ -10,6 +10,7 @@ import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal, ModalHeader, ModalContent } from '../Modal'
 import { SplitPaymentForm } from '../../../features/treasury/SplitPaymentForm'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * @deprecated Use RecordPaymentModal instead
@@ -108,8 +109,8 @@ export function SplitPaymentModal({
       <ModalContent>
         {/* Document context info */}
         {documentReference && (
-          <div className="rounded-lg bg-blue-50 p-4 mb-4">
-            <div className="flex items-center gap-2 text-sm text-blue-800">
+          <div className={`rounded-lg ${colorTokens.intent.primary.bgSubtle} p-4 mb-4`}>
+            <div className={`flex items-center gap-2 text-sm ${colorTokens.intent.primary.textStronger}`}>
               <span className="font-medium">{t('treasury:payments.payingFor', 'Paying for')}:</span>
               <span>{documentReference}</span>
             </div>

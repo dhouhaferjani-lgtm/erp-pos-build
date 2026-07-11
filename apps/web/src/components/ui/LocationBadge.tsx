@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface Location {
   id: string
@@ -49,7 +50,7 @@ export function LocationBadge({
   // If no location ID, show "No location" or nothing
   if (!locationId) {
     return (
-      <span className={`inline-flex items-center gap-1.5 text-gray-500 ${getSizeClasses(size)} ${className}`}>
+      <span className={`inline-flex items-center gap-1.5 ${colorTokens.text.subtle} ${getSizeClasses(size)} ${className}`}>
         {showIcon && <MapPin className={getIconSize(size)} />}
         <span>{t('common.noLocation', 'No location')}</span>
       </span>
@@ -58,7 +59,7 @@ export function LocationBadge({
 
   if (isLoading) {
     return (
-      <span className={`inline-flex items-center gap-1.5 text-gray-400 ${getSizeClasses(size)} ${className}`}>
+      <span className={`inline-flex items-center gap-1.5 ${colorTokens.text.disabled} ${getSizeClasses(size)} ${className}`}>
         {showIcon && <MapPin className={`${getIconSize(size)} animate-pulse`} />}
         <span className="animate-pulse">{t('status.loading', 'Loading...')}</span>
       </span>
@@ -71,17 +72,17 @@ export function LocationBadge({
 
   return (
     <span className={`inline-flex items-center gap-1.5 ${getSizeClasses(size)} ${className}`}>
-      {showIcon && <MapPin className={`${getIconSize(size)} text-gray-400`} />}
-      <span className="font-medium text-gray-900">
+      {showIcon && <MapPin className={`${getIconSize(size)} ${colorTokens.text.disabled}`} />}
+      <span className={`font-medium ${colorTokens.text.primary}`}>
         {locationData.name}
       </span>
       {showCode && locationData.code && (
-        <span className="font-mono text-gray-500">
+        <span className={`font-mono ${colorTokens.text.subtle}`}>
           ({locationData.code})
         </span>
       )}
       {locationData.is_default && (
-        <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+        <span className={`inline-flex items-center rounded-full ${colorTokens.intent.primary.bgSoft} px-2 py-0.5 text-xs font-medium ${colorTokens.intent.primary.textStronger}`}>
           {t('common.default', 'Default')}
         </span>
       )}

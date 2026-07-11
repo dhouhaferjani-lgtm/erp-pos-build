@@ -1,5 +1,5 @@
 {
-  "generated_by": "manual gate-4 shrink: removed stale swept entries and acknowledged auth/pages-legal PageHeader exemptions",
+  "generated_by": "manual gate-6 shrink: removed orphan selector C2 entry and re-fingerprinted POS Terminals h1 after color tokenization",
   "entries": [
     "C1|src/features/admin/pages/AdminDashboardPage.tsx|<h1 className={`mb-8 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>|#1",
     "C1|src/features/admin/pages/AuditLogsPage.tsx|<h1 className={`text-[1.5rem] leading-8 font-bold ${colorClasses.textGray900}`}>|#1",
@@ -32,7 +32,7 @@
     "C1|src/features/workshop-bundles/pages/BundleCreatePage.tsx|<h1 className={`mb-4 text-2xl font-semibold ${textColors.primary}`}>|#1",
     "C1|src/features/workshop-bundles/pages/BundleDetailPage.tsx|<h1 className={`text-2xl font-semibold ${textColors.primary}`}>|#1",
     "C1|src/features/workshop-technicians/pages/PayrollExportPage.tsx|<h1 className={`text-2xl font-semibold ${textColors.primary}`}>|#1",
-    "C1|src/pages/POS/Terminals.tsx|<h1 className=\"text-2xl font-semibold text-gray-900\">|#1",
+    "C1|src/pages/POS/Terminals.tsx|<h1 className={`text-2xl font-semibold ${colorTokens.text.primary}`}>|#1",
     "C1|src/pages/legal/PrivacyPolicyPage.tsx|<h1 className={`mb-8 text-3xl font-bold ${colorTokens.text.primary} ${colorTokens.text.darkInverse}`}>|#1",
     "C1|src/pages/legal/TermsOfServicePage.tsx|<h1 className={`mb-8 text-3xl font-bold ${colorTokens.text.primary} ${colorTokens.text.darkInverse}`}>|#1",
     "C2|src/features/document-ingestions/DocumentIngestionListPage.tsx|<select id=\"kind-filter\" className={tokens.select.base} value={kind} onChange={(event) => { setKind(event.target.value as DocumentKind | '') }} >|#1",
@@ -43,7 +43,6 @@
     "C2|src/features/document-ingestions/components/LineMappingTable.tsx|<input id={`batch-${index}`} aria-label={t('review.batchNumber')} className={tokens.input.base} value={value.batchNumber} onChange={(event) => { onChange(index, { ...value, batchNumber: event.target.value }) }} />|#1",
     "C2|src/features/document-ingestions/components/LineMappingTable.tsx|<input id={`expiry-${index}`} aria-label={t('review.expiryDate')} type=\"date\" className={tokens.input.base} value={value.expiryDate} onChange={(event) => { onChange(index, { ...value, expiryDate: event.target.value }) }} />|#1",
     "C2|src/features/document-ingestions/components/LineMappingTable.tsx|<select id={`source-line-${index}`} className={tokens.select.base} value={value.sourceLineId} onChange={(event) => { onChange(index, { ...value, sourceLineId: event.target.value }) }} >|#1",
-    "C2|src/features/document/components/DocumentLineVariantSelector.tsx|<select value={value ?? ''} disabled={disabled || isLoading} onChange={(e) => { onChange(e.target.value === '' ? null : e.target.value) }} className={tokens.input.base} >|#1",
     "C2|src/features/enrichment/components/EnrichmentReviewPanel.tsx|<input type=\"radio\" name=\"reject-reason\" value={value} checked={rejectReason === value} onChange={() => { setRejectReason(value) }} className={tokens.radio.base} />|#1",
     "C2|src/features/enrichment/components/EnrichmentReviewPanel.tsx|<textarea value={rejectNotes} onChange={(e) => { setRejectNotes(e.target.value) }} placeholder={t('review.rejectNotePlaceholder')} className={`${tokens.textarea.base} min-h-20`} />|#1",
     "C2|src/features/enrichment/pages/EnrichmentQueuePage.tsx|<select value={qualityFilter} onChange={(e) => setQualityFilter(e.target.value as QualityFilter)} className={tokens.select.base} style={{ width: 'auto', marginTop: 0 }} >|#1",

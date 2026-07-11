@@ -5,11 +5,11 @@ import { renderWithProviders } from '@/test/renderWithProviders'
 import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { InvoiceSearchSelect } from './InvoiceSearchSelect'
 import type { Invoice } from './InvoiceSearchSelect'
-import { api } from '../../lib/api'
+import { api } from '@/lib/api'
 import { makeInvoice } from '@/features/documents/__fixtures__/invoice'
 
 // Mock the API
-vi.mock('../../lib/api', () => ({
+vi.mock('@/lib/api', () => ({
   api: {
     get: vi.fn(),
   },
@@ -27,6 +27,7 @@ const i18nMap: Record<string, string> = {
   'common:unknown': 'Unknown',
   'common:status.loading': 'Loading...',
   'common:loading': 'Loading...',
+  'common:clearSearch': 'Clear selection',
   'sales:invoices.searchPlaceholder':
     'Search by invoice number or partner name...',
   'sales:invoices.noResults': 'No invoices found',

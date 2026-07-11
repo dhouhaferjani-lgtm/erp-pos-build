@@ -58,7 +58,7 @@ type InvoiceSearchSelectProps = {
   label?: string
 }
 
-vi.mock('@/components/ui/InvoiceSearchSelect', () => ({
+vi.mock('@/components/molecules/pickers/InvoiceSearchSelect', () => ({
   InvoiceSearchSelect: ({ onChange, label = 'invoice-select' }: InvoiceSearchSelectProps) => (
     <button
       type="button"
@@ -76,7 +76,7 @@ type DeliveryNoteSearchSelectProps = {
   label?: string
 }
 
-vi.mock('@/components/ui/DeliveryNoteSearchSelect', () => ({
+vi.mock('@/components/molecules/pickers/DeliveryNoteSearchSelect', () => ({
   DeliveryNoteSearchSelect: ({ onChange, label = 'delivery-note-select' }: DeliveryNoteSearchSelectProps) => (
     <button
       type="button"

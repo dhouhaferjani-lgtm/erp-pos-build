@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 import { AddPartnerModal } from '@/components/organisms/AddPartnerModal'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Minimal partner shape a caller must hand back on `onChange`. This mirrors
@@ -208,7 +209,7 @@ export function PartnerPicker({
     return (
       <div
         ref={containerRef}
-        className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
+        className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colorTokens.surface.base} px-3 py-2`}
         data-testid={testIdAttr}
       >
         <div className="min-w-0 flex-1">
@@ -270,7 +271,7 @@ export function PartnerPicker({
           <div
             id={listboxId}
             role="listbox"
-            className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
+            className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} ${colorTokens.surface.base} py-1 shadow-lg`}
           >
             {isLoading ? (
             <div className={`px-3 py-2 text-sm ${textColors.tertiary}`}>

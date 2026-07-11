@@ -1,4 +1,5 @@
-import { Select } from '../../atoms'
+import { Select } from '../../atoms/Select'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface EnumFilterOption {
   value: string
@@ -29,7 +30,7 @@ export function EnumFilter({
 
   return (
     <div className={className}>
-      {label && <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>}
+      {label && <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1.5`}>{label}</label>}
       <Select value={value ?? ''} onChange={handleChange}>
         <option value="">{placeholder}</option>
         {options.map((option) => (

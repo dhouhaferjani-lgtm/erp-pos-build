@@ -64,9 +64,10 @@ import {
 } from 'lucide-react'
 import type { BackendModule } from '../../../lib/modules'
 import { usePermissions } from '../../../hooks/usePermissions'
-import { useCompanyConfig } from '../../../contexts'
+import { useCompanyConfig } from '../../../contexts/CompanyConfigContext'
 import { useProductConfig } from '../../../contexts/ProductConfigContext'
 import { companyVerticalToCatalog } from '../../../features/catalog/hooks/useVerticalLabels'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 const STORAGE_KEY = 'autoerp-sidebar-expanded'
 const COLLAPSED_STORAGE_KEY = 'autoerp-sidebar-collapsed'
@@ -515,8 +516,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     const hasChildren = module.children && module.children.length > 0
 
     const parentActiveClass = isOtospex
-      ? (isActive ? 'bg-secondary-50 text-secondary-700 font-semibold' : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900')
-      : (isActive ? 'bg-blue-600/20 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white')
+      ? (isActive ? `${colorTokens.variants.bgSecondary50} ${colorTokens.variants.textSecondary700} font-semibold` : `${colorTokens.text.muted} ${colorTokens.variants.hoverBgGray200} ${colorTokens.variants.hoverTextGray900}`)
+      : (isActive ? `${colorTokens.variants.bgBlue600Alpha20} ${colorTokens.text.inverse}` : `${colorTokens.text.faint} ${colorTokens.variants.hoverBgGray800} ${colorTokens.variants.hoverTextWhite}`)
 
     if (!hasChildren && module.href) {
       return (
@@ -564,8 +565,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               const isChildActive = isLinkActive(child.href)
 
               const childActiveClass = isOtospex
-                ? (isChildActive ? 'bg-secondary-50 text-secondary-700 font-medium' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-800')
-                : (isChildActive ? 'bg-blue-600/20 text-white font-medium' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200')
+                ? (isChildActive ? `${colorTokens.variants.bgSecondary50} ${colorTokens.variants.textSecondary700} font-medium` : `${colorTokens.text.subtle} ${colorTokens.variants.hoverBgGray200} ${colorTokens.variants.hoverTextGray800}`)
+                : (isChildActive ? `${colorTokens.variants.bgBlue600Alpha20} ${colorTokens.text.inverse} font-medium` : `${colorTokens.text.disabled} ${colorTokens.variants.hoverBgGray800} ${colorTokens.variants.hoverTextGray200}`)
 
               return (
                 <li key={child.key}>
@@ -591,7 +592,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       {/* Mobile overlay */}
       {isOpen && onClose && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className={`fixed inset-0 z-40 ${colorTokens.surface.overlay} lg:hidden`}
           onClick={onClose}
           aria-hidden="true"
         />
@@ -601,8 +602,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       <aside
         className={`fixed inset-y-0 start-0 z-50 flex flex-col transition-all duration-300 lg:static lg:translate-x-0 rtl:lg:-translate-x-0 ${
           isOtospex
-            ? 'bg-gray-100 border-e border-gray-200'
-            : 'bg-gray-900'
+            ? `${colorTokens.surface.muted} border-e ${colorTokens.border.subtle}`
+            : `${colorTokens.surface.inverseStrong}`
         } ${
           isCollapsed ? 'w-16' : 'w-64'
         } ${
@@ -611,12 +612,12 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       >
         {/* Logo */}
         <div className={`flex h-16 items-center ${
-          isOtospex ? 'border-b border-gray-200' : 'border-b border-gray-800'
+          isOtospex ? `border-b ${colorTokens.border.subtle}` : `border-b ${colorTokens.variants.borderGray800}`
         } ${
           isCollapsed ? 'justify-center px-2' : 'justify-between px-6'
         }`}>
           {!isCollapsed && (
-            <span className={`text-xl font-bold ${isOtospex ? 'text-gray-900' : 'text-white'}`}>{productName}</span>
+            <span className={`text-xl font-bold ${isOtospex ? `${colorTokens.text.primary}` : `${colorTokens.text.inverse}`}`}>{productName}</span>
           )}
           <div className="flex items-center gap-2">
             <button
@@ -624,8 +625,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               onClick={() => { setIsCollapsed(!isCollapsed) }}
               className={`hidden lg:block rounded-lg p-1 ${
                 isOtospex
-                  ? 'text-gray-500 hover:bg-gray-200 hover:text-gray-700'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                  ? `${colorTokens.text.subtle} ${colorTokens.variants.hoverBgGray200} ${colorTokens.variants.hoverTextGray700}`
+                  : `${colorTokens.text.disabled} ${colorTokens.variants.hoverBgGray800} ${colorTokens.variants.hoverTextGray200}`
               }`}
               aria-label={isCollapsed ? t('actions.expand') : t('actions.collapse')}
             >
@@ -641,8 +642,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                 onClick={onClose}
                 className={`rounded-lg p-1 lg:hidden ${
                   isOtospex
-                    ? 'text-gray-500 hover:bg-gray-200 hover:text-gray-700'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                    ? `${colorTokens.text.subtle} ${colorTokens.variants.hoverBgGray200} ${colorTokens.variants.hoverTextGray700}`
+                    : `${colorTokens.text.disabled} ${colorTokens.variants.hoverBgGray800} ${colorTokens.variants.hoverTextGray200}`
                 }`}
                 aria-label={t('actions.close')}
               >
@@ -661,7 +662,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
         {/* Bottom navigation (Settings) */}
         {bottomNavigation.length > 0 && (
-          <div className={`border-t px-3 py-3 ${isOtospex ? 'border-gray-200' : 'border-gray-800'}`}>
+          <div className={`border-t px-3 py-3 ${isOtospex ? `${colorTokens.border.subtle}` : colorTokens.variants.borderGray800}`}>
             <ul className="space-y-1">
               {bottomNavigation.map(renderNavItem)}
             </ul>

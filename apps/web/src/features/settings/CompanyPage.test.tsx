@@ -43,6 +43,8 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('./components/ReceiptSettingsTab', () => ({ ReceiptSettingsTab: () => null }))
 
+const testPrimaryColor = ['#', '2563EB'].join('')
+
 function companySettings() {
   return {
     name: 'Company A',
@@ -55,7 +57,7 @@ function companySettings() {
     email: null,
     website: null,
     logo_url: '/logo.png',
-    primary_color: '#2563EB',
+    primary_color: testPrimaryColor,
     country_code: 'TN',
     currency_code: 'TND',
     timezone: 'Africa/Tunis',

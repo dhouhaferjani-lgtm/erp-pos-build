@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { Badge } from './Badge'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 describe('Badge', () => {
   it('renders with default variant', () => {
@@ -10,25 +11,25 @@ describe('Badge', () => {
   it('renders with success variant', () => {
     render(<Badge variant="success">Success</Badge>)
     const badge = screen.getByText('Success')
-    expect(badge).toHaveClass('bg-green-100', 'text-green-800')
+    expect(badge).toHaveClass(`${colorTokens.intent.success.bgSoft}`, `${colorTokens.intent.success.textStronger}`)
   })
 
   it('renders with warning variant', () => {
     render(<Badge variant="warning">Warning</Badge>)
     const badge = screen.getByText('Warning')
-    expect(badge).toHaveClass('bg-yellow-100', 'text-yellow-800')
+    expect(badge).toHaveClass(`${colorTokens.intent.warning.bgSoft}`, `${colorTokens.intent.warning.textStronger}`)
   })
 
   it('renders with danger variant', () => {
     render(<Badge variant="danger">Danger</Badge>)
     const badge = screen.getByText('Danger')
-    expect(badge).toHaveClass('bg-red-100', 'text-red-800')
+    expect(badge).toHaveClass(`${colorTokens.intent.danger.bgSoft}`, `${colorTokens.intent.danger.textStronger}`)
   })
 
   it('renders with info variant', () => {
     render(<Badge variant="info">Info</Badge>)
     const badge = screen.getByText('Info')
-    expect(badge).toHaveClass('bg-blue-100', 'text-blue-800')
+    expect(badge).toHaveClass(`${colorTokens.intent.primary.bgSoft}`, `${colorTokens.intent.primary.textStronger}`)
   })
 
   it('applies custom className', () => {

@@ -1,12 +1,13 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useId } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Search, X, ChevronDown } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { api } from '../../lib/api'
-import { tenantScopedKey } from '../../lib/tenantScopedKey'
-import { useAuthStore } from '../../stores/authStore'
-import { useCompanyStore } from '../../stores/companyStore'
+import { api } from '@/lib/api'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Generic Document Search Select Component
@@ -53,6 +54,30 @@ interface DocumentSearchSelectProps<T extends BaseDocument> {
   error?: string | undefined
 }
 
+const currencyFormatters = new Map<string, Intl.NumberFormat>()
+
+function getCurrencyFormatter(currency: string): Intl.NumberFormat {
+  const existing = currencyFormatters.get(currency)
+  if (existing !== undefined) return existing
+
+  const formatter = Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency,
+  })
+  currencyFormatters.set(currency, formatter)
+  return formatter
+}
+
+function formatCurrency(amount: number | string | undefined, currency: string = 'EUR') {
+  if (amount === undefined) return ''
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount
+  return getCurrencyFormatter(currency).format(num)
+}
+
+function getDocumentNumber(doc: BaseDocument) {
+  return doc.document_number || doc.number || doc.id
+}
+
 export function DocumentSearchSelect<T extends BaseDocument>({
   value,
   onChange,
@@ -67,6 +92,7 @@ export function DocumentSearchSelect<T extends BaseDocument>({
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const labelId = useId()
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
@@ -159,19 +185,6 @@ export function DocumentSearchSelect<T extends BaseDocument>({
     setSearchQuery('')
   }
 
-  const getDocumentNumber = (doc: T) => {
-    return doc.document_number || doc.number || doc.id
-  }
-
-  const formatCurrency = (amount: number | string | undefined, currency: string = 'EUR') => {
-    if (amount === undefined) return ''
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: currency,
-    }).format(num)
-  }
-
   const getDisplayText = () => {
     if (!value) {
       return t('common:actions.select') || 'Select'
@@ -198,24 +211,24 @@ export function DocumentSearchSelect<T extends BaseDocument>({
 
     return (
       <>
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100">
-          <Icon className="h-4 w-4 text-gray-500" />
+        <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${colorTokens.surface.muted}`}>
+          <Icon className={`h-4 w-4 ${colorTokens.text.subtle}`} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-900">{docNumber}</span>
-            <span className="text-xs text-gray-500">{date}</span>
+            <span className={`text-sm font-medium ${colorTokens.text.primary}`}>{docNumber}</span>
+            <span className={`text-xs ${colorTokens.text.subtle}`}>{date}</span>
           </div>
-          <div className="text-xs text-gray-500 truncate">{partner}</div>
-          {total && (
-            <div className="mt-1 text-xs text-gray-700">
+          <div className={`text-xs ${colorTokens.text.subtle} truncate`}>{partner}</div>
+          {total !== null && (
+            <div className={`mt-1 text-xs ${colorTokens.text.secondary}`}>
               {t('common:total')}: {total}
             </div>
           )}
         </div>
         {document.id === value?.id && (
           <div className="flex-shrink-0">
-            <div className="h-2 w-2 rounded-full bg-blue-600" />
+            <div className={`h-2 w-2 rounded-full ${colorTokens.intent.primary.bgStrong}`} />
           </div>
         )}
       </>
@@ -226,10 +239,10 @@ export function DocumentSearchSelect<T extends BaseDocument>({
     <div ref={containerRef} className={`relative ${className}`}>
       {/* Label */}
       {label && (
-        <label className="mb-1 block text-sm font-medium text-gray-700">
+        <span id={labelId} className={`mb-1 block text-sm font-medium ${colorTokens.text.secondary}`}>
           {label}
-          {required && <span className="ms-1 text-red-500">*</span>}
-        </label>
+          {required && <span className={`ms-1 ${colorTokens.intent.danger.textSubtle}`}>*</span>}
+        </span>
       )}
 
       {/* Selected value display / trigger */}
@@ -248,13 +261,14 @@ export function DocumentSearchSelect<T extends BaseDocument>({
         aria-disabled={disabled}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
-        className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-start shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+        aria-labelledby={label ? labelId : undefined}
+        className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-start shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 ${colorTokens.variants.focusVisibleRingBlue500} ${
           error
-            ? 'border-red-300'
-            : 'border-gray-300'
-        } ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:bg-gray-50 cursor-pointer'}`}
+            ? `${colorTokens.intent.danger.border}`
+            : `${colorTokens.border.default}`
+        } ${disabled ? `${colorTokens.surface.muted} cursor-not-allowed` : `${colorTokens.surface.base} ${colorTokens.variants.hoverBgGray50} cursor-pointer`}`}
       >
-        <span className={value ? 'text-gray-900' : 'text-gray-500'}>
+        <span className={value ? `${colorTokens.text.primary}` : `${colorTokens.text.subtle}`}>
           {getDisplayText()}
         </span>
         <div className="flex items-center gap-1">
@@ -266,27 +280,27 @@ export function DocumentSearchSelect<T extends BaseDocument>({
                 handleClear()
               }}
               aria-label={t('common:clearSearch')}
-              className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
+              className={`rounded p-0.5 ${colorTokens.text.disabled} ${colorTokens.variants.hoverBgGray200} ${colorTokens.variants.hoverTextGray600}`}
             >
               <X className="h-4 w-4" />
             </button>
           )}
           <ChevronDown
-            className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            className={`h-4 w-4 ${colorTokens.text.disabled} transition-transform ${isOpen ? 'rotate-180' : ''}`}
           />
         </div>
       </div>
 
       {/* Error message */}
-      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+      {error && <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>{error}</p>}
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-full min-w-[400px] rounded-lg border border-gray-200 bg-white shadow-lg">
+        <div className={`absolute left-0 top-full z-50 mt-1 w-full min-w-[400px] rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} shadow-lg`}>
           {/* Search input */}
-          <div className="border-b border-gray-200 p-3">
+          <div className={`border-b ${colorTokens.border.subtle} p-3`}>
             <div className="relative">
-              <Search className="absolute inset-y-0 start-0 ms-3 h-full w-4 text-gray-400" />
+              <Search className={`absolute inset-y-0 start-0 ms-3 h-full w-4 ${colorTokens.text.disabled}`} />
               <input
                 ref={inputRef}
                 type="text"
@@ -295,7 +309,7 @@ export function DocumentSearchSelect<T extends BaseDocument>({
                   setSearchQuery(e.target.value)
                 }}
                 placeholder={config.searchPlaceholder}
-                className="w-full rounded-lg border border-gray-300 py-2 pe-10 ps-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`w-full rounded-lg border ${colorTokens.border.default} py-2 pe-10 ps-10 text-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
               />
               {searchQuery && (
                 <button
@@ -303,7 +317,8 @@ export function DocumentSearchSelect<T extends BaseDocument>({
                   onClick={() => {
                     setSearchQuery('')
                   }}
-                  className="absolute inset-y-0 end-0 flex items-center pe-3 text-gray-400 hover:text-gray-600"
+                  aria-label={t('common:clearSearch')}
+                  className={`absolute inset-y-0 end-0 flex items-center pe-3 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -314,18 +329,18 @@ export function DocumentSearchSelect<T extends BaseDocument>({
           {/* Results list */}
           <div className="max-h-60 overflow-y-auto">
             {isLoading ? (
-              <div className="p-4 text-center text-sm text-gray-500">
+              <div className={`p-4 text-center text-sm ${colorTokens.text.subtle}`}>
                 {t('common:status.loading')}
               </div>
             ) : filteredDocuments.length === 0 ? (
               <div className="p-4 text-center text-sm">
-                <Icon className="mx-auto h-8 w-8 text-gray-300" />
-                <p className="mt-2 text-gray-500">
+                <Icon className={`mx-auto h-8 w-8 ${colorTokens.text.faint}`} />
+                <p className={`mt-2 ${colorTokens.text.subtle}`}>
                   {searchQuery ? config.noResultsMessage : config.noDataMessage}
                 </p>
               </div>
             ) : (
-              <ul className="divide-y divide-gray-100">
+              <ul className={`divide-y ${colorTokens.border.dividerSubtle}`}>
                 {filteredDocuments.map((document) => (
                   <li key={document.id}>
                     <button
@@ -333,8 +348,8 @@ export function DocumentSearchSelect<T extends BaseDocument>({
                       onClick={() => {
                         handleSelect(document)
                       }}
-                      className={`flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-gray-50 ${
-                        document.id === value?.id ? 'bg-blue-50' : ''
+                      className={`flex w-full items-center gap-3 px-4 py-3 text-start ${colorTokens.variants.hoverBgGray50} ${
+                        document.id === value?.id ? `${colorTokens.intent.primary.bgSubtle}` : ''
                       }`}
                     >
                       {config.renderItem ? config.renderItem(document) : renderDefaultItem(document)}

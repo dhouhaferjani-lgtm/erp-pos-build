@@ -16,6 +16,7 @@ import { cn } from '../../../lib/utils'
 import { tokens, textColors } from '../../../lib/designTokens'
 import { useLocationStore } from '../../../stores/locationStore'
 import type { LocationType } from '../../../stores/locationStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface AddLocationModalProps {
   isOpen: boolean
@@ -163,15 +164,15 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50">
-      <div className="relative mx-4 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto ${colorTokens.surface.overlay}`}>
+      <div className={`relative mx-4 w-full max-w-lg rounded-lg ${colorTokens.surface.base} p-6 shadow-xl`}>
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">{t('common:locations.modal.addTitle')}</h2>
+          <h2 className={`text-xl font-semibold ${colorTokens.text.primary}`}>{t('common:locations.modal.addTitle')}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className={`rounded-lg p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverBgGray100} ${colorTokens.variants.hoverTextGray600}`}
             aria-label={t('common:actions.close')}
           >
             <X className="h-5 w-5" />
@@ -180,7 +181,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
 
         {/* Error */}
         {error && (
-          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <div className={`mb-4 rounded-lg ${colorTokens.intent.danger.bgSubtle} p-3 text-sm ${colorTokens.intent.danger.textStrong}`}>
             {error}
           </div>
         )}
@@ -189,15 +190,15 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Location Type */}
           <div>
-            <label htmlFor="type" className="block text-sm font-medium text-gray-700">
-              {t('common:locations.form.type')} <span className="text-red-500">*</span>
+            <label htmlFor="type" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
+              {t('common:locations.form.type')} <span className={`${colorTokens.intent.danger.textSubtle}`}>*</span>
             </label>
             <select
               id="type"
               name="type"
               value={formData.type}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
             >
               {LOCATION_TYPES.map((locationType) => (
                 <option key={locationType.value} value={locationType.value}>
@@ -205,15 +206,15 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-gray-500">
+            <p className={`mt-1 text-xs ${colorTokens.text.subtle}`}>
               {LOCATION_TYPES.find((ltype) => ltype.value === formData.type)?.description}
             </p>
           </div>
 
           {/* Location Name */}
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-              {t('common:locations.form.name')} <span className="text-red-500">*</span>
+            <label htmlFor="name" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
+              {t('common:locations.form.name')} <span className={`${colorTokens.intent.danger.textSubtle}`}>*</span>
             </label>
             <input
               type="text"
@@ -222,14 +223,14 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               value={formData.name}
               onChange={handleChange}
               placeholder={t('common:locations.modal.namePlaceholder')}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
               required
             />
           </div>
 
           {/* Location Code */}
           <div>
-            <label htmlFor="code" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="code" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
               {t('common:locations.form.code')}
             </label>
             <input
@@ -239,9 +240,9 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               value={formData.code}
               onChange={handleChange}
               placeholder={t('common:locations.modal.codePlaceholder')}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className={`mt-1 text-xs ${colorTokens.text.subtle}`}>
               {t('common:common.leaveBlankForAutoGenerate')}
             </p>
           </div>
@@ -249,7 +250,7 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
           {/* Email and Phone */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('common:locations.form.email')}
               </label>
               <input
@@ -259,11 +260,11 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
                 value={formData.email}
                 onChange={handleChange}
                 placeholder={t('common:locations.modal.emailPlaceholder')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
               />
             </div>
             <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="phone" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('common:locations.form.phone')}
               </label>
               <input
@@ -273,14 +274,14 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
                 value={formData.phone}
                 onChange={handleChange}
                 placeholder={t('common:locations.modal.phonePlaceholder')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
               />
             </div>
           </div>
 
           {/* Address */}
           <div>
-            <label htmlFor="addressStreet" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="addressStreet" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
               {t('common:locations.form.address')}
             </label>
             <input
@@ -290,13 +291,13 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               value={formData.addressStreet}
               onChange={handleChange}
               placeholder={t('common:locations.modal.streetPlaceholder')}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="addressCity" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="addressCity" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('common:locations.form.city')}
               </label>
               <input
@@ -306,11 +307,11 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
                 value={formData.addressCity}
                 onChange={handleChange}
                 placeholder={t('common:locations.modal.cityPlaceholder')}
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
               />
             </div>
             <div>
-              <label htmlFor="addressPostalCode" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="addressPostalCode" className={`block text-sm font-medium ${colorTokens.text.secondary}`}>
                 {t('common:locations.form.postalCode')}
               </label>
               <input
@@ -402,9 +403,9 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
               name="posEnabled"
               checked={formData.posEnabled}
               onChange={handleChange}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className={`h-4 w-4 rounded ${colorTokens.border.default} ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing}`}
             />
-            <label htmlFor="posEnabled" className="text-sm font-medium text-gray-700">
+            <label htmlFor="posEnabled" className={`text-sm font-medium ${colorTokens.text.secondary}`}>
               {t('common:locations.form.posEnabled')}
             </label>
           </div>
@@ -414,14 +415,14 @@ export function AddLocationModal({ isOpen, onClose }: AddLocationModalProps) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className={`rounded-lg border ${colorTokens.border.default} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50}`}
               disabled={mutation.isPending}
             >
               {t('common:actions.cancel')}
             </button>
             <button
               type="submit"
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className={`flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.variants.hoverBgBlue700} disabled:opacity-50`}
               disabled={mutation.isPending}
             >
               {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}

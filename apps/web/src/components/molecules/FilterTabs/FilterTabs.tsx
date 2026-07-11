@@ -1,3 +1,4 @@
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 interface FilterTab<T extends string> {
   value: T
   label: string
@@ -18,7 +19,7 @@ export function FilterTabs<T extends string>({
   className = '',
 }: FilterTabsProps<T>) {
   return (
-    <div className={`flex gap-1 rounded-lg bg-gray-100 p-1 ${className}`}>
+    <div className={`flex gap-1 rounded-lg ${colorTokens.surface.muted} p-1 ${className}`}>
       {tabs.map((tab) => (
         <button
           key={tab.value}
@@ -28,15 +29,15 @@ export function FilterTabs<T extends string>({
           }}
           className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
             value === tab.value
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-600 hover:text-gray-900'
+              ? `${colorTokens.surface.base} ${colorTokens.text.primary} shadow-sm`
+              : `${colorTokens.text.muted} ${colorTokens.variants.hoverTextGray900}`
           }`}
         >
           {tab.label}
           {tab.count !== undefined && (
             <span
               className={`ms-1.5 rounded-full px-1.5 py-0.5 text-xs ${
-                value === tab.value ? 'bg-gray-100 text-gray-600' : 'bg-gray-200 text-gray-500'
+                value === tab.value ? `${colorTokens.surface.muted} ${colorTokens.text.muted}` : `${colorTokens.surface.subdued} ${colorTokens.text.subtle}`
               }`}
             >
               {tab.count}

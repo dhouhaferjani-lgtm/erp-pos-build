@@ -3,6 +3,58 @@
 > Branch: `feat/design-system-unification` in `/Users/houssamr/Projects/syneriva/apps/erp.design-sweep`.
 > Source handoff: `docs/handoff/CODEX-design-system-unification-2026-07-10.md`.
 
+## Gate 6 Final Scope — Components, Pages, Lib Residue, Wave 6
+
+Status: implementation verified; awaiting autonomous gate review.
+
+- Color residue sweep:
+  - Tokenized hardcoded Tailwind color literals across `src/components/`, `src/pages/`, `src/lib/`, and `src/utils/statusMapper.ts`.
+  - Extended `semanticColorTokens.variants` with complete static literals for exact existing colors, including variant and opacity forms, so Tailwind can compile every emitted utility.
+  - Promoted the hardcoded-color ERROR ratchet to cover `src/components/**/*`, `src/pages/**/*`, and `src/lib/**/*`, while keeping tests/stories and `src/lib/designTokens.ts` out of the production-color ban.
+  - Manual baseline maintenance only: removed the stale orphan `DocumentLineVariantSelector` C2 fingerprint and re-fingerprinted the tokenized POS Terminals header. No `--write-baseline` was used.
+- Wave 6 dedup/orphans:
+  - Deleted orphaned selectors: `DocumentLineVariantSelector`, `ProductDetailVariantPicker`, and `TerminalSelector`.
+  - Moved shared picker/search-select components from `components/ui` to `components/molecules/pickers` and updated imports/exports.
+  - Added `StickyFormFooter/index.ts`.
+  - Kept the existing `ProductSelector` public multi-select API and delegated the add/search control to shared `ProductPicker`.
+  - Replaced `features/users/components/UserSelector` with a compatibility wrapper around shared `UserPicker`; `UserPicker` now supports `excludeUserIds`.
+- Backend/PDF:
+  - Added full invoice-template coverage through `DocumentPdfService`, asserting the rendered template/PDF path uses stored line descriptions/SKU/notes rather than live product names.
+- Intentional visual/interaction changes:
+  - `ProductSelector` now uses the shared `ProductPicker` search/add control while preserving selected-chip layout and caller payload shape.
+  - All color changes are intended to be pixel-conservative exact-token substitutions.
+- Retained/deferred for owner decision:
+  - `CategorySelect` and `CategorySelector` remain separate. `CategorySelect` is a single native-select adapter used by inventory product forms; `CategorySelector` is a multi-select combobox used by coupons/promotions/inventory-counting. Collapsing them would require an intentional UX/payload decision.
+  - `default_tax_configuration_id` was retained after inspection because it is live tax-resolution/domain/API plumbing across product, category, company, and document flows, not dead residue.
+  - PageHeader adoption decisions remain owner-side per the Gate 5 brief.
+- Verification:
+  - BL-1/BL-2 scans returned zero matches:
+    - `rg -n "(hover|focus|focus-within|focus-visible|group-hover|disabled|placeholder|active|dark|file):\\$\\{|\\$\\{[^}]+\\}/\\d" apps/web/src || true`
+    - Scoped Gate 6 hardcoded-color scan across `src/components`, `src/pages`, `src/lib`, and `src/utils/statusMapper.ts` returned zero matches.
+    - Test/story color-tail scan across `apps/web/src` returned zero matches.
+  - `node apps/web/tools/audit-design-system.mjs` passed: 182 acknowledged, 0 new, 0 stale.
+  - Per-directory design audit JSON counts: `src/components/` total 0; `src/lib/` total 0; `src/utils/` total 0; `src/features/catalog/` total 0; `src/features/customer-history-audit/` total 0; `src/features/document/` total 0; `src/features/pos/` total 0; `src/features/products/` total 0; `src/features/users/` total 0; `src/features/vouchers/` total 0. `src/pages/` has 3 C1 PageHeader deferrals (`POS/Terminals`, legal privacy, legal terms). `src/features/documents/` has 5 C1 PageHeader deferrals already listed in Gate 3.
+  - `node apps/web/tools/audit-tanstack-keys.mjs` passed: 0 violations.
+  - `pnpm --filter @autoerp/web typecheck` passed.
+  - `pnpm --filter @autoerp/web lint` passed with 0 errors and 6,397 warnings; chained TanStack and design-system audits passed.
+  - `npx react-doctor@latest --verbose --scope changed --base c729930e1` passed with no changed-file issues after direct-import and picker cleanup; score remains 74.
+  - Full per-directory Vitest path runs passed:
+    - `src/components`: 57 files, 501 tests.
+    - `src/pages`: 1 file, 12 tests.
+    - `src/lib`: 15 files, 89 tests.
+    - `src/utils`: no test files found; run passed with `--passWithNoTests`.
+    - `src/features/auth`: 13 files, 61 passed, 1 skipped.
+    - `src/features/catalog`: 12 files, 80 tests.
+    - `src/features/customer-history-audit`: 2 files, 15 tests.
+    - `src/features/document`: 43 files, 319 tests.
+    - `src/features/documents`: 35 files, 260 tests.
+    - `src/features/pos`: 46 files, 443 tests.
+    - `src/features/products`: 13 files, 83 tests.
+    - `src/features/settings`: 27 files, 113 tests.
+    - `src/features/users`: 1 file, 1 test.
+    - `src/features/vouchers`: 11 files, 75 tests.
+  - `php artisan test tests/Feature/Modules/Document/DocumentPdfRenderTest.php` passed with exit 0: 6 warnings, 20 assertions. The warnings are the suite's existing PDF file-get-contents warning mode.
+
 ## Gate 5 Remediation — Wave 5 Leg 3 Rejection
 
 Status: remediation implemented; awaiting autonomous gate review.

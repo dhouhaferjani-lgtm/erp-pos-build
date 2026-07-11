@@ -352,9 +352,17 @@ export default tseslint.config(
       'src/features/locations/**/*.{ts,tsx}',
       'src/features/company/**/*.{ts,tsx}',
       'src/features/inventory/**/*.{ts,tsx}',
+      'src/components/**/*.{ts,tsx}',
+      'src/pages/**/*.{ts,tsx}',
+      'src/lib/**/*.{ts,tsx}',
       'src/pages/legal/**/*.{ts,tsx}',
     ],
-    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', '**/*.stories.{ts,tsx}'],
+    ignores: [
+      '**/*.test.{ts,tsx}',
+      '**/__tests__/**',
+      '**/*.stories.{ts,tsx}',
+      'src/lib/designTokens.ts',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',

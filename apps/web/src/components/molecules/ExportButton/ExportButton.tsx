@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ExportColumn {
   key: string
@@ -58,7 +59,7 @@ export function ExportButton({ data, filename, columns, className }: ExportButto
       type="button"
       onClick={handleExport}
       disabled={data.length === 0}
-      className={`inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className ?? ''}`}
+      className={`inline-flex items-center gap-2 rounded-lg border ${colorTokens.border.default} ${colorTokens.surface.base} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50} transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className ?? ''}`}
     >
       <Download className="h-4 w-4" />
       {t('actions.export')}

@@ -143,7 +143,7 @@ export function PrivacyPolicyPage() {
             <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
               <a
                 href="mailto:privacy@company.com"
-                className="text-primary-600 hover:text-primary-500 dark:text-primary-400"
+                className={`${colorTokens.variants.textPrimary600} ${colorTokens.variants.hoverTextPrimary500} ${colorTokens.variants.darkTextPrimary400}`}
               >
                 privacy@company.com
               </a>

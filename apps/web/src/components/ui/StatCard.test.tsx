@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { StatCard } from './StatCard'
 import { TrendingUp } from 'lucide-react'
 import { colors, textColors } from '../../lib/designTokens'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 describe('StatCard', () => {
   it('renders label and value', () => {
@@ -119,7 +120,7 @@ describe('StatCard', () => {
     const { container } = render(
       <StatCard label="Total" value={100} className="custom-class" />
     )
-    expect(container.firstChild).toHaveClass('bg-white')
+    expect(container.firstChild).toHaveClass(`${colorTokens.surface.base}`)
     expect(container.firstChild).toHaveClass('rounded-lg')
     expect(container.firstChild).toHaveClass('border')
     expect(container.firstChild).toHaveClass('p-6')

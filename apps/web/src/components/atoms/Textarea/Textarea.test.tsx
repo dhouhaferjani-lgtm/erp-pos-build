@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { Textarea } from './Textarea'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 describe('Textarea', () => {
   it('renders a textarea element', () => {
@@ -17,13 +18,13 @@ describe('Textarea', () => {
   it('applies error styling when error is true', () => {
     render(<Textarea error placeholder="Notes" />)
     const el = screen.getByPlaceholderText('Notes')
-    expect(el.className).toContain('border-red-500')
+    expect(el.className).toContain(`${colorTokens.intent.danger.borderFocus}`)
   })
 
   it('does not apply error styling by default', () => {
     render(<Textarea placeholder="Notes" />)
     const el = screen.getByPlaceholderText('Notes')
-    expect(el.className).not.toContain('border-red-500')
+    expect(el.className).not.toContain(`${colorTokens.intent.danger.borderFocus}`)
   })
 
   it('forwards arbitrary textarea attributes', () => {

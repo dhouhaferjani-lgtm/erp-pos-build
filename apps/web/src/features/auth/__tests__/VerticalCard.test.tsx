@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { VerticalCard } from '../components/VerticalCard'
 import type { VerticalConfig } from '../config/verticals'
 import { Store } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -14,8 +15,8 @@ vi.mock('react-i18next', () => ({
 const mockVertical: VerticalConfig = {
   key: 'retail',
   icon: Store,
-  bgColor: 'bg-sky-50',
-  strokeColor: 'text-sky-600',
+  bgColor: colorTokens.intent.info.bgSubtle,
+  strokeColor: colorTokens.intent.info.text,
   labelKey: 'auth:verticals.retail.label',
   descriptionKey: 'auth:verticals.retail.description',
 }
@@ -62,14 +63,14 @@ describe('VerticalCard', () => {
     )
 
     const button = screen.getByRole('option')
-    expect(button.className).toContain('border-blue-500')
-    expect(button.className).toContain('bg-blue-50')
+    expect(button.className).toContain(colorTokens.intent.primary.borderFocus)
+    expect(button.className).toContain(colorTokens.intent.primary.bgSubtle)
 
     rerender(
       <VerticalCard vertical={mockVertical} selected={false} onSelect={vi.fn()} />
     )
 
-    expect(button.className).toContain('border-gray-200')
-    expect(button.className).not.toContain('border-blue-500')
+    expect(button.className).toContain(colorTokens.border.subtle)
+    expect(button.className).not.toContain(colorTokens.intent.primary.borderFocus)
   })
 })

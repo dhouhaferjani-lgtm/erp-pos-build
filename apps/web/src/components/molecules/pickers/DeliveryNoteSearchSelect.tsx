@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { Truck } from 'lucide-react'
 import { DocumentSearchSelect } from './DocumentSearchSelect'
 import { useCurrency } from '@/hooks/useCurrency'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface DeliveryNote {
   id: string
@@ -36,14 +37,14 @@ interface DeliveryNoteSearchSelectProps {
   error?: string | undefined
 }
 
+function itemCount(deliveryNote: DeliveryNote): number {
+  const lines = deliveryNote.lines || []
+  return lines.reduce((sum: number, line) => sum + line.quantity, 0)
+}
+
 export function DeliveryNoteSearchSelect(props: DeliveryNoteSearchSelectProps) {
   const { t } = useTranslation()
   const { decimals } = useCurrency()
-
-  const itemCount = (deliveryNote: DeliveryNote): number => {
-    const lines = deliveryNote.lines || []
-    return lines.reduce((sum: number, line) => sum + line.quantity, 0)
-  }
 
   return (
     <DocumentSearchSelect<DeliveryNote>
@@ -74,26 +75,26 @@ export function DeliveryNoteSearchSelect(props: DeliveryNoteSearchSelectProps) {
         },
         renderItem: (deliveryNote) => (
           <>
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100">
-              <Truck className="h-4 w-4 text-gray-500" />
+            <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${colorTokens.surface.muted}`}>
+              <Truck className={`h-4 w-4 ${colorTokens.text.subtle}`} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-900">{deliveryNote.document_number}</span>
-                <span className="text-xs text-gray-500">
+                <span className={`text-sm font-medium ${colorTokens.text.primary}`}>{deliveryNote.document_number}</span>
+                <span className={`text-xs ${colorTokens.text.subtle}`}>
                   {new Date(deliveryNote.document_date).toLocaleDateString()}
                 </span>
               </div>
-              <div className="text-xs text-gray-500 truncate">
+              <div className={`text-xs ${colorTokens.text.subtle} truncate`}>
                 {deliveryNote.partner?.name || t('common:unknown')}
               </div>
               {deliveryNote.lines && deliveryNote.lines.length > 0 && (
-                <div className="mt-1 text-xs text-gray-400">
+                <div className={`mt-1 text-xs ${colorTokens.text.disabled}`}>
                   {deliveryNote.lines.length} {t('sales:lineItems.title', 'Line Items')} • {itemCount(deliveryNote)} {t('sales:lineItems.quantity', 'Items')}
                 </div>
               )}
             </div>
-            <div className="flex-shrink-0 text-sm font-medium text-gray-900">
+            <div className={`flex-shrink-0 text-sm font-medium ${colorTokens.text.primary}`}>
               {parseFloat(deliveryNote.total).toFixed(decimals)}
             </div>
           </>

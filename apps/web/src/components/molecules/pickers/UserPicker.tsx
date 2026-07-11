@@ -8,6 +8,7 @@ import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,10 +42,13 @@ interface UserPickerProps {
   placeholder?: string
   disabled?: boolean
   label?: string
+  excludeUserIds?: string[]
   'aria-label'?: string
   /** Optional data-testid override for automation. */
   testId?: string
 }
+
+const EMPTY_EXCLUDED_USER_IDS: string[] = []
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -56,12 +60,14 @@ export function UserPicker({
   placeholder,
   disabled = false,
   label,
+  excludeUserIds = EMPTY_EXCLUDED_USER_IDS,
   'aria-label': ariaLabel,
   testId,
 }: UserPickerProps) {
   const { t } = useTranslation('pickers')
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const inputId = useId()
   const listboxId = useId()
 
   const [query, setQuery] = useState('')
@@ -88,11 +94,6 @@ export function UserPicker({
     },
   })
 
-  // Reset highlighted row when the result set changes — -1 = no highlight.
-  useEffect(() => {
-    setActiveIndex(-1)
-  }, [data])
-
   // Close the listbox on outside clicks.
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -106,7 +107,12 @@ export function UserPicker({
     }
   }, [])
 
-  const results = useMemo<UserListItem[]>(() => data ?? [], [data])
+  const excludeUserIdSet = useMemo(() => new Set(excludeUserIds), [excludeUserIds])
+  const results = useMemo<UserListItem[]>(
+    () => (data ?? []).filter((user) => !excludeUserIdSet.has(user.id)),
+    [data, excludeUserIdSet],
+  )
+  const boundedActiveIndex = activeIndex >= results.length ? -1 : activeIndex
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (!isOpen) {
@@ -123,7 +129,7 @@ export function UserPicker({
       setActiveIndex((i) => Math.max(i - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      const choice = results[activeIndex]
+      const choice = results[boundedActiveIndex]
       if (choice !== undefined) {
         onChange(choice.id, choice.name)
         setQuery('')
@@ -146,7 +152,7 @@ export function UserPicker({
     return (
       <div
         ref={containerRef}
-        className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
+        className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colorTokens.surface.base} px-3 py-2`}
         data-testid={testIdAttr}
       >
         <div className="min-w-0 flex-1">
@@ -173,12 +179,13 @@ export function UserPicker({
   return (
     <div ref={containerRef} className="relative" data-testid={testIdAttr}>
       {effectiveLabel !== '' ? (
-        <label className={tokens.label.base}>
+        <label htmlFor={inputId} className={tokens.label.base}>
           {effectiveLabel}
         </label>
       ) : null}
       <input
         ref={inputRef}
+        id={inputId}
         type="text"
         role="combobox"
         aria-expanded={isOpen}
@@ -202,7 +209,7 @@ export function UserPicker({
         <div
           id={listboxId}
           role="listbox"
-          className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} bg-white py-1 shadow-lg`}
+          className={`absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border ${borderColors.light} ${colorTokens.surface.base} py-1 shadow-lg`}
         >
           {!searchEnabled ? (
             <div className={`px-3 py-2 text-xs ${textColors.tertiary}`}>
@@ -220,7 +227,7 @@ export function UserPicker({
             </div>
           ) : (
             results.map((user, idx) => {
-              const active = idx === activeIndex
+              const active = idx === boundedActiveIndex
               return (
                 <button
                   key={user.id}

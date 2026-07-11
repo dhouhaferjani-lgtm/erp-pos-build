@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { MoreVertical } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface ActionMenuItem {
   /** Unique key. */
@@ -176,10 +177,10 @@ export function ActionMenu({
         aria-expanded={isOpen}
         disabled={isLoading}
         onClick={() => { setIsOpen((prev) => !prev) }}
-        className="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-60"
+        className={`rounded p-1 ${colorTokens.text.disabled} transition-colors ${colorTokens.variants.hoverTextGray600} disabled:cursor-not-allowed disabled:opacity-60`}
       >
         {isLoading ? (
-          <span className="block h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
+          <span className={`block h-5 w-5 animate-spin rounded-full border-2 ${colorTokens.border.default} border-t-blue-600`} />
         ) : (
           <MoreVertical className="h-5 w-5" />
         )}
@@ -189,7 +190,7 @@ export function ActionMenu({
         <div
           ref={menuRef}
           role="menu"
-          className={`fixed z-50 rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 ${className ?? ''}`}
+          className={`fixed z-50 rounded-md ${colorTokens.surface.base} py-1 shadow-lg ring-1 ${colorTokens.variants.ringBlack} ring-opacity-5 ${className ?? ''}`}
           style={{
             top: position?.top ?? -9999,
             left: position?.left ?? -9999,
@@ -206,8 +207,8 @@ export function ActionMenu({
               onClick={() => { handleItemClick(item) }}
               className={`flex w-full items-center gap-2 px-4 py-2 text-start text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 item.destructive === true
-                  ? 'text-red-600 hover:bg-red-50'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  ? `${colorTokens.intent.danger.text} ${colorTokens.variants.hoverBgRed50}`
+                  : `${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray100}`
               }`}
             >
               {item.icon}

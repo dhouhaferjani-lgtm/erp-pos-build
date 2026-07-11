@@ -2,12 +2,12 @@
  * Fixture factory for InvoiceSearchSelect tests.
  *
  * Types match the `Invoice` interface exported from
- * `@/components/ui/InvoiceSearchSelect`. We re-export the factory from the
+ * `@/components/molecules/pickers/InvoiceSearchSelect`. We re-export the factory from the
  * documents feature so unit tests for the search select can share the same
  * fixture shape with other documents-space tests.
  */
 
-import type { Invoice } from '@/components/ui/InvoiceSearchSelect'
+import type { Invoice } from '@/components/molecules/pickers/InvoiceSearchSelect'
 
 export function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
   return {

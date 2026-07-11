@@ -1,7 +1,8 @@
 import { Filter } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
-import { Button } from '../atoms'
+import { Button } from '../atoms/Button'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface FilterPanelProps {
   isOpen: boolean
@@ -25,18 +26,18 @@ export function FilterPanel({
   const { t } = useTranslation('common')
 
   return (
-    <div className={cn('border rounded-lg bg-white', className)}>
-      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-t-lg">
+    <div className={cn(`border rounded-lg ${colorTokens.surface.base}`, className)}>
+      <div className={`flex items-center justify-between p-4 ${colorTokens.surface.page} rounded-t-lg`}>
         <button
           onClick={onToggle}
-          className="flex items-center gap-2 font-medium text-gray-700 hover:text-gray-900 transition-colors"
+          className={`flex items-center gap-2 font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverTextGray900} transition-colors`}
           aria-expanded={isOpen}
           aria-controls="filter-panel-content"
         >
           <Filter className="w-4 h-4" />
           <span>{t('filtersLabel')}</span>
           {hasActiveFilters && activeFilterCount !== undefined && (
-            <span className="ms-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-medium bg-blue-600 text-white">
+            <span className={`ms-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-medium ${colorTokens.intent.primary.bgStrong} ${colorTokens.text.inverse}`}>
               {activeFilterCount}
             </span>
           )}
@@ -46,7 +47,7 @@ export function FilterPanel({
             variant="ghost"
             size="sm"
             onClick={onClear}
-            className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+            className={`${colorTokens.intent.primary.text} ${colorTokens.variants.hoverTextBlue800} ${colorTokens.variants.hoverBgBlue50}`}
           >
             {t('clearAll')}
           </Button>

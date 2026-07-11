@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import {
   useImportProgressStore,
   type ImportProgress,
@@ -19,22 +20,22 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
 
   const getStatusIcon = () => {
     if (isFailed) {
-      return <AlertCircle className="h-5 w-5 text-red-500" />
+      return <AlertCircle className={`h-5 w-5 ${colorTokens.intent.danger.textSubtle}`} />
     }
     if (isSuccess) {
-      return <CheckCircle className="h-5 w-5 text-green-500" />
+      return <CheckCircle className={`h-5 w-5 ${colorTokens.intent.success.textSubtle}`} />
     }
     if (isPartial) {
-      return <AlertCircle className="h-5 w-5 text-yellow-500" />
+      return <AlertCircle className={`h-5 w-5 ${colorTokens.variants.textYellow500}`} />
     }
-    return <Loader2 className="h-5 w-5 text-primary-500 animate-spin" />
+    return <Loader2 className={`h-5 w-5 ${colorTokens.variants.textPrimary500} animate-spin`} />
   }
 
   const getStatusColor = () => {
-    if (isFailed) return 'bg-red-500'
-    if (isSuccess) return 'bg-green-500'
-    if (isPartial) return 'bg-yellow-500'
-    return 'bg-primary-500'
+    if (isFailed) return `${colorTokens.intent.danger.bg}`
+    if (isSuccess) return `${colorTokens.intent.success.bg}`
+    if (isPartial) return `${colorTokens.intent.warning.bg}`
+    return colorTokens.variants.bgPrimary500
   }
 
   const handleDismiss = () => {
@@ -42,15 +43,15 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-lg border border-neutral-200 p-4 w-80">
+    <div className={`${colorTokens.surface.base} rounded-lg shadow-lg border ${colorTokens.variants.borderNeutral200} p-4 w-80`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           {getStatusIcon()}
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-neutral-900 truncate">
+            <p className={`text-sm font-medium ${colorTokens.variants.textNeutral900} truncate`}>
               {progress.originalFilename}
             </p>
-            <p className="text-xs text-neutral-500">
+            <p className={`text-xs ${colorTokens.variants.textNeutral500}`}>
               {t(`types.${progress.importType}.title`)}
             </p>
           </div>
@@ -58,7 +59,7 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
         {isCompleted && (
           <button
             onClick={handleDismiss}
-            className="p-1 rounded hover:bg-neutral-100 text-neutral-400 hover:text-neutral-600"
+            className={`p-1 rounded ${colorTokens.variants.hoverBgNeutral100} ${colorTokens.variants.textNeutral400} ${colorTokens.variants.hoverTextNeutral600}`}
             aria-label={t('common:close')}
           >
             <X className="h-4 w-4" />
@@ -68,7 +69,7 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
 
       {/* Progress bar */}
       <div className="mt-3">
-        <div className="flex justify-between text-xs text-neutral-500 mb-1">
+        <div className={`flex justify-between text-xs ${colorTokens.variants.textNeutral500} mb-1`}>
           <span>
             {isCompleted
               ? isFailed
@@ -78,7 +79,7 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
           </span>
           <span>{progress.progressPercentage}%</span>
         </div>
-        <div className="w-full bg-neutral-200 rounded-full h-2">
+        <div className={`w-full ${colorTokens.variants.bgNeutral200} rounded-full h-2`}>
           <div
             className={`h-2 rounded-full transition-all duration-300 ${getStatusColor()}`}
             style={{ width: `${progress.progressPercentage}%` }}
@@ -88,11 +89,11 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
 
       {/* Row counts */}
       <div className="mt-2 flex gap-4 text-xs">
-        <span className="text-green-600">
+        <span className={`${colorTokens.intent.success.text}`}>
           {progress.successfulRows} {t('wizard.complete.imported')}
         </span>
         {progress.failedRows > 0 && (
-          <span className="text-red-600">
+          <span className={`${colorTokens.intent.danger.text}`}>
             {progress.failedRows} {t('wizard.complete.failed')}
           </span>
         )}
@@ -100,7 +101,7 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
 
       {/* Error message */}
       {progress.errorMessage && (
-        <p className="mt-2 text-xs text-red-600 line-clamp-2">
+        <p className={`mt-2 text-xs ${colorTokens.intent.danger.text} line-clamp-2`}>
           {progress.errorMessage}
         </p>
       )}

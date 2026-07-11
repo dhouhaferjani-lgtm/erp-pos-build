@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Mail, X, Loader2, CheckCircle } from 'lucide-react'
 import { api } from '../../../lib/api'
 import { useAuthStore } from '../../../stores/authStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 const BANNER_DISMISSED_KEY = 'email_verification_banner_dismissed'
 
@@ -45,16 +46,16 @@ export function EmailVerificationBanner() {
   }
 
   return (
-    <div className="bg-amber-50 border-b border-amber-200">
+    <div className={`${colorTokens.intent.caution.bgSubtle} border-b ${colorTokens.intent.caution.borderSubtle}`}>
       <div className="max-w-7xl mx-auto py-3 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center flex-1 min-w-0">
-            <span className="flex p-2 rounded-lg bg-amber-100">
-              <Mail className="h-5 w-5 text-amber-600" aria-hidden="true" />
+            <span className={`flex p-2 rounded-lg ${colorTokens.intent.caution.bgSoft}`}>
+              <Mail className={`h-5 w-5 ${colorTokens.intent.caution.text}`} aria-hidden="true" />
             </span>
-            <p className="ms-3 font-medium text-amber-700 text-sm truncate">
+            <p className={`ms-3 font-medium ${colorTokens.intent.caution.textStrong} text-sm truncate`}>
               {showSuccess ? (
-                <span className="flex items-center gap-2 text-green-700">
+                <span className={`flex items-center gap-2 ${colorTokens.intent.success.textStrong}`}>
                   <CheckCircle className="h-4 w-4" />
                   {t('verification.resent')}
                 </span>
@@ -65,7 +66,7 @@ export function EmailVerificationBanner() {
                     type="button"
                     onClick={handleResend}
                     disabled={resendMutation.isPending}
-                    className="inline-flex items-center gap-1 underline hover:text-amber-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className={`inline-flex items-center gap-1 underline ${colorTokens.variants.hoverTextAmber800} disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
                     {resendMutation.isPending ? (
                       <>
@@ -83,7 +84,7 @@ export function EmailVerificationBanner() {
           <button
             type="button"
             onClick={handleDismiss}
-            className="flex-shrink-0 rounded-md p-1.5 text-amber-600 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            className={`flex-shrink-0 rounded-md p-1.5 ${colorTokens.intent.caution.text} ${colorTokens.variants.hoverBgAmber100} focus:outline-none focus:ring-2 ${colorTokens.variants.focusRingAmber500}`}
             aria-label={t('common:dismiss', { defaultValue: 'Dismiss' })}
           >
             <X className="h-5 w-5" aria-hidden="true" />

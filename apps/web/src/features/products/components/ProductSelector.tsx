@@ -1,14 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Combobox,
-  ComboboxInput,
-  ComboboxOptions,
-  ComboboxOption,
-} from '@headlessui/react'
-import { Search, X, Package, Barcode, QrCode } from 'lucide-react'
+import { X, Package, QrCode } from 'lucide-react'
 import { useProducts } from '../hooks/useProducts'
-import { cn } from '@/lib/utils'
+import { ProductPicker } from '@/components/molecules/pickers/ProductPicker'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ProductSelectorProps {
@@ -75,38 +69,27 @@ export function ProductSelector({
   maxSelection,
 }: ProductSelectorProps) {
   const { t } = useTranslation(['common', 'inventory', 'products'])
-  const [query, setQuery] = useState('')
 
-  // Fetch active products
-  const { data: productsResponse, isLoading } = useProducts({
-    search: query.length > 0 ? query : undefined,
+  const { data: productsResponse } = useProducts({
     active: true,
     per_page: 100,
   })
 
   const products = productsResponse?.data ?? []
 
-  // Filter out already selected products
-  const availableProducts = useMemo(
-    () => products.filter((product) => !value.includes(product.id)),
-    [products, value]
-  )
-
-  // Get selected products for display
   const selectedProducts = useMemo(
     () => products.filter((product) => value.includes(product.id)),
     [products, value]
   )
 
-  const handleToggleProduct = (productId: string) => {
+  const handleAddProduct = (productId: string) => {
     if (value.includes(productId)) {
-      onChange(value.filter((id) => id !== productId))
-    } else {
-      if (maxSelection && value.length >= maxSelection) {
-        return // Don't add if max reached
-      }
-      onChange([...value, productId])
+      return
     }
+    if (maxSelection && value.length >= maxSelection) {
+      return
+    }
+    onChange([...value, productId])
   }
 
   const handleRemoveProduct = (productId: string) => {
@@ -134,98 +117,18 @@ export function ProductSelector({
         </div>
       )}
 
-      {/* Search Combobox */}
-      <Combobox value={null} onChange={(productId: string | null) => {
-        if (productId) {
-          handleToggleProduct(productId)
-          setQuery('') // Clear search after selection
-        }
-      }} disabled={disabled}>
-        <div className="relative">
-          <div className="relative">
-            <Search className={`absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 ${colorTokens.text.disabled}`} />
-            <ComboboxInput
-              className={cn(
-                `w-full ps-10 pe-10 py-3 border ${colorTokens.border.default} rounded-md`,
-                `focus:outline-none focus:ring-2 ${colorTokens.variants.focusRingBlue500} ${colorTokens.variants.focusBorderBlue500}`,
-                `${colorTokens.variants.disabledBgGray100} disabled:cursor-not-allowed`,
-                'transition-colors'
-              )}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setQuery(e.target.value); }}
-              placeholder={t('products:searchPlaceholder')}
-              value={query}
-            />
-            {isLoading && (
-              <div className="absolute end-3 top-1/2 -translate-y-1/2">
-                <div className={`animate-spin h-4 w-4 border-2 ${colorTokens.border.default} border-t-blue-600 rounded-full`} />
-              </div>
-            )}
-          </div>
-
-          <ComboboxOptions
-            className={cn(
-              'absolute z-10 mt-1 w-full',
-              'max-h-60 overflow-auto',
-              'rounded-md bg-white shadow-lg',
-              `border ${colorTokens.border.subtle}`,
-              'py-1',
-              'focus:outline-none'
-            )}
-          >
-            {availableProducts.length === 0 ? (
-              <div className={`px-4 py-3 text-sm ${colorTokens.text.subtle}`}>
-                {query
-                  ? t('products:noProductsFound')
-                  : t('products:noAvailableProducts')}
-              </div>
-            ) : (
-              availableProducts.map((product) => (
-                <ComboboxOption
-                  key={product.id}
-                  value={product.id}
-                  className={({ active }: { active: boolean }) =>
-                    cn(
-                      'cursor-pointer select-none px-4 py-2',
-                      active ? `${colorTokens.intent.primary.bgSubtle} ${colorTokens.intent.primary.textStrongest}` : `${colorTokens.text.primary}`
-                    )
-                  }
-                >
-                  <div className="flex items-center gap-3">
-                    {/* Product Icon */}
-                    <div className={`flex-shrink-0 h-10 w-10 rounded ${colorTokens.surface.muted} flex items-center justify-center`}>
-                      <Package className={`h-5 w-5 ${colorTokens.text.subtle}`} />
-                    </div>
-
-                    {/* Product Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{product.name}</div>
-                      <div className={`flex items-center gap-2 text-sm ${colorTokens.text.subtle}`}>
-                        <span className="truncate">{t('products:fields.skuLabel')} {product.sku}</span>
-                        {product.barcode && (
-                          <>
-                            <span>•</span>
-                            <span className="flex items-center gap-1 truncate">
-                              <Barcode className="h-3 w-3" />
-                              {product.barcode}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Type Badge */}
-                    {product.type && (
-                      <span className={`text-xs px-2 py-1 ${colorTokens.surface.muted} rounded`}>
-                        {t(`inventory:products.types.${product.type}`)}
-                      </span>
-                    )}
-                  </div>
-                </ComboboxOption>
-              ))
-            )}
-          </ComboboxOptions>
-        </div>
-      </Combobox>
+      <ProductPicker
+        value={null}
+        onChange={(product) => {
+          if (product) {
+            handleAddProduct(product.id)
+          }
+        }}
+        label=""
+        placeholder={t('products:searchPlaceholder')}
+        disabled={disabled || (Boolean(maxSelection) && value.length >= (maxSelection ?? 0))}
+        productType="all"
+      />
 
       {/* Selected Products Cart */}
       {value.length > 0 && (

@@ -8,7 +8,7 @@ import { Button, Input, FormField, Select, Textarea, MoneyInput } from '@/compon
 import { Modal } from '@/components/organisms/Modal/Modal'
 import { textColors, borderColors, colors , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PartnerPicker, type PartnerPickerValue } from '@/components/molecules/pickers/PartnerPicker'
-import { UserPicker } from '@/components/ui/UserPicker'
+import { UserPicker } from '@/components/molecules/pickers/UserPicker'
 import { useTerminals } from '@/features/pos/hooks/useTerminals'
 import { useReservationSettings } from '../hooks/useReservationSettings'
 import { useIssueGoodwill } from '../hooks/useVoucherMutations'

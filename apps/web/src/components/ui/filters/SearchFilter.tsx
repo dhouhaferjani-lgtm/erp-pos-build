@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Search, X } from 'lucide-react'
-import { Input } from '../../atoms'
+import { Input } from '../../atoms/Input'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface SearchFilterProps {
   label?: string
@@ -30,9 +31,9 @@ export function SearchFilter({
 
   return (
     <div className={className}>
-      {label && <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>}
+      {label && <label className={`block text-sm font-medium ${colorTokens.text.secondary} mb-1.5`}>{label}</label>}
       <div className="relative">
-        <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Search className={`absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 ${colorTokens.text.disabled}`} />
         <Input
           type="text"
           placeholder={placeholder ?? t('actions.search')}
@@ -43,7 +44,7 @@ export function SearchFilter({
         {value && (
           <button
             onClick={handleClear}
-            className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            className={`absolute end-3 top-1/2 -translate-y-1/2 ${colorTokens.text.disabled} ${colorTokens.variants.hoverTextGray600}`}
             aria-label={t('clearSearch')}
           >
             <X className="w-4 h-4" />

@@ -14,6 +14,7 @@ import { apiPost } from '../../../lib/api'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import type { PartnerPrefill } from '../../../features/partners/partnerPrefill'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 type PartnerType = 'customer' | 'supplier' | 'both'
 
@@ -377,7 +378,7 @@ export function AddPartnerModal({
 
           {/* Error message */}
           {mutation.isError && (
-            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-3 text-sm ${colorTokens.intent.danger.textStrong}`}>
               {mutation.error instanceof Error
                 ? mutation.error.message
                 : t('common:errorMessages.generic')}

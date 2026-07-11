@@ -4,11 +4,12 @@ import { Sidebar } from '../../organisms/Sidebar'
 import { TopBar } from '../../organisms/TopBar'
 import { Breadcrumb } from '../../molecules/Breadcrumb'
 import { EmailVerificationBanner } from '../../organisms/EmailVerificationBanner'
-import { CommandPalette } from '../../organisms/CommandPalette'
+import { CommandPalette } from '../../organisms/CommandPalette/CommandPalette'
 import { WebSocketReconnectProvider } from '../../../providers/WebSocketReconnectProvider'
 import { useProductConfig } from '../../../contexts/ProductConfigContext'
 import { useImportProgress } from '../../../features/import/hooks/useImportProgress'
 import { GlobalImportProgress } from '../../organisms/GlobalImportProgress/GlobalImportProgress'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 function ImportProgressSubscriber() {
   useImportProgress()
@@ -39,7 +40,7 @@ export function DashboardLayout() {
   }, [])
 
   return (
-    <div className="flex h-screen bg-gray-50" data-product={product}>
+    <div className={`flex h-screen ${colorTokens.surface.page}`} data-product={product}>
       <Sidebar isOpen={sidebarOpen} onClose={() => { setSidebarOpen(false) }} />
       <div className="flex flex-1 flex-col overflow-hidden lg:ps-0">
         <EmailVerificationBanner />

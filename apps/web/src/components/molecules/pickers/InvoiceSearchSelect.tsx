@@ -6,6 +6,7 @@
 import { useTranslation } from 'react-i18next'
 import { Receipt } from 'lucide-react'
 import { DocumentSearchSelect } from './DocumentSearchSelect'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export interface Invoice {
   id: string
@@ -45,17 +46,24 @@ interface InvoiceSearchSelectProps {
   error?: string | undefined
 }
 
+const invoiceCurrencyFormatters = new Map<string, Intl.NumberFormat>()
+
+function formatInvoiceCurrency(amount: number | string | undefined, currency: string = 'EUR') {
+  if (amount === undefined) return ''
+  const existing = invoiceCurrencyFormatters.get(currency)
+  const formatter = existing ?? Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency,
+  })
+  if (existing === undefined) {
+    invoiceCurrencyFormatters.set(currency, formatter)
+  }
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount
+  return formatter.format(num)
+}
+
 export function InvoiceSearchSelect(props: InvoiceSearchSelectProps) {
   const { t } = useTranslation()
-
-  const formatCurrency = (amount: number | string | undefined, currency: string = 'EUR') => {
-    if (amount === undefined) return ''
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: currency,
-    }).format(num)
-  }
 
   return (
     <DocumentSearchSelect<Invoice>
@@ -71,32 +79,32 @@ export function InvoiceSearchSelect(props: InvoiceSearchSelectProps) {
         noDataMessage: t('sales:invoices.noPostedInvoices', 'No posted invoices available'),
         getDisplayText: (invoice) => {
           const partner = invoice.partner?.name || t('common:unknown')
-          const total = formatCurrency(invoice.total, invoice.currency)
-          const balance = formatCurrency(invoice.balance, invoice.currency)
+          const total = formatInvoiceCurrency(invoice.total, invoice.currency)
+          const balance = formatInvoiceCurrency(invoice.balance, invoice.currency)
 
           return `${invoice.number} - ${partner} - ${total} (${t('sales:invoices.balance', 'Balance')}: ${balance})`
         },
         renderItem: (invoice) => (
           <>
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-100">
-              <Receipt className="h-4 w-4 text-gray-500" />
+            <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${colorTokens.surface.muted}`}>
+              <Receipt className={`h-4 w-4 ${colorTokens.text.subtle}`} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-900">{invoice.number}</span>
-                <span className="text-xs text-gray-500">
+                <span className={`text-sm font-medium ${colorTokens.text.primary}`}>{invoice.number}</span>
+                <span className={`text-xs ${colorTokens.text.subtle}`}>
                   {new Date(invoice.document_date).toLocaleDateString()}
                 </span>
               </div>
-              <div className="text-xs text-gray-500 truncate">
+              <div className={`text-xs ${colorTokens.text.subtle} truncate`}>
                 {invoice.partner?.name || t('common:unknown')}
               </div>
               <div className="mt-1 flex items-center gap-2 text-xs">
-                <span className="text-gray-700">
-                  {t('sales:invoices.total', 'Total')}: {formatCurrency(invoice.total, invoice.currency)}
+                <span className={`${colorTokens.text.secondary}`}>
+                  {t('sales:invoices.total', 'Total')}: {formatInvoiceCurrency(invoice.total, invoice.currency)}
                 </span>
-                <span className="text-blue-600">
-                  {t('sales:invoices.balance', 'Balance')}: {formatCurrency(invoice.balance, invoice.currency)}
+                <span className={`${colorTokens.intent.primary.text}`}>
+                  {t('sales:invoices.balance', 'Balance')}: {formatInvoiceCurrency(invoice.balance, invoice.currency)}
                 </span>
               </div>
             </div>

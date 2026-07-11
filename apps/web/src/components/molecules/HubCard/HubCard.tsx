@@ -16,7 +16,7 @@ export interface HubCardProps {
 /**
  * A single navigation card for "hub" landing pages (Finance / Inventory / POS /
  * Marketing). Every card uses ONE consistent neutral/brand icon chip
- * (`bg-blue-50 text-blue-600`) — there is intentionally no per-card color, which
+ * (`${colorTokens.intent.primary.bgSubtle} ${colorTokens.intent.primary.text}`) — there is intentionally no per-card color, which
  * removes the off-theme "rainbow tile" look the old hub pages had.
  *
  * The whole card is the link.

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { MoneyInput } from './MoneyInput'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 describe('MoneyInput', () => {
   it('renders with label', () => {
@@ -112,7 +113,7 @@ describe('MoneyInput', () => {
       <MoneyInput value="" onChange={vi.fn()} error="Error" />
     )
     const input = getByRole('textbox') as HTMLInputElement
-    expect(input.className).toContain('border-red-500')
+    expect(input.className).toContain(colorTokens.intent.danger.borderFocus)
   })
 
   it('disables input when disabled prop is true', () => {
@@ -128,7 +129,7 @@ describe('MoneyInput', () => {
       <MoneyInput value="" onChange={vi.fn()} disabled />
     )
     const input = getByRole('textbox') as HTMLInputElement
-    expect(input.className).toContain('bg-gray-100')
+    expect(input.className).toContain(colorTokens.surface.muted)
     expect(input.className).toContain('cursor-not-allowed')
   })
 

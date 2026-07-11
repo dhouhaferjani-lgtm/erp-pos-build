@@ -14,6 +14,7 @@ import { useCurrency } from '../../../hooks/useCurrency'
 import { AddRepositoryModal } from '../AddRepositoryModal'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface PaymentMethod {
   id: string
@@ -396,14 +397,14 @@ export function RecordPaymentModal({
         {showSuccess && successData ? (
           <>
             <ModalContent>
-              <div className="rounded-lg bg-green-50 p-4 mb-4">
+              <div className={`rounded-lg ${colorTokens.intent.success.bgSubtle} p-4 mb-4`}>
                 <div className="flex items-start gap-3">
-                  <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className={`h-5 w-5 ${colorTokens.intent.success.text} flex-shrink-0 mt-0.5`} />
                   <div>
-                    <h4 className="text-sm font-medium text-green-900">
+                    <h4 className={`text-sm font-medium ${colorTokens.intent.success.textStrongest}`}>
                       {t('treasury:payments.recordedSuccess')}
                     </h4>
-                    <p className="mt-1 text-sm text-green-700">
+                    <p className={`mt-1 text-sm ${colorTokens.intent.success.textStrong}`}>
                       {successData.payments.length} {t('treasury:unifiedPayment.paymentsRecorded')}
                     </p>
                   </div>
@@ -411,14 +412,14 @@ export function RecordPaymentModal({
               </div>
 
               <div className="space-y-4">
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <h4 className="font-medium text-gray-900 mb-2">
+                <div className={`rounded-lg border ${colorTokens.border.subtle} p-4`}>
+                  <h4 className={`font-medium ${colorTokens.text.primary} mb-2`}>
                     {t('treasury:payments.documentStatus')}
                   </h4>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">{successData.document.document_number}</span>
+                    <span className={`text-sm ${colorTokens.text.muted}`}>{successData.document.document_number}</span>
                     <span className={`text-sm font-medium ${
-                      successData.document.status === 'paid' ? 'text-green-600' : 'text-yellow-600'
+                      successData.document.status === 'paid' ? `${colorTokens.intent.success.text}` : `${colorTokens.intent.warning.text}`
                     }`}>
                       {successData.document.status === 'paid'
                         ? t('common:status.paid')
@@ -428,11 +429,11 @@ export function RecordPaymentModal({
                 </div>
 
                 {parseFloat(successData.excess_handling.excess_amount) > 0 && (
-                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-                    <h4 className="font-medium text-yellow-900 mb-2">
+                  <div className={`rounded-lg border ${colorTokens.intent.warning.borderSubtle} ${colorTokens.intent.warning.bgSubtle} p-4`}>
+                    <h4 className={`font-medium ${colorTokens.intent.warning.textStrongest} mb-2`}>
                       {t('treasury:unifiedPayment.excessHandled')}
                     </h4>
-                    <p className="text-sm text-yellow-700">
+                    <p className={`text-sm ${colorTokens.intent.warning.textStrong}`}>
                       {formatAmount(successData.excess_handling.excess_amount)} - {
                         successData.excess_handling.allocation_method === 'advance'
                           ? t('treasury:unifiedPayment.keptAsAdvance')
@@ -440,7 +441,7 @@ export function RecordPaymentModal({
                       }
                     </p>
                     {successData.excess_handling.allocations.length > 0 && (
-                      <ul className="mt-2 text-sm text-yellow-700">
+                      <ul className={`mt-2 text-sm ${colorTokens.intent.warning.textStrong}`}>
                         {successData.excess_handling.allocations.map(alloc => (
                           <li key={alloc.document_id}>
                             {alloc.document_number}: {formatAmount(alloc.amount)}
@@ -463,40 +464,40 @@ export function RecordPaymentModal({
           <>
             <ModalContent>
               {/* Document context */}
-              <div className="rounded-lg bg-blue-50 p-4 mb-4">
-                <div className="flex items-center gap-2 text-sm text-blue-800">
+              <div className={`rounded-lg ${colorTokens.intent.primary.bgSubtle} p-4 mb-4`}>
+                <div className={`flex items-center gap-2 text-sm ${colorTokens.intent.primary.textStronger}`}>
                   <span className="font-medium">{t('treasury:payments.payingFor')}:</span>
                   <span>{prefill.reference}</span>
-                  <span className="text-blue-600">({prefill.partner_name})</span>
+                  <span className={`${colorTokens.intent.primary.text}`}>({prefill.partner_name})</span>
                 </div>
               </div>
 
               {/* Balance Summary */}
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 mb-4">
+              <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4 mb-4`}>
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
-                    <span className="text-sm font-medium text-gray-500 block">
+                    <span className={`text-sm font-medium ${colorTokens.text.subtle} block`}>
                       {t('treasury:unifiedPayment.balanceDue')}
                     </span>
-                    <span className="text-xl font-bold text-gray-900">
+                    <span className={`text-xl font-bold ${colorTokens.text.primary}`}>
                       {formatAmount(balanceDue)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-sm font-medium text-gray-500 block">
+                    <span className={`text-sm font-medium ${colorTokens.text.subtle} block`}>
                       {t('treasury:unifiedPayment.totalEntered')}
                     </span>
-                    <span className="text-xl font-bold text-blue-600">
+                    <span className={`text-xl font-bold ${colorTokens.intent.primary.text}`}>
                       {formatAmount(totalEntered)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-sm font-medium text-gray-500 block">
+                    <span className={`text-sm font-medium ${colorTokens.text.subtle} block`}>
                       {t('treasury:unifiedPayment.remaining')}
                     </span>
                     <span className={`text-xl font-bold ${
-                      Math.abs(remaining) < 0.01 ? 'text-green-600' :
-                      remaining > 0 ? 'text-yellow-600' : 'text-red-600'
+                      Math.abs(remaining) < 0.01 ? `${colorTokens.intent.success.text}` :
+                      remaining > 0 ? `${colorTokens.intent.warning.text}` : `${colorTokens.intent.danger.text}`
                     }`}>
                       {formatAmount(remaining)}
                     </span>
@@ -518,7 +519,7 @@ export function RecordPaymentModal({
 
               {/* Payment Lines */}
               <div className="space-y-4 mb-4">
-                <h4 className="text-sm font-medium text-gray-700">
+                <h4 className={`text-sm font-medium ${colorTokens.text.secondary}`}>
                   {t('treasury:unifiedPayment.paymentLines')} ({confirmedCount} {t('treasury:unifiedPayment.confirmed')})
                 </h4>
 
@@ -526,11 +527,11 @@ export function RecordPaymentModal({
                   <div
                     key={line.id}
                     className={`rounded-lg border p-4 ${
-                      line.confirmed ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'
+                      line.confirmed ? `${colorTokens.intent.success.border} ${colorTokens.intent.success.bgSubtle}` : `${colorTokens.border.subtle} ${colorTokens.surface.base}`
                     }`}
                   >
                     <div className="flex items-center justify-between mb-4">
-                      <h5 className="text-sm font-medium text-gray-700">
+                      <h5 className={`text-sm font-medium ${colorTokens.text.secondary}`}>
                         {t('treasury:unifiedPayment.paymentLine', { number: index + 1 })}
                       </h5>
                       <div className="flex items-center gap-2">
@@ -545,7 +546,7 @@ export function RecordPaymentModal({
                             {t('common:actions.confirm')}
                           </Button>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-sm font-medium text-green-700">
+                          <span className={`inline-flex items-center gap-1 text-sm font-medium ${colorTokens.intent.success.textStrong}`}>
                             <CheckCircle className="h-4 w-4" />
                             {t('treasury:unifiedPayment.lineConfirmed')}
                           </span>
@@ -554,7 +555,7 @@ export function RecordPaymentModal({
                           <button
                             type="button"
                             onClick={() => { removePaymentLine(line.id); }}
-                            className="text-red-600 hover:text-red-800 p-1"
+                            className={`${colorTokens.intent.danger.text} ${colorTokens.variants.hoverTextRed800} p-1`}
                             aria-label={t('common:actions.remove')}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -597,7 +598,7 @@ export function RecordPaymentModal({
                         >
                           <div className="space-y-2">
                             <div className="relative">
-                              <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-500">
+                              <span className={`absolute start-3 top-1/2 -translate-y-1/2 ${colorTokens.text.subtle}`}>
                                 {symbol}
                               </span>
                               <Input
@@ -615,7 +616,7 @@ export function RecordPaymentModal({
                               <button
                                 type="button"
                                 onClick={() => { updatePaymentLine(line.id, 'amount', remaining.toFixed(decimals)); }}
-                                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                className={`text-xs ${colorTokens.intent.primary.text} ${colorTokens.variants.hoverTextBlue800} font-medium`}
                               >
                                 {t('treasury:unifiedPayment.payFullAmount')} ({formatAmount(remaining)})
                               </button>
@@ -660,7 +661,7 @@ export function RecordPaymentModal({
                 <button
                   type="button"
                   onClick={addPaymentLine}
-                  className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
+                  className={`inline-flex items-center gap-2 text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.variants.hoverTextBlue800}`}
                 >
                   <Plus className="h-4 w-4" />
                   {t('treasury:unifiedPayment.addPaymentLine')}
@@ -669,13 +670,13 @@ export function RecordPaymentModal({
 
               {/* Excess Allocation Panel */}
               {excessAmount > 0 && (
-                <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 mb-4">
-                  <h4 className="font-medium text-yellow-900 mb-3">
+                <div className={`rounded-lg border ${colorTokens.intent.warning.borderSubtle} ${colorTokens.intent.warning.bgSubtle} p-4 mb-4`}>
+                  <h4 className={`font-medium ${colorTokens.intent.warning.textStrongest} mb-3`}>
                     {t('treasury:unifiedPayment.excessPayment', { amount: formatAmount(excessAmount) })}
                   </h4>
 
                   <div className="space-y-3">
-                    <p className="text-sm text-yellow-800">
+                    <p className={`text-sm ${colorTokens.intent.warning.textStronger}`}>
                       {t('treasury:unifiedPayment.allocateExcess')}
                     </p>
 
@@ -687,9 +688,9 @@ export function RecordPaymentModal({
                           value="advance"
                           checked={excessAllocationMethod === 'advance'}
                           onChange={() => { setExcessAllocationMethod('advance'); }}
-                          className="text-blue-600"
+                          className={`${colorTokens.intent.primary.text}`}
                         />
-                        <span className="text-sm text-gray-700">
+                        <span className={`text-sm ${colorTokens.text.secondary}`}>
                           {t('treasury:unifiedPayment.keepAsAdvance')}
                         </span>
                       </label>
@@ -703,9 +704,9 @@ export function RecordPaymentModal({
                               value="fifo"
                               checked={excessAllocationMethod === 'fifo'}
                               onChange={() => { setExcessAllocationMethod('fifo'); }}
-                              className="text-blue-600"
+                              className={`${colorTokens.intent.primary.text}`}
                             />
-                            <span className="text-sm text-gray-700">
+                            <span className={`text-sm ${colorTokens.text.secondary}`}>
                               {t('treasury:smartPayment.fifo')}
                             </span>
                           </label>
@@ -717,9 +718,9 @@ export function RecordPaymentModal({
                               value="due_date"
                               checked={excessAllocationMethod === 'due_date'}
                               onChange={() => { setExcessAllocationMethod('due_date'); }}
-                              className="text-blue-600"
+                              className={`${colorTokens.intent.primary.text}`}
                             />
-                            <span className="text-sm text-gray-700">
+                            <span className={`text-sm ${colorTokens.text.secondary}`}>
                               {t('treasury:smartPayment.dueDatePriority')}
                             </span>
                           </label>
@@ -731,9 +732,9 @@ export function RecordPaymentModal({
                               value="manual"
                               checked={excessAllocationMethod === 'manual'}
                               onChange={() => { setExcessAllocationMethod('manual'); }}
-                              className="text-blue-600"
+                              className={`${colorTokens.intent.primary.text}`}
                             />
-                            <span className="text-sm text-gray-700">
+                            <span className={`text-sm ${colorTokens.text.secondary}`}>
                               {t('treasury:smartPayment.manual')}
                             </span>
                           </label>
@@ -743,35 +744,35 @@ export function RecordPaymentModal({
 
                     {/* Manual Allocation List */}
                     {excessAllocationMethod === 'manual' && openInvoices.length > 0 && (
-                      <div className="mt-4 rounded-lg border border-gray-200 bg-white">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
+                      <div className={`mt-4 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
+                        <table className={`min-w-full divide-y ${colorTokens.border.divider}`}>
+                          <thead className={`${colorTokens.surface.page}`}>
                             <tr>
-                              <th className="px-4 py-2 text-start text-xs font-medium uppercase text-gray-500">
+                              <th className={`px-4 py-2 text-start text-xs font-medium uppercase ${colorTokens.text.subtle}`}>
                                 {t('treasury:payments.invoice')}
                               </th>
-                              <th className="px-4 py-2 text-end text-xs font-medium uppercase text-gray-500">
+                              <th className={`px-4 py-2 text-end text-xs font-medium uppercase ${colorTokens.text.subtle}`}>
                                 {t('treasury:payments.balanceDue')}
                               </th>
-                              <th className="px-4 py-2 text-end text-xs font-medium uppercase text-gray-500">
+                              <th className={`px-4 py-2 text-end text-xs font-medium uppercase ${colorTokens.text.subtle}`}>
                                 {t('treasury:payments.allocate')}
                               </th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-gray-200">
+                          <tbody className={`divide-y ${colorTokens.border.divider}`}>
                             {openInvoices.map(invoice => {
                               const allocation = manualAllocations.find(a => a.document_id === invoice.id)
                               return (
                                 <tr key={invoice.id}>
-                                  <td className="px-4 py-2 text-sm text-gray-900">
+                                  <td className={`px-4 py-2 text-sm ${colorTokens.text.primary}`}>
                                     {invoice.document_number}
                                     {invoice.days_overdue && invoice.days_overdue > 0 && (
-                                      <span className="ms-2 text-xs text-red-600">
+                                      <span className={`ms-2 text-xs ${colorTokens.intent.danger.text}`}>
                                         ({invoice.days_overdue}d {t('common:status.overdue')})
                                       </span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-2 text-sm text-end text-gray-700">
+                                  <td className={`px-4 py-2 text-sm text-end ${colorTokens.text.secondary}`}>
                                     {formatAmount(invoice.balance_due)}
                                   </td>
                                   <td className="px-4 py-2">
@@ -810,14 +811,14 @@ export function RecordPaymentModal({
 
               {/* Validation Error */}
               {validationError && (
-                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 mt-4">
+                <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-3 text-sm ${colorTokens.intent.danger.textStrong} mt-4`}>
                   {validationError}
                 </div>
               )}
 
               {/* Mutation Error */}
               {mutation.isError && (
-                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 mt-4">
+                <div className={`rounded-lg ${colorTokens.intent.danger.bgSubtle} p-3 text-sm ${colorTokens.intent.danger.textStrong} mt-4`}>
                   {mutation.error instanceof Error
                     ? mutation.error.message
                     : t('common:errorMessages.generic')}

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { usePermissions, type Permission } from '../../../hooks/usePermissions'
 import type { LucideIcon } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface QuickCreateAction {
   labelKey: string
@@ -116,7 +117,7 @@ export function QuickCreateButton() {
         onClick={() => {
           setIsOpen(!isOpen)
         }}
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        className={`flex h-8 w-8 items-center justify-center rounded-full ${colorTokens.intent.primary.bgStrong} ${colorTokens.text.inverse} shadow-sm ${colorTokens.variants.hoverBgBlue700} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2`}
         aria-label={t('common:quickCreate.label')}
         aria-expanded={isOpen}
         aria-haspopup="true"
@@ -125,7 +126,7 @@ export function QuickCreateButton() {
       </button>
 
       {isOpen && (
-        <div className="absolute start-0 z-50 mt-2 w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+        <div className={`absolute start-0 z-50 mt-2 w-56 rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} py-1 shadow-lg`}>
           {visibleActions.map((action) => {
             const Icon = action.icon
             return (
@@ -135,9 +136,9 @@ export function QuickCreateButton() {
                 onClick={() => {
                   handleActionClick(action.path)
                 }}
-                className="flex w-full items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                className={`flex w-full items-center gap-3 px-4 py-2 text-sm ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray100}`}
               >
-                <Icon className="h-4 w-4 text-gray-400" />
+                <Icon className={`h-4 w-4 ${colorTokens.text.disabled}`} />
                 <span>{t(action.labelKey)}</span>
               </button>
             )

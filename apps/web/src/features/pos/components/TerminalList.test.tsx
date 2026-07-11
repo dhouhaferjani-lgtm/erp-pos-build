@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TerminalList } from './TerminalList'
 import type { Terminal } from '../hooks/useTerminals'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 // Mock translation hook
 vi.mock('react-i18next', () => ({
@@ -305,6 +306,6 @@ describe('TerminalList', () => {
     render(<TerminalList {...defaultProps} terminals={[mockTerminal]} />)
 
     const row = screen.getByText('POS01').closest('tr')
-    expect(row).toHaveClass('hover:bg-gray-50')
+    expect(row).toHaveClass(colorTokens.intent.neutral.bgHover)
   })
 })

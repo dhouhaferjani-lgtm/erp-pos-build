@@ -13,7 +13,7 @@ import { useCompanyStore } from '@/stores/companyStore'
 import { AddPartnerModal } from '../organisms/AddPartnerModal/AddPartnerModal'
 import { AddQuickProductModal } from '../organisms/AddQuickProductModal/AddQuickProductModal'
 import { AddRepositoryModal } from '../organisms/AddRepositoryModal/AddRepositoryModal'
-import { DocumentSearchSelect } from '../ui/DocumentSearchSelect'
+import { DocumentSearchSelect } from '../molecules/pickers/DocumentSearchSelect'
 import { LocationBadge } from '../ui/LocationBadge'
 
 const mockApiGet = vi.hoisted(() => vi.fn())

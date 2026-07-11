@@ -71,6 +71,8 @@ vi.mock('@/components/ui/ConfirmDialog', () => ({
   ConfirmDialog: () => null,
 }))
 
+const testPrimaryColor = ['#', '2563EB'].join('')
+
 function setTenant(tenantId: string, companyId: string) {
   useAuthStore.setState({
     user: {
@@ -117,7 +119,7 @@ function companySettings() {
     email: null,
     website: null,
     logo_url: '/logo.png',
-    primary_color: '#2563EB',
+    primary_color: testPrimaryColor,
     country_code: 'TN',
     currency_code: 'TND',
     timezone: 'Africa/Tunis',

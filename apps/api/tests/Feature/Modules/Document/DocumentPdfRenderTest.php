@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Modules\Document;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Document\Application\Services\DocumentPdfService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -116,6 +117,28 @@ final class DocumentPdfRenderTest extends TestCase
 
         $this->assertStringContainsString('Override Description', $html);
         $this->assertStringNotContainsString('Internal installation note', $html);
+    }
+
+    public function test_document_pdf_service_renders_full_invoice_template_with_stored_line_description(): void
+    {
+        $document = $this->buildInvoiceWithOverriddenLine(
+            productName: 'Live Product Name From DB',
+            lineDescription: 'Full Template Override',
+            productCode: 'TPL-001',
+            notes: 'Full template note',
+        );
+
+        /** @var DocumentPdfService $service */
+        $service = $this->app->make(DocumentPdfService::class);
+
+        $pdfContent = $service->generate($document)->output();
+        $html = view('documents.templates.invoice', $service->viewDataFor($document))->render();
+
+        $this->assertStringStartsWith('%PDF', $pdfContent);
+        $this->assertStringContainsString('Full Template Override', $html);
+        $this->assertStringContainsString('[TPL-001]', $html);
+        $this->assertStringContainsString('Full template note', $html);
+        $this->assertStringNotContainsString('Live Product Name From DB', $html);
     }
 
     public function test_purchase_order_pdf_line_items_render_gratuite_sub_row_for_free_quantity(): void

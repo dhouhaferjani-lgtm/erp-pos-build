@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { PaymentPanel } from './PaymentPanel'
 import { type CartItem } from '../../molecules'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -109,8 +110,8 @@ describe('PaymentPanel', () => {
         />
       )
 
-      const panelContent = container.querySelector('.bg-white')
-      expect(panelContent).toHaveClass('border-2', 'border-gray-300', 'shadow-2xl', 'rounded-lg')
+      const panelContent = container.querySelector(`.${colorTokens.surface.base}`)
+      expect(panelContent).toHaveClass('border-2', colorTokens.border.default, 'shadow-2xl', 'rounded-lg')
     })
 
     it('should render totals section when cart has items', () => {
@@ -470,7 +471,7 @@ describe('PaymentPanel', () => {
         />
       )
 
-      const panelContent = container.querySelector('.bg-white')
+      const panelContent = container.querySelector(`.${colorTokens.surface.base}`)
       expect(panelContent).toBeInTheDocument()
     })
 
@@ -512,11 +513,10 @@ describe('PaymentPanel', () => {
       )
 
       const totalLabel = screen.getByText('common:pos.total')
-      expect(totalLabel).toHaveClass('font-bold', 'text-gray-900')
+      expect(totalLabel).toHaveClass('font-bold', colorTokens.text.primary)
 
-      // Total amount should be blue and bold
       const totalAmount = screen.getByText('119.00')
-      expect(totalAmount).toHaveClass('font-bold', 'text-blue-600')
+      expect(totalAmount).toHaveClass('font-bold', colorTokens.intent.primary.text)
     })
   })
 })

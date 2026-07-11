@@ -4,11 +4,12 @@ import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { DeliveryNoteSearchSelect } from './DeliveryNoteSearchSelect'
-import * as api from '../../lib/api'
+import * as api from '@/lib/api'
 import { makeDeliveryNote } from '@/features/documents/__fixtures__/deliveryNote'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 // Mock the API
-vi.mock('../../lib/api', () => ({
+vi.mock('@/lib/api', () => ({
   api: {
     get: vi.fn(),
   },
@@ -27,6 +28,7 @@ const i18nMap: Record<string, string> = {
   'common:unknown': 'Unknown',
   'common:status.loading': 'Loading...',
   'common:loading': 'Loading...',
+  'common:clearSearch': 'Clear selection',
   'sales:lineItems.title': 'Line Items',
   'sales:lineItems.quantity': 'Items',
   'sales:deliveryNotes.searchPlaceholder':
@@ -283,7 +285,7 @@ describe('DeliveryNoteSearchSelect', () => {
     renderComponent({ error: 'Error' })
 
     const button = screen.getByRole('button')
-    expect(button.className).toContain('border-red-300')
+    expect(button.className).toContain(`${colorTokens.intent.danger.border}`)
   })
 
   it('shows item count in selected delivery note', () => {

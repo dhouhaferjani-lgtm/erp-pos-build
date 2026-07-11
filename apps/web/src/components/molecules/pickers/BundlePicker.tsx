@@ -6,6 +6,7 @@ import { useApplicableBundles } from '@/features/workshop-bundles/hooks/useBundl
 import type { ApplicableBundleData } from '@/features/workshop-bundles/types'
 import { BundleSummaryCard } from '@/features/workshop-bundles/components/molecules/BundleSummaryCard'
 import { BundleExpandedPreview } from '@/features/workshop-bundles/components/organisms/BundleExpandedPreview'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 /**
  * Controlled bundle picker — shown as a form-style trigger that opens a
@@ -66,8 +67,8 @@ export function BundlePickerModal({
   const filtered = (bundles ?? []).filter((b) => !excludeBundleIds.includes(b.id))
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex h-[80vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${colorTokens.variants.bgBlackAlpha40} p-4`}>
+      <div className={`flex h-[80vh] w-full max-w-3xl flex-col rounded-lg ${colorTokens.surface.base} shadow-xl`}>
         <div className={`flex items-center justify-between border-b ${borderColors.light} p-4`}>
           <h2 className={`text-lg font-semibold ${textColors.primary}`}>{t('picker.title')}</h2>
           <button type="button" onClick={onClose} className={tokens.modal.closeButton}>
@@ -168,7 +169,7 @@ export function BundlePicker({
 
       {value !== null ? (
         <div
-          className={`flex items-center gap-2 rounded-md border ${borderColors.default} bg-white px-3 py-2`}
+          className={`flex items-center gap-2 rounded-md border ${borderColors.default} ${colorTokens.surface.base} px-3 py-2`}
         >
           <div className="min-w-0 flex-1">
             <div className={`truncate text-sm font-medium ${textColors.primary}`}>{value.name}</div>

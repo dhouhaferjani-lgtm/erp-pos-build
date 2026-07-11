@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
 import { useCommandPalette } from './useCommandPalette'
 import type { CommandItem } from './useCommandPalette'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface CommandPaletteProps {
   isOpen: boolean
@@ -39,15 +40,15 @@ function CommandPaletteItem({
       ref={ref}
       type="button"
       className={`flex w-full items-center gap-3 px-4 py-2.5 text-start text-sm transition-colors ${
-        isSelected ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-50'
+        isSelected ? `${colorTokens.intent.primary.bgSubtle} ${colorTokens.intent.primary.textStrongest}` : `${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50}`
       }`}
       onClick={() => { onSelect(item) }}
       onMouseEnter={onMouseEnter}
     >
-      <Icon className={`h-4 w-4 shrink-0 ${isSelected ? 'text-blue-600' : 'text-gray-400'}`} />
+      <Icon className={`h-4 w-4 shrink-0 ${isSelected ? `${colorTokens.intent.primary.text}` : `${colorTokens.text.disabled}`}`} />
       <span className="flex-1 truncate">{t(`common:${item.translationKey}`, { defaultValue: item.label })}</span>
       <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
-        isSelected ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'
+        isSelected ? `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.text}` : `${colorTokens.surface.muted} ${colorTokens.text.subtle}`
       }`}>
         {sectionLabel}
       </span>
@@ -101,19 +102,19 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       role="presentation"
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className={`absolute inset-0 ${colorTokens.surface.overlay} backdrop-blur-sm`} />
 
       {/* Dialog */}
       <div
-        className="relative w-full max-w-lg overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl"
+        className={`relative w-full max-w-lg overflow-hidden rounded-xl border ${colorTokens.border.subtle} ${colorTokens.surface.base} shadow-2xl`}
         onClick={(e) => { e.stopPropagation() }}
         role="dialog"
         aria-modal="true"
         aria-label={t('common:commandPalette.placeholder')}
       >
         {/* Search Input */}
-        <div className="flex items-center gap-3 border-b border-gray-200 px-4 py-3">
-          <Search className="h-5 w-5 shrink-0 text-gray-400" />
+        <div className={`flex items-center gap-3 border-b ${colorTokens.border.subtle} px-4 py-3`}>
+          <Search className={`h-5 w-5 shrink-0 ${colorTokens.text.disabled}`} />
           <input
             ref={inputRef}
             type="text"
@@ -121,7 +122,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             onChange={(e) => { setQuery(e.target.value) }}
             onKeyDown={handleKeyDown}
             placeholder={t('common:commandPalette.placeholder')}
-            className="flex-1 bg-transparent text-sm text-gray-900 placeholder-gray-400 outline-none"
+            className={`flex-1 bg-transparent text-sm ${colorTokens.text.primary} ${colorTokens.placeholder.muted} outline-none`}
           />
         </div>
 
@@ -129,7 +130,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         <div className="max-h-80 overflow-y-auto">
           {showRecent && (
             <div>
-              <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+              <div className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('common:commandPalette.recent')}
               </div>
               {recentItems.map((item, index) => (
@@ -146,7 +147,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
           {showFiltered && navigationItems.length > 0 && (
             <div>
-              <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+              <div className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('common:commandPalette.navigation')}
               </div>
               {navigationItems.map((item) => {
@@ -166,7 +167,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
           {showFiltered && actionItems.length > 0 && (
             <div>
-              <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+              <div className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider ${colorTokens.text.subtle}`}>
                 {t('common:commandPalette.actions')}
               </div>
               {actionItems.map((item) => {
@@ -185,20 +186,20 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           )}
 
           {hasNoResults && (
-            <div className="px-4 py-8 text-center text-sm text-gray-500">
+            <div className={`px-4 py-8 text-center text-sm ${colorTokens.text.subtle}`}>
               {t('common:commandPalette.noResults')}
             </div>
           )}
 
           {!showRecent && !showFiltered && (
-            <div className="px-4 py-8 text-center text-sm text-gray-500">
+            <div className={`px-4 py-8 text-center text-sm ${colorTokens.text.subtle}`}>
               {t('common:commandPalette.placeholder')}
             </div>
           )}
         </div>
 
         {/* Footer hint */}
-        <div className="border-t border-gray-200 px-4 py-2 text-center text-xs text-gray-400">
+        <div className={`border-t ${colorTokens.border.subtle} px-4 py-2 text-center text-xs ${colorTokens.text.disabled}`}>
           {t('common:commandPalette.hint')}
         </div>
       </div>

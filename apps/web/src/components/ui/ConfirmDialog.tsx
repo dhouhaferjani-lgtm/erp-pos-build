@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, X } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface ConfirmDialogProps {
   isOpen: boolean
@@ -16,16 +17,16 @@ interface ConfirmDialogProps {
 
 const variantStyles = {
   danger: {
-    icon: 'text-red-600',
-    button: 'bg-red-600 hover:bg-red-700',
+    icon: `${colorTokens.intent.danger.text}`,
+    button: `${colorTokens.intent.danger.bgStrong} ${colorTokens.variants.hoverBgRed700}`,
   },
   warning: {
-    icon: 'text-yellow-600',
-    button: 'bg-yellow-600 hover:bg-yellow-700',
+    icon: `${colorTokens.intent.warning.text}`,
+    button: `${colorTokens.intent.warning.bgStrong} ${colorTokens.variants.hoverBgYellow700}`,
   },
   info: {
-    icon: 'text-blue-600',
-    button: 'bg-blue-600 hover:bg-blue-700',
+    icon: `${colorTokens.intent.primary.text}`,
+    button: `${colorTokens.intent.primary.bgStrong} ${colorTokens.variants.hoverBgBlue700}`,
   },
 }
 
@@ -47,13 +48,13 @@ export function ConfirmDialog({
   const styles = variantStyles[variant]
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50">
-      <div className="relative mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto ${colorTokens.surface.overlay}`}>
+      <div className={`relative mx-4 w-full max-w-md rounded-lg ${colorTokens.surface.base} p-6 shadow-xl`}>
         {/* Close button */}
         <button
           type="button"
           onClick={onClose}
-          className="absolute end-4 top-4 rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          className={`absolute end-4 top-4 rounded-lg p-1 ${colorTokens.text.disabled} ${colorTokens.variants.hoverBgGray100} ${colorTokens.variants.hoverTextGray600}`}
           aria-label={t('actions.close')}
           disabled={isLoading}
         >
@@ -73,8 +74,8 @@ export function ConfirmDialog({
             content still grows past it.
           */}
           <div className="min-h-[4.5rem] flex-1">
-            <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-            <p className="mt-2 text-sm text-gray-600">{message}</p>
+            <h3 className={`text-lg font-semibold ${colorTokens.text.primary}`}>{title}</h3>
+            <p className={`mt-2 text-sm ${colorTokens.text.muted}`}>{message}</p>
           </div>
         </div>
 
@@ -83,7 +84,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            className={`rounded-lg border ${colorTokens.border.default} px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.variants.hoverBgGray50} disabled:opacity-50 transition-colors`}
             disabled={isLoading}
           >
             {cancelText || t('actions.cancel')}
@@ -92,7 +93,7 @@ export function ConfirmDialog({
             type="button"
             onClick={onConfirm}
             data-testid="confirm-dialog-confirm"
-            className={`rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 transition-colors ${styles.button}`}
+            className={`rounded-lg px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} disabled:opacity-50 transition-colors ${styles.button}`}
             disabled={isLoading}
           >
             {isLoading ? t('actions.processing') : (confirmText || t('actions.confirm'))}

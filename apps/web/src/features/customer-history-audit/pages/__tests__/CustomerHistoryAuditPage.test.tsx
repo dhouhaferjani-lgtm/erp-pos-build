@@ -138,7 +138,7 @@ vi.mock('@/components/molecules/pickers/PartnerPicker', () => ({
 
 // ─── UserPicker mock ──────────────────────────────────────────────────────────
 
-vi.mock('@/components/ui/UserPicker', () => ({
+vi.mock('@/components/molecules/pickers/UserPicker', () => ({
   UserPicker: ({ placeholder, onChange }: { placeholder?: string; onChange: (id: string | null, name?: string) => void }) => (
     <button
       type="button"

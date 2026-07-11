@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { RefundMethodSelect } from './RefundMethodSelect'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -66,7 +67,7 @@ describe('RefundMethodSelect', () => {
     render(<RefundMethodSelect value="" onChange={vi.fn()} error="Error" />)
 
     const select = screen.getByRole('combobox')
-    expect(select.className).toContain('border-red-300')
+    expect(select.className).toContain(colorTokens.intent.danger.border)
   })
 
   it('applies custom className', () => {

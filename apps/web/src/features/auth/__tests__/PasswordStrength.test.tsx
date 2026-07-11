@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PasswordStrength } from '../components/PasswordStrength'
 
 vi.mock('react-i18next', () => ({
@@ -30,8 +31,8 @@ describe('PasswordStrength', () => {
 
     // Only lowercase met → 1 of 5 segments filled
     const segments = document.querySelectorAll('.rounded-full')
-    const filled = Array.from(segments).filter((s) => s.className.includes('bg-red-500'))
-    const unfilled = Array.from(segments).filter((s) => s.className.includes('bg-gray-200'))
+    const filled = Array.from(segments).filter((s) => s.className.includes(colorTokens.intent.danger.bg))
+    const unfilled = Array.from(segments).filter((s) => s.className.includes(colorTokens.surface.subdued))
 
     expect(filled).toHaveLength(1)
     expect(unfilled).toHaveLength(4)
@@ -42,7 +43,7 @@ describe('PasswordStrength', () => {
     render(<PasswordStrength password="Abc123" />)
 
     const segments = document.querySelectorAll('.rounded-full')
-    const filled = Array.from(segments).filter((s) => s.className.includes('bg-yellow-500'))
+    const filled = Array.from(segments).filter((s) => s.className.includes(colorTokens.intent.warning.bg))
 
     expect(filled).toHaveLength(3)
   })
@@ -52,7 +53,7 @@ describe('PasswordStrength', () => {
     render(<PasswordStrength password="Str0ng!Pass9" />)
 
     const segments = document.querySelectorAll('.rounded-full')
-    const filled = Array.from(segments).filter((s) => s.className.includes('bg-green-500'))
+    const filled = Array.from(segments).filter((s) => s.className.includes(colorTokens.intent.success.bg))
 
     expect(filled).toHaveLength(5)
   })

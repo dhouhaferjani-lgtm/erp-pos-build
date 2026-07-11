@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { seedAuth, resetAuth } from '@/test/seedAuth'
 import { ProductInfoModal, type StockLevel } from './ProductInfoModal'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import {
   makeProductDetail,
   makeProductDetailWithParapharmacy,
@@ -470,7 +471,7 @@ describe('ProductInfoModal', () => {
     await waitFor(() => {
       const retailStoreRow = screen.getByText('Retail Store').closest('tr')
       const availableCell = retailStoreRow?.querySelector('td:nth-child(2) span')
-      expect(availableCell).toHaveClass('text-yellow-600')
+      expect(availableCell).toHaveClass(colorTokens.intent.warning.text)
     })
   })
 
@@ -492,8 +493,7 @@ describe('ProductInfoModal', () => {
     await waitFor(() => {
       const distributionRow = screen.getByText('Distribution Center').closest('tr')
       const availableCell = distributionRow?.querySelector('td:nth-child(2) span')
-      // Out-of-stock available figure uses the danger text token (text-red-700).
-      expect(availableCell).toHaveClass('text-red-700')
+      expect(availableCell).toHaveClass(colorTokens.intent.danger.textStrong)
     })
   })
 })

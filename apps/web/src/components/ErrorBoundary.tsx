@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface Props {
   children: ReactNode
@@ -26,25 +27,25 @@ function ErrorFallback({
   const { t } = useTranslation()
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
+    <div className={`min-h-screen flex items-center justify-center ${colorTokens.surface.page} p-4`}>
+      <div className={`max-w-md w-full ${colorTokens.surface.base} rounded-lg shadow-lg p-8 text-center`}>
         <div className="flex justify-center mb-4">
-          <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
-            <AlertTriangle className="w-8 h-8 text-red-600" />
+          <div className={`w-16 h-16 rounded-full ${colorTokens.intent.danger.bgSoft} flex items-center justify-center`}>
+            <AlertTriangle className={`w-8 h-8 ${colorTokens.intent.danger.text}`} />
           </div>
         </div>
 
-        <h1 className="text-xl font-semibold text-gray-900 mb-2">
+        <h1 className={`text-xl font-semibold ${colorTokens.text.primary} mb-2`}>
           {t('errors.unexpectedError')}
         </h1>
 
-        <p className="text-gray-600 mb-6">
+        <p className={`${colorTokens.text.muted} mb-6`}>
           {t('errors.unexpectedErrorDetails')}
         </p>
 
         {import.meta.env.DEV && error && (
-          <div className="mb-6 p-4 bg-red-50 rounded-md text-start">
-            <p className="text-sm font-mono text-red-800 break-all">
+          <div className={`mb-6 p-4 ${colorTokens.intent.danger.bgSubtle} rounded-md text-start`}>
+            <p className={`text-sm font-mono ${colorTokens.intent.danger.textStronger} break-all`}>
               {error.message}
             </p>
           </div>
@@ -53,7 +54,7 @@ function ErrorFallback({
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button
             onClick={onRetry}
-            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className={`inline-flex items-center justify-center px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.surface.base} border ${colorTokens.border.default} rounded-md ${colorTokens.variants.hoverBgGray50} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.focus.primaryRing}`}
           >
             <RefreshCw className="w-4 h-4 me-2" />
             {t('actions.tryAgain')}
@@ -61,7 +62,7 @@ function ErrorFallback({
 
           <button
             onClick={onReload}
-            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className={`inline-flex items-center justify-center px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrong} rounded-md ${colorTokens.variants.hoverBgBlue700} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.focus.primaryRing}`}
           >
             <RefreshCw className="w-4 h-4 me-2" />
             {t('actions.refreshPage')}
@@ -69,7 +70,7 @@ function ErrorFallback({
 
           <button
             onClick={onGoHome}
-            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className={`inline-flex items-center justify-center px-4 py-2 text-sm font-medium ${colorTokens.text.secondary} ${colorTokens.surface.base} border ${colorTokens.border.default} rounded-md ${colorTokens.variants.hoverBgGray50} focus:outline-none focus:ring-2 focus:ring-offset-2 ${colorTokens.focus.primaryRing}`}
           >
             <Home className="w-4 h-4 me-2" />
             {t('actions.goHome')}

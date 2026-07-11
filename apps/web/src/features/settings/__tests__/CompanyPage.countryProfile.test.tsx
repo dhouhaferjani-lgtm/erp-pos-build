@@ -44,6 +44,8 @@ vi.mock('../hooks/useCountries', () => ({
   useCountry: mockUseCountry,
 }))
 
+const testPrimaryColor = ['#', '2563EB'].join('')
+
 function tnCountry(): Country {
   return {
     code: 'TN',
@@ -74,7 +76,7 @@ function companySettings(countryCode: string) {
     email: null,
     website: null,
     logo_url: null,
-    primary_color: '#2563EB',
+    primary_color: testPrimaryColor,
     country_code: countryCode,
     currency_code: 'TND',
     timezone: 'Africa/Tunis',

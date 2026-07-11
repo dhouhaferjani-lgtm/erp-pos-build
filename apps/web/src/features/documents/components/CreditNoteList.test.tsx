@@ -9,6 +9,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CreditNoteList } from './CreditNoteList'
 import { CreditNoteReason, DocumentStatus, type CreditNote } from '@/types/creditNote'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 // Mock the translation hook
 vi.mock('react-i18next', () => ({
@@ -350,8 +351,7 @@ describe('CreditNoteList', () => {
 
     await user.hover(firstRow)
 
-    // Row should have hover class (tested via CSS class presence)
-    expect(firstRow).toHaveClass('hover:bg-gray-50')
+    expect(firstRow).toHaveClass(colorTokens.intent.neutral.bgHover)
   })
 
   it('formats dates correctly', () => {

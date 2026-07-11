@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronDown, Folder, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CategoryTreeNode } from '@/features/catalog/types'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface CategoryTreeProps {
   categories: CategoryTreeNode[]
@@ -45,8 +46,8 @@ export function CategoryTree({
       <div key={category.id}>
         <div
           className={cn(
-            'flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-gray-100 transition-colors',
-            isSelected && 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+            `flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${colorTokens.variants.hoverBgGray100} transition-colors`,
+            isSelected && `${colorTokens.intent.primary.bgSubtle} ${colorTokens.intent.primary.textStrong} ${colorTokens.intent.primary.bgHoverSoft}`
           )}
           style={{ paddingInlineStart: `${level * 16 + 8}px` }}
           onClick={() => { onSelect(category); }}
@@ -62,7 +63,7 @@ export function CategoryTree({
           {hasChildren ? (
             <button
               onClick={(e) => { toggleExpand(category.id, e); }}
-              className="p-0.5 hover:bg-gray-200 rounded shrink-0"
+              className={`p-0.5 ${colorTokens.variants.hoverBgGray200} rounded shrink-0`}
               aria-label={isExpanded ? t('catalog.categories.collapse') : t('catalog.categories.expand')}
             >
               {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -72,15 +73,15 @@ export function CategoryTree({
           )}
 
           {isExpanded ? (
-            <FolderOpen className="h-4 w-4 text-yellow-500 shrink-0" />
+            <FolderOpen className={`h-4 w-4 ${colorTokens.variants.textYellow500} shrink-0`} />
           ) : (
-            <Folder className="h-4 w-4 text-yellow-500 shrink-0" />
+            <Folder className={`h-4 w-4 ${colorTokens.variants.textYellow500} shrink-0`} />
           )}
 
           <span className="flex-1 truncate text-sm">{category.name}</span>
 
           {category.products_count !== null && category.products_count !== undefined && (
-            <span className="text-xs text-gray-400 shrink-0">({category.products_count})</span>
+            <span className={`text-xs ${colorTokens.text.disabled} shrink-0`}>({category.products_count})</span>
           )}
         </div>
 
@@ -96,7 +97,7 @@ export function CategoryTree({
       {categories.length > 0 ? (
         categories.map((category) => renderCategory(category))
       ) : (
-        <p className="text-sm text-gray-500 px-2 py-4 text-center">{t('catalog.categories.noCategoriesFound')}</p>
+        <p className={`text-sm ${colorTokens.text.subtle} px-2 py-4 text-center`}>{t('catalog.categories.noCategoriesFound')}</p>
       )}
     </div>
   )

@@ -1,4 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
 type ButtonSize = 'sm' | 'md' | 'lg'
@@ -11,12 +12,12 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 disabled:bg-blue-400',
+    `${colorTokens.intent.primary.bgStrong} ${colorTokens.text.inverse} ${colorTokens.variants.hoverBgBlue700} ${colorTokens.focus.primaryRing} ${colorTokens.variants.disabledBgBlue400}`,
   secondary:
-    'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-gray-500',
+    `${colorTokens.surface.base} ${colorTokens.text.secondary} border ${colorTokens.border.default} ${colorTokens.variants.hoverBgGray50} ${colorTokens.focus.neutralRing}`,
   danger:
-    'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 disabled:bg-red-400',
-  ghost: 'bg-transparent text-gray-600 hover:bg-gray-100 focus:ring-gray-500',
+    `${colorTokens.intent.danger.bgStrong} ${colorTokens.text.inverse} ${colorTokens.variants.hoverBgRed700} ${colorTokens.focus.dangerRing} ${colorTokens.variants.disabledBgRed400}`,
+  ghost: `bg-transparent ${colorTokens.text.muted} ${colorTokens.variants.hoverBgGray100} ${colorTokens.focus.neutralRing}`,
 }
 
 const sizeStyles: Record<ButtonSize, string> = {

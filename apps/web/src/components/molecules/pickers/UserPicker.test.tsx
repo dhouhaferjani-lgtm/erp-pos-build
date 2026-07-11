@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { UserPicker } from '../UserPicker'
+import { resetAuth, seedAuth } from '@/test/seedAuth'
+import { UserPicker } from './UserPicker'
 
 // ─── API mock ─────────────────────────────────────────────────────────────────
 
@@ -49,8 +50,13 @@ describe('UserPicker', () => {
   const onChange = vi.fn()
 
   beforeEach(() => {
+    seedAuth()
     mockApiGet.mockReset()
     onChange.mockReset()
+  })
+
+  afterEach(() => {
+    resetAuth()
   })
 
   it('renders the search combobox', () => {
