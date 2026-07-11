@@ -40,6 +40,7 @@ final class ReplenishmentRequestController extends Controller
             'product_id' => ['nullable', 'uuid'],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
+            'per_page' => ['nullable', 'integer', Rule::in([10, 25, 50, 100])],
         ]);
         $companyId = $this->companyContext->requireCompanyId();
         $query = $this->namedQuery()->where('replenishment_requests.company_id', $companyId);
@@ -83,7 +84,8 @@ final class ReplenishmentRequestController extends Controller
         }
 
         $query->where('replenishment_requests.status', $status);
-        $paginator = $query->orderByDesc('replenishment_requests.last_requested_at')->paginate(25);
+        $perPage = (int) ($validated['per_page'] ?? 25);
+        $paginator = $query->orderByDesc('replenishment_requests.last_requested_at')->paginate($perPage);
 
         return response()->json([
             'data' => ReplenishmentRequestResource::collection($paginator->getCollection())->resolve($request),

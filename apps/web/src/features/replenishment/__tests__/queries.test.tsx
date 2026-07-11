@@ -20,7 +20,11 @@ function scope(tenant: string | null, company: string | null) {
 function wrapper(client: QueryClient) { return ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> }
 
 beforeEach(() => { vi.clearAllMocks(); scope('tenant-1', 'company-1'); mockGet.mockResolvedValue({ data: { data: [], meta: { truncated: false } } }) })
-afterEach(() => act(() => scope(null, null)))
+afterEach(() => {
+  act(() => {
+    scope(null, null)
+  })
+})
 
 describe('replenishment queries', () => {
   it('preserves open-list meta through api.get', async () => {

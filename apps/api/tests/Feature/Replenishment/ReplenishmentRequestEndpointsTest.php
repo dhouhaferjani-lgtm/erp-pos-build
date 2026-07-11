@@ -177,6 +177,21 @@ final class ReplenishmentRequestEndpointsTest extends TestCase
         $this->assertIsArray($response->json('meta'));
     }
 
+    public function test_history_per_page_accepts_supported_values_and_rejects_others(): void
+    {
+        $this->capture($this->shopA, $this->creator, ReplenishmentStatus::Fulfilled);
+
+        $this->actingAs($this->creator)
+            ->getJson('/api/v1/replenishment-requests?status=fulfilled&per_page=10')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 10);
+
+        $this->actingAs($this->creator)
+            ->getJson('/api/v1/replenishment-requests?status=fulfilled&per_page=11')
+            ->assertUnprocessable()
+            ->assertJsonStructure(['error' => ['errors' => ['per_page']]]);
+    }
+
     public function test_cancel_own_pending_line_rejects_other_user_but_allows_processor(): void
     {
         $own = $this->capture($this->shopA, $this->creator);

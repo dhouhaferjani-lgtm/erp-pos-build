@@ -121,6 +121,7 @@ const StockTransferListPage = lazy(() => import('../features/stock-transfers/pag
 const CreateStockTransferPage = lazy(() => import('../features/stock-transfers/pages/CreateStockTransferPage').then((m) => ({ default: m.CreateStockTransferPage })))
 const StockTransferDetailPage = lazy(() => import('../features/stock-transfers/pages/StockTransferDetailPage').then((m) => ({ default: m.StockTransferDetailPage })))
 const ReplenishmentCapturePage = lazy(() => import('../features/replenishment/pages/ReplenishmentCapturePage').then((m) => ({ default: m.ReplenishmentCapturePage })))
+const ReplenishmentQueuePage = lazy(() => import('../features/replenishment/pages/ReplenishmentQueuePage').then((m) => ({ default: m.ReplenishmentQueuePage })))
 
 // Enrichment module
 const EnrichmentQueuePage = lazy(() => import('../features/enrichment/pages/EnrichmentQueuePage').then((m) => ({ default: m.EnrichmentQueuePage })))
@@ -1292,6 +1293,16 @@ export function AppRoutes() {
               <RequirePermission permission="inventory.transfers.view">
                 <SuspenseWrapper>
                   <StockTransferDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="replenishment"
+            element={
+              <RequirePermission permission="replenishment.view">
+                <SuspenseWrapper>
+                  <ReplenishmentQueuePage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

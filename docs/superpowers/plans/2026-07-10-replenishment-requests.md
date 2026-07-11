@@ -675,7 +675,9 @@ Composition (reuse only): `PageHeader` molecule; location select limited to allo
 
 ### Task 14: Web review queue — by-shop list + by-product matrix + context panel
 
-**Files:** `pages/ReplenishmentQueuePage.tsx`, `components/{ReplenishmentStatusBadge,RequestContextPanel}.tsx` + tests.
+**Files:** `pages/ReplenishmentQueuePage.tsx`, `components/{ReplenishmentStatusBadge,RequestContextPanel}.tsx` + tests; `ReplenishmentRequestController.php`, `ReplenishmentRequestEndpointsTest.php`, and web replenishment filter types for functional per-page selection.
+
+Plan amendment: `OffsetPagination` requires a functional per-page callback, while the original history endpoint hardcoded 25 and `ReplenishmentListFilters` omitted `per_page`. History accepts optional `per_page` restricted to `10|25|50|100` (default 25), passes it to `paginate()`, and includes `per_page?: number` in the snake_case client filter type.
 
 - `ReplenishmentStatusBadge`: map `{pending:'pending', in_progress:'info', fulfilled:'success', rejected:'danger', cancelled:'neutral'}` → `StatusBadge` tone; label `t('replenishment:status.'+status)` (clone `StockTransferStatusBadge` shape).
 - Queue page: `Tabs`-style toggle (existing `FilterTabs` molecule) between **By shop** and **By product**; filters row = `LocationSelectorMulti` + `DateRangeFilter` + status chips (open default). Data = `useOpenReplenishment`.
