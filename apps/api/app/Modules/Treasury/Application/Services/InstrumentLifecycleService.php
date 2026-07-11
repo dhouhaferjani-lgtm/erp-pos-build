@@ -435,6 +435,18 @@ final readonly class InstrumentLifecycleService
             $this->generalLedger->postEntryNow($entry, $actor, $data->currency);
 
             foreach ($toleranceAllocations as $tolerance) {
+                // ASSUMPTION: at most ONE active tolerance write-off JE per document.
+                // `latest('created_at')` picks the newest posted payment_tolerance entry
+                // for the document; that is correct today because a document's tolerance
+                // write-off closes it — a second tolerance JE can only exist after a prior
+                // dishonor reversed the first and reopened the document, so the newest one
+                // is always the active one. Note the reversal entry
+                // (source_type='instrument_tolerance_reversal') stamps source_id with the
+                // INSTRUMENT id — not the original JE or the document — and nothing writes
+                // journal_entries.reversed_at / reversal_entry_id, so there is currently NO
+                // queryable predicate to exclude already-reversed originals. If multiple
+                // tolerance write-offs per document ever coexist, stamp reversal linkage on
+                // the original entry and filter on it here instead of relying on recency.
                 $original = JournalEntry::query()
                     ->where('company_id', $instrument->company_id)
                     ->where('source_type', 'payment_tolerance')

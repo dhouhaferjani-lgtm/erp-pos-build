@@ -93,7 +93,16 @@ class PaymentRepository extends Model
             $companyId = $repository->getAttribute('company_id');
             if ($currency === null && is_string($companyId)) {
                 $company = Company::query()->find($companyId);
-                $repository->currency = $company instanceof Company ? $company->currency : 'TND';
+                if (! $company instanceof Company) {
+                    // Fail LOUDLY rather than silently minting a TND repository: the
+                    // movement port's currency invariant demands the repository's real
+                    // owning-company currency, and a wrong-currency default would corrupt
+                    // every downstream movement. An unresolvable company is a caller bug.
+                    throw new \DomainException(
+                        "Cannot default payment repository currency: company {$companyId} could not be resolved."
+                    );
+                }
+                $repository->currency = $company->currency;
             }
         });
     }

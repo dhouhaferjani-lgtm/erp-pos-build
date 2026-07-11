@@ -761,6 +761,12 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             ->where('company_id', $event->company_id)
             ->where('idempotency_key', 'like', sprintf('fiscal_event:%s:instrument:%%', $originalEventId))
             ->where('kind', $method->instrument_kind?->value)
+            // Raw equality on amount relies on the same-currency-scale invariant between
+            // the canonical fiscal payload amounts and the stored decimal column (both are
+            // scaled to the repository/company currency, single-currency today). A scale
+            // mismatch simply yields NO match, which fails SAFE: the caller falls through to
+            // an alert + the standard cash-reversal refund path — it never guess-cancels a
+            // near-but-unequal instrument.
             ->where('amount', $line->amount)
             ->orderBy('id')
             ->get();
