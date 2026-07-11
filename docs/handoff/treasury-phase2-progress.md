@@ -298,3 +298,14 @@
 - Atomicity evidence: both bridges invoke the shared handler before Payment creation, allocation document locks, and synchronous GL posting. Deferred sibling legs return before movement lookup/port access. Allocation chooses the explicit portfolio debit for every invoice/order/excess JE while leaving all credit lines untouched.
 - File-list deviation (implementation seam, no contract deviation): the plan named only the two bridges, but their GL is owned by `PaymentAllocationService`; delivering the mandated debit swap without mutating posted lines required an optional `cashAccountOverrideId` on `ApplyPaymentAllocationCommand`, the allocation service's three debit sites, and allowing `postEntryNow` with its already-supported null actor. Immediate callers omit the option and remain byte-shape compatible.
 - Money-path deviation: none. The extra seam is the literal §7 debit-only swap and forces `SynchronousInTransaction`; no deferred sibling call reaches `record()`.
+
+## Gate 3
+
+### RC1 pre-review verification
+
+- `./vendor/bin/phpunit tests/Feature/Treasury tests/Feature/Accounting` — PASS, 999 tests / 4,082 assertions / 26 environment-specific skips; 40 existing PHPUnit deprecations reported.
+- `./vendor/bin/phpstan --memory-limit=1G` — PASS, all 2,462 files, zero errors.
+- `./vendor/bin/pint --dirty --test` — pass, no formatting changes required.
+- `git diff --check` — pass; worktree clean before this verification entry.
+- Fiscal bridge gate pins: all Task-16/17/18 tests clear `CompanyContext` before `apply()`; cash+paper split, complete/pre-cutover replay, missing portfolio, refund cancel/alert/failure, sibling debit overrides, and null-actor synchronous posting are green. Both sale and refund tests snapshot `pos_receipt_payments` before/after the maturity branch and assert byte-identical rows.
+- Money-path summary: receipt-time Cheque/Effet legs post portfolio GL synchronously and never call the movement port; same-day refund cancellation is Dr Revenue / Cr portfolio with no cash; active/missing/ambiguous refund paper alone falls back to the standard cash reversal plus Out movement; immediate and pre-cutover shapes retain their existing movements.
