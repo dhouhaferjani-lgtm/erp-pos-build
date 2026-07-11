@@ -106,3 +106,72 @@ Pull-site tenant/company scope note; POS pull `truncated` flag; `getOpenRequestF
 ## Verified-true highlights (round 2)
 
 SQLite v60 is the next free version; outbox DDL rule-20-safe; 401-as-transient correct; no server-side audit-type whitelist; push-body symmetry; provider/seeder/route anchors all exact; `purchase-orders.create` + `inventory.transfers.create` already granted to Manager; no fiscal-chain contact anywhere in the plan.
+
+---
+
+# Round 3 — GATE A Code Review (backend wave, Tasks 0–8) — 2026-07-10
+
+- **Under review:** branch `feat/replenishment-requests` @ `83a56fff6` (worktree `apps/erp.replenishment`), 51 files / +4,686 lines, 50 tests green. 3 Claude domain reviewers reading the actual code; inventory reviewer independently re-ran tests + PHPStan.
+- **Verdicts:** inventory **APPROVE** (3 minors) · POS-contract **APPROVE-WITH-FIXES** (1 major) · tenancy **APPROVE-WITH-FIXES** (5 minors, no majors). **Consolidated: APPROVE-WITH-FIXES → fix list sent to Codex; Gate A passes once applied.**
+
+## The one real defect (found independently by 2 reviewers)
+**[GA-1] `ReplenishmentCaptureService::isUniqueViolation()` misses `replenishment_client_uuid_unique` by PG constraint name** — SQLite's message format masks it (suite green), but on PostgreSQL the concurrent same-`client_request_uuid` insert race (the exact POS outbox retry the ledger absorbs) rethrows → 500. Self-healing (transient 5xx → retry → replay from receipt) but breaks the exactly-once contract on the prod engine. Fix: match all four constraints by NAME + keep SQLite fallbacks + a forced-duplicate test.
+
+## Other fixes sent (minors)
+GA-2 real negative-auth test for `pos.operate_terminal` (current test blanket-bypasses via `Gate::before`); GA-3 `store()` single-row hydrate instead of whole-feed re-query (theoretical 500 + perf); GA-4 qualify `scopeOpen` to `replenishment_requests.status` (join robustness); GA-5 cancel-route `can:` vs in-controller allowance inconsistency → authorization moved fully in-controller; GA-6 action 422s enumerate offending request ids (plan compliance); GA-7 global `CrossCompanyReplayException`→409 mapping in `bootstrap/app.php` (defense in depth); GA-8 comment guardrail: clients must use hand-written snake_case types, never the camelCase generated `ReplenishmentRequestData`.
+
+## Deferred (recorded, not blocking)
+GA-9 `createTransfers` multi-group partial failure (later group's InsufficientStock leaves earlier groups committed+settled; retry then 422s) — pre-validate all groups' source stock before initiating any; scoped as a Gate D fast-follow. Mild boundary smell (POS controller importing Replenishment enum/exception/resource) accepted.
+
+## Verified clean (highlights)
+Capture atomicity genuine (lock + both-branch receipt-in-transaction + retry-once; replay path side-effect-free); listeners synchronous with per-line isolation, exact variant-grain matching, reopen-collision merge exactly as designed; DraftPurchaseOrderService full NOT-NULL sets + append max(line_number)+1 + full-set totals recompute + DocumentLineTaxResolver + rule-19 scale math on decimal(15,3); per-destination-group idempotency keys (2-transfer test pinned); three-valued location scoping correct incl. intersection; dual-layer authorization; module boundaries clean (zero illegal model imports; DraftPurchaseOrderService is the sole Document/Product model toucher); wire casing snake_case field-for-field; zero fiscal-chain contact; no float/app()/TODO. PHPStan's 2 failures confirmed pre-existing baseline (files untouched by branch) — gate PHPStan scope narrowed for Gates B–D.
+
+---
+
+# Round 4 — GATE B Code Review (POS wave, Tasks 9–11 + Gate A fixes) — 2026-07-10
+
+- **Under review:** branch @ `4fc35eda4` (commits `1024b0c03` GA fixes, `32c99592a` sqlite v60, `18e911400` sync wiring, `4fc35eda4` refill sheet). 2 Opus reviewers.
+- **Verdicts:** Gate A fix verification = **CONFIRMED-FIXED** (all GA-1..8 applied correctly, 54 tests re-run green, no regressions, nothing out-of-scope in the fix commit; GA-1's test genuinely exercises the constraint matcher). POS-wave review = **APPROVE** (no blockers/majors; migration v60 rule-20-clean, outbox a faithful template clone, upsert-first cache replace, exact error taxonomy, fiscal isolation confirmed — receipt push precedes and is try/caught away from the new sync steps, wire casing round-trip verified incl. the variant_id null strict-equality path).
+- **Consolidated: GATE B APPROVED.**
+
+## Minor follow-ups (GB-list)
+- **GB-1** `truncated` flag dropped by the POS pull client; on a >200-open-line shop, replace-all deletes trimmed rows' chip state. Fold into web wave: consume `truncated` (skip delete-absent when true) or accept explicitly.
+- **GB-2** `RequestRefillSheet` silent no-op when tenant/company/terminal missing (guard returns before any feedback) — add a toast.
+- **GB-3** outbox resolved rows never purged (mirrors the pending-customer template — pre-existing pattern) — future retention sweep, both tables.
+
+---
+
+# Round 5 — GATE C Code Review (web wave, Tasks 12–15 + GB fixes) — 2026-07-11
+
+- **Under review:** branch @ `d3ffadd52` (commits `5a4399b7e` GB fixes, `52d17d665`..`d3ffadd52` web wave). 3 Opus reviewers (web-conventions, tenancy/authz, POS GB-verification).
+- **Verdicts:** GB fixes **CONFIRMED-FIXED** (real-SQLite retention test; web wave touched zero POS files) · web-conventions **APPROVE-WITH-FIXES** (1 MAJOR) · authz **APPROVE-WITH-FIXES** (1 MAJOR). **Consolidated: GATE C APPROVED WITH FIXES (GC-list).**
+- In-flight adjudication protocol (claude -p) installed this wave; zero adjudications needed (per_page amendment was owner-approved directly).
+
+## Majors
+- **[GC-1] Mutation invalidation is a NO-OP** — `invalidateQueries({queryKey: tenantScopedKey([ns])})` prefix-matches zero list keys (tenant/company are suffixes); empirically proven. The queue acts in place, so settled lines stayed visible/selectable (second action → 422). **The plan's own guardrail row mandated the broken pattern — guardrail corrected; `stock-transfers` ships the same latent no-op (masked by navigation). Repo-wide pitfall recorded → memory `project_tanstack_invalidation_suffix_noop.md`; sweep + scanner extension candidate.**
+- **[GC-2] Operator (primary requester persona) cannot reach the feature via nav** — Sidebar's Inventory group gates on FE-map `inventory.view` which omits `operator` (seeder grants it — the hardcoded-map drift risk materialized); parent-group filter hides children before evaluation. Fix: align FE map with seeder + explicit `permission: 'replenishment.view'` on the nav child + visible-but-403 check on sibling children for operator.
+
+## Minors → fixes
+GC-3 qty-less transfer prefill: implement order-up-to-max suggestion (owner-decided) — `max_quantity − available` (floor 1), fallback `min_quantity − available`, fallback 1; needs a per-selected-line stock lookup in the dialog. GC-4 capture page reuses `ReplenishmentStatusBadge` instead of raw StatusBadge + inline tone map. GC-5 create the plan's barrel index.ts files. Accepted as-is: nav-gating convention for cashier/viewer (matches siblings), `nullable`+`Rule::in` vs `sometimes`+`in:` (equivalent), matrix 180px (guardrail supersedes task text), pre-existing ar→en stock-transfers alias in i18n.ts (out of scope).
+
+## Compliance highlights
+Guardrail matrix fully PASS (component reuse incl. PartnerSearchSelect exact import, tokens clean, snake_case round-trip field-for-field, en/fr/ar 50-key parallel with real Arabic, per-route + action-bar gating, zero parseFloat, meaningful tests incl. 2×2 pivot fixture). Backend per_page delta surgical with real tests. Commit hygiene clean across all five commits.
+
+---
+
+# Round 6 — GATE D Final Pre-Merge Review — 2026-07-11
+
+- **Under review:** branch @ `66fd3e3c7` (commits `747f7ee02` GC fixes, `a3b0604be` audit-tool alignment, `d61eee22c` E2E+GA-9+preflight, `66fd3e3c7` adjudication log). 3 Opus reviewers.
+- **Verdicts:** web-fixes **APPROVE (zero findings)** · inventory/backend **APPROVE** (2 minor follow-ups) · process/adjudication **MERGE-READY-WITH-CONDITIONS** (1 required note). **Consolidated: GATE D APPROVED FOR MERGE, conditions GD-1..3 + post-merge browser verification.**
+
+## Highest-risk items, all cleared
+- **GA-9 `StockTransferService` delta is provably additive**: one new public `assertSourceAvailability()` + private helper; zero existing methods modified; all existing callers byte-identical; availability basis identical to `initiate()`'s own check; no writes. Atomicity proven by a genuine test (good group NOT persisted when sibling group lacks stock; 0 transfers, requests stay Pending). Outer transaction makes settlement fire only after ALL transfers commit.
+- **Audit-tool relaxation non-weakening** (invalidateQueries bare-prefix carve-out only; queries/fetch/prefetch + sibling cache methods still enforced; 28/28).
+- **Adjudication protocol audit**: all 4 entries in-category, correctly applied; shared-tooling calls judged within protocol spirit (additive opt-in, defaults byte-identical except the intentional CACHE_STORE=array transform fix).
+- **GC-2(c) FE-map-only confirmed** — operator parity with seeder, stock-transfers correctly hidden (no visible-but-403 leak).
+
+## Conditions
+- **GD-1 (required, in-branch)**: record in the adjudication log that Task 16 Step 2 (live-browser Playwright) is UNVERIFIED / environment-blocked (:5173 down, :8010 on another worktree) — FE flow covered by Vitest only until the post-merge browser pass.
+- **GD-2 (cheap, do now)**: map `InsufficientStockException` → 422 on the replenishment create-transfer endpoint (mirror `StockTransferController::insufficientStockResponse`) — insufficient stock is the EXPECTED failure of this dialog; today it 500s (pre-existing class, but this wave owns the surface).
+- **GD-3 (one-liner)**: outer `createTransfers` transaction `attempts: 3` (nested `initiate()` retry is neutralized inside the outer tx; deadlock self-healing restored).
+- **Post-merge conditions**: merge → LOCAL dev only (never push) → restart local stack on dev → Playwright browser pass (capture → queue → matrix → transfer → fulfilled, screenshot) → THEN owner promotes origin/dev → deploy checklist → POS device update → owner Tauri pass.
