@@ -644,7 +644,8 @@ final readonly class InstrumentLifecycleService
                 ];
             }
             $instrument->fill($updates);
-            if ($instrument->reference !== '' && $instrument->maturity_date !== null) {
+            if ($instrument->reference !== ''
+                && ($instrument->kind === InstrumentKind::Cheque || $instrument->maturity_date !== null)) {
                 $instrument->needs_details = false;
             }
             $instrument->save();

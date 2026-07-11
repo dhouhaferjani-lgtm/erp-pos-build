@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { seedAuth, resetAuth } from '@/test/seedAuth'
@@ -7,6 +7,8 @@ import { BalanceSheetPage } from './pages/BalanceSheetPage'
 const { mockApiGet } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
 }))
+
+const normalizeSpaces = (value: string | null): string => (value ?? '').replace(/\s/g, ' ')
 
 vi.mock('@/lib/api', () => ({
   apiGet: mockApiGet,
@@ -17,11 +19,6 @@ vi.mock('@/hooks/usePermissions', () => ({
     hasPermission: () => true,
   }),
 }))
-
-function getAllByEuroAmount(majorPattern: string): HTMLElement[] {
-  const pattern = new RegExp(`${majorPattern}[\\s\\u00A0\\u202F]*,00\\s*EUR`)
-  return screen.getAllByText((text) => pattern.test(text))
-}
 
 describe('BalanceSheetPage', () => {
   let queryClient: QueryClient
@@ -100,8 +97,9 @@ describe('BalanceSheetPage', () => {
     await waitFor(() => {
       expect(screen.getByText('1000')).toBeInTheDocument()
       expect(screen.getByText('Cash')).toBeInTheDocument()
-      const amounts = getAllByEuroAmount('5[\\s\\u00A0\\u202F]*000')
-      expect(amounts.length).toBeGreaterThanOrEqual(1)
+      const row = screen.getByText('Cash').closest('tr')
+      if (!row) throw new Error('asset row not found')
+      expect(within(row).getByText((_, node) => normalizeSpaces(node?.textContent ?? '') === '5 000,00 EUR')).toBeInTheDocument()
     })
   })
 
@@ -132,8 +130,9 @@ describe('BalanceSheetPage', () => {
     await waitFor(() => {
       expect(screen.getByText('2000')).toBeInTheDocument()
       expect(screen.getByText('Accounts Payable')).toBeInTheDocument()
-      const amounts = getAllByEuroAmount('3[\\s\\u00A0\\u202F]*000')
-      expect(amounts.length).toBeGreaterThanOrEqual(1)
+      const row = screen.getByText('Accounts Payable').closest('tr')
+      if (!row) throw new Error('liability row not found')
+      expect(within(row).getByText((_, node) => normalizeSpaces(node?.textContent ?? '') === '3 000,00 EUR')).toBeInTheDocument()
     })
   })
 
@@ -164,8 +163,9 @@ describe('BalanceSheetPage', () => {
     await waitFor(() => {
       expect(screen.getByText('3000')).toBeInTheDocument()
       expect(screen.getByText('Capital')).toBeInTheDocument()
-      const amounts = getAllByEuroAmount('2[\\s\\u00A0\\u202F]*000')
-      expect(amounts.length).toBeGreaterThanOrEqual(1)
+      const row = screen.getByText('Capital').closest('tr')
+      if (!row) throw new Error('equity row not found')
+      expect(within(row).getByText((_, node) => normalizeSpaces(node?.textContent ?? '') === '2 000,00 EUR')).toBeInTheDocument()
     })
   })
 

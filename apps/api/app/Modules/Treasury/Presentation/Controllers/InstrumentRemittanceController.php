@@ -49,7 +49,8 @@ final class InstrumentRemittanceController extends Controller
             }
         }
         /** @var LengthAwarePaginator<int, InstrumentRemittance> $paginator */
-        $paginator = $query->orderByDesc('created_at')->paginate((int) ($validated['per_page'] ?? 25));
+        $paginator = $query->orderByDesc('created_at')->orderByDesc('id')
+            ->paginate((int) ($validated['per_page'] ?? 25));
 
         return response()->json([
             'data' => collect($paginator->items())->map(fn (InstrumentRemittance $slip): array => $this->formatSlip($slip)),

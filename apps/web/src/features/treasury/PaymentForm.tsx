@@ -37,7 +37,7 @@ interface PaymentMethod {
   name: string
   is_physical: boolean
   has_maturity: boolean
-  instrument_kind: 'cheque' | 'effet' | null
+  instrument_kind: 'cheque' | 'effet' | 'other' | null
   requires_third_party: boolean
   is_push: boolean
   has_deducted_fees: boolean

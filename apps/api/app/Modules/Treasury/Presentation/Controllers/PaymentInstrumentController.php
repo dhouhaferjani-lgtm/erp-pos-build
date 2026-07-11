@@ -71,7 +71,8 @@ final class PaymentInstrumentController extends Controller
         }
 
         /** @var LengthAwarePaginator<int, PaymentInstrument> $instruments */
-        $instruments = $query->orderByDesc('received_date')->paginate((int) ($validated['per_page'] ?? 25));
+        $instruments = $query->orderByDesc('received_date')->orderByDesc('id')
+            ->paginate((int) ($validated['per_page'] ?? 25));
 
         return response()->json([
             'data' => collect($instruments->items())->map(fn (PaymentInstrument $instrument): array => $this->formatInstrument($instrument)),
@@ -137,19 +138,22 @@ final class PaymentInstrumentController extends Controller
             return $this->domainError(new DomainException('Payment method is not a supported paper instrument method.'));
         }
 
+        $direction = InstrumentDirection::from($validated['direction'] ?? InstrumentDirection::Inbound->value);
         try {
-            $this->accountResolver->resolveOrFail(
-                $kind === InstrumentKind::Cheque
-                    ? InstrumentAccountPurpose::ChecksToCollect
-                    : InstrumentAccountPurpose::EffectsReceivable,
-                $company->id,
-            );
+            if ($direction === InstrumentDirection::Inbound) {
+                $this->accountResolver->resolveOrFail(
+                    $kind === InstrumentKind::Cheque
+                        ? InstrumentAccountPurpose::ChecksToCollect
+                        : InstrumentAccountPurpose::EffectsReceivable,
+                    $company->id,
+                );
+            }
             $instrument = $this->lifecycle->receive(new ReceiveInstrumentData(
                 tenantId: $company->tenant_id,
                 companyId: $company->id,
                 paymentMethodId: $method->id,
                 kind: $kind,
-                direction: InstrumentDirection::from($validated['direction'] ?? InstrumentDirection::Inbound->value),
+                direction: $direction,
                 origin: InstrumentOrigin::Web,
                 reference: $validated['reference'],
                 amount: $validated['amount'],

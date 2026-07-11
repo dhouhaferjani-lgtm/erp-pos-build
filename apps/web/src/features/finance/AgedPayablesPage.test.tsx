@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { seedAuth, resetAuth } from '@/test/seedAuth'
@@ -12,6 +12,8 @@ const { mockApiGet } = vi.hoisted(() => ({
   mockApiGet: vi.fn(),
 }))
 
+const normalizeSpaces = (value: string | null): string => (value ?? '').replace(/\s/g, ' ')
+
 vi.mock('@/lib/api', () => ({
   apiGet: mockApiGet,
 }))
@@ -21,11 +23,6 @@ vi.mock('@/hooks/usePermissions', () => ({
     hasPermission: () => true,
   }),
 }))
-
-function getAllByEuroAmount(majorPattern: string): HTMLElement[] {
-  const pattern = new RegExp(`${majorPattern}[\\s\\u00A0\\u202F]*,00\\s*EUR`)
-  return screen.getAllByText((text) => pattern.test(text))
-}
 
 describe('AgedPayablesPage', () => {
   beforeEach(() => {
@@ -77,8 +74,9 @@ describe('AgedPayablesPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Supplier Co')).toBeInTheDocument()
-      const totals = getAllByEuroAmount('3[\\s\\u00A0\\u202F]*800')
-      expect(totals.length).toBeGreaterThanOrEqual(1)
+      const row = screen.getByText('Supplier Co').closest('tr')
+      if (!row) throw new Error('supplier row not found')
+      expect(within(row).getByText((_, node) => normalizeSpaces(node?.textContent ?? '') === '3 800,00 EUR')).toBeInTheDocument()
     })
   })
 

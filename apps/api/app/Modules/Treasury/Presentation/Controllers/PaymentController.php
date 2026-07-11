@@ -652,7 +652,8 @@ class PaymentController extends Controller
                     ->where('company_id', $companyId)
                     ->find($customerRepositoryId);
 
-                if (! $customerRepository instanceof PaymentRepository || $customerRepository->gl_account_id === null) {
+                if (! $customerRepository instanceof PaymentRepository
+                    || (! $isDeferredCustomer && $customerRepository->gl_account_id === null)) {
                     return response()->json([
                         'error' => [
                             'code' => 'PAYMENT_REQUIRES_LEDGERED_REPOSITORY',
@@ -962,13 +963,17 @@ class PaymentController extends Controller
 
                 /** @var string|null $primaryJournalEntryId */
                 $primaryJournalEntryId = null;
+                $journalEntry = null;
 
                 if (
                     $repository instanceof PaymentRepository
-                    && $repository->gl_account_id
                     && bccomp($totalAllocatedForGL, '0', $this->scale()) > 0
                 ) {
-                    if ($isSupplierPayment) {
+                    $postingDebitAccountId = $isDeferredCustomer
+                        ? $portfolioDebitAccountId
+                        : $repository->gl_account_id;
+
+                    if ($postingDebitAccountId !== null && $isSupplierPayment) {
                         // Supplier-side: Dr SupplierPayable (401, partner-tagged) / Cr Bank.
                         // Posted synchronously in-transaction so it returns the POSTED entry;
                         // its JournalEntryPosted event fires afterCommit and the
@@ -979,22 +984,20 @@ class PaymentController extends Controller
                             partnerId: $validated['partner_id'],
                             paymentId: $payment->id,
                             amount: $totalAllocatedForGL,
-                            paymentMethodAccountId: $repository->gl_account_id,
+                            paymentMethodAccountId: $postingDebitAccountId,
                             date: new \DateTimeImmutable($validated['payment_date']),
                             user: $user,
                             description: "Supplier payment - {$payment->reference}",
                             currencyCode: $payment->currency,
                             mode: PostingMode::SynchronousInTransaction,
                         );
-                    } else {
+                    } elseif ($postingDebitAccountId !== null) {
                         $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
                             companyId: $companyId,
                             partnerId: $validated['partner_id'],
                             paymentId: $payment->id,
                             amount: $totalAllocatedForGL,
-                            paymentMethodAccountId: $isDeferredCustomer
-                                ? $portfolioDebitAccountId
-                                : $repository->gl_account_id,
+                            paymentMethodAccountId: $postingDebitAccountId,
                             date: new \DateTimeImmutable($validated['payment_date']),
                             description: "Customer payment - {$payment->reference}",
                             user: $user,
@@ -1003,11 +1006,13 @@ class PaymentController extends Controller
                         );
                     }
 
-                    $primaryJournalEntryId = $journalEntry->id;
+                    if ($journalEntry !== null) {
+                        $primaryJournalEntryId = $journalEntry->id;
 
-                    // Link journal entry to payment
-                    $payment->journal_entry_id = $journalEntry->id;
-                    $payment->save();
+                        // Link journal entry to payment
+                        $payment->journal_entry_id = $journalEntry->id;
+                        $payment->save();
+                    }
                 }
 
                 // Handle excess amount as customer advance — posted BEFORE the cash
@@ -1020,6 +1025,7 @@ class PaymentController extends Controller
 
                 /** @var string|null $advanceJournalEntryId */
                 $advanceJournalEntryId = null;
+                $advanceDebitAccountId = null;
 
                 if (! $isSupplierPayment && bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId) {
                     if (! $repository instanceof PaymentRepository) {
@@ -1031,16 +1037,20 @@ class PaymentController extends Controller
                         $repository = $foundRepository;
                     }
 
-                    if ($repository instanceof PaymentRepository && $repository->gl_account_id) {
+                    if ($repository instanceof PaymentRepository) {
+                        $advanceDebitAccountId = $isDeferredCustomer
+                            ? $portfolioDebitAccountId
+                            : $repository->gl_account_id;
+                    }
+
+                    if ($advanceDebitAccountId !== null) {
                         // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer Advance)
                         $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
                             companyId: $companyId,
                             partnerId: $validated['partner_id'],
                             advanceId: $payment->id,
                             amount: $excessAmount,
-                            paymentMethodAccountId: $isDeferredCustomer
-                                ? $portfolioDebitAccountId
-                                : $repository->gl_account_id,
+                            paymentMethodAccountId: $advanceDebitAccountId,
                             date: new \DateTimeImmutable($validated['payment_date']),
                             user: $user,
                             description: "Customer advance from payment {$payment->reference}",

@@ -73,6 +73,18 @@ final class InstrumentLifecycleReceiveTest extends TestCase
         $this->service()->updateDetails($instrument->id, ['reference' => 'NOPE'], $context['user']->id);
     }
 
+    public function test_at_sight_cheque_clears_needs_details_without_maturity_date(): void
+    {
+        $context = $this->context();
+        $instrument = $this->service()->receive($this->receiveData($context, needsDetails: true));
+
+        $updated = $this->service()->updateDetails($instrument->id, [
+            'reference' => 'CHK-AT-SIGHT-COMPLETE',
+        ], $context['user']->id);
+
+        $this->assertFalse($updated->needs_details);
+    }
+
     public function test_custody_transfer_rejects_deposited_instrument(): void
     {
         $context = $this->context();

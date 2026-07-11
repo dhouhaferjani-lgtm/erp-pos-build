@@ -658,6 +658,10 @@ class PaymentRefundService
             return [];
         }
 
+        foreach ($originalPayments as $originalPayment) {
+            $this->assertInstrumentSettledForCashUndo($originalPayment);
+        }
+
         // Validate totalToRefund does not exceed receipt total
         /** @var numeric-string $receiptTotal */
         $receiptTotal = '0';

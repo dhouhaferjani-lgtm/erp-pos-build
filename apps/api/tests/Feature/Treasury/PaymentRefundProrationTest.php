@@ -25,11 +25,16 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
+use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
+use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
+use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\ProrationStrategy;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
 use App\Shared\Domain\CurrencyScale;
@@ -232,6 +237,36 @@ class PaymentRefundProrationTest extends TestCase
         ]);
 
         return [$receipt, $cardPayment, $cashPayment];
+    }
+
+    public function test_receipt_proration_rejects_a_payment_linked_to_pending_instrument(): void
+    {
+        [$receipt, $cardPayment] = $this->makeSaleReceiptWithTwoPayments('60.00', '40.00');
+        $instrument = PaymentInstrument::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'payment_method_id' => $cardPayment->payment_method_id,
+            'payment_id' => $cardPayment->id,
+            'partner_id' => $this->customer->id,
+            'reference' => 'POS-PENDING-REFUND',
+            'amount' => '60.00',
+            'currency' => 'EUR',
+            'received_date' => now()->toDateString(),
+            'status' => InstrumentStatus::Received,
+            'kind' => InstrumentKind::Cheque,
+            'direction' => InstrumentDirection::Inbound,
+            'origin' => InstrumentOrigin::Pos,
+        ]);
+        $cardPayment->update(['instrument_id' => $instrument->id]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('instrument');
+        $this->refundService->refundReceiptPayments(
+            $receipt,
+            '10.00',
+            ProrationStrategy::Proportional,
+            Str::uuid()->toString(),
+        );
     }
 
     /**

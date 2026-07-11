@@ -116,6 +116,34 @@ final class DeferredTenderPaymentTest extends TestCase
         $this->assertSame('110.000', PaymentInstrument::query()->where('payment_id', $paymentId)->sole()->amount);
     }
 
+    public function test_deferred_customer_posts_portfolio_entries_with_unledgered_custody_repository(): void
+    {
+        $this->bank = PaymentRepository::factory()->for($this->company)->create([
+            'tenant_id' => $this->tenant->id,
+            'type' => 'safe',
+            'currency' => 'TND',
+            'balance' => '0.000',
+            'gl_account_id' => null,
+        ]);
+        $invoice = $this->invoice('100.000');
+        $method = $this->method(InstrumentKind::Cheque);
+
+        $response = $this->pay($method, '110.000', $invoice, [
+            'instrument' => ['reference' => 'CH-CUSTODY-110'],
+        ])->assertCreated();
+        $paymentId = (string) $response->json('data.id');
+
+        $debits = JournalEntry::query()->whereIn('source_type', ['customer_payment', 'advance'])
+            ->where('source_id', $paymentId)->with('lines.account')->get()
+            ->flatMap->lines->where('account.code', '5312')
+            ->reduce(fn (string $sum, $line): string => bcadd($sum, $line->debit, 3), '0');
+
+        $this->assertSame('110.000', $debits);
+        $this->assertDatabaseCount('repository_movements', 0);
+        $this->assertSame('0.000', $this->bank->fresh()?->balance);
+        $this->assertSame(DocumentStatus::Paid, $invoice->fresh()?->status);
+    }
+
     public function test_deferred_payment_requires_repository_and_rejects_withholding(): void
     {
         $invoice = $this->invoice('20.000');

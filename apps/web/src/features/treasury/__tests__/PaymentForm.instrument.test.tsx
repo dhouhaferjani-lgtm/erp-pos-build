@@ -84,6 +84,13 @@ const CASH_METHOD = {
   is_push: true,
 }
 
+const EFFET_METHOD = {
+  ...CHEQUE_METHOD,
+  id: '55555555-5555-4555-8555-555555555555',
+  name: 'Effet',
+  instrument_kind: 'effet',
+}
+
 const BANK_REPOSITORY = {
   id: '33333333-3333-4333-8333-333333333333',
   code: 'BANK',
@@ -201,6 +208,21 @@ describe('PaymentForm deferred-tender instrument payload', () => {
         bank_account: undefined,
       },
     }))
+  })
+
+  it('requires a maturity date for effet methods', async () => {
+    renderForm([EFFET_METHOD])
+    await fillRequiredPaymentFields(EFFET_METHOD.id)
+    fireEvent.change(screen.getByLabelText('treasury:instruments.reference *'), {
+      target: { value: 'EFF-2026-0042' },
+    })
+
+    const maturity = screen.getByLabelText('treasury:instruments.maturityDate *')
+    expect(maturity).toBeRequired()
+    fireEvent.click(screen.getByRole('button', { name: 'common:save' }))
+
+    await waitFor(() => expect(maturity).toBeInvalid())
+    expect(mockApiPost).not.toHaveBeenCalled()
   })
 
   it('keeps immediate payments free of instrument UI and payload changes', async () => {

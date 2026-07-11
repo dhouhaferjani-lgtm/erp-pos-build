@@ -99,6 +99,14 @@ final class DeferredTenderGuardsTest extends TestCase
         $this->assertDatabaseCount('repository_movements', 1);
         $this->assertSame('150.000', $this->bank->fresh()?->balance);
         $entry = JournalEntry::query()->with('lines')->findOrFail($payment->journal_entry_id);
+        $supplierPayableId = Account::findByPurposeOrFail(
+            $this->company->id,
+            SystemAccountPurpose::SupplierPayable,
+        )->id;
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'supplier_payment')->count());
+        $this->assertSame(0, JournalEntry::query()->whereIn('source_type', ['instrument', 'instrument_remittance'])->count());
+        $this->assertCount(2, $entry->lines);
+        $this->assertSame('50.000', $entry->lines->firstWhere('account_id', $supplierPayableId)?->debit);
         $this->assertSame('50.000', $entry->lines->firstWhere('account_id', $this->bank->gl_account_id)?->credit);
     }
 
@@ -125,27 +133,27 @@ final class DeferredTenderGuardsTest extends TestCase
                 'repository_id' => $this->bank->id,
                 'amount' => '20.000',
             ]],
-        ])->assertUnprocessable();
+        ])->assertUnprocessable()->assertJsonPath('error.code', 'DEFERRED_METHOD_NOT_SUPPORTED');
         $this->actingAs($this->user)->postJson("/api/v1/documents/{$invoice->id}/split-payment", [
             'splits' => [
                 ['payment_method_id' => $method->id, 'amount' => '10.000', 'repository_id' => $this->bank->id],
                 ['payment_method_id' => $method->id, 'amount' => '10.000', 'repository_id' => $this->bank->id],
             ],
-        ])->assertUnprocessable();
+        ])->assertUnprocessable()->assertJsonPath('error.code', 'DEFERRED_METHOD_NOT_SUPPORTED');
         $this->actingAs($this->user)->postJson('/api/v1/payments/deposit', [
             'partner_id' => $this->partner->id,
             'payment_method_id' => $method->id,
             'amount' => '20.000',
             'currency' => 'TND',
             'repository_id' => $this->bank->id,
-        ])->assertUnprocessable();
+        ])->assertUnprocessable()->assertJsonPath('error.code', 'DEFERRED_METHOD_NOT_SUPPORTED');
         $this->actingAs($this->user)->postJson('/api/v1/payments/on-account', [
             'partner_id' => $this->partner->id,
             'payment_method_id' => $method->id,
             'amount' => '20.000',
             'currency' => 'TND',
             'repository_id' => $this->bank->id,
-        ])->assertUnprocessable();
+        ])->assertUnprocessable()->assertJsonPath('error.code', 'DEFERRED_METHOD_NOT_SUPPORTED');
     }
 
     public function test_all_four_side_doors_still_accept_immediate_methods(): void
@@ -216,23 +224,29 @@ final class DeferredTenderGuardsTest extends TestCase
     {
         $method = $this->method(InstrumentKind::Cheque);
         $service = app(PaymentRefundService::class);
-        foreach (['full', 'partial', 'reverse'] as $operationName) {
-            [$payment] = $this->pendingPayment($method, $operationName);
-            try {
-                match ($operationName) {
-                    'full' => $service->refundPayment($payment, 'blocked'),
-                    'partial' => $service->partialRefund($payment, '5.000', 'blocked'),
-                    'reverse' => $service->reversePayment($payment, 'blocked'),
-                };
-                $this->fail('pending instrument must block the cash refund/reverse path');
-            } catch (RuntimeException $exception) {
-                $this->assertStringContainsString('instrument', strtolower($exception->getMessage()));
+        foreach ([InstrumentStatus::Received, InstrumentStatus::Deposited, InstrumentStatus::Bounced] as $status) {
+            foreach (['full', 'partial', 'reverse'] as $operationName) {
+                [$payment] = $this->pendingPayment($method, $status->value.'-'.$operationName, $status);
+                try {
+                    match ($operationName) {
+                        'full' => $service->refundPayment($payment, 'blocked'),
+                        'partial' => $service->partialRefund($payment, '5.000', 'blocked'),
+                        'reverse' => $service->reversePayment($payment, 'blocked'),
+                    };
+                    $this->fail("{$status->value} instrument must block the cash refund/reverse path");
+                } catch (RuntimeException $exception) {
+                    $this->assertStringContainsString('instrument', strtolower($exception->getMessage()));
+                }
             }
         }
 
         [$payment, $instrument] = $this->pendingPayment($method, 'cleared');
         $instrument->update(['status' => InstrumentStatus::Cleared]);
         $this->assertTrue($service->canRefund($payment->fresh() ?? $payment));
+
+        [$cancelledPayment, $cancelledInstrument] = $this->pendingPayment($method, 'cancelled');
+        $cancelledInstrument->update(['status' => InstrumentStatus::Cancelled]);
+        $this->assertTrue($service->canRefund($cancelledPayment->fresh() ?? $cancelledPayment));
     }
 
     public function test_cleared_deferred_payment_can_refund_from_the_cleared_bank_repository(): void
@@ -343,8 +357,11 @@ final class DeferredTenderGuardsTest extends TestCase
     }
 
     /** @return array{Payment, PaymentInstrument} */
-    private function pendingPayment(PaymentMethod $method, string $suffix): array
-    {
+    private function pendingPayment(
+        PaymentMethod $method,
+        string $suffix,
+        InstrumentStatus $status = InstrumentStatus::Received,
+    ): array {
         $payment = Payment::factory()->completed()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -364,7 +381,7 @@ final class DeferredTenderGuardsTest extends TestCase
             'amount' => '30.000',
             'currency' => 'TND',
             'received_date' => now()->toDateString(),
-            'status' => InstrumentStatus::Received,
+            'status' => $status,
             'kind' => InstrumentKind::Cheque,
             'direction' => 'inbound',
             'origin' => 'web',
