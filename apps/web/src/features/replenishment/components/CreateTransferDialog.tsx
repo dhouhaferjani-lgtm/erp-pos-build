@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { useQueries } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { RequirePermission } from '@/components/auth'
@@ -6,9 +7,11 @@ import { Button } from '@/components/atoms/Button/Button'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { Modal } from '@/components/organisms/Modal/Modal'
 import { useLocations } from '@/features/locations/hooks/useLocations'
-import { bccomp } from '@/lib/decimal'
+import { getProductStock } from '@/features/products/api/productStock'
+import { bccomp, bcsub } from '@/lib/decimal'
 import { getErrorMessage } from '@/lib/api'
 import { textColors, tokens } from '@/lib/designTokens'
+import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useCreateTransferAction } from '../api/queries'
 import type { ReplenishmentLine } from '../types'
 
@@ -22,15 +25,30 @@ function validQuantity(value: string): boolean {
   return /^\d+(?:\.\d{1,4})?$/.test(value) && bccomp(value, '0') > 0
 }
 
+function initialQuantities(selected: ReplenishmentLine[]): Record<string, string> {
+  const values: Record<string, string> = {}
+  for (const line of selected) {
+    if (line.requested_qty !== null) values[line.id] = line.requested_qty
+  }
+  return values
+}
+
 export function CreateTransferDialog({ selected, isOpen, onClose }: CreateTransferDialogProps) {
   const { t } = useTranslation('replenishment')
   const locations = (useLocations().data ?? []).filter((location) => location.isActive)
   const mutation = useCreateTransferAction()
   const [sourceLocationId, setSourceLocationId] = useState('')
-  const [quantities, setQuantities] = useState<Record<string, string>>(() => Object.fromEntries(
-    selected.map((line) => [line.id, line.requested_qty ?? '1']),
-  ))
+  const [quantities, setQuantities] = useState<Record<string, string>>(() => initialQuantities(selected))
+  const productIds = useMemo(() => [...new Set(selected.map((line) => line.product_id))], [selected])
+  const stockQueries = useQueries({
+    queries: productIds.map((productId) => ({
+      queryKey: tenantScopedKey(['product-stock', productId]),
+      queryFn: () => getProductStock(productId),
+    })),
+  })
+  const stockByProduct = new Map(productIds.map((productId, index) => [productId, stockQueries[index]?.data]))
   const destinationIds = useMemo(() => new Set(selected.map((line) => line.location_id)), [selected])
+  const sourceLocations = locations.filter((location) => !destinationIds.has(location.id))
   const destinationGroups = useMemo(() => {
     const groups = new Map<string, { name: string; count: number }>()
     for (const line of selected) {
@@ -41,10 +59,21 @@ export function CreateTransferDialog({ selected, isOpen, onClose }: CreateTransf
     return [...groups.values()]
   }, [selected])
   const source = locations.find((location) => location.id === sourceLocationId)
+  const quantityFor = (line: ReplenishmentLine): string => {
+    if (Object.prototype.hasOwnProperty.call(quantities, line.id)) return quantities[line.id] ?? ''
+    const stock = stockByProduct.get(line.product_id)?.locations.find(
+      (location) => location.location_id === line.location_id,
+    )
+    if (stock?.max_quantity !== null && stock?.max_quantity !== undefined) {
+      const suggestion = bcsub(stock.max_quantity, stock.available, 4)
+      if (bccomp(suggestion, '0') > 0) return suggestion
+    }
+    return '1'
+  }
   const canSubmit = sourceLocationId !== ''
     && !destinationIds.has(sourceLocationId)
     && selected.length > 0
-    && selected.every((line) => validQuantity(quantities[line.id] ?? ''))
+    && selected.every((line) => validQuantity(quantityFor(line)))
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -52,7 +81,7 @@ export function CreateTransferDialog({ selected, isOpen, onClose }: CreateTransf
     try {
       const result = await mutation.mutateAsync({
         source_location_id: sourceLocationId,
-        lines: selected.map((line) => ({ request_id: line.id, quantity: quantities[line.id] ?? '' })),
+        lines: selected.map((line) => ({ request_id: line.id, quantity: quantityFor(line) })),
       })
       toast.success(
         <span>
@@ -84,7 +113,7 @@ export function CreateTransferDialog({ selected, isOpen, onClose }: CreateTransf
               className={tokens.select.base}
             >
               <option value="">{t('capture.select_location')}</option>
-              {locations.filter((location) => !destinationIds.has(location.id)).map((location) => (
+              {sourceLocations.map((location) => (
                 <option key={location.id} value={location.id}>{location.name}</option>
               ))}
             </select>
@@ -106,7 +135,7 @@ export function CreateTransferDialog({ selected, isOpen, onClose }: CreateTransf
                 <QuantityInput
                   id={`transfer-qty-${line.id}`}
                   aria-label={`${t('dialog.quantity')} ${line.product_name}`}
-                  value={quantities[line.id] ?? ''}
+                  value={quantityFor(line)}
                   onChange={(value) => { setQuantities((current) => ({ ...current, [line.id]: value })) }}
                   decimalPlaces={4}
                   min="0.0001"

@@ -49,6 +49,12 @@ vi.mock('@/components/molecules/line-items/LineItemEntryBar', () => ({
   ),
 }))
 
+vi.mock('../components/ReplenishmentStatusBadge', () => ({
+  ReplenishmentStatusBadge: ({ status }: { status: string }) => (
+    <span data-testid={`feature-status-${status}`}>{status}</span>
+  ),
+}))
+
 describe('ReplenishmentCapturePage', () => {
   beforeEach(() => {
     mutateAsync.mockReset()
@@ -89,7 +95,7 @@ describe('ReplenishmentCapturePage', () => {
       })
     })
     expect(screen.getByText('Serum')).toBeInTheDocument()
-    expect(screen.getByText('status.pending')).toBeInTheDocument()
+    expect(screen.getByTestId('feature-status-pending')).toBeInTheDocument()
   })
 
   it('surfaces a forbidden response through QueryError', () => {

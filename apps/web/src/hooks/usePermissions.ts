@@ -27,7 +27,7 @@ export const PERMISSIONS = {
   'document-ingestions.reject': ['admin', 'purchases', 'manager'],
 
   // Inventory
-  'inventory.view': ['admin', 'inventory', 'manager'],
+  'inventory.view': ['admin', 'inventory', 'manager', 'operator'],
   'inventory.create': ['admin', 'inventory', 'manager'],
   'inventory.edit': ['admin', 'inventory', 'manager'],
 
@@ -238,6 +238,8 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   purchases: ['purchases.view'],
   'document-ingestions': ['document-ingestions.view'],
   inventory: ['inventory.view'],
+  'inventory.transfers.view': ['inventory.transfers.view'],
+  'replenishment.view': ['replenishment.view'],
   expenses: ['expenses.view'],
   'expense-categories': ['expense-categories.view'],
   treasury: ['treasury.view'],

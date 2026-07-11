@@ -89,7 +89,7 @@ export function AddToPoDialog({ selected, isOpen, onClose }: AddToPoDialogProps)
       <Modal isOpen={isOpen} onClose={onClose} title={t('actions.add_to_po')} size="lg">
         <form className="space-y-4" onSubmit={(event) => { void submit(event) }}>
           <div>
-            <label className={tokens.label.base}>{t('dialog.supplier')}</label>
+            <span className={tokens.label.base}>{t('dialog.supplier')}</span>
             <PartnerSearchSelect
               value={supplierId}
               onChange={(value) => {

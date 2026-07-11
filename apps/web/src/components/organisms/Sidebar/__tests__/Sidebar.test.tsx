@@ -546,6 +546,21 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       expect(transfersLink).toHaveAttribute('href', '/inventory/stock-transfers')
     })
 
+    it('shows replenishment but hides transfer links when an operator lacks transfer view', async () => {
+      mockCanAccessModule.mockImplementation((permission: string) => (
+        permission === 'inventory' || permission === 'replenishment.view'
+      ))
+      renderSidebar(retailConfig)
+
+      expect(await screen.findByRole('link', { name: 'replenishment:title' })).toHaveAttribute(
+        'href',
+        '/inventory/replenishment',
+      )
+      expect(screen.queryByRole('link', { name: /navigation\.stockTransfers/i })).not.toBeInTheDocument()
+      expect(mockCanAccessModule).toHaveBeenCalledWith('replenishment.view')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('inventory.transfers.view')
+    })
+
     it('splits Catalog and Inventory into separate groups', async () => {
       renderSidebar(retailConfig)
 

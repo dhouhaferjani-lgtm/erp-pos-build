@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { QuantityInput } from '@/components/atoms'
-import { StatusBadge } from '@/components/atoms/StatusBadge/StatusBadge'
 import { LineItemEntryBar } from '@/components/molecules/line-items/LineItemEntryBar'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { QueryError } from '@/components/QueryError'
 import { useLocations } from '@/features/locations/hooks/useLocations'
 import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 import { useCaptureReplenishment } from '../api/queries'
+import { ReplenishmentStatusBadge } from '../components/ReplenishmentStatusBadge'
 import type { ReplenishmentLine } from '../types'
 
 type SubmittedLine = Pick<ReplenishmentLine, 'id' | 'product_name' | 'status'>
@@ -123,9 +123,7 @@ export function ReplenishmentCapturePage() {
             {submitted.map((line) => (
               <li key={line.id} className="flex items-center justify-between gap-3 p-4">
                 <span className={textColors.primary}>{line.product_name}</span>
-                <StatusBadge tone={line.status === 'in_progress' ? 'info' : 'pending'}>
-                  {t(`status.${line.status}`)}
-                </StatusBadge>
+                <ReplenishmentStatusBadge status={line.status} />
               </li>
             ))}
           </ul>

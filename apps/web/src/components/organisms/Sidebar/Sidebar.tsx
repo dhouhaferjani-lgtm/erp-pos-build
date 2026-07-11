@@ -209,8 +209,8 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       children: [
         { key: 'stockLevels', href: '/inventory/stock', icon: Layers },
         { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
-        { key: 'stockTransfers', href: '/inventory/stock-transfers', icon: Repeat },
-        { key: 'replenishment', labelKey: 'replenishment:title', href: '/inventory/replenishment', icon: PackagePlus },
+        { key: 'stockTransfers', href: '/inventory/stock-transfers', icon: Repeat, permission: 'inventory.transfers.view' },
+        { key: 'replenishment', labelKey: 'replenishment:title', href: '/inventory/replenishment', icon: PackagePlus, permission: 'replenishment.view' },
         { key: 'counting', href: '/inventory/counting', icon: ClipboardCheck },
         { key: 'batches', href: '/inventory/batches', icon: Pill, module: 'BatchExpiry' },
         { key: 'expiryWriteOff', href: '/inventory/expiry-write-off', icon: Trash2, module: 'BatchExpiry', permission: 'batches.write-off' },

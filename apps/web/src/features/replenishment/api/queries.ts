@@ -11,7 +11,7 @@ export function useOpenReplenishment(filters: Omit<ReplenishmentListFilters, 'st
 export function useReplenishmentHistory(filters: ReplenishmentListFilters) { return useQuery({ queryKey: tenantScopedKey([namespace, 'history', filters]), queryFn: () => replenishmentApi.history(filters), enabled: enabled() }) }
 function useInvalidatingMutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>, extras: string[] = []) {
   const client = useQueryClient()
-  return useMutation({ mutationFn, onSuccess: () => { void client.invalidateQueries({ queryKey: tenantScopedKey([namespace]) }); for (const key of extras) void client.invalidateQueries({ queryKey: tenantScopedKey([key]) }) } })
+  return useMutation({ mutationFn, onSuccess: () => { void client.invalidateQueries({ queryKey: [namespace] }); for (const key of extras) void client.invalidateQueries({ queryKey: [key] }) } })
 }
 export function useCaptureReplenishment() { return useInvalidatingMutation(replenishmentApi.capture) }
 export function useCreateTransferAction() { return useInvalidatingMutation(replenishmentApi.createTransfer, ['stock-transfers', 'stock-levels']) }
