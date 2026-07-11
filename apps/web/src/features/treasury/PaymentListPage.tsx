@@ -11,13 +11,12 @@ import { tokens, textColors } from '../../lib/designTokens'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { formatCurrency } from '../../lib/format'
-import { Button, StatusBadge, statusTone, type StatusTone } from '../../components/atoms'
-import {
-  DataTable,
-  type DataTableColumn,
-  EmptyState,
-  ListPageLayout,
-} from '../../components/molecules'
+import { Button } from '../../components/atoms/Button/Button'
+import { StatusBadge, type StatusTone } from '../../components/atoms/StatusBadge/StatusBadge'
+import { statusTone } from '../../components/atoms/StatusBadge/statusTone'
+import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
+import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
+import { ListPageLayout } from '../../components/molecules/ListPageLayout/ListPageLayout'
 
 interface Payment {
   id: string

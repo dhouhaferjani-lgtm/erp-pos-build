@@ -208,7 +208,7 @@ export function InstrumentDetailPage() {
         actions={
           <>
             {canRemit ? (
-              <Button className="gap-2" onClick={() => { void navigate(`/treasury/remittances/new?instrument_id=${instrument.id}`) }}>
+              <Button className="gap-2" onClick={() => { void navigate(`/treasury/remittances/new?instrument_id=${instrument.id}&kind=${instrument.kind ?? 'cheque'}`) }}>
                 <Send className="h-4 w-4" /> {t('treasury:instruments.remit')}
               </Button>
             ) : null}

@@ -586,6 +586,37 @@
       }
     }
   },
+  "remittances": {
+    "title": "Remittances",
+    "listSubtitle": "Prepare, remit, and settle payment instruments",
+    "new": "New remittance",
+    "createTitle": "Create remittance",
+    "createSubtitle": "Select received instruments for collection",
+    "number": "Slip number",
+    "bankRepository": "Bank repository",
+    "kind": "Instrument kind",
+    "status": "Status",
+    "count": "Count",
+    "total": "Total",
+    "amount": "Amount",
+    "instruments": "Received instruments",
+    "selectedCount": "{{count}} selected",
+    "createAndRemit": "Create and remit",
+    "createError": "The remittance could not be created.",
+    "earlyWarning": "Post-dated — remitting before maturity",
+    "empty": "No remittances found",
+    "remit": "Remit",
+    "print": "Print bordereau",
+    "bordereau": "Collection bordereau",
+    "depositor": "Depositor",
+    "date": "Date",
+    "drawer": "Drawer",
+    "draweeBank": "Drawee bank",
+    "reference": "Reference",
+    "maturity": "Maturity",
+    "statuses": { "draft": "Draft", "remitted": "Remitted", "closed": "Closed" },
+    "lineStatuses": { "pending": "Pending", "cleared": "Cleared", "bounced": "Bounced" }
+  },
   "reconciliation": {
     "openingBalance": "Opening Balance",
     "startModal": {

@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from '../components/layout/Layout'
-import { RequireAuth } from '../features/auth'
+import { RequireAuth } from '../features/auth/AuthProvider'
 import { RequirePermission } from '../components/auth'
 import { ModuleGuard } from '../components/guards'
 import { LoadingSpinner } from '../components/atoms/Spinner'
@@ -72,6 +72,9 @@ const PaymentDetailPage = lazy(() => import('../features/treasury/PaymentDetailP
 const PaymentForm = lazy(() => import('../features/treasury/PaymentForm').then((m) => ({ default: m.PaymentForm })))
 const InstrumentListPage = lazy(() => import('../features/treasury/InstrumentListPage').then((m) => ({ default: m.InstrumentListPage })))
 const InstrumentDetailPage = lazy(() => import('../features/treasury/InstrumentDetailPage').then((m) => ({ default: m.InstrumentDetailPage })))
+const RemittanceListPage = lazy(() => import('../features/treasury/RemittanceListPage').then((m) => ({ default: m.RemittanceListPage })))
+const RemittanceCreatePage = lazy(() => import('../features/treasury/RemittanceCreatePage').then((m) => ({ default: m.RemittanceCreatePage })))
+const RemittanceDetailPage = lazy(() => import('../features/treasury/RemittanceDetailPage').then((m) => ({ default: m.RemittanceDetailPage })))
 const RepositoryListPage = lazy(() => import('../features/treasury/RepositoryListPage').then((m) => ({ default: m.RepositoryListPage })))
 const RepositoryDetailPage = lazy(() => import('../features/treasury/RepositoryDetailPage').then((m) => ({ default: m.RepositoryDetailPage })))
 const PaymentMethodsPage = lazy(() => import('../features/treasury/PaymentMethodsPage').then((m) => ({ default: m.PaymentMethodsPage })))
@@ -1716,6 +1719,37 @@ export function AppRoutes() {
               <RequirePermission permission="instruments.view">
                 <SuspenseWrapper>
                   <InstrumentDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          <Route
+            path="remittances"
+            element={
+              <RequirePermission permission="instruments.remit">
+                <SuspenseWrapper>
+                  <RemittanceListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="remittances/new"
+            element={
+              <RequirePermission permission="instruments.remit">
+                <SuspenseWrapper>
+                  <RemittanceCreatePage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="remittances/:id"
+            element={
+              <RequirePermission permission="instruments.remit">
+                <SuspenseWrapper>
+                  <RemittanceDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

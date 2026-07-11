@@ -1,0 +1,16 @@
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .bordereau-print,
+  .bordereau-print * {
+    visibility: visible;
+  }
+
+  .bordereau-print {
+    inset: 0;
+    position: absolute;
+    width: 100%;
+  }
+}

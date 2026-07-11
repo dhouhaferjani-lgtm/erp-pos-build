@@ -586,6 +586,37 @@
       }
     }
   },
+  "remittances": {
+    "title": "Bordereaux de remise",
+    "listSubtitle": "Préparer, remettre et encaisser les instruments de paiement",
+    "new": "Nouveau bordereau",
+    "createTitle": "Créer un bordereau",
+    "createSubtitle": "Sélectionner les instruments reçus à l'encaissement",
+    "number": "Numéro du bordereau",
+    "bankRepository": "Compte bancaire",
+    "kind": "Type d'instrument",
+    "status": "Statut",
+    "count": "Nombre",
+    "total": "Total",
+    "amount": "Montant",
+    "instruments": "Instruments reçus",
+    "selectedCount": "{{count}} sélectionné(s)",
+    "createAndRemit": "Créer et remettre",
+    "createError": "Le bordereau n'a pas pu être créé.",
+    "earlyWarning": "Postdaté — remise avant l'échéance",
+    "empty": "Aucun bordereau",
+    "remit": "Remettre",
+    "print": "Imprimer le bordereau",
+    "bordereau": "Bordereau de remise à l'encaissement",
+    "depositor": "Déposant",
+    "date": "Date",
+    "drawer": "Tireur",
+    "draweeBank": "Banque tirée",
+    "reference": "Référence",
+    "maturity": "Échéance",
+    "statuses": { "draft": "Brouillon", "remitted": "Remis", "closed": "Clôturé" },
+    "lineStatuses": { "pending": "En attente", "cleared": "Encaissé", "bounced": "Impayé" }
+  },
   "reconciliation": {
     "openingBalance": "Solde d'ouverture",
     "startModal": {

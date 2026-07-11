@@ -273,6 +273,9 @@ final class InstrumentRemittanceController extends Controller
                 'amount' => $line->instrument->amount,
                 'currency' => $line->instrument->currency,
                 'status' => $line->instrument->status->value,
+                'drawer_name' => $line->instrument->drawer_name,
+                'bank_name' => $line->instrument->bank_name,
+                'maturity_date' => $line->instrument->maturity_date?->toDateString(),
             ],
         ];
     }

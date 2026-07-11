@@ -76,6 +76,11 @@ final class InstrumentRemittanceApiTest extends TestCase
     public function test_happy_path_two_lines_remit_then_clear_closes_slip(): void
     {
         $first = $this->instrument('30.000');
+        $first->update([
+            'drawer_name' => 'Acme SA',
+            'bank_name' => 'BIAT',
+            'maturity_date' => '2026-08-15',
+        ]);
         $second = $this->instrument('20.000');
         $slipId = $this->createSlip();
         $firstLine = $this->addLine($slipId, $first->id);
@@ -89,7 +94,12 @@ final class InstrumentRemittanceApiTest extends TestCase
             ->assertOk()->assertJsonPath('data.line_status', 'cleared');
 
         $this->actingAs($this->user)->getJson("/api/v1/instrument-remittances/{$slipId}")
-            ->assertOk()->assertJsonPath('data.status', 'closed')->assertJsonCount(2, 'data.lines');
+            ->assertOk()
+            ->assertJsonPath('data.status', 'closed')
+            ->assertJsonPath('data.lines.0.instrument.drawer_name', 'Acme SA')
+            ->assertJsonPath('data.lines.0.instrument.bank_name', 'BIAT')
+            ->assertJsonPath('data.lines.0.instrument.maturity_date', '2026-08-15')
+            ->assertJsonCount(2, 'data.lines');
     }
 
     public function test_draft_line_is_deletable_but_remitted_line_is_not(): void
