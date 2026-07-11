@@ -251,3 +251,11 @@
 - `pnpm vitest run src/features/treasury src/features/finance` — PASS, 115 suites / 356 tests, zero failures (JSON reporter used to contain the existing jsdom warning stream).
 - `git diff --check` — pass; the worktree contained only this verification-entry update before the RC2 documentation commit.
 - RC2 review scope: all RC1 findings are addressed and committed in `698a75fc2`. Manual web-registration idempotency remains an explicit non-money-path deferral because Task 11 did not contract an idempotency header and safe replay requires the semantic replay contract assigned to Task 16; see the RC1 remediation entry above.
+
+### Gate 2 verdict
+
+- RC attempts: 2. RC1 was CHANGES-REQUIRED by both Opus and the mandatory Fable escalation; RC2 was APPROVE by both reviewers.
+- Review artifacts: `docs/handoff/gate-reviews/GATE-2-rc1.md`, `GATE-2-rc1-fable.md`, `GATE-2-rc2.md`, and `GATE-2-rc2-fable.md`.
+- Final verdict: `VERDICT: APPROVE`. Fable was run despite Opus's approval because brief §3(c) requires escalation whenever this wave records a money-path deviation; the RC1 custody/GL coupling deviation was corrected and independently re-adjudicated.
+- Approved LOW carry-forwards: add an immediate-excess synchronous-advance/movement-link pin during Wave E/F; align the legacy deposit wrapper with `instruments.remit` or document the compatibility choice; record/resolve the spec's partner-or-null eligibility versus the stricter plan wording; add UUID validation to the new payment-on-account rule and opportunistically its identical siblings; use explicit payment-currency scale for supplied-instrument amount equality when that block is next touched. These were expressly adjudicated non-blocking by both RC2 reviewers and do not alter the approved money path.
+- Reconcile/deploy notes: Task 19 reconcile check #4 must exclude unlinked manually registered inbound instruments that have no receipt GL; deployment must re-seed the three new permissions and reset the tenant-blind Spatie permission cache.
