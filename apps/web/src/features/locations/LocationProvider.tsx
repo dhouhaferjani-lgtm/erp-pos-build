@@ -68,7 +68,7 @@ export function LocationProvider({ children }: LocationProviderProps) {
       toast.error(t('common:errors.locationsFetchFailed'))
       setLoading(false)
     }
-  }, [data, isLoading, isError, error, setLocations, setLoading])
+  }, [data, isLoading, isError, error, setLocations, setLoading, t])
 
   // Don't block rendering - locations are optional context
   return <>{children}</>

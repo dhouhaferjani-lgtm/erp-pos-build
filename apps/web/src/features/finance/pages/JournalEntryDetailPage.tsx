@@ -8,7 +8,7 @@ import type { JournalEntryStatus } from '../types'
 import { cn } from '../../../lib/utils'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { documentRouteTypeFromSource } from '../../../lib/entityRoutes'
-import { Button } from '../../../components/atoms'
+import { Button } from '../../../components/atoms/Button/Button'
 import { EntityLink } from '../../../components/molecules/EntityLink'
 import {
   StatusBadge,

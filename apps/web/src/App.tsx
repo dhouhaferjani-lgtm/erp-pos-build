@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Toaster } from 'sonner'
-import { AuthProvider } from './features/auth'
+import { AuthProvider } from './features/auth/AuthProvider'
 import { CompanyProvider } from './features/company/CompanyProvider'
 import { LocationProvider } from './features/locations/LocationProvider'
 import { CompanyConfigProvider } from './contexts/CompanyConfigContext'

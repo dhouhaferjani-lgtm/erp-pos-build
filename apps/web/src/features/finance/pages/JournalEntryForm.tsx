@@ -9,13 +9,11 @@ import { cn } from '../../../lib/utils'
 import { tokens, textColors, borderColors } from '../../../lib/designTokens'
 import { PageHeader } from '../../../components/molecules/PageHeader'
 import { StickyFormFooter } from '../../../components/molecules/StickyFormFooter/StickyFormFooter'
-import {
-  Button,
-  FormField,
-  Input,
-  Select,
-  MoneyInput,
-} from '../../../components/atoms'
+import { Button } from '../../../components/atoms/Button/Button'
+import { FormField } from '../../../components/atoms/FormField/FormField'
+import { Input } from '../../../components/atoms/Input/Input'
+import { MoneyInput } from '../../../components/atoms/MoneyInput/MoneyInput'
+import { Select } from '../../../components/atoms/Select/Select'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 // react-hook-form deferred: journal-entry payload logic is intentionally out of scope for this styling-only leg.
 

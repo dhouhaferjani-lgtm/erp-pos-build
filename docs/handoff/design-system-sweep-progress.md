@@ -29,7 +29,8 @@ Status: implementation verified; ready for gate-7 review.
   - Per-directory design audit JSON counts for Leg 4: all listed directories total 0 (C1 0, C2 0, C3 0, C4 0, C5 0, C6 0).
   - `node apps/web/tools/audit-tanstack-keys.mjs` passed: 0 violations.
   - `pnpm --filter @autoerp/web typecheck` passed.
-  - `pnpm --filter @autoerp/web lint` passed with 0 errors and 6,395 warnings; chained TanStack and design-system audits passed.
+  - `pnpm --filter @autoerp/web lint` passed with 0 errors and 6,394 warnings; chained TanStack and design-system audits passed.
+  - `npx react-doctor@latest --verbose --scope changed --base e54b441166bec6070d39c7a078a2dc1167449119 --blocking warning` passed with no changed-scope warnings after direct-import cleanup and the `LocationProvider` dependency fix.
   - Full per-directory default-pool Vitest path runs passed: `scheduling/` 5 files, 12 tests; `workshop-bundles/` 5 files, 19 tests; `document-ingestions/` 8 files, 59 tests; `workshop-technicians/` 9 files, 42 tests; `purchases/` 12 files, 106 tests; `progression/` 6 files, 30 tests; `finance/` 22 files, 127 tests; `enrichment/` 6 files, 18 tests; `treasury/` 25 files, 187 tests; `channels/` 2 files, 8 tests; `owner-dashboard/` 10 files, 29 tests; `menu/` 3 files, 23 tests; `income/` 5 files, 15 tests; `withholding/` 7 files, 21 tests; `workshop-work-orders/` 10 files, 31 tests. Existing act-warning and `--localstorage-file` warning noise remains.
 
 ## Gate 6 Final Scope — Components, Pages, Lib Residue, Wave 6

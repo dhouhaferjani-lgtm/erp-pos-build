@@ -18,20 +18,15 @@ import { FilterTabs } from '../../components/molecules/FilterTabs'
 import { LocationSelector } from '../locations/LocationSelector'
 import { useLocation } from '../../hooks/useLocation'
 import { getLocations } from '../locations/api/locations'
-import {
-  Button,
-  StatusBadge,
-  statusTone,
-  Select,
-  Textarea,
-  QuantityInput,
-} from '../../components/atoms'
+import { Button } from '../../components/atoms/Button/Button'
+import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
+import { Select } from '../../components/atoms/Select/Select'
+import { StatusBadge } from '../../components/atoms/StatusBadge/StatusBadge'
+import { statusTone } from '../../components/atoms/StatusBadge/statusTone'
+import { Textarea } from '../../components/atoms/Textarea/Textarea'
 import { PageHeader } from '../../components/molecules/PageHeader'
-import {
-  DataTable,
-  type DataTableColumn,
-  EmptyState,
-} from '../../components/molecules'
+import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
+import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
 import type { StockLevel, StockLevelsResponse } from './types'
 import { stockLevelsInvalidationPredicate } from './_invalidation'
 

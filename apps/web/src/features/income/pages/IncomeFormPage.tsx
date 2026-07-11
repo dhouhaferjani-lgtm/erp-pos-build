@@ -5,7 +5,7 @@ import { ArrowLeft } from 'lucide-react'
 import { useIncome, useCreateIncome, useUpdateIncome } from '../hooks/useIncome'
 import { IncomeFormFields } from '../components/organisms/IncomeFormFields'
 import { PageHeader } from '../../../components/molecules/PageHeader'
-import { Button } from '../../../components/atoms'
+import { Button } from '../../../components/atoms/Button/Button'
 import { tokens, textColors, colors } from '../../../lib/designTokens'
 import type { CreateIncomeDTO } from '../types'
 // react-hook-form migration marker: controlled income payload remains covered by IncomeFormPage tests.

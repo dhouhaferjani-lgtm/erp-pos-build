@@ -17,15 +17,12 @@ import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
 import { LocationSelector } from '../locations/LocationSelector'
 import { useLocation } from '../../hooks/useLocation'
-import { StatusBadge, type StatusTone } from '../../components/atoms'
+import { StatusBadge, type StatusTone } from '../../components/atoms/StatusBadge/StatusBadge'
 import { EntityLink } from '../../components/molecules/EntityLink'
 import { documentRouteTypeFromSource } from '../../lib/entityRoutes'
 import { PageHeader } from '../../components/molecules/PageHeader'
-import {
-  DataTable,
-  type DataTableColumn,
-  EmptyState,
-} from '../../components/molecules'
+import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
+import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { reverseWriteOff } from '../batches/api/batches'
 import {

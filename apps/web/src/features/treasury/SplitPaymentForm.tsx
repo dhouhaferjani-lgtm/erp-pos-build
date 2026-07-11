@@ -9,7 +9,11 @@ import { tokens, textColors, borderColors, colors } from '../../lib/designTokens
 import { useCurrency } from '../../hooks/useCurrency'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { Button, FormField, Input, MoneyInput, Select } from '../../components/atoms'
+import { Button } from '../../components/atoms/Button/Button'
+import { FormField } from '../../components/atoms/FormField/FormField'
+import { Input } from '../../components/atoms/Input/Input'
+import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
+import { Select } from '../../components/atoms/Select/Select'
 // react-hook-form deferred: treasury split-payment payload logic is intentionally out of scope for this styling-only leg.
 
 interface PaymentMethod {
