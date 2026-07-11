@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReplenishmentLine } from '../types'
 import { ReplenishmentQueuePage } from '../pages/ReplenishmentQueuePage'
@@ -127,5 +128,45 @@ describe('ReplenishmentQueuePage', () => {
     })
     rerender(<ReplenishmentQueuePage />)
     expect(screen.getByText('Queue failed')).toBeInTheDocument()
+  })
+
+  it('links fulfilled history rows to the fulfilling transfer or purchase order', async () => {
+    const user = userEvent.setup()
+    historyQuery.mockReturnValue({
+      data: {
+        data: [
+          {
+            ...makeLine('hist-transfer', 'shop-a', 'Shop A', 'product-1', 'Serum'),
+            status: 'fulfilled',
+            fulfillment_type: 'transfer',
+            fulfillment_id: 'transfer-99',
+          },
+          {
+            ...makeLine('hist-po', 'shop-b', 'Shop B', 'product-2', 'Cream'),
+            status: 'fulfilled',
+            fulfillment_type: 'purchase_order',
+            fulfillment_id: 'po-42',
+          },
+        ],
+        meta: { current_page: 1, last_page: 1, total: 2, per_page: 25, from: 1, to: 2 },
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <MemoryRouter>
+        <ReplenishmentQueuePage />
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'status.fulfilled' }))
+
+    const transferLink = screen.getByRole('link', { name: 'history.view_transfer' })
+    expect(transferLink).toHaveAttribute('href', '/inventory/stock-transfers/transfer-99')
+
+    const poLink = screen.getByRole('link', { name: 'history.view_purchase_order' })
+    expect(poLink).toHaveAttribute('href', '/purchases/orders/po-42')
   })
 })

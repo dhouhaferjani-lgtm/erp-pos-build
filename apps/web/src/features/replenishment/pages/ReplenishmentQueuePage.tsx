@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { StickyNote } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { RequirePermission } from '@/components/auth'
@@ -226,7 +227,19 @@ function OpenQueue({ filters }: { filters: QueueFilters }) {
   )
 }
 
+function fulfillmentLink(line: ReplenishmentLine): { to: string; labelKey: string } | null {
+  if (line.fulfillment_id === null) return null
+  if (line.fulfillment_type === 'transfer') {
+    return { to: `/inventory/stock-transfers/${line.fulfillment_id}`, labelKey: 'history.view_transfer' }
+  }
+  if (line.fulfillment_type === 'purchase_order') {
+    return { to: `/purchases/orders/${line.fulfillment_id}`, labelKey: 'history.view_purchase_order' }
+  }
+  return null
+}
+
 function HistoryQueue({ status, filters }: { status: ReplenishmentStatus; filters: QueueFilters }) {
+  const { t } = useTranslation('replenishment')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
   const query = useReplenishmentHistory({
@@ -245,13 +258,21 @@ function HistoryQueue({ status, filters }: { status: ReplenishmentStatus; filter
   return (
     <section className={`${tokens.card.base} p-0`}>
       <ul className={`divide-y ${borderColors.divideLight}`}>
-        {query.data.data.map((line) => (
-          <li key={line.id} className="flex flex-wrap items-center gap-3 p-4">
-            <span className={`min-w-0 flex-1 font-medium ${textColors.primary}`}>{line.product_name}</span>
-            <span className={textColors.secondary}>{line.location_name}</span>
-            <ReplenishmentStatusBadge status={line.status} />
-          </li>
-        ))}
+        {query.data.data.map((line) => {
+          const link = fulfillmentLink(line)
+          return (
+            <li key={line.id} className="flex flex-wrap items-center gap-3 p-4">
+              <span className={`min-w-0 flex-1 font-medium ${textColors.primary}`}>{line.product_name}</span>
+              <span className={textColors.secondary}>{line.location_name}</span>
+              {link ? (
+                <Link to={link.to} className={`text-sm ${textColors.brand} hover:underline`}>
+                  {t(link.labelKey)}
+                </Link>
+              ) : null}
+              <ReplenishmentStatusBadge status={line.status} />
+            </li>
+          )
+        })}
       </ul>
       <OffsetPagination
         currentPage={query.data.meta.current_page}
