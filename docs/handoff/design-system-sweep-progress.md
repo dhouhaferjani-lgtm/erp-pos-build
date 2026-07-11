@@ -645,3 +645,9 @@ New shared-shape components: none.
 ## origin/dev integration merge (2026-07-11, orchestrator)
 
 Merged origin/dev (108 commits, incl. product-section unification + treasury spine) into the branch. 9 conflicted files, resolved by rule "newer functional structure wins; sweep styling re-applied where lines survive": take-theirs for ProductForm(+4 tests; theirs' ProductSectionStack refactor deletes the code we had tokenized), ProductEditHero, ProductImageSection, RepositoryDetailPage (theirs' RepositoryMovementsTab supersedes our inline DataTable conversion); take-ours for EnrichmentCapturePanel (our atom conversions) + re-applied theirs' EnrichmentAttributeRow type-import change. Post-merge: typecheck clean; eslint 0 errors (origin/dev's new code passes the color ERROR rules); tanstack 0; design audit surfaced 9 new + 5 stale entries — ALL from origin/dev's post-merge-base code (product hero custom controls, movements-tab raw table, re-fingerprints) — baselined honestly at 767 acknowledged (origin/dev-native debt, not sweep regressions; convert in the post-merge burn-down).
+
+## Owner decisions (2026-07-11, post close-out)
+
+- **PageHeader (the 23 deferred C1 headers):** CONVERT admin (10) + pages/POS/Terminals (1) to PageHeader — modest visible layout change accepted; KEEP auth (5) + legal (2) bespoke permanently (not app-shell surfaces — mark as permanent baseline exceptions); DOCUMENTS (5) decided after one converted example is shown to the owner.
+- Post-sweep burn-down remains open (778 acknowledged): raw-control conversions (Radio atom, Button dangerOutline + text-xs variants first), replenishment-feature controls, origin/dev product-hero controls, RHF for the 13 C4 forms, colorClasses + semanticColorTokens ladder cleanup, C3 benign-family carve-out tightening.
+- Owner note: further VISUAL design improvements (beyond this structural sweep) are a separate track — see the procurement design plans in docs/superpowers/.
