@@ -175,3 +175,14 @@ Guardrail matrix fully PASS (component reuse incl. PartnerSearchSelect exact imp
 - **GD-2 (cheap, do now)**: map `InsufficientStockException` → 422 on the replenishment create-transfer endpoint (mirror `StockTransferController::insufficientStockResponse`) — insufficient stock is the EXPECTED failure of this dialog; today it 500s (pre-existing class, but this wave owns the surface).
 - **GD-3 (one-liner)**: outer `createTransfers` transaction `attempts: 3` (nested `initiate()` retry is neutralized inside the outer tx; deadlock self-healing restored).
 - **Post-merge conditions**: merge → LOCAL dev only (never push) → restart local stack on dev → Playwright browser pass (capture → queue → matrix → transfer → fulfilled, screenshot) → THEN owner promotes origin/dev → deploy checklist → POS device update → owner Tauri pass.
+
+---
+
+# Round 7 — Live Browser Verification + Batch-Tracking Blocker (2026-07-11)
+
+- **Executor:** Claude Opus agents (Codex quota exhausted); stack = second local instance (:8020/:5174) on merged local dev; tenant = demo pharmacy (real vertical data).
+- **Browser pass 1 (@ 21e8e41e5):** capture → per-shop queue → product×shop matrix (screenshot artifact) → create-transfer with prefill/grouping → **in-place queue auto-refresh (GC-1 invalidation fix proven in a real browser)** → Fulfilled in history → dedupe-bump ×2 on one line. All PASS for non-batch products.
+- **🔴 BLOCKER B7-1 (found ONLY by real-data browser testing — 6 review rounds + 60 tests missed it on synthetic non-batch fixtures):** create-transfer 500'd for batch-tracked products (`assertBatchAllocationsCanIssue`; fulfillment sent no allocations). **71% of the pharmacy catalog is batch-tracked.**
+- **Fix (commits `1aa80d210`, `6892fbe36`, `cad0da96e`):** FEFO auto-allocation INSIDE Inventory — extracted the existing validator's algorithm into shared `computeFefoSplit()` (provably identical: ordering incl. id tie-break, `canBeSold()` filter, scale-4, locks); opt-in `autoAllocateBatchesFefo` on `InitiateTransferData` (all 9 call sites named-args, zero callers affected); insufficient sellable batches → existing 422 path; + fulfilled-row links to the fulfilling transfer/PO; + lock-order contract documented (caller must lock stock_levels first — ABBA risk for future flag-true callers otherwise). Domain-reviewed CONFIRMED (behavior-identity, gating, lock geometry, honest tests).
+- **Browser pass 2 (@ cad0da96e):** batch-tracked transfer → 200; FEFO allocation verified at DB grain (earliest-expiry batch, qty split, source batch stock 200→195); history link → transfer detail. PASS.
+- **Follow-ups recorded:** StockTransferDetailPage does not render batch allocations (PRE-EXISTING UI gap, applies to manual transfers too); multi-batch FEFO ordering exercised in backend tests only (single batch in demo data); demo-tenant browser pass on real vertical data promoted to a standing Gate-D requirement.
