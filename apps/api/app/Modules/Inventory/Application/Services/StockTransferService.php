@@ -751,6 +751,13 @@ class StockTransferService
      * runs inside initiate()'s transaction so those locks are held through the
      * subsequent assertAllocationsFollowFefo()/issue() re-reads.
      *
+     * LOCK-ORDER CONTRACT: callers that opt in to autoAllocateBatchesFefo must
+     * lock the source stock_levels rows FIRST (e.g. via assertSourceAvailability())
+     * before initiate() runs this method. This path locks BatchStock before the
+     * later stock_levels lock in moveSourceToInTransit(); without the caller's
+     * up-front stock_levels lock the order inverts vs the manual-allocation path
+     * (stock_levels -> BatchStock) and concurrent transfers can ABBA-deadlock.
+     *
      * @return list<InitiateTransferLineData>
      */
     private function resolveFefoAllocations(InitiateTransferData $data): array
