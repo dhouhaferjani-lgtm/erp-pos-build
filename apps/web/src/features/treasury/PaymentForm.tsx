@@ -771,7 +771,9 @@ export function PaymentForm() {
                   control={control}
                   rules={{
                     required: t('treasury:payments.form.amountRequired'),
-                    validate: (v) => parseFloat(v) > 0 || t('treasury:payments.form.amountPositive'),
+                    // String-safe positivity (rule 19: no parseFloat on money) — bccomp
+                    // maps empty/garbage input to 0, which fails the check (fail-closed).
+                    validate: (v) => bccomp(v, '0') > 0 || t('treasury:payments.form.amountPositive'),
                   }}
                   render={({ field }) => (
                     <MoneyInput
@@ -1199,7 +1201,7 @@ export function PaymentForm() {
             </div>
 
             <div className="space-y-6">
-              <div className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
+              <div className={cn('rounded-lg border p-4', colors.white, borderColors.light)}>
                 <h4 className={cn('mb-4 text-sm font-medium', textColors.primary)}>
                   {t('treasury:smartPayment.allocation.method')}
                 </h4>
