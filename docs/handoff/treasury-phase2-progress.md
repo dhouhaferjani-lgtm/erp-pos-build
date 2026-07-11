@@ -309,3 +309,11 @@
 - `git diff --check` — pass; worktree clean before this verification entry.
 - Fiscal bridge gate pins: all Task-16/17/18 tests clear `CompanyContext` before `apply()`; cash+paper split, complete/pre-cutover replay, missing portfolio, refund cancel/alert/failure, sibling debit overrides, and null-actor synchronous posting are green. Both sale and refund tests snapshot `pos_receipt_payments` before/after the maturity branch and assert byte-identical rows.
 - Money-path summary: receipt-time Cheque/Effet legs post portfolio GL synchronously and never call the movement port; same-day refund cancellation is Dr Revenue / Cr portfolio with no cash; active/missing/ambiguous refund paper alone falls back to the standard cash reversal plus Out movement; immediate and pre-cutover shapes retain their existing movements.
+
+### Gate 3 verdict
+
+- RC attempts: 1. Opus returned `VERDICT: APPROVE`; review artifact: `docs/handoff/gate-reviews/GATE-3-rc1.md`.
+- Artifact process note: the first Opus pass approved but its sandbox blocked the requested file write and returned only a summary. A second stdout-only review of the identical frozen `phase2-gate-2..phase2-gate-3-rc1` diff produced the complete cited report persisted above; the branch/tag did not change between passes.
+- Fable escalation: not triggered. Neither pass found a BLOCKER/HIGH, money-path uncertainty, or a recorded money-path deviation.
+- Approved LOW carry-forwards: canonical REFUND/VOID validation already makes a missing original reference structurally invalid, but a coverage pin or explicit alert routing may improve dead-letter ergonomics; preserve actor requirements at interactive customer-direction call sites after the shared GL builders gained safe synchronous null-actor worker support. Numeric refund amount matching remains correct while the column is decimal.
+- Final verdict: `VERDICT: APPROVE`.
