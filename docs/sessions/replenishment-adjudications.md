@@ -53,7 +53,7 @@
 
 **Preflight result:** PASS — Pint passed; PHPStan `[OK] No errors`; PHPUnit `59 passed (220 assertions)`; generated types in sync; web TypeScript passed; ESLint `0 errors` (8,648 baseline warnings); TanStack audit `0 new`; route manifests in sync; web Vitest `9 passed / 23 tests`; fiscal parity `2 passed / 29 tests`; chokepoint gate `8 call site(s) reconciled`; final line `✅ All preflight checks passed!`.
 
-**Commit:** pending Task 16 commit.
+**Commit:** `d61eee22c`.
 
 ## Gate D — route-manifest coherence
 
@@ -72,7 +72,7 @@
 
 **Observed generator output:** `routes-web.yaml` added exactly the three approved rows; `routes-pos.yaml` had no diff.
 
-**Commit:** pending Task 16 commit.
+**Commit:** `d61eee22c`.
 
 ## Gate D — Pint laptop-safety
 
@@ -96,4 +96,4 @@
 
 **Coverage check:** all 48 committed feature PHP files plus the four Task 16 working-tree PHP paths are covered by the Replenishment directory scopes or the explicit cross-module/test paths above.
 
-**Commit:** pending Task 16 commit.
+**Commit:** `d61eee22c`.
