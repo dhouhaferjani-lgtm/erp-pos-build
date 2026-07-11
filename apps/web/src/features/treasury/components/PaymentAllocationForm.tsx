@@ -12,6 +12,7 @@ import { usePaymentAllocationPreview, useApplyAllocation } from '../hooks/useSma
 import { AllocationMethod, type OpenInvoice, type ManualAllocation } from '@/types/treasury'
 import { useCurrency } from '@/hooks/useCurrency'
 import { Button } from '@/components/atoms/Button'
+import { Radio } from '@/components/atoms/Radio'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import { bcadd, bccomp, formatCurrency } from '@/lib/decimal'
@@ -173,16 +174,14 @@ export function PaymentAllocationForm({
                 colors.hover.gray50
               )}
             >
-              {/* raw radio: no Radio atom exists; inline token keeps it visible to the C2 auditor */}
-              <input
-                type="radio"
+              <Radio
                 name="allocation-method"
                 value={method}
                 checked={allocationMethod === method}
                 onChange={() => {
                   handleMethodChange(method)
                 }}
-                className={cn('mt-1', tokens.radio.base)}
+                className="mt-1"
               />
               <div className="flex-1">
                 <p className={cn('font-medium', textColors.primary)}>{label}</p>

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { borderColors, textColors, tokens } from '../../../../lib/designTokens'
+import { borderColors, textColors } from '../../../../lib/designTokens'
 import { Button } from '@/components/atoms'
 import type { ServiceBundleComponentData } from '../../types'
 import { ComponentTypeIcon } from '../atoms/ComponentTypeIcon'
@@ -58,18 +58,17 @@ export function BundleComponentRow({
               </Button>
             ) : null}
             {onDelete !== undefined ? (
-              // Button atom has no `dangerOutline` variant (out-of-scope atom
-              // change) — kept raw with literal tokens to preserve pixel parity.
-              <button
+              <Button
                 type="button"
+                variant="dangerOutline"
+                size="sm"
                 onClick={() => {
                   onDelete(component)
                 }}
-                className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.sm}`}
                 data-testid={`bundle-component-delete-${component.id}`}
               >
                 {t('authoring.row.delete')}
-              </button>
+              </Button>
             ) : null}
           </div>
         ) : null}

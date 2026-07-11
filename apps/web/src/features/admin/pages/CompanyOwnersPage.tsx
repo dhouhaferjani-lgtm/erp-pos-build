@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAdminUsers, useVerifyUserEmail } from '../hooks/useUsers'
 import { QueryError } from '@/components/QueryError'
 import { CheckCircle, Mail, AlertCircle, Building2 } from 'lucide-react'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -51,24 +53,28 @@ export function CompanyOwnersPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className={`text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
-              Company Owners
-            </h1>
-            <p className={`mt-1 text-sm ${colorClasses.textGray500}`}>
-              Manage email verification for users who registered new companies
-            </p>
-          </div>
-          {unverifiedCount > 0 && verificationFilter !== 'unverified' && (
-            <div className={`flex items-center gap-2 rounded-lg ${colorClasses.bgAmber50} px-4 py-2 ${colorClasses.textAmber700}`}>
-              <AlertCircle className="h-5 w-5" />
-              <span className="text-sm font-medium">
-                {unverifiedCount} pending verification{unverifiedCount !== 1 ? 's' : ''}
-              </span>
-            </div>
-          )}
-        </div>
+        <PageHeader
+          title="Company Owners"
+          subtitle="Manage email verification for users who registered new companies"
+          breadcrumb={
+            <Link
+              to="/admin/dashboard"
+              className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
+            >
+              &larr; Back to Dashboard
+            </Link>
+          }
+          actions={
+            unverifiedCount > 0 && verificationFilter !== 'unverified' ? (
+              <div className={`flex items-center gap-2 rounded-lg ${colorClasses.bgAmber50} px-4 py-2 ${colorClasses.textAmber700}`}>
+                <AlertCircle className="h-5 w-5" />
+                <span className="text-sm font-medium">
+                  {unverifiedCount} pending verification{unverifiedCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+            ) : undefined
+          }
+        />
 
         <div className="mb-6 flex gap-4">
           <input

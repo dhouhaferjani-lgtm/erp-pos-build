@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { borderColors, textColors } from '@/lib/designTokens'
 import type { TechnicianCertification } from '../api/authoringTypes'
 import {
 
@@ -89,18 +89,17 @@ export function CertificationsTab({ technicianId }: CertificationsTabProps) {
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
-                {/* Button atom has no `dangerOutline` variant (out-of-scope
-                    atom change) — kept raw with literal tokens for pixel parity. */}
-                <button
+                <Button
                   type="button"
+                  variant="dangerOutline"
+                  size="sm"
                   onClick={() => {
                     handleDelete(row)
                   }}
-                  className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.sm}`}
                   aria-label={t('authoring.certifications.confirmDelete')}
                 >
                   <Trash2 className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
             </li>
           ))}

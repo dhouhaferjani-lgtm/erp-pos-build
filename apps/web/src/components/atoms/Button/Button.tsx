@@ -1,8 +1,8 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
-import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { semanticColorTokens as colorTokens, tokens } from '@/lib/designTokens'
 
-type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
-type ButtonSize = 'sm' | 'md' | 'lg'
+type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'dangerOutline' | 'ghost'
+type ButtonSize = 'xs' | 'sm' | 'md' | 'lg'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
@@ -17,10 +17,17 @@ const variantStyles: Record<ButtonVariant, string> = {
     `${colorTokens.surface.base} ${colorTokens.text.secondary} border ${colorTokens.border.default} ${colorTokens.variants.hoverBgGray50} ${colorTokens.focus.neutralRing}`,
   danger:
     `${colorTokens.intent.danger.bgStrong} ${colorTokens.text.inverse} ${colorTokens.variants.hoverBgRed700} ${colorTokens.focus.dangerRing} ${colorTokens.variants.disabledBgRed400}`,
+  // Composed from the canonical `tokens.button.dangerOutline` string so the
+  // outline treatment (white bg, red-700 text, red-300 border) stays pixel-
+  // identical to the raw call sites this variant replaces.
+  dangerOutline: tokens.button.dangerOutline,
   ghost: `bg-transparent ${colorTokens.text.muted} ${colorTokens.variants.hoverBgGray100} ${colorTokens.focus.neutralRing}`,
 }
 
 const sizeStyles: Record<ButtonSize, string> = {
+  // `xs` mirrors the TransitionBar transition controls (px-3 py-1.5 text-xs);
+  // base carries no text-size/padding so these are never overridden.
+  xs: 'px-3 py-1.5 text-xs',
   sm: 'px-3 py-1.5 text-sm',
   md: 'px-4 py-2 text-sm',
   lg: 'px-6 py-3 text-base',

@@ -1,5 +1,5 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { DocumentListPage } from './DocumentListPage'
 import type { Document } from '../../types/document'
 
@@ -149,5 +149,69 @@ describe('DocumentListPage (canonical list)', () => {
   it('exposes the add action as a button', () => {
     render(<DocumentListPage />)
     expect(screen.getByRole('button', { name: /actions\.add/ })).toBeInTheDocument()
+  })
+
+  // Regression: the backend collapses a fully-settled invoice's status to the
+  // `paid` enum value, which has no `common:status.paid` key. The generic
+  // `t('status.paid', 'paid')` fallback leaked the raw lowercase string into the
+  // status badge instead of a localized "Paid". The badge must render the
+  // localized label (`sales:invoices.paymentStatus.paid`), never the raw value.
+  it('localizes the status badge for `paid`-status invoices', () => {
+    mockUseQueryReturn.data = {
+      data: [
+        makeDoc({
+          id: 'paid-1',
+          type: 'invoice',
+          status: 'paid',
+          document_number: 'INV-2001',
+          partner_id: 'p9',
+          partner_name: 'Settled Co',
+          total: '46.516',
+          balance_due: '0.000',
+          payment_status: 'paid',
+        }),
+      ],
+      meta: { total: 1, current_page: 1, last_page: 1, per_page: 25, from: 1, to: 1 },
+    }
+
+    render(<DocumentListPage documentType="invoice" />)
+
+    const row = screen.getByRole('link', { name: 'INV-2001' }).closest('tr')
+    expect(row).not.toBeNull()
+    const statusCell = within(row as HTMLElement)
+    // Localized label present in the row's status badge…
+    expect(statusCell.getByText('sales:invoices.paymentStatus.paid')).toBeInTheDocument()
+    // …and the raw lowercase enum value must NOT leak anywhere in the row.
+    expect(statusCell.queryByText('paid')).toBeNull()
+  })
+
+  // Regression: the list must render the document date from the list payload's
+  // `document_date` field (the same field the detail page uses). A prior report
+  // suspected an empty date column; this locks the cell to a formatted value.
+  it('renders the document date from the list payload', () => {
+    mockUseQueryReturn.data = {
+      data: [
+        makeDoc({
+          id: 'dated-1',
+          type: 'invoice',
+          status: 'posted',
+          document_number: 'INV-3001',
+          document_date: '2026-06-09',
+          total: '10.000',
+        }),
+      ],
+      meta: { total: 1, current_page: 1, last_page: 1, per_page: 25, from: 1, to: 1 },
+    }
+
+    render(<DocumentListPage documentType="invoice" />)
+
+    const row = screen.getByRole('link', { name: 'INV-3001' }).closest('tr') as HTMLElement
+    // Columns: number, type, status, partner, date, total, balance, actions.
+    const dateCell = row.querySelectorAll('td')[4]
+    const dateText = dateCell.textContent?.trim() ?? ''
+    // The cell must not be empty and must reflect the payload's year (formatted
+    // via `formatDate`, e.g. `06/09/2026` in the en test locale).
+    expect(dateText.length).toBeGreaterThan(0)
+    expect(dateText).toContain('2026')
   })
 })

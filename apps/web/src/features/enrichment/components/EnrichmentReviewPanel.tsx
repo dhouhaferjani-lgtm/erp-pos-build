@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { tokens, textColors, borderColors, colors } from '@/lib/designTokens'
-import { Button, Textarea } from '@/components/atoms'
+import { Button, Radio, Textarea } from '@/components/atoms'
 import { usePermissions, type Permission } from '@/hooks/usePermissions'
 import {
 
@@ -287,16 +287,13 @@ export function EnrichmentReviewPanel({ resultId, onClose }: EnrichmentReviewPan
                       key={value}
                       className={`flex cursor-pointer items-center gap-2 rounded-md border ${borderColors.light} px-3 py-2 text-sm ${textColors.primary}`}
                     >
-                      {/* No Radio atom exists — inline tokens.radio.base preserves styling */}
-                      <input
-                        type="radio"
+                      <Radio
                         name="reject-reason"
                         value={value}
                         checked={rejectReason === value}
                         onChange={() => {
                           setRejectReason(value)
                         }}
-                        className={tokens.radio.base}
                       />
                       <span>{label}</span>
                     </label>

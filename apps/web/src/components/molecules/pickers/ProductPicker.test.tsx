@@ -152,6 +152,30 @@ describe('ProductPicker', () => {
     expect(searchUrl).toContain('type=part')
   })
 
+  it('omits the type param entirely when productType="all"', async () => {
+    // Regression: the supplier-invoice manual line uses productType="all" so it
+    // can surface every product kind (parts, consumables, goods). The request
+    // must NOT send `type=all` — the backend enum filter would reject that value
+    // and, historically, an explicit type filter narrowed results to nothing.
+    // Sending no `type` param is what makes the picker return all product types.
+    mockApiGet.mockResolvedValue(response([oilFilter, brakePad, pieceProduct]))
+    const user = userEvent.setup()
+    renderWithProviders(<ProductPicker value={null} onChange={() => undefined} productType="all" />)
+
+    const combo = screen.getByRole('combobox')
+    await user.click(combo)
+    await user.type(combo, 'cr')
+
+    await waitFor(() => {
+      const urls = mockApiGet.mock.calls.map((c) => c[0])
+      expect(urls.some((u) => u.includes('search=cr'))).toBe(true)
+    })
+    for (const [url] of mockApiGet.mock.calls as [string][]) {
+      expect(url).toContain('/products')
+      expect(url).not.toContain('type=')
+    }
+  })
+
   it('shows the empty state when no rows match', async () => {
     mockApiGet.mockResolvedValue(response([]))
     const user = userEvent.setup()

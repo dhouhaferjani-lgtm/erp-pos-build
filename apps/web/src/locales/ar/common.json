@@ -112,7 +112,8 @@
     "noPayments": "لا توجد مدفوعات",
     "noPaymentsDescription": "لم تُسجَّل أي دفعة لهذا العميل بعد.",
     "noVehicles": "لا توجد مركبات",
-    "noVehiclesDescription": "لم تُربَط أي مركبة بهذا العميل بعد."
+    "noVehiclesDescription": "لم تُربَط أي مركبة بهذا العميل بعد.",
+    "received": "مستلمة"
   },
   "filtersLabel": "عوامل التصفية",
   "filters": {

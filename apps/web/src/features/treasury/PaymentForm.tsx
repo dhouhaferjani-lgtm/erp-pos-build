@@ -15,6 +15,7 @@ import { Button } from '../../components/atoms/Button/Button'
 import { FormField } from '../../components/atoms/FormField/FormField'
 import { Input } from '../../components/atoms/Input/Input'
 import { MoneyInput } from '../../components/atoms/MoneyInput/MoneyInput'
+import { Radio } from '../../components/atoms/Radio/Radio'
 import { Select } from '../../components/atoms/Select/Select'
 import { Textarea } from '../../components/atoms/Textarea/Textarea'
 import { AllocationPreview } from './components/AllocationPreview'
@@ -1172,13 +1173,12 @@ export function PaymentForm() {
                         colors.hover.gray50
                       )}
                     >
-                      <input
-                        type="radio"
+                      <Radio
                         name="allocation-method"
                         value={method}
                         checked={allocationMethod === method}
                         onChange={() => { handleAllocationMethodChange(method) }}
-                        className={cn('mt-1', tokens.radio.base)}
+                        className="mt-1"
                       />
                       <span className="flex-1">
                         <span className={cn('block font-medium', textColors.primary)}>{label}</span>

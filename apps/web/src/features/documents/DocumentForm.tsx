@@ -63,14 +63,19 @@ const documentTypeToPath: Record<DocumentType, string> = {
   return_note: '/inventory/return-notes',
 }
 
-const documentTypeToTitle: Record<DocumentType, string> = {
-  quote: 'Quote',
-  sales_order: 'Sales Order',
-  invoice: 'Invoice',
-  purchase_order: 'Purchase Order',
-  delivery_note: 'Delivery Note',
-  credit_note: 'Credit Note',
-  return_note: 'Return Note',
+// Translation keys for the singular document-type label rendered in the page
+// heading. Using i18n keys (not hardcoded English) so the "Add <type>" /
+// "Edit <type>" heading renders fully localized in every locale — previously
+// this map held raw English, producing mixed headings under FR/AR
+// (e.g. "Ajouter Purchase Order").
+const documentTypeToTitleKey: Record<DocumentType, string> = {
+  quote: 'sales:documents.types.quote',
+  sales_order: 'sales:documents.types.sales_order',
+  invoice: 'sales:documents.types.invoice',
+  purchase_order: 'sales:documents.types.purchase_order',
+  delivery_note: 'sales:documents.types.delivery_note',
+  credit_note: 'sales:documents.types.credit_note',
+  return_note: 'sales:documents.types.return_note',
 }
 
 // Map document types to their API endpoints
@@ -212,7 +217,9 @@ export function DocumentForm({ documentType }: DocumentFormProps) {
   const effectiveType = documentType ?? getDocumentTypeFromPath(location.pathname)
   const basePath = effectiveType ? documentTypeToPath[effectiveType] : '/documents'
   const apiEndpoint = effectiveType ? documentTypeToApiEndpoint[effectiveType] : '/documents'
-  const entityName = effectiveType ? documentTypeToTitle[effectiveType] : 'Document'
+  const entityName = effectiveType
+    ? t(documentTypeToTitleKey[effectiveType])
+    : t('sales:documents.entityFallback', 'Document')
 
   const {
     register,

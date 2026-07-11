@@ -153,6 +153,8 @@
     "type": "Type",
     "selectType": "Sélectionner le type",
     "typeRequired": "Le type est requis",
+    "details": "Détails",
+    "entityFallback": "Document",
     "status": {
       "draft": "Brouillon",
       "confirmed": "Confirmé",

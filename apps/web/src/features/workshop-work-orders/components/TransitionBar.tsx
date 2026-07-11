@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { tokens } from '@/lib/designTokens'
+import { Button } from '@/components/atoms'
 import type { WorkOrderStatus } from '../types'
 
 
@@ -35,13 +35,9 @@ const ALLOWED_NEXT: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   cancelled: [],
 }
 
-// Button atom cannot express the custom `text-xs` size these transition
-// controls use (its size scale bottoms out at `text-sm`), so they stay raw
-// with literal design tokens to preserve pixel parity.
-const BUTTON_LAYOUT = 'gap-1 px-3 py-1.5 text-xs shadow-sm'
-const ACTION_BUTTON = `${tokens.button.base} ${tokens.button.primary} ${BUTTON_LAYOUT}`
-const SECONDARY_BUTTON = `${tokens.button.base} ${tokens.button.secondary} ${BUTTON_LAYOUT}`
-const DANGER_BUTTON = `${tokens.button.base} ${tokens.button.danger} ${BUTTON_LAYOUT}`
+// The transition controls render at the Button atom's `xs` size (text-xs +
+// px-3 py-1.5); `gap-1 shadow-sm` are layout extras carried via className.
+const BUTTON_LAYOUT = 'gap-1 shadow-sm'
 
 export function TransitionBar({
   current,
@@ -61,24 +57,28 @@ export function TransitionBar({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {current === 'quoted' && canApprove && (
-        <button
+        <Button
           type="button"
-          className={ACTION_BUTTON}
+          variant="primary"
+          size="xs"
+          className={BUTTON_LAYOUT}
           onClick={onApprove}
           disabled={isPending}
         >
           {t('actions.approve')}
-        </button>
+        </Button>
       )}
       {current === 'in_progress' && canComplete && (
-        <button
+        <Button
           type="button"
-          className={ACTION_BUTTON}
+          variant="primary"
+          size="xs"
+          className={BUTTON_LAYOUT}
           onClick={onComplete}
           disabled={isPending}
         >
           {t('actions.complete')}
-        </button>
+        </Button>
       )}
       {nextStates
         .filter(
@@ -90,28 +90,32 @@ export function TransitionBar({
         )
         .map((next) =>
           (next === 'approved' && canApprove) || (next !== 'approved' && canTransition) ? (
-            <button
+            <Button
               key={next}
               type="button"
-              className={SECONDARY_BUTTON}
+              variant="secondary"
+              size="xs"
+              className={BUTTON_LAYOUT}
               onClick={() => {
                 onTransition(next)
               }}
               disabled={isPending}
             >
               {t(`actions.transitionTo.${next}`)}
-            </button>
+            </Button>
           ) : null
         )}
       {canCancel && current !== 'closed' && current !== 'cancelled' && (
-        <button
+        <Button
           type="button"
-          className={DANGER_BUTTON}
+          variant="danger"
+          size="xs"
+          className={BUTTON_LAYOUT}
           onClick={onCancel}
           disabled={isPending}
         >
           {t('actions.cancel')}
-        </button>
+        </Button>
       )}
     </div>
   )

@@ -160,7 +160,17 @@ export function DocumentListPage({ documentType }: DocumentListPageProps) {
     if (!type) return t('common:unknown')
     return t(`sales:documents.types.${type.replace(/_/g, '')}`, t(`sales:documents.types.${type}`, type))
   }
-  const getStatusLabel = (status: string) => t(`status.${status}`, status)
+  const getStatusLabel = (status: string) => {
+    // `paid` is a payment-collapsed document status the backend emits for fully
+    // settled invoices. It has no `common:status.paid` key, so the generic
+    // `t('status.paid', 'paid')` fallback leaked the raw lowercase enum value
+    // into the badge. Localize it through the sales payment-status namespace
+    // (the same "Paid" label used elsewhere) instead.
+    if (status === 'paid') {
+      return t('sales:invoices.paymentStatus.paid')
+    }
+    return t(`status.${status}`, status)
+  }
   const getDocumentNumberLabel = (documentNumber: string | null) =>
     documentNumber ?? t('sales:documents.draftNumberPlaceholder')
 

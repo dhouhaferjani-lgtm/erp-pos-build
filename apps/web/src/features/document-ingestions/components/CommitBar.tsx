@@ -44,16 +44,15 @@ export function CommitBar({
             {t('actions.reExtract')}
           </Button>
         )}
-        {/* dangerOutline has no Button-atom variant — inline tokens preserve the outline treatment (pixel parity) */}
-        <button
+        <Button
           type="button"
-          className={cn(tokens.button.base, tokens.button.dangerOutline, tokens.button.sizes.md)}
+          variant="dangerOutline"
           disabled={isRejecting}
           onClick={onReject}
         >
           <X className="me-2 h-4 w-4" aria-hidden="true" />
           {t('actions.reject')}
-        </button>
+        </Button>
         <Button
           type="button"
           disabled={!canCommit || isCommitting}

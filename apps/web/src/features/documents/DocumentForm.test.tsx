@@ -30,9 +30,15 @@ const partnerA = vi.hoisted(() => ({
   city: 'Tunis',
 }))
 
-// i18n → return the key so assertions are deterministic
+// i18n → return the key so assertions are deterministic. Tests that need to
+// assert a *translated* string (e.g. the FR heading) seed `i18nState.dict`
+// with the keys they care about; everything else falls through to the
+// fallback-or-key behaviour the rest of the suite relies on.
+const i18nState = vi.hoisted(() => ({ dict: {} as Record<string, string> }))
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }),
+  useTranslation: () => ({
+    t: (key: string, fallback?: string) => i18nState.dict[key] ?? fallback ?? key,
+  }),
 }))
 
 // router
@@ -224,13 +230,30 @@ describe('DocumentForm (canonical layout)', () => {
     routerState.search = ''
     reactQueryState.document = undefined
     reactQueryState.mutationPayloads = []
+    i18nState.dict = {}
   })
 
   it('renders a single page-level heading with the entity name', () => {
     render(<DocumentForm documentType="invoice" />)
     const h1s = screen.getAllByRole('heading', { level: 1 })
     expect(h1s).toHaveLength(1)
-    expect(h1s[0]).toHaveTextContent(/invoice/i)
+    // The doc-type label now flows through i18n (was hardcoded English) — the
+    // heading is composed of the add action + the translated type key.
+    expect(h1s[0]).toHaveTextContent('sales:documents.types.invoice')
+  })
+
+  it('renders a fully translated heading for purchase_order (no mixed English leak)', () => {
+    // Regression: the FR create page previously showed "Ajouter Purchase Order"
+    // because the doc-type label came from a hardcoded English map. Seed the FR
+    // strings for the two composed keys and assert the heading is fully French.
+    i18nState.dict = {
+      'actions.add': 'Ajouter',
+      'sales:documents.types.purchase_order': "Bon d'achat",
+    }
+    render(<DocumentForm documentType="purchase_order" />)
+    const h1 = screen.getAllByRole('heading', { level: 1 })[0]
+    expect(h1).toHaveTextContent("Ajouter Bon d'achat")
+    expect(h1).not.toHaveTextContent(/Purchase Order/)
   })
 
   it('groups fields under a section heading', () => {

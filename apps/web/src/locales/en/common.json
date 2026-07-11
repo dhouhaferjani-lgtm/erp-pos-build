@@ -113,7 +113,8 @@
     "noVehicles": "No vehicles",
     "noVehiclesDescription": "No vehicles have been linked to this customer yet.",
     "noPurchaseOrders": "No purchase orders",
-    "noPurchaseOrdersDescription": "Get started by creating a purchase order for this supplier."
+    "noPurchaseOrdersDescription": "Get started by creating a purchase order for this supplier.",
+    "received": "Received"
   },
   "filtersLabel": "Filters",
   "filters": {

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useSubscriptions, useUpdateSubscription, usePlans } from '../hooks/useBilling'
 import type { Subscription, SubscriptionStatus } from '../types'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -77,22 +78,22 @@ export function SubscriptionsPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
+        <PageHeader
+          title="Subscriptions"
+          breadcrumb={
             <Link
               to="/admin/billing"
               className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
             >
               &larr; Back to Billing
             </Link>
-            <h1 className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
-              Subscriptions
-            </h1>
-          </div>
-          <div className={`text-sm ${colorClasses.textGray500}`}>
-            {subscriptionsData?.total ?? 0} total subscriptions
-          </div>
-        </div>
+          }
+          actions={
+            <div className={`text-sm ${colorClasses.textGray500}`}>
+              {subscriptionsData?.total ?? 0} total subscriptions
+            </div>
+          }
+        />
 
         {/* Filters */}
         <div className="mb-6 flex gap-4">

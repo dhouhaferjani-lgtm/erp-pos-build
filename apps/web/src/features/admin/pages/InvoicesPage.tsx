@@ -4,6 +4,7 @@ import { useInvoices, useCreateInvoice } from '../hooks/useBilling'
 import { downloadInvoicePdf } from '../api'
 import type { Invoice, InvoiceStatus, CreateInvoiceRequest } from '../types'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -120,28 +121,30 @@ export function InvoicesPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
+        <PageHeader
+          title="Invoices"
+          breadcrumb={
             <Link
               to="/admin/billing"
               className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
             >
               &larr; Back to Billing
             </Link>
-            <h1 className={`mt-2 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>Invoices</h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className={`text-sm ${colorClasses.textGray500}`}>
-              {invoicesData?.total ?? 0} total invoices
-            </span>
-            <button
-              onClick={() => { setShowCreateModal(true); }}
-              className={`rounded-md ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700}`}
-            >
-              Create Invoice
-            </button>
-          </div>
-        </div>
+          }
+          actions={
+            <>
+              <span className={`text-sm ${colorClasses.textGray500}`}>
+                {invoicesData?.total ?? 0} total invoices
+              </span>
+              <button
+                onClick={() => { setShowCreateModal(true); }}
+                className={`rounded-md ${colorClasses.bgBlue600} px-4 py-2 text-sm font-medium text-white ${colorClasses.hoverBgBlue700}`}
+              >
+                Create Invoice
+              </button>
+            </>
+          }
+        />
 
         {/* Filters */}
         <div className="mb-6 flex gap-4">

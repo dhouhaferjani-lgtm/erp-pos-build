@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useBillingDashboard, usePaymentProviders } from '../hooks/useBilling'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { colorClasses } from '@/lib/designTokens'
 
 function formatCurrency(amount: number, currency = 'EUR'): string {
@@ -24,31 +25,39 @@ export function BillingDashboardPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-8 flex items-center justify-between">
-          <h1 className={`text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
-            Billing Dashboard
-          </h1>
-          <div className="flex gap-3">
+        <PageHeader
+          title="Billing Dashboard"
+          breadcrumb={
             <Link
-              to="/admin/billing/subscriptions"
-              className={`rounded-md bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ring-1 ${colorClasses.ringGray300} ${colorClasses.hoverBgGray50}`}
+              to="/admin/dashboard"
+              className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
             >
-              Subscriptions
+              &larr; Back to Dashboard
             </Link>
-            <Link
-              to="/admin/billing/invoices"
-              className={`rounded-md bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ring-1 ${colorClasses.ringGray300} ${colorClasses.hoverBgGray50}`}
-            >
-              Invoices
-            </Link>
-            <Link
-              to="/admin/billing/payments"
-              className={`rounded-md bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ring-1 ${colorClasses.ringGray300} ${colorClasses.hoverBgGray50}`}
-            >
-              Payments
-            </Link>
-          </div>
-        </div>
+          }
+          actions={
+            <>
+              <Link
+                to="/admin/billing/subscriptions"
+                className={`rounded-md bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ring-1 ${colorClasses.ringGray300} ${colorClasses.hoverBgGray50}`}
+              >
+                Subscriptions
+              </Link>
+              <Link
+                to="/admin/billing/invoices"
+                className={`rounded-md bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ring-1 ${colorClasses.ringGray300} ${colorClasses.hoverBgGray50}`}
+              >
+                Invoices
+              </Link>
+              <Link
+                to="/admin/billing/payments"
+                className={`rounded-md bg-white px-4 py-2 text-sm font-medium ${colorClasses.textGray700} shadow-sm ring-1 ${colorClasses.ringGray300} ${colorClasses.hoverBgGray50}`}
+              >
+                Payments
+              </Link>
+            </>
+          }
+        />
 
         {/* Revenue Stats */}
         <div className="mb-8">

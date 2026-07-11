@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   useTenants,
   useExtendTrial,
@@ -7,6 +8,7 @@ import {
 } from '../hooks/useTenants'
 import { TenantDetailModal } from '../components/TenantDetailModal'
 import { QueryError } from '@/components/QueryError'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -71,9 +73,17 @@ export function TenantsPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <h1 className={`mb-8 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
-          Tenant Management
-        </h1>
+        <PageHeader
+          title="Tenant Management"
+          breadcrumb={
+            <Link
+              to="/admin/dashboard"
+              className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
+            >
+              &larr; Back to Dashboard
+            </Link>
+          }
+        />
 
         <div className="mb-6 flex gap-4">
           <input

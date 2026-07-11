@@ -1,5 +1,6 @@
 import { useAdminDashboard } from '../hooks/useAdminDashboard'
 import { QueryError } from '@/components/QueryError'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { colorClasses } from '@/lib/designTokens'
 
 export function AdminDashboardPage() {
@@ -28,9 +29,7 @@ export function AdminDashboardPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <h1 className={`mb-8 text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>
-          Super Admin Dashboard
-        </h1>
+        <PageHeader title="Super Admin Dashboard" />
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <div className="overflow-hidden rounded-lg bg-white shadow">

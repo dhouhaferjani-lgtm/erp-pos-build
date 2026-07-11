@@ -1,14 +1,16 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useVerticals } from '../hooks/useVerticals'
 import { VerticalConfigModal } from '../components/VerticalConfigModal'
 import type { AdminVerticalConfig } from '../types'
 import { QueryError } from '@/components/QueryError'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { tokens, textColors, borderColors } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 export function VerticalsPage() {
-  const { t } = useTranslation('admin')
+  const { t } = useTranslation(['admin', 'common'])
   const [selectedVertical, setSelectedVertical] =
     useState<AdminVerticalConfig | null>(null)
 
@@ -42,9 +44,17 @@ export function VerticalsPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <h1 className={`mb-8 text-[1.875rem] leading-9 font-bold ${textColors.primary}`}>
-          {t('verticals.title')}
-        </h1>
+        <PageHeader
+          title={t('verticals.title')}
+          breadcrumb={
+            <Link
+              to="/admin/dashboard"
+              className={`text-sm ${textColors.brand} hover:underline`}
+            >
+              &larr; {t('common:actions.back')}
+            </Link>
+          }
+        />
 
         <div className="overflow-hidden rounded-lg bg-white shadow">
           <DataTable className={`min-w-full divide-y ${borderColors.divideDefault}`}>

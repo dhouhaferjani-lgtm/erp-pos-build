@@ -1,7 +1,16 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { VerticalsPage } from '../pages/VerticalsPage'
 import type { AdminVerticalConfig } from '../types'
+
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <VerticalsPage />
+    </MemoryRouter>
+  )
+}
 
 vi.mock('../hooks/useVerticals', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useVerticals')>()
@@ -79,7 +88,7 @@ describe('VerticalsPage', () => {
       refetch: vi.fn(),
     })
 
-    render(<VerticalsPage />)
+    renderPage()
 
     // one row per vertical + header row
     const rows = screen.getAllByRole('row')
@@ -105,7 +114,7 @@ describe('VerticalsPage', () => {
       refetch: vi.fn(),
     })
 
-    render(<VerticalsPage />)
+    renderPage()
 
     expect(screen.getAllByText('Customized')).toHaveLength(1)
   })
@@ -118,7 +127,7 @@ describe('VerticalsPage', () => {
       refetch: vi.fn(),
     })
 
-    render(<VerticalsPage />)
+    renderPage()
 
     expect(screen.getByText('Loading verticals...')).toBeInTheDocument()
   })
@@ -131,7 +140,7 @@ describe('VerticalsPage', () => {
       refetch: vi.fn(),
     })
 
-    render(<VerticalsPage />)
+    renderPage()
 
     expect(screen.getByText('Failed to load verticals')).toBeInTheDocument()
   })

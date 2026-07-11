@@ -21,6 +21,7 @@ import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
 import { colorClasses } from '@/lib/designTokens'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
 type ConfirmAction = 'confirm' | 'post' | null
@@ -128,35 +129,16 @@ export function CreditNoteDetailPage() {
   return (
     <div className="py-6">
       {/* Header */}
-      <div className="mb-6">
-        <Link to="/sales/credit-notes" className={`${colorClasses.textBlue600} ${colorClasses.hoverTextBlue700} flex items-center gap-2 mb-4`}>
-          <ArrowLeft className="w-4 h-4" />
-          {t('creditNotes.backToList')}
-        </Link>
-
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className={`text-[1.875rem] leading-9 font-bold ${colorClasses.textGray900}`}>{creditNote.document_number}</h1>
-            <div className="mt-2 flex items-center gap-3">
-              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${colorClasses.bgRed100} ${colorClasses.textRed800}`}>
-                {t('documents.types.credit_note')}
-              </span>
-              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                creditNote.status === 'posted' ? `${colorClasses.bgGreen100} ${colorClasses.textGreen800}` :
-                creditNote.status === 'confirmed' ? `${colorClasses.bgBlue100} ${colorClasses.textBlue800}` :
-                `${colorClasses.bgGray100} ${colorClasses.textGray800}`
-              }`}>
-                {t(`documents.status.${creditNote.status}`)}
-              </span>
-              {isPosted && (
-                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${colorClasses.bgPurple100} ${colorClasses.textPurple800}`}>
-                  <Lock className="w-3 h-3" />
-                  {t('documents.sealed')}
-                </span>
-              )}
-            </div>
-          </div>
-
+      <PageHeader
+        className="mb-2"
+        title={creditNote.document_number ?? ''}
+        breadcrumb={
+          <Link to="/sales/credit-notes" className={`${colorClasses.textBlue600} ${colorClasses.hoverTextBlue700} inline-flex items-center gap-2`}>
+            <ArrowLeft className="w-4 h-4" />
+            {t('creditNotes.backToList')}
+          </Link>
+        }
+        actions={
           <DocumentActionBar
             document={creditNote}
             basePath="/sales/credit-notes"
@@ -178,7 +160,25 @@ export function CreditNoteDetailPage() {
               setShowEmailModal(true)
             }}
           />
-        </div>
+        }
+      />
+      <div className="mb-6 flex items-center gap-3">
+        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${colorClasses.bgRed100} ${colorClasses.textRed800}`}>
+          {t('documents.types.credit_note')}
+        </span>
+        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+          creditNote.status === 'posted' ? `${colorClasses.bgGreen100} ${colorClasses.textGreen800}` :
+          creditNote.status === 'confirmed' ? `${colorClasses.bgBlue100} ${colorClasses.textBlue800}` :
+          `${colorClasses.bgGray100} ${colorClasses.textGray800}`
+        }`}>
+          {t(`documents.status.${creditNote.status}`)}
+        </span>
+        {isPosted && (
+          <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${colorClasses.bgPurple100} ${colorClasses.textPurple800}`}>
+            <Lock className="w-3 h-3" />
+            {t('documents.sealed')}
+          </span>
+        )}
       </div>
 
       {/* Source Invoice Link */}

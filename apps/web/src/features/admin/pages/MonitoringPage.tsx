@@ -18,10 +18,12 @@ import {
   DollarSign,
   TrendingUp,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useMonitoringDashboard, useRetryFailedJob, useFlushFailedJobs, useRetryAllFailedJobs } from '../hooks/useMonitoring'
 import { useCurrency } from '@/hooks/useCurrency'
 import type { Alert, FailedJob } from '../api'
 import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge/StatusBadge'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -213,24 +215,30 @@ export function MonitoringPage() {
     <div className="p-8">
       <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className={`text-[1.5rem] leading-8 font-bold ${colorClasses.textGray900}`}>System Monitoring</h1>
-          <p className={`text-sm ${colorClasses.textGray500} mt-1`}>
-            Last updated: {new Date(health.timestamp).toLocaleString()}
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <MonitoringStatusBadge status={health.status}>{health.status}</MonitoringStatusBadge>
-          <button
-            onClick={() => refetch()}
-            className={`flex items-center gap-2 px-4 py-2 ${colorClasses.bgGray100} ${colorClasses.textGray700} rounded-lg ${colorClasses.hoverBgGray200}`}
+      <PageHeader
+        title="System Monitoring"
+        subtitle={`Last updated: ${new Date(health.timestamp).toLocaleString()}`}
+        breadcrumb={
+          <Link
+            to="/admin/dashboard"
+            className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
           >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </button>
-        </div>
-      </div>
+            &larr; Back to Dashboard
+          </Link>
+        }
+        actions={
+          <>
+            <MonitoringStatusBadge status={health.status}>{health.status}</MonitoringStatusBadge>
+            <button
+              onClick={() => refetch()}
+              className={`flex items-center gap-2 px-4 py-2 ${colorClasses.bgGray100} ${colorClasses.textGray700} rounded-lg ${colorClasses.hoverBgGray200}`}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+          </>
+        }
+      />
 
       {/* Tabs */}
       <div className={`border-b ${colorClasses.borderGray200}`}>

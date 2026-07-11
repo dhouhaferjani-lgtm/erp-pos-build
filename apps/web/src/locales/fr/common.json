@@ -113,7 +113,8 @@
     "noVehicles": "Aucun véhicule",
     "noVehiclesDescription": "Aucun véhicule n'a été lié à ce client.",
     "noPurchaseOrders": "Aucune commande fournisseur",
-    "noPurchaseOrdersDescription": "Commencez par créer une commande fournisseur pour ce fournisseur."
+    "noPurchaseOrdersDescription": "Commencez par créer une commande fournisseur pour ce fournisseur.",
+    "received": "Reçue"
   },
   "errors": {
     "loadingFailed": "Échec du chargement des données. Veuillez réessayer.",

@@ -642,16 +642,16 @@ export function SupplierInvoiceDetailPage() {
                   >
                     <Download className="h-4 w-4" />
                   </Button>
-                  {/* dangerOutline has no Button-atom variant — inline tokens preserve the outline treatment (pixel parity) */}
-                  <button
+                  <Button
                     type="button"
+                    variant="dangerOutline"
+                    size="sm"
                     onClick={() => { handleDeleteAttachment(att.id) }}
                     disabled={deleteMutation.isPending}
-                    className={`${tokens.button.base} ${tokens.button.dangerOutline} ${tokens.button.sizes.sm}`}
                     aria-label={t('purchases:supplierInvoices.actions.deleteAttachment')}
                   >
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </div>
               </li>
             ))}

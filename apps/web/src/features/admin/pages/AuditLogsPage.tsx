@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { FileText, Calendar, User } from 'lucide-react'
 import { getAdminAuditLogs } from '../api'
 import { QueryError } from '@/components/QueryError'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -55,12 +57,18 @@ export function AuditLogsPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
-          <h1 className={`text-[1.5rem] leading-8 font-bold ${colorClasses.textGray900}`}>
-            Audit Logs
-          </h1>
-          <p className={`${colorClasses.textGray500}`}>Complete trail of all administrative actions</p>
-        </div>
+        <PageHeader
+          title="Audit Logs"
+          subtitle="Complete trail of all administrative actions"
+          breadcrumb={
+            <Link
+              to="/admin/dashboard"
+              className={`text-sm ${colorClasses.textBlue600} ${colorClasses.hoverTextBlue800}`}
+            >
+              &larr; Back to Dashboard
+            </Link>
+          }
+        />
 
         <div className="overflow-hidden rounded-lg bg-white shadow">
           <DataTable className={`min-w-full divide-y ${colorClasses.divideGray200}`}>

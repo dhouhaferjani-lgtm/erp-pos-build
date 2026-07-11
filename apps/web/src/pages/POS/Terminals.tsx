@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Plus, X } from 'lucide-react'
+import { PageHeader } from '@/components/molecules/PageHeader'
 import { TerminalList, TerminalForm } from '@/features/pos/components'
 import {
   useTerminals,
@@ -180,24 +182,28 @@ export function TerminalsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className={`text-2xl font-semibold ${colorTokens.text.primary}`}>
-            {t('common:navigation.terminals')}
-          </h1>
-          <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
-            {t('pos:terminal.pageDescription')}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={handleOpenCreateForm}
-          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.variants.hoverBgBlue700} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2`}
-        >
-          <Plus className="h-4 w-4" />
-          {t('pos:terminal.addTerminal')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('common:navigation.terminals')}
+        subtitle={t('pos:terminal.pageDescription')}
+        breadcrumb={
+          <Link
+            to="/pos"
+            className={`inline-flex items-center text-sm ${colorTokens.text.subtle} ${colorTokens.variants.hoverTextGray700}`}
+          >
+            &larr; {t('common:navigation.pos')}
+          </Link>
+        }
+        actions={
+          <button
+            type="button"
+            onClick={handleOpenCreateForm}
+            className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.variants.hoverBgBlue700} focus:outline-none focus:ring-2 ${colorTokens.focus.primaryRing} focus:ring-offset-2`}
+          >
+            <Plus className="h-4 w-4" />
+            {t('pos:terminal.addTerminal')}
+          </button>
+        }
+      />
 
       {/* Terminals List */}
       <div className={`${colorTokens.surface.base} shadow rounded-lg overflow-hidden`}>
