@@ -212,3 +212,18 @@
 - `git rebase origin/dev` stopped while replaying `6a9bc9f0a` (`test(web): stabilize finance gate coverage`). Conflicts: `AgedPayablesPage.test.tsx`, `BalanceSheetPage.test.tsx`, and `ProfitLossPage.test.tsx` content conflicts; `AgedReceivablesPage.test.tsx` modify/delete because the sweep deleted the stale duplicate test. `PaymentForm.test.tsx` merged automatically.
 - Money-path conflict check: none of the conflicted files is GL, movement-port, bridge, lifecycle, or `PaymentController` code; all are frontend tests.
 - Resolution rationale (recorded before resolution): preserve the sweep's canonical test structure/imports and deletion of the duplicate Aged Receivables suite, while carrying forward only the branch's formatter-independent EUR assertions and async-stability intent where those assertions still exist in the post-sweep suites. Do not resurrect the deleted duplicate file.
+- The next replay (`53dd5b816`, Gate 2 RC1 verification) conflicted only in this progress file because the new conflict record and the historical gate entry were both appended after Task 15. Resolution: retain both entries in chronological resume-first/gate-history order; no code resolution is involved.
+
+## Gate 2
+
+### RC1 pre-review verification
+
+- `./vendor/bin/phpunit tests/Feature/Treasury tests/Feature/Accounting` — PASS, 978 tests / 3,922 assertions / 26 environment-specific skips; 40 existing PHPUnit deprecations reported. This includes the Phase-1 byte-shape payment/movement pins and all Wave-C/D deferred-tender, refund, remittance, and instrument paths.
+- `./vendor/bin/phpstan` — PASS, all 2,459 files, zero errors at the repository's configured level 8 and default memory settings.
+- `./vendor/bin/pint --dirty` — pass, no changes.
+- `pnpm typecheck` — pass.
+- `pnpm lint` — pass; ESLint emitted the repository's existing warning inventory and `audit:keys` completed successfully, with no errors.
+- `pnpm vitest run src/features/treasury src/features/finance` — PASS, 115 suites / 355 tests, zero failures. The final evidence run used Vitest's JSON reporter to avoid retaining the suite's very large pre-existing React `act()` warning stream.
+- `git diff --check` — pass; worktree clean before this verification entry.
+- Gate-harness fixes: the first combined frontend run exposed four legacy Finance suites with stale US-locale exact-string assertions and a real ECharts canvas mount in jsdom. Their newer counterparts already established the canonical patterns, so the legacy tests now compare canonical currency output after Unicode-space normalization and mock `OwnerChart`; focused result 28/28. A supplier-prefill assertion that passed alone but raced under the 51-file run now waits for the async reset; focused result 14/14. No production behavior changed in this stabilization commit.
+- React Doctor: Task-15 diff against `phase2-gate-1` scores 88/100 with one pre-existing barrel-import warning; the introduced effect-chain warning was fixed before Gate 2 by moving the reset to the method-change handler.
