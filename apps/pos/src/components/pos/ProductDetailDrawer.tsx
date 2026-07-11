@@ -17,10 +17,18 @@ import { useStockDisplay } from '@/components/organisms/ProductGrid/useStockDisp
 import type { POSProduct } from '@/types/product';
 import type { LocationStockDisplay } from '@/lib/stock/gridStock';
 
-interface ProductDetailDrawerProps {
-  isOpen: boolean;
+export type DetailTab = 'details' | 'routine' | 'equivalents' | 'complements' | 'stock_lots' | 'other_branches';
+
+interface RoutineStep {
+  product: POSProduct;
+  step_label: string;
+  step_order: number;
+  routine_id: string;
+}
+
+interface ProductDetailSheetProps {
+  product: POSProduct;
   onClose: () => void;
-  product: POSProduct | null;
   /** Same slice semantics as ProductCard: object -> location-aware; null -> exempt (no chrome); undefined -> legacy fallback. */
   locationStock?: LocationStockDisplay | null;
   /**
@@ -31,67 +39,23 @@ interface ProductDetailDrawerProps {
    * same value it passes to the grid.
    */
   hardBlockOutOfStock?: boolean;
-}
-
-export type DetailTab = 'details' | 'routine' | 'equivalents' | 'complements' | 'stock_lots' | 'other_branches';
-
-interface RoutineStep {
-  product: POSProduct;
-  step_label: string;
-  step_order: number;
-  routine_id: string;
-}
-
-const DETAILS_TAB: DetailTab = 'details';
-
-export function ProductDetailDrawer({
-  isOpen,
-  onClose,
-  product,
-  locationStock,
-  hardBlockOutOfStock = true,
-}: ProductDetailDrawerProps) {
-  // Tab state lives HERE (not in the sheet) so it survives the sheet
-  // unmounting while closed. Note it resets whenever product?.id changes —
-  // including on close, since HomePage nulls the product (product → null) —
-  // so in practice reopening always starts on Details.
-  const [activeTab, setActiveTab] = useState<DetailTab>(DETAILS_TAB);
-  const [prevProductId, setPrevProductId] = useState<string | undefined>(product?.id);
-  if (product?.id !== prevProductId) {
-    setPrevProductId(product?.id);
-    setActiveTab(DETAILS_TAB);
-  }
-
-  if (!isOpen || !product) return null;
-
-  return (
-    <div className="fixed inset-0 z-[52] flex items-center justify-center bg-black/50 p-3 ez-fade-in" onClick={onClose}>
-      <ProductDetailSheet
-        product={product}
-        onClose={onClose}
-        locationStock={locationStock}
-        hardBlockOutOfStock={hardBlockOutOfStock}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-      />
-    </div>
-  );
-}
-
-interface ProductDetailSheetProps {
-  product: POSProduct;
-  onClose: () => void;
-  locationStock?: LocationStockDisplay | null;
-  hardBlockOutOfStock?: boolean;
   activeTab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
+  /**
+   * Cart-always-foreground v1 (spec §2.1): 'overlay' (default) = the fixed-size
+   * centered sheet inside an overlay host; 'pane' = fluid fill of the product
+   * pane with region (not dialog) semantics — it is genuinely not a modal.
+   */
+  variant?: 'overlay' | 'pane';
 }
 
 /**
  * The drawer's sheet content, extracted so /theme-preview can render it
- * inline (no overlay) for headless visual verification. The overlay host,
- * placement, and z-strategy stay in ProductDetailDrawer — this component is
- * purely the one-sheet surface.
+ * inline (no overlay) for headless visual verification. In production the
+ * 'pane' variant is hosted by ProductPaneHost in HomePage — there is no
+ * overlay host component anymore (Task 5 deleted it). The 'overlay' variant
+ * remains live in this file only as the prop's default value; it has no
+ * production consumer.
  */
 export function ProductDetailSheet({
   product,
@@ -100,6 +64,7 @@ export function ProductDetailSheet({
   hardBlockOutOfStock = true,
   activeTab,
   onTabChange,
+  variant = 'overlay',
 }: ProductDetailSheetProps) {
   const { t } = useTranslation('pos');
   const { t: tSmart } = useTranslation('smart-prompts');
@@ -151,13 +116,25 @@ export function ProductDetailSheet({
     { id: 'other_branches', label: t('productDetail.tabs.otherBranches') },
   ];
 
+  const isPane = variant === 'pane';
+
   return (
     <section
-      role="dialog"
-      aria-modal="true"
-      aria-label={t('productDetail.title')}
+      role={isPane ? 'region' : 'dialog'}
+      aria-modal={isPane ? undefined : 'true'}
+      aria-label={isPane ? product.name : t('productDetail.title')}
       data-testid="product-detail-modal"
-      className="ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-panel bg-surface-overlay shadow-2xl"
+      className={
+        isPane
+          ? // Pane: fill the host; min-w floor per spec §4 (aside 344px + usable
+            // tab column). shadow-sm reads as a canvas panel, not overlay chrome.
+            'relative flex h-full w-full min-w-[680px] overflow-hidden rounded-panel bg-surface-overlay shadow-sm'
+          : // Overlay (default, no production consumer): byte-identical to the
+            // pre-Task-1 literal — see ProductDetailDrawer.test.tsx "keeps the
+            // overlay variant as the default" assertion, which pins this exact
+            // string until the 'overlay' variant itself is removed.
+            'ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-panel bg-surface-overlay shadow-2xl'
+      }
       onClick={(event) => event.stopPropagation()}
     >
       <aside

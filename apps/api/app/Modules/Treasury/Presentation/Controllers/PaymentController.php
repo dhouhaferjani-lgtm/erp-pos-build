@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Presentation\Controllers;
 
-use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
@@ -18,24 +18,29 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
-use App\Modules\Treasury\Domain\Events\RepositoryBalanceChanged;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
@@ -45,12 +50,143 @@ class PaymentController extends Controller
         private readonly PaymentAllocationService $allocationService,
         private readonly WithholdingCertificateService $withholdingService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
-        private readonly PartnerBalanceService $partnerBalanceService,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * Task 16b (spine Wave D, HIGH-7): resolve the client-supplied request-level
+     * idempotency key. Prefers the `Idempotency-Key` header (standard practice);
+     * falls back to an `idempotency_key` body field for callers that cannot set
+     * custom headers. Returns null when no key was supplied at all — callers must
+     * treat null as "dedup disabled for this request" (fully backward compatible).
+     */
+    private function resolveIdempotencyKey(Request $request): ?string
+    {
+        $key = $request->header('Idempotency-Key');
+
+        if (! is_string($key) || trim($key) === '') {
+            $bodyKey = $request->input('idempotency_key');
+            $key = is_string($bodyKey) ? $bodyKey : null;
+        }
+
+        if ($key === null) {
+            return null;
+        }
+
+        $key = trim($key);
+
+        return $key !== '' ? $key : null;
+    }
+
+    /**
+     * Task 16b: look up a previously created payment for this idempotency key,
+     * scoped to tenant+company (the unique index is per-company). Loaded with
+     * the same relations formatPayment() needs, so a replay response is
+     * identical in shape to the original success response.
+     */
+    private function findPaymentByIdempotencyKey(string $tenantId, string $companyId, string $idempotencyKey): ?Payment
+    {
+        return Payment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('idempotency_key', $idempotencyKey)
+            ->with(['partner', 'paymentMethod', 'allocations.document'])
+            ->first();
+    }
+
+    /**
+     * Task 16b: look up a previously created multi-payment batch by its
+     * idempotency key. storeMultiple() creates several Payment rows per
+     * request (one per split line); each is keyed
+     * "{idempotencyKey}:multi:{zero-padded index}" so every row is unique
+     * (satisfying the partial unique index) while sharing a discoverable
+     * prefix. Returns null on a cache miss (first request for this key).
+     *
+     * @return array<int, Payment>|null
+     */
+    private function findMultiPaymentBatchByIdempotencyKey(string $tenantId, string $companyId, string $idempotencyKey): ?array
+    {
+        $prefix = $idempotencyKey.':multi:';
+
+        $payments = Payment::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('idempotency_key', 'like', $prefix.'%')
+            ->with(['partner', 'paymentMethod', 'allocations.document'])
+            ->orderBy('idempotency_key')
+            ->get();
+
+        return $payments->isEmpty() ? null : $payments->values()->all();
+    }
+
+    /**
+     * Task 16b: rebuild the storeMultiple() success response from an already
+     * persisted batch (a replay hit). Reconstructs `excess_handling` from the
+     * durable PaymentAllocation rows rather than re-deriving it — any
+     * allocation NOT against the primary document is, by construction, an
+     * excess allocation the original request created via the manual/fifo/
+     * due_date branches. `remaining_advance` (an excess portion with no
+     * allocation row at all) cannot be recovered this way and is omitted on
+     * replay; it never drove further server-side state, so this is a display-
+     * only gap.
+     *
+     * @param  array<int, Payment>  $payments
+     */
+    private function formatMultiPaymentReplay(array $payments, Request $request): JsonResponse
+    {
+        /** @var Payment $anyPayment */
+        $anyPayment = $payments[0];
+
+        $documentId = $request->input('document_id');
+        $primaryDocument = null;
+        if (is_string($documentId) && Str::isUuid($documentId)) {
+            $primaryDocument = Document::query()
+                ->where('tenant_id', $anyPayment->tenant_id)
+                ->where('company_id', $anyPayment->company_id)
+                ->find($documentId);
+        }
+
+        /** @var numeric-string $excessAmount */
+        $excessAmount = '0.000';
+        $excessAllocations = [];
+        foreach ($payments as $payment) {
+            foreach ($payment->allocations as $allocation) {
+                if ($primaryDocument instanceof Document && $allocation->document_id === $primaryDocument->id) {
+                    continue;
+                }
+
+                $excessAllocations[] = [
+                    'document_id' => $allocation->document_id,
+                    'document_number' => $allocation->document->document_number,
+                    'amount' => $allocation->amount,
+                ];
+                $excessAmount = bcadd($excessAmount, (string) $allocation->amount, $this->scale());
+            }
+        }
+
+        $requestedMethod = $request->input('excess_allocation_method');
+
+        return response()->json([
+            'data' => [
+                'payments' => array_map(fn (Payment $p) => $this->formatPayment($p), $payments),
+                'document' => $primaryDocument instanceof Document ? [
+                    'id' => $primaryDocument->id,
+                    'document_number' => $primaryDocument->document_number,
+                    'balance_due' => $primaryDocument->balance_due,
+                    'status' => $primaryDocument->status->value,
+                ] : null,
+                'excess_handling' => [
+                    'excess_amount' => $excessAmount,
+                    'allocation_method' => is_string($requestedMethod) ? $requestedMethod : 'advance',
+                    'allocations' => $excessAllocations,
+                ],
+            ],
+        ], 200);
     }
 
     public function index(Request $request): JsonResponse
@@ -143,6 +279,23 @@ class PaymentController extends Controller
         // Check if this is a multi-payment request
         if ($request->has('payments')) {
             return $this->storeMultiple($request, $user, $tenantId, $companyId);
+        }
+
+        // Task 16b (spine Wave D, HIGH-7): idempotency short-circuit, checked
+        // BEFORE validation and BEFORE the write transaction. A retry (lost
+        // response, client timeout) that resends the same Idempotency-Key must
+        // return the ORIGINAL payment untouched — no re-validation, no new
+        // Payment row, no second treasury movement (Task 16 keys the movement
+        // sourceId on $payment->id, so a second payment would mean a second
+        // movement and the balance moving twice).
+        $idempotencyKey = $this->resolveIdempotencyKey($request);
+        if ($idempotencyKey !== null) {
+            $existingPayment = $this->findPaymentByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
+            if ($existingPayment instanceof Payment) {
+                return response()->json([
+                    'data' => $this->formatPayment($existingPayment),
+                ], 200);
+            }
         }
 
         $validated = $request->validate([
@@ -421,208 +574,188 @@ class PaymentController extends Controller
             ], 422);
         }
 
-        // Create payment and allocations in a transaction
-        $payment = DB::transaction(function () use ($validated, $user, $paymentAmount, $adjustedAllocations, $tenantId, $companyId, $isSupplierPayment) {
-            // Determine payment type: advance if no allocations, otherwise document payment
-            $paymentType = empty($adjustedAllocations)
-                ? PaymentType::Advance
-                : PaymentType::DocumentPayment;
+        // Create payment and allocations in a transaction. Wrapped in try/catch
+        // (Task 16b) so a concurrent retry that races this SELECT-then-INSERT — two
+        // requests with the same Idempotency-Key both missing the pre-transaction
+        // lookup above — is caught by the DB-level partial unique index rather than
+        // creating a second payment. The catch is OUTSIDE the transaction closure
+        // (not an inner try/catch) so Laravel's transaction manager fully rolls back
+        // before the recovery SELECT runs — on Postgres, querying inside an already-
+        // aborted transaction throws a second error, so the rollback must complete
+        // first.
+        try {
+            $payment = DB::transaction(function () use ($validated, $user, $paymentAmount, $adjustedAllocations, $tenantId, $companyId, $isSupplierPayment, $idempotencyKey) {
+                // Determine payment type: advance if no allocations, otherwise document payment
+                $paymentType = empty($adjustedAllocations)
+                    ? PaymentType::Advance
+                    : PaymentType::DocumentPayment;
 
-            // Spec §13 writer-inventory row 2 — `PaymentController::store()` →
-            // `web_admin`. `fiscal_event_id` stays NULL (no fiscal event for
-            // an admin-side web payment).
-            $payment = Payment::create([
-                'tenant_id' => $tenantId,
-                'company_id' => $companyId,
-                'partner_id' => $validated['partner_id'],
-                'payment_method_id' => $validated['payment_method_id'],
-                'instrument_id' => $validated['instrument_id'] ?? null,
-                'repository_id' => $validated['repository_id'] ?? null,
-                'amount' => $paymentAmount,
-                'currency' => $validated['currency'] ?? 'TND',
-                'payment_date' => $validated['payment_date'],
-                'status' => PaymentStatus::Completed,
-                'payment_type' => $paymentType,
-                'origin' => PaymentOrigin::WebAdmin,
-                'reference' => $validated['reference'] ?? null,
-                'notes' => $validated['notes'] ?? null,
-                'created_by' => $user->id,
-            ]);
-
-            // Dispatch PaymentRecorded event for audit trail
-            DB::afterCommit(function () use ($payment, $tenantId, $companyId, $validated, $paymentAmount): void {
-                event(new PaymentRecorded(
-                    paymentId: $payment->id,
-                    tenantId: $tenantId,
-                    companyId: $companyId,
-                    partnerId: $validated['partner_id'],
-                    amount: $paymentAmount,
-                    currency: $validated['currency'] ?? 'TND',
-                    paymentMethodId: $validated['payment_method_id'],
-                    recordedAt: now()->toIso8601String(),
-                ));
-            });
-
-            // Create withholding certificate if enabled and document allocated
-            if (
-                ($validated['withholding_enabled'] ?? false)
-                && ! empty($adjustedAllocations)
-            ) {
-                // Get the first document for withholding certificate
-                $firstAllocation = $adjustedAllocations[0];
-                /** @var Document $document */
-                $document = Document::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where('company_id', $companyId)
-                    ->findOrFail($firstAllocation['document_id']);
-
-                try {
-                    $certificateData = $this->withholdingService->createFromPayment(
-                        $payment,
-                        $document,
-                        $validated['withholding_rate'] ?? null,
-                        $validated['withholding_override_reason'] ?? null
-                    );
-
-                    // Link certificate to payment
-                    $payment->withholding_certificate_id = $certificateData->id;
-                    $payment->save();
-                } catch (\DomainException $e) {
-                    // Log error but don't fail the payment
-                    // Withholding certificate can be created manually later
-                    logger()->warning('Failed to create withholding certificate for payment', [
-                        'payment_id' => $payment->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-
-            // Calculate total allocated for GL entry
-            /** @var numeric-string $totalAllocatedForGL */
-            $totalAllocatedForGL = '0.00';
-
-            // Create allocations and update document balances
-            foreach ($adjustedAllocations as $allocationData) {
-                /** @var Document $document */
-                $document = Document::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where('company_id', $companyId)
-                    ->lockForUpdate()
-                    ->findOrFail($allocationData['document_id']);
-
-                /** @var numeric-string $allocationAmount */
-                $allocationAmount = (string) $allocationData['amount'];
-
-                // Update document balance
-                /** @var numeric-string $currentBalance */
-                $currentBalance = $document->balance_due ?? $document->total;
-
-                // Authoritative over-allocation guard on the LOCKED row (FIX A —
-                // concurrency). The pre-transaction check read balance_due without a
-                // lock, so two concurrent supplier payments could both pass it. Here the
-                // row is locked FOR UPDATE; re-check the outstanding balance and reject
-                // if this allocation would over-debit 401 / drive payable_balance < 0.
-                if (
-                    $document->type === DocumentType::SupplierInvoice
-                    && bccomp($allocationAmount, $currentBalance, $this->scale()) > 0
-                ) {
-                    throw new HttpResponseException(response()->json([
-                        'error' => [
-                            'code' => 'SUPPLIER_PAYMENT_EXCEEDS_PAYABLE',
-                            'message' => 'Payment amount exceeds the supplier invoice outstanding balance',
-                            'details' => [
-                                'document_id' => $document->id,
-                                'requested_amount' => $allocationAmount,
-                                'outstanding_balance' => $currentBalance,
-                            ],
-                        ],
-                    ], 422));
-                }
-
-                PaymentAllocation::create([
-                    'payment_id' => $payment->id,
-                    'document_id' => $document->id,
-                    'amount' => $allocationAmount,
+                // Spec §13 writer-inventory row 2 — `PaymentController::store()` →
+                // `web_admin`. `fiscal_event_id` stays NULL (no fiscal event for
+                // an admin-side web payment).
+                $payment = Payment::create([
+                    'tenant_id' => $tenantId,
+                    'company_id' => $companyId,
+                    'partner_id' => $validated['partner_id'],
+                    'payment_method_id' => $validated['payment_method_id'],
+                    'instrument_id' => $validated['instrument_id'] ?? null,
+                    'repository_id' => $validated['repository_id'] ?? null,
+                    'amount' => $paymentAmount,
+                    'currency' => $validated['currency'] ?? 'TND',
+                    'payment_date' => $validated['payment_date'],
+                    'status' => PaymentStatus::Completed,
+                    'payment_type' => $paymentType,
+                    'origin' => PaymentOrigin::WebAdmin,
+                    'reference' => $validated['reference'] ?? null,
+                    'notes' => $validated['notes'] ?? null,
+                    'created_by' => $user->id,
+                    'idempotency_key' => $idempotencyKey,
                 ]);
 
-                $totalAllocatedForGL = bcadd($totalAllocatedForGL, $allocationAmount, $this->scale());
-                $newBalance = bcsub($currentBalance, $allocationAmount, $this->scale());
-                $document->balance_due = $newBalance;
+                // Dispatch PaymentRecorded event for audit trail
+                DB::afterCommit(function () use ($payment, $tenantId, $companyId, $validated, $paymentAmount): void {
+                    event(new PaymentRecorded(
+                        paymentId: $payment->id,
+                        tenantId: $tenantId,
+                        companyId: $companyId,
+                        partnerId: $validated['partner_id'],
+                        amount: $paymentAmount,
+                        currency: $validated['currency'] ?? 'TND',
+                        paymentMethodId: $validated['payment_method_id'],
+                        recordedAt: now()->toIso8601String(),
+                    ));
+                });
 
-                // Mark as paid if fully paid (only for document types that support paid status)
-                if (bccomp($newBalance, '0.00', $this->scale()) === 0 && $document->type->canTransitionToPaid()) {
-                    $document->status = DocumentStatus::Paid;
+                // Create withholding certificate if enabled and document allocated
+                if (
+                    ($validated['withholding_enabled'] ?? false)
+                    && ! empty($adjustedAllocations)
+                ) {
+                    // Get the first document for withholding certificate
+                    $firstAllocation = $adjustedAllocations[0];
+                    /** @var Document $document */
+                    $document = Document::query()
+                        ->where('tenant_id', $tenantId)
+                        ->where('company_id', $companyId)
+                        ->findOrFail($firstAllocation['document_id']);
+
+                    try {
+                        $certificateData = $this->withholdingService->createFromPayment(
+                            $payment,
+                            $document,
+                            $validated['withholding_rate'] ?? null,
+                            $validated['withholding_override_reason'] ?? null
+                        );
+
+                        // Link certificate to payment
+                        $payment->withholding_certificate_id = $certificateData->id;
+                        $payment->save();
+                    } catch (\DomainException $e) {
+                        // Log error but don't fail the payment
+                        // Withholding certificate can be created manually later
+                        logger()->warning('Failed to create withholding certificate for payment', [
+                            'payment_id' => $payment->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
 
-                $document->save();
+                // Calculate total allocated for GL entry
+                /** @var numeric-string $totalAllocatedForGL */
+                $totalAllocatedForGL = '0.00';
 
-                // Dispatch DocumentFullyPaid event when document is fully paid
-                if ($document->status === DocumentStatus::Paid) {
-                    $paidDocumentId = $document->id;
-                    $paidDocumentNumber = $document->document_number;
-                    $paidDocumentType = $document->type->value;
-                    $paidPartnerId = $document->partner_id;
-                    $paidTotal = $document->total ?? '0.00';
-                    DB::afterCommit(function () use ($paidDocumentId, $tenantId, $companyId, $paidDocumentNumber, $paidDocumentType, $paidPartnerId, $paidTotal): void {
-                        event(new DocumentFullyPaid(
-                            documentId: $paidDocumentId,
-                            tenantId: $tenantId,
-                            companyId: $companyId,
-                            documentNumber: $paidDocumentNumber,
-                            documentType: $paidDocumentType,
-                            partnerId: $paidPartnerId,
-                            totalPaid: $paidTotal,
-                            paidAt: now()->toIso8601String(),
-                        ));
-                    });
-                }
-            }
+                // Create allocations and update document balances
+                foreach ($adjustedAllocations as $allocationData) {
+                    /** @var Document $document */
+                    $document = Document::query()
+                        ->where('tenant_id', $tenantId)
+                        ->where('company_id', $companyId)
+                        ->lockForUpdate()
+                        ->findOrFail($allocationData['document_id']);
 
-            // Update repository balance and create GL journal entry
-            $repositoryId = $validated['repository_id'] ?? null;
-            /** @var PaymentRepository|null $repository */
-            $repository = null;
+                    /** @var numeric-string $allocationAmount */
+                    $allocationAmount = (string) $allocationData['amount'];
 
-            if ($repositoryId) {
-                /** @var PaymentRepository|null $repoResult */
-                $repoResult = PaymentRepository::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where('company_id', $companyId)
-                    ->lockForUpdate()
-                    ->find($repositoryId);
-                $repository = $repoResult;
-
-                if ($repository instanceof PaymentRepository) {
-                    // Cash direction: customer payments come IN (increment); supplier
-                    // payments go OUT (decrement) — money leaves the repository to pay
-                    // the supplier. bcmath at scale 3, never float.
+                    // Update document balance
                     /** @var numeric-string $currentBalance */
-                    $currentBalance = $repository->balance ?? '0.00';
-                    $previousBalance = $currentBalance;
-                    $repository->balance = $isSupplierPayment
-                        ? bcsub($currentBalance, $paymentAmount, $this->scale())
-                        : bcadd($currentBalance, $paymentAmount, $this->scale());
-                    $repository->save();
+                    $currentBalance = $document->balance_due ?? $document->total;
 
-                    $newBalance = $repository->balance;
-                    DB::afterCommit(function () use ($repository, $tenantId, $companyId, $previousBalance, $newBalance, $paymentAmount, $validated): void {
-                        event(new RepositoryBalanceChanged(
-                            repositoryId: $repository->id,
-                            tenantId: $tenantId,
-                            companyId: $companyId,
-                            previousBalance: $previousBalance,
-                            newBalance: $newBalance,
-                            changeAmount: $paymentAmount,
-                            currency: $validated['currency'] ?? 'TND',
-                            changedAt: now()->toIso8601String(),
-                        ));
-                    });
+                    // Authoritative over-allocation guard on the LOCKED row (FIX A —
+                    // concurrency). The pre-transaction check read balance_due without a
+                    // lock, so two concurrent supplier payments could both pass it. Here the
+                    // row is locked FOR UPDATE; re-check the outstanding balance and reject
+                    // if this allocation would over-debit 401 / drive payable_balance < 0.
+                    if (
+                        $document->type === DocumentType::SupplierInvoice
+                        && bccomp($allocationAmount, $currentBalance, $this->scale()) > 0
+                    ) {
+                        throw new HttpResponseException(response()->json([
+                            'error' => [
+                                'code' => 'SUPPLIER_PAYMENT_EXCEEDS_PAYABLE',
+                                'message' => 'Payment amount exceeds the supplier invoice outstanding balance',
+                                'details' => [
+                                    'document_id' => $document->id,
+                                    'requested_amount' => $allocationAmount,
+                                    'outstanding_balance' => $currentBalance,
+                                ],
+                            ],
+                        ], 422));
+                    }
+
+                    PaymentAllocation::create([
+                        'payment_id' => $payment->id,
+                        'document_id' => $document->id,
+                        'amount' => $allocationAmount,
+                    ]);
+
+                    $totalAllocatedForGL = bcadd($totalAllocatedForGL, $allocationAmount, $this->scale());
+                    $newBalance = bcsub($currentBalance, $allocationAmount, $this->scale());
+                    $document->balance_due = $newBalance;
+
+                    // Mark as paid if fully paid (only for document types that support paid status)
+                    if (bccomp($newBalance, '0.00', $this->scale()) === 0 && $document->type->canTransitionToPaid()) {
+                        $document->status = DocumentStatus::Paid;
+                    }
+
+                    $document->save();
+
+                    // Dispatch DocumentFullyPaid event when document is fully paid
+                    if ($document->status === DocumentStatus::Paid) {
+                        $paidDocumentId = $document->id;
+                        $paidDocumentNumber = $document->document_number;
+                        $paidDocumentType = $document->type->value;
+                        $paidPartnerId = $document->partner_id;
+                        $paidTotal = $document->total ?? '0.00';
+                        DB::afterCommit(function () use ($paidDocumentId, $tenantId, $companyId, $paidDocumentNumber, $paidDocumentType, $paidPartnerId, $paidTotal): void {
+                            event(new DocumentFullyPaid(
+                                documentId: $paidDocumentId,
+                                tenantId: $tenantId,
+                                companyId: $companyId,
+                                documentNumber: $paidDocumentNumber,
+                                documentType: $paidDocumentType,
+                                partnerId: $paidPartnerId,
+                                totalPaid: $paidTotal,
+                                paidAt: now()->toIso8601String(),
+                            ));
+                        });
+                    }
                 }
-            }
 
-            if ($repositoryId && bccomp($totalAllocatedForGL, '0', $this->scale()) > 0) {
-                // Ensure repository is loaded if not already
-                if (! $repository instanceof PaymentRepository) {
+                // Post the GL journal entry SYNCHRONOUSLY (in-transaction), then record the
+                // treasury cash movement through the single write port. This REPLACES the
+                // old inline `$repository->balance = bcadd/bcsub(...)` write and the
+                // hand-fired RepositoryBalanceChanged event: the port is now the single
+                // writer of the repository balance + append-only movement row, atomically
+                // with the GL post.
+                //
+                // Global lock order (BLOCKER-1): the synchronous GL post takes the company
+                // advisory lock FIRST; the port then takes the repository row lock inside
+                // record(). The repository is therefore NOT locked here — record() locks it.
+                $repositoryId = $validated['repository_id'] ?? null;
+                /** @var PaymentRepository|null $repository */
+                $repository = null;
+
+                if ($repositoryId) {
                     /** @var PaymentRepository|null $repoResult */
                     $repoResult = PaymentRepository::query()
                         ->where('tenant_id', $tenantId)
@@ -631,10 +764,20 @@ class PaymentController extends Controller
                     $repository = $repoResult;
                 }
 
-                if ($repository instanceof PaymentRepository && $repository->gl_account_id) {
+                /** @var string|null $primaryJournalEntryId */
+                $primaryJournalEntryId = null;
+
+                if (
+                    $repository instanceof PaymentRepository
+                    && $repository->gl_account_id
+                    && bccomp($totalAllocatedForGL, '0', $this->scale()) > 0
+                ) {
                     if ($isSupplierPayment) {
                         // Supplier-side: Dr SupplierPayable (401, partner-tagged) / Cr Bank.
-                        // Reuse the existing canonical, hash-chained GL method.
+                        // Posted synchronously in-transaction so it returns the POSTED entry;
+                        // its JournalEntryPosted event fires afterCommit and the
+                        // RefreshPartnerBalanceOnJournalEntryPosted listener recomputes
+                        // payable_balance (no manual partner-refresh needed anymore, LOW-13).
                         $journalEntry = $this->glService->createSupplierPaymentJournalEntry(
                             companyId: $companyId,
                             partnerId: $validated['partner_id'],
@@ -644,17 +787,9 @@ class PaymentController extends Controller
                             date: new \DateTimeImmutable($validated['payment_date']),
                             user: $user,
                             description: "Supplier payment - {$payment->reference}",
-                            currencyCode: $payment->currency
+                            currencyCode: $payment->currency,
+                            mode: PostingMode::SynchronousInTransaction,
                         );
-
-                        // payable_balance is DERIVED from the 401 subledger; recompute it
-                        // after the supplier_payment entry is POSTED. The GL method posts
-                        // via afterCommit, so defer the refresh to afterCommit too (and
-                        // register it AFTER the post so it runs once the Dr 401 is posted).
-                        $supplierPartnerId = $validated['partner_id'];
-                        DB::afterCommit(function () use ($companyId, $supplierPartnerId): void {
-                            $this->partnerBalanceService->refreshPartnerBalance($companyId, $supplierPartnerId);
-                        });
                     } else {
                         $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
                             companyId: $companyId,
@@ -665,60 +800,135 @@ class PaymentController extends Controller
                             date: new \DateTimeImmutable($validated['payment_date']),
                             description: "Customer payment - {$payment->reference}",
                             user: $user,
-                            currencyCode: $payment->currency
+                            currencyCode: $payment->currency,
+                            mode: PostingMode::SynchronousInTransaction,
                         );
                     }
+
+                    $primaryJournalEntryId = $journalEntry->id;
 
                     // Link journal entry to payment
                     $payment->journal_entry_id = $journalEntry->id;
                     $payment->save();
                 }
-            }
 
-            // Handle excess amount as customer advance.
-            // Supplier payments are excluded — there is no supplier-advance path here
-            // and over-allocation was already rejected before the transaction.
-            /** @var numeric-string $excessAmount */
-            $excessAmount = bcsub($paymentAmount, $totalAllocatedForGL, $this->scale());
+                // Handle excess amount as customer advance — posted BEFORE the cash
+                // movement so its JE can back the movement (reconciliation-readiness,
+                // spec §9.2). Supplier payments are excluded — there is no supplier-
+                // advance path here and over-allocation was already rejected before the
+                // transaction.
+                /** @var numeric-string $excessAmount */
+                $excessAmount = bcsub($paymentAmount, $totalAllocatedForGL, $this->scale());
 
-            if (! $isSupplierPayment && bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId) {
-                if (! $repository instanceof PaymentRepository) {
-                    /** @var PaymentRepository|null $foundRepository */
-                    $foundRepository = PaymentRepository::query()
-                        ->where('tenant_id', $tenantId)
-                        ->where('company_id', $companyId)
-                        ->find($repositoryId);
-                    $repository = $foundRepository;
-                }
+                /** @var string|null $advanceJournalEntryId */
+                $advanceJournalEntryId = null;
 
-                if ($repository instanceof PaymentRepository && $repository->gl_account_id) {
-                    // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer Advance)
-                    $this->glService->createCustomerAdvanceJournalEntry(
-                        companyId: $companyId,
-                        partnerId: $validated['partner_id'],
-                        advanceId: $payment->id,
-                        amount: $excessAmount,
-                        paymentMethodAccountId: $repository->gl_account_id,
-                        date: new \DateTimeImmutable($validated['payment_date']),
-                        user: $user,
-                        description: "Customer advance from payment {$payment->reference}",
-                        currencyCode: $payment->currency
-                    );
+                if (! $isSupplierPayment && bccomp($excessAmount, '0', $this->scale()) > 0 && $repositoryId) {
+                    if (! $repository instanceof PaymentRepository) {
+                        /** @var PaymentRepository|null $foundRepository */
+                        $foundRepository = PaymentRepository::query()
+                            ->where('tenant_id', $tenantId)
+                            ->where('company_id', $companyId)
+                            ->find($repositoryId);
+                        $repository = $foundRepository;
+                    }
 
-                    // Update payment type to indicate partial advance
-                    if (bccomp($totalAllocatedForGL, '0', $this->scale()) > 0) {
-                        // Has both allocated and excess - keep as DocumentPayment
-                        // The advance portion is tracked via GL
-                    } else {
-                        // Pure advance payment (no allocations)
-                        $payment->payment_type = PaymentType::Advance;
-                        $payment->save();
+                    if ($repository instanceof PaymentRepository && $repository->gl_account_id) {
+                        // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer Advance)
+                        $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
+                            companyId: $companyId,
+                            partnerId: $validated['partner_id'],
+                            advanceId: $payment->id,
+                            amount: $excessAmount,
+                            paymentMethodAccountId: $repository->gl_account_id,
+                            date: new \DateTimeImmutable($validated['payment_date']),
+                            user: $user,
+                            description: "Customer advance from payment {$payment->reference}",
+                            currencyCode: $payment->currency
+                        );
+
+                        $advanceJournalEntryId = $advanceEntry->id;
+
+                        // Update payment type to indicate partial advance
+                        if (bccomp($totalAllocatedForGL, '0', $this->scale()) > 0) {
+                            // Has both allocated and excess - keep as DocumentPayment
+                            // The advance portion is tracked via GL
+                        } else {
+                            // Pure advance payment (no allocations) — link the advance JE
+                            // so the cash movement below carries it (no allocation JE exists).
+                            $payment->payment_type = PaymentType::Advance;
+                            if ($payment->journal_entry_id === null) {
+                                $payment->journal_entry_id = $advanceJournalEntryId;
+                            }
+                            $payment->save();
+                        }
                     }
                 }
+
+                // Move the treasury cash through the write port — the SINGLE writer of the
+                // repository balance + movement row. Direction: customer payments come IN,
+                // supplier payments go OUT. The FULL payment amount moves (matching the old
+                // inline write); any excess-advance portion was booked above, but the
+                // physical cash-in/out is this one movement, keyed on the stable payment id.
+                // Amount/currency pass as strings so the port owns all bcmath/scale (Rule 19).
+                //
+                // Reconciliation-readiness (spec §9.2): the movement MUST carry a JE — the
+                // invoice/order-allocation JE if any, else the advance/excess JE. A named
+                // repository is already guaranteed ledgered by the pre-transaction guard, so
+                // for any cash-moving payment one of these is non-null. If somehow neither
+                // posted (a misconfigured null-gl_account_id repository), fail loud with a
+                // 422 rather than record a null-JE cash movement that would freeze the repo
+                // at reconcile.
+                if ($repository instanceof PaymentRepository) {
+                    /** @var string|null $movementJournalEntryId */
+                    $movementJournalEntryId = $primaryJournalEntryId ?? $advanceJournalEntryId;
+
+                    if ($movementJournalEntryId === null) {
+                        throw new \DomainException(
+                            "a cash movement requires a GL-linked repository; repository {$repository->id} has no gl_account_id"
+                        );
+                    }
+
+                    $this->movementService->record(new MovementIntent(
+                        repositoryId: $repository->id,
+                        tenantId: $tenantId,
+                        companyId: $companyId,
+                        direction: $isSupplierPayment ? MovementDirection::Out : MovementDirection::In,
+                        amount: $paymentAmount,
+                        // The movement is a fact about THIS repository — record it in the
+                        // repository's own currency (the port's currency invariant), not the
+                        // request currency. AutoERP is single-currency today, so these agree.
+                        currency: $repository->currency,
+                        sourceType: MovementSourceType::Payment,
+                        sourceId: $payment->id,
+                        idempotencyLeg: 'main',
+                        journalEntryId: $movementJournalEntryId,
+                        occurredAt: null,
+                        reasonCode: null,
+                        reversesMovementId: null,
+                        createdBy: $user->id,
+                        notes: null,
+                        allowWhileFrozen: false,
+                    ));
+                }
+
+                return $payment;
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            // Another concurrent request with the same Idempotency-Key won the race
+            // and committed first. Read back the row it created and return it —
+            // never surface the DB constraint error to the client.
+            if ($idempotencyKey !== null) {
+                $existingPayment = $this->findPaymentByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
+                if ($existingPayment instanceof Payment) {
+                    return response()->json([
+                        'data' => $this->formatPayment($existingPayment),
+                    ], 200);
+                }
             }
 
-            return $payment;
-        });
+            throw $e;
+        }
 
         $payment->load(['partner', 'paymentMethod', 'allocations.document']);
 
@@ -753,6 +963,19 @@ class PaymentController extends Controller
      */
     private function storeMultiple(Request $request, User $user, string $tenantId, string $companyId): JsonResponse
     {
+        // Task 16b (spine Wave D, HIGH-7): idempotency short-circuit, checked
+        // BEFORE validation and BEFORE the write transaction — mirrors store().
+        // A retry with the same Idempotency-Key must return the ORIGINAL batch
+        // untouched: no re-validation, no new Payment rows, no second set of
+        // treasury movements.
+        $idempotencyKey = $this->resolveIdempotencyKey($request);
+        if ($idempotencyKey !== null) {
+            $existingBatch = $this->findMultiPaymentBatchByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
+            if ($existingBatch !== null) {
+                return $this->formatMultiPaymentReplay($existingBatch, $request);
+            }
+        }
+
         $validated = $request->validate([
             'partner_id' => [
                 'required',
@@ -857,324 +1080,206 @@ class PaymentController extends Controller
             }
         }
 
-        // Process in transaction
-        $result = DB::transaction(function () use (
-            $validated,
-            $user,
-            $tenantId,
-            $companyId,
-            $primaryDocument,
-            $documentBalance,
-            $totalPaymentAmount,
-            $excessAmount,
-            $excessAllocationMethod,
-            $excessAllocations
-        ) {
-            $createdPayments = [];
+        // Process in transaction. Wrapped in try/catch (Task 16b) for the same
+        // reason as store(): a concurrent retry that races the pre-transaction
+        // lookup above is caught by the partial unique index rather than creating
+        // a second batch. Caught OUTSIDE the closure so the transaction fully
+        // rolls back before the recovery read runs.
+        try {
+            $result = DB::transaction(function () use (
+                $validated,
+                $user,
+                $tenantId,
+                $companyId,
+                $primaryDocument,
+                $documentBalance,
+                $totalPaymentAmount,
+                $excessAmount,
+                $excessAllocationMethod,
+                $excessAllocations,
+                $idempotencyKey
+            ) {
+                $createdPayments = [];
 
-            // Calculate amount to allocate to primary document
-            /** @var numeric-string $primaryAllocationAmount */
-            $primaryAllocationAmount = bccomp($totalPaymentAmount, $documentBalance, $this->scale()) >= 0
-                ? $documentBalance
-                : $totalPaymentAmount;
+                // Reconciliation-readiness (spec §9.2): per-line cash movements are
+                // DEFERRED into this list and recorded only AFTER excess handling, once
+                // every backing JE (each line's allocation JE and/or the excess/advance
+                // JE) is posted and linked on its payment. Recording in the loop (before
+                // the excess JE exists) would stamp a null journal_entry_id on a
+                // pure-excess line's movement and freeze the repo at Wave-F reconcile.
+                //
+                // @var array<int, array{payment: Payment, repository: PaymentRepository, amount: numeric-string}> $pendingMovements
+                $pendingMovements = [];
 
-            // Track remaining primary allocation across payment lines
-            /** @var numeric-string $remainingPrimaryAllocation */
-            $remainingPrimaryAllocation = $primaryAllocationAmount;
+                // Calculate amount to allocate to primary document
+                /** @var numeric-string $primaryAllocationAmount */
+                $primaryAllocationAmount = bccomp($totalPaymentAmount, $documentBalance, $this->scale()) >= 0
+                    ? $documentBalance
+                    : $totalPaymentAmount;
 
-            // Create each payment
-            foreach ($validated['payments'] as $index => $paymentLine) {
-                /** @var numeric-string $lineAmount */
-                $lineAmount = (string) $paymentLine['amount'];
+                // Track remaining primary allocation across payment lines
+                /** @var numeric-string $remainingPrimaryAllocation */
+                $remainingPrimaryAllocation = $primaryAllocationAmount;
 
-                // Determine payment type
-                $paymentType = bccomp($remainingPrimaryAllocation, '0', $this->scale()) > 0
-                    ? PaymentType::DocumentPayment
-                    : PaymentType::Advance;
+                // Create each payment
+                foreach ($validated['payments'] as $index => $paymentLine) {
+                    /** @var numeric-string $lineAmount */
+                    $lineAmount = (string) $paymentLine['amount'];
 
-                // Spec §13 writer-inventory row 3 — `PaymentController::storeMultiple()`
-                // → `web_admin`. `fiscal_event_id` stays NULL.
-                $payment = Payment::create([
-                    'tenant_id' => $tenantId,
-                    'company_id' => $companyId,
-                    'partner_id' => $validated['partner_id'],
-                    'payment_method_id' => $paymentLine['payment_method_id'],
-                    'repository_id' => $paymentLine['repository_id'] ?? null,
-                    'amount' => $lineAmount,
-                    'currency' => $validated['currency'] ?? 'TND',
-                    'payment_date' => $validated['payment_date'],
-                    'status' => PaymentStatus::Completed,
-                    'payment_type' => $paymentType,
-                    'origin' => PaymentOrigin::WebAdmin,
-                    'reference' => $paymentLine['reference'] ?? 'Payment '.($index + 1)." for {$primaryDocument->document_number}",
-                    'notes' => 'Multi-payment (part '.($index + 1).' of '.count($validated['payments']).')',
-                    'created_by' => $user->id,
-                ]);
+                    // Determine payment type
+                    $paymentType = bccomp($remainingPrimaryAllocation, '0', $this->scale()) > 0
+                        ? PaymentType::DocumentPayment
+                        : PaymentType::Advance;
 
-                // Dispatch PaymentRecorded event
-                $paymentId = $payment->id;
-                $paymentMethodId = $paymentLine['payment_method_id'];
-                $currency = $validated['currency'] ?? 'TND';
-                $partnerId = $validated['partner_id'];
-                DB::afterCommit(function () use ($paymentId, $tenantId, $companyId, $partnerId, $lineAmount, $currency, $paymentMethodId): void {
-                    event(new PaymentRecorded(
-                        paymentId: $paymentId,
-                        tenantId: $tenantId,
-                        companyId: $companyId,
-                        partnerId: $partnerId,
-                        amount: $lineAmount,
-                        currency: $currency,
-                        paymentMethodId: $paymentMethodId,
-                        recordedAt: now()->toIso8601String(),
-                    ));
-                });
-
-                // Allocate to primary document
-                /** @var numeric-string $allocationForThisPayment */
-                $allocationForThisPayment = bccomp($lineAmount, $remainingPrimaryAllocation, $this->scale()) >= 0
-                    ? $remainingPrimaryAllocation
-                    : $lineAmount;
-
-                if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0) {
-                    PaymentAllocation::create([
-                        'payment_id' => $payment->id,
-                        'document_id' => $primaryDocument->id,
-                        'amount' => $allocationForThisPayment,
+                    // Spec §13 writer-inventory row 3 — `PaymentController::storeMultiple()`
+                    // → `web_admin`. `fiscal_event_id` stays NULL.
+                    $payment = Payment::create([
+                        'tenant_id' => $tenantId,
+                        'company_id' => $companyId,
+                        'partner_id' => $validated['partner_id'],
+                        'payment_method_id' => $paymentLine['payment_method_id'],
+                        'repository_id' => $paymentLine['repository_id'] ?? null,
+                        'amount' => $lineAmount,
+                        'currency' => $validated['currency'] ?? 'TND',
+                        'payment_date' => $validated['payment_date'],
+                        'status' => PaymentStatus::Completed,
+                        'payment_type' => $paymentType,
+                        'origin' => PaymentOrigin::WebAdmin,
+                        'reference' => $paymentLine['reference'] ?? 'Payment '.($index + 1)." for {$primaryDocument->document_number}",
+                        'notes' => 'Multi-payment (part '.($index + 1).' of '.count($validated['payments']).')',
+                        'created_by' => $user->id,
+                        // Task 16b: each line gets its own composed key (zero-padded index)
+                        // so the partial unique index (company_id, idempotency_key) allows
+                        // every line of one batch while still rejecting a duplicate batch.
+                        'idempotency_key' => $idempotencyKey !== null
+                            ? sprintf('%s:multi:%04d', $idempotencyKey, $index)
+                            : null,
                     ]);
 
-                    $remainingPrimaryAllocation = bcsub($remainingPrimaryAllocation, $allocationForThisPayment, $this->scale());
-                }
+                    // Dispatch PaymentRecorded event
+                    $paymentId = $payment->id;
+                    $paymentMethodId = $paymentLine['payment_method_id'];
+                    $currency = $validated['currency'] ?? 'TND';
+                    $partnerId = $validated['partner_id'];
+                    DB::afterCommit(function () use ($paymentId, $tenantId, $companyId, $partnerId, $lineAmount, $currency, $paymentMethodId): void {
+                        event(new PaymentRecorded(
+                            paymentId: $paymentId,
+                            tenantId: $tenantId,
+                            companyId: $companyId,
+                            partnerId: $partnerId,
+                            amount: $lineAmount,
+                            currency: $currency,
+                            paymentMethodId: $paymentMethodId,
+                            recordedAt: now()->toIso8601String(),
+                        ));
+                    });
 
-                // Update repository balance
-                $repositoryId = $paymentLine['repository_id'] ?? null;
-                if ($repositoryId) {
-                    /** @var PaymentRepository|null $repository */
-                    $repository = PaymentRepository::query()
-                        ->where('tenant_id', $tenantId)
-                        ->where('company_id', $companyId)
-                        ->lockForUpdate()
-                        ->find($repositoryId);
-                    if ($repository) {
-                        /** @var numeric-string $currentBalance */
-                        $currentBalance = $repository->balance ?? '0.00';
-                        $repository->balance = bcadd($currentBalance, $lineAmount, $this->scale());
-                        $repository->save();
+                    // Allocate to primary document
+                    /** @var numeric-string $allocationForThisPayment */
+                    $allocationForThisPayment = bccomp($lineAmount, $remainingPrimaryAllocation, $this->scale()) >= 0
+                        ? $remainingPrimaryAllocation
+                        : $lineAmount;
 
-                        // Create GL entry for allocated portion
-                        if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0 && $repository->gl_account_id) {
-                            $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
-                                companyId: $companyId,
-                                partnerId: $validated['partner_id'],
-                                paymentId: $payment->id,
-                                amount: $allocationForThisPayment,
-                                paymentMethodAccountId: $repository->gl_account_id,
-                                date: new \DateTimeImmutable($validated['payment_date']),
-                                description: "Customer payment - {$payment->reference}",
-                                user: $user,
-                                currencyCode: $payment->currency
-                            );
-                            $payment->journal_entry_id = $journalEntry->id;
-                            $payment->save();
-                        }
+                    if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0) {
+                        PaymentAllocation::create([
+                            'payment_id' => $payment->id,
+                            'document_id' => $primaryDocument->id,
+                            'amount' => $allocationForThisPayment,
+                        ]);
+
+                        $remainingPrimaryAllocation = bcsub($remainingPrimaryAllocation, $allocationForThisPayment, $this->scale());
                     }
-                }
 
-                $createdPayments[] = $payment;
-            }
-
-            // Update primary document balance
-            $newBalance = bcsub($documentBalance, $primaryAllocationAmount, $this->scale());
-            $primaryDocument->balance_due = $newBalance;
-            if (bccomp($newBalance, '0.00', $this->scale()) === 0 && $primaryDocument->type->canTransitionToPaid()) {
-                $primaryDocument->status = DocumentStatus::Paid;
-
-                // Dispatch DocumentFullyPaid event
-                $primaryDocId = $primaryDocument->id;
-                $primaryDocNumber = $primaryDocument->document_number;
-                $primaryDocType = $primaryDocument->type->value;
-                $primaryDocPartnerId = $primaryDocument->partner_id;
-                $primaryDocTotal = $primaryDocument->total ?? '0.00';
-                DB::afterCommit(function () use ($primaryDocId, $tenantId, $companyId, $primaryDocNumber, $primaryDocType, $primaryDocPartnerId, $primaryDocTotal): void {
-                    event(new DocumentFullyPaid(
-                        documentId: $primaryDocId,
-                        tenantId: $tenantId,
-                        companyId: $companyId,
-                        documentNumber: $primaryDocNumber,
-                        documentType: $primaryDocType,
-                        partnerId: $primaryDocPartnerId,
-                        totalPaid: $primaryDocTotal,
-                        paidAt: now()->toIso8601String(),
-                    ));
-                });
-            }
-            $primaryDocument->save();
-
-            // Handle excess amount
-            /** @var array<string, mixed> $excessHandlingResult */
-            $excessHandlingResult = [
-                'excess_amount' => $excessAmount,
-                'allocation_method' => $excessAllocationMethod,
-                'allocations' => [],
-            ];
-
-            if (bccomp($excessAmount, '0', $this->scale()) > 0 && count($createdPayments) > 0) {
-                // Find the last payment to use for excess allocation
-                /** @var Payment $lastPayment */
-                $lastPayment = $createdPayments[count($createdPayments) - 1];
-
-                if ($excessAllocationMethod === 'advance') {
-                    // Keep as customer advance - create GL entry
-                    $repositoryId = $validated['payments'][count($validated['payments']) - 1]['repository_id'] ?? null;
+                    // Post the GL entry SYNCHRONOUSLY for the allocated portion, then QUEUE
+                    // the treasury cash movement for this payment line (Task 16). The FULL
+                    // line amount moves IN (multi-line is customer-only — supplier invoices
+                    // are rejected up front). The port is the single writer of the repository
+                    // balance + movement row. Global lock order (BLOCKER-1): the synchronous
+                    // GL post takes the company advisory lock FIRST, then the port takes the
+                    // repository row lock in record() — so the repository is NOT locked here.
+                    //
+                    // The movement itself is DEFERRED (see $pendingMovements) so the
+                    // excess/advance JE posted after this loop can back a pure-excess line.
+                    $repositoryId = $paymentLine['repository_id'] ?? null;
                     if ($repositoryId) {
                         /** @var PaymentRepository|null $repository */
                         $repository = PaymentRepository::query()
                             ->where('tenant_id', $tenantId)
                             ->where('company_id', $companyId)
                             ->find($repositoryId);
-                        if ($repository && $repository->gl_account_id) {
-                            $this->glService->createCustomerAdvanceJournalEntry(
-                                companyId: $companyId,
-                                partnerId: $validated['partner_id'],
-                                advanceId: $lastPayment->id,
-                                amount: $excessAmount,
-                                paymentMethodAccountId: $repository->gl_account_id,
-                                date: new \DateTimeImmutable($validated['payment_date']),
-                                user: $user,
-                                description: "Customer advance from payment {$lastPayment->reference}",
-                                currencyCode: $lastPayment->currency
-                            );
-                        }
-                    }
-                } elseif ($excessAllocationMethod === 'manual' && ! empty($excessAllocations)) {
-                    // Manual allocation to specified documents
-                    foreach ($excessAllocations as $allocation) {
-                        /** @var Document $targetDoc */
-                        $targetDoc = Document::query()
-                            ->where('tenant_id', $tenantId)
-                            ->where('company_id', $companyId)
-                            ->lockForUpdate()
-                            ->findOrFail($allocation['document_id']);
-
-                        // Same gap as the primary document: manual excess allocations
-                        // also post the customer GL direction — reject supplier invoices.
-                        $this->rejectSupplierInvoiceInMultiline($targetDoc);
-
-                        /** @var numeric-string $allocAmount */
-                        $allocAmount = (string) $allocation['amount'];
-
-                        PaymentAllocation::create([
-                            'payment_id' => $lastPayment->id,
-                            'document_id' => $targetDoc->id,
-                            'amount' => $allocAmount,
-                        ]);
-
-                        $this->createPostedExcessAllocationJournalEntry($lastPayment, $allocAmount, $user);
-
-                        // Update target document balance
-                        /** @var numeric-string $targetBalance */
-                        $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
-                        $newTargetBalance = bcsub($targetBalance, $allocAmount, $this->scale());
-                        $targetDoc->balance_due = $newTargetBalance;
-                        if (bccomp($newTargetBalance, '0.00', $this->scale()) === 0 && $targetDoc->type->canTransitionToPaid()) {
-                            $targetDoc->status = DocumentStatus::Paid;
-
-                            $paidDocId = $targetDoc->id;
-                            $paidDocNumber = $targetDoc->document_number;
-                            $paidDocType = $targetDoc->type->value;
-                            $paidDocPartnerId = $targetDoc->partner_id;
-                            $paidDocTotal = $targetDoc->total ?? '0.00';
-                            DB::afterCommit(function () use ($paidDocId, $tenantId, $companyId, $paidDocNumber, $paidDocType, $paidDocPartnerId, $paidDocTotal): void {
-                                event(new DocumentFullyPaid(
-                                    documentId: $paidDocId,
-                                    tenantId: $tenantId,
+                        if ($repository) {
+                            // Create GL entry for allocated portion
+                            if (bccomp($allocationForThisPayment, '0', $this->scale()) > 0 && $repository->gl_account_id) {
+                                $journalEntry = $this->glService->createPaymentReceivedJournalEntry(
                                     companyId: $companyId,
-                                    documentNumber: $paidDocNumber,
-                                    documentType: $paidDocType,
-                                    partnerId: $paidDocPartnerId,
-                                    totalPaid: $paidDocTotal,
-                                    paidAt: now()->toIso8601String(),
-                                ));
-                            });
+                                    partnerId: $validated['partner_id'],
+                                    paymentId: $payment->id,
+                                    amount: $allocationForThisPayment,
+                                    paymentMethodAccountId: $repository->gl_account_id,
+                                    date: new \DateTimeImmutable($validated['payment_date']),
+                                    description: "Customer payment - {$payment->reference}",
+                                    user: $user,
+                                    currencyCode: $payment->currency,
+                                    mode: PostingMode::SynchronousInTransaction,
+                                );
+                                $payment->journal_entry_id = $journalEntry->id;
+                                $payment->save();
+                            }
+
+                            // Defer the full line cash-in until after excess handling (below).
+                            $pendingMovements[] = [
+                                'payment' => $payment,
+                                'repository' => $repository,
+                                'amount' => $lineAmount,
+                            ];
                         }
-                        $targetDoc->save();
-
-                        $excessHandlingResult['allocations'][] = [
-                            'document_id' => $targetDoc->id,
-                            'document_number' => $targetDoc->document_number,
-                            'amount' => $allocAmount,
-                        ];
-                    }
-                } elseif (in_array($excessAllocationMethod, ['fifo', 'due_date'], true)) {
-                    // Use PaymentAllocationService for automatic allocation
-                    $allocationMethod = $excessAllocationMethod === 'fifo'
-                        ? AllocationMethod::FIFO
-                        : AllocationMethod::DUE_DATE_PRIORITY;
-
-                    $preview = $this->allocationService->previewAllocation(
-                        companyId: $companyId,
-                        partnerId: $validated['partner_id'],
-                        paymentAmount: $excessAmount,
-                        allocationMethod: $allocationMethod
-                    );
-
-                    // Apply allocations
-                    foreach ($preview['allocations'] as $allocation) {
-                        /** @var Document $targetDoc */
-                        $targetDoc = Document::query()
-                            ->where('tenant_id', $tenantId)
-                            ->where('company_id', $companyId)
-                            ->lockForUpdate()
-                            ->findOrFail($allocation['document_id']);
-                        /** @var numeric-string $allocAmount */
-                        $allocAmount = (string) $allocation['amount'];
-
-                        PaymentAllocation::create([
-                            'payment_id' => $lastPayment->id,
-                            'document_id' => $targetDoc->id,
-                            'amount' => $allocAmount,
-                        ]);
-
-                        $this->createPostedExcessAllocationJournalEntry($lastPayment, $allocAmount, $user);
-
-                        // Update target document balance
-                        /** @var numeric-string $targetBalance */
-                        $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
-                        $newTargetBalance = bcsub($targetBalance, $allocAmount, $this->scale());
-                        $targetDoc->balance_due = $newTargetBalance;
-                        if (bccomp($newTargetBalance, '0.00', $this->scale()) === 0 && $targetDoc->type->canTransitionToPaid()) {
-                            $targetDoc->status = DocumentStatus::Paid;
-
-                            $paidDocId = $targetDoc->id;
-                            $paidDocNumber = $targetDoc->document_number;
-                            $paidDocType = $targetDoc->type->value;
-                            $paidDocPartnerId = $targetDoc->partner_id;
-                            $paidDocTotal = $targetDoc->total ?? '0.00';
-                            DB::afterCommit(function () use ($paidDocId, $tenantId, $companyId, $paidDocNumber, $paidDocType, $paidDocPartnerId, $paidDocTotal): void {
-                                event(new DocumentFullyPaid(
-                                    documentId: $paidDocId,
-                                    tenantId: $tenantId,
-                                    companyId: $companyId,
-                                    documentNumber: $paidDocNumber,
-                                    documentType: $paidDocType,
-                                    partnerId: $paidDocPartnerId,
-                                    totalPaid: $paidDocTotal,
-                                    paidAt: now()->toIso8601String(),
-                                ));
-                            });
-                        }
-                        $targetDoc->save();
-
-                        $excessHandlingResult['allocations'][] = [
-                            'document_id' => $targetDoc->id,
-                            'document_number' => $allocation['document_number'],
-                            'amount' => $allocAmount,
-                        ];
                     }
 
-                    // Any remaining excess becomes customer advance
-                    /** @var numeric-string $remainingExcess */
-                    $remainingExcess = $preview['excess_amount'];
-                    if (bccomp($remainingExcess, '0', $this->scale()) > 0) {
+                    $createdPayments[] = $payment;
+                }
+
+                // Update primary document balance
+                $newBalance = bcsub($documentBalance, $primaryAllocationAmount, $this->scale());
+                $primaryDocument->balance_due = $newBalance;
+                if (bccomp($newBalance, '0.00', $this->scale()) === 0 && $primaryDocument->type->canTransitionToPaid()) {
+                    $primaryDocument->status = DocumentStatus::Paid;
+
+                    // Dispatch DocumentFullyPaid event
+                    $primaryDocId = $primaryDocument->id;
+                    $primaryDocNumber = $primaryDocument->document_number;
+                    $primaryDocType = $primaryDocument->type->value;
+                    $primaryDocPartnerId = $primaryDocument->partner_id;
+                    $primaryDocTotal = $primaryDocument->total ?? '0.00';
+                    DB::afterCommit(function () use ($primaryDocId, $tenantId, $companyId, $primaryDocNumber, $primaryDocType, $primaryDocPartnerId, $primaryDocTotal): void {
+                        event(new DocumentFullyPaid(
+                            documentId: $primaryDocId,
+                            tenantId: $tenantId,
+                            companyId: $companyId,
+                            documentNumber: $primaryDocNumber,
+                            documentType: $primaryDocType,
+                            partnerId: $primaryDocPartnerId,
+                            totalPaid: $primaryDocTotal,
+                            paidAt: now()->toIso8601String(),
+                        ));
+                    });
+                }
+                $primaryDocument->save();
+
+                // Handle excess amount
+                /** @var array<string, mixed> $excessHandlingResult */
+                $excessHandlingResult = [
+                    'excess_amount' => $excessAmount,
+                    'allocation_method' => $excessAllocationMethod,
+                    'allocations' => [],
+                ];
+
+                if (bccomp($excessAmount, '0', $this->scale()) > 0 && count($createdPayments) > 0) {
+                    // Find the last payment to use for excess allocation
+                    /** @var Payment $lastPayment */
+                    $lastPayment = $createdPayments[count($createdPayments) - 1];
+
+                    if ($excessAllocationMethod === 'advance') {
+                        // Keep as customer advance - create GL entry
                         $repositoryId = $validated['payments'][count($validated['payments']) - 1]['repository_id'] ?? null;
                         if ($repositoryId) {
                             /** @var PaymentRepository|null $repository */
@@ -1183,30 +1288,258 @@ class PaymentController extends Controller
                                 ->where('company_id', $companyId)
                                 ->find($repositoryId);
                             if ($repository && $repository->gl_account_id) {
-                                $this->glService->createCustomerAdvanceJournalEntry(
+                                $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
                                     companyId: $companyId,
                                     partnerId: $validated['partner_id'],
                                     advanceId: $lastPayment->id,
-                                    amount: $remainingExcess,
+                                    amount: $excessAmount,
                                     paymentMethodAccountId: $repository->gl_account_id,
                                     date: new \DateTimeImmutable($validated['payment_date']),
                                     user: $user,
                                     description: "Customer advance from payment {$lastPayment->reference}",
                                     currencyCode: $lastPayment->currency
                                 );
+
+                                // Link the advance JE so a pure-excess last line carries a
+                                // JE on its deferred cash movement (reconciliation §9.2).
+                                if ($lastPayment->journal_entry_id === null) {
+                                    $lastPayment->journal_entry_id = $advanceEntry->id;
+                                    $lastPayment->save();
+                                }
                             }
                         }
-                        $excessHandlingResult['remaining_advance'] = $remainingExcess;
+                    } elseif ($excessAllocationMethod === 'manual' && ! empty($excessAllocations)) {
+                        // Manual allocation to specified documents
+                        foreach ($excessAllocations as $allocation) {
+                            /** @var Document $targetDoc */
+                            $targetDoc = Document::query()
+                                ->where('tenant_id', $tenantId)
+                                ->where('company_id', $companyId)
+                                ->lockForUpdate()
+                                ->findOrFail($allocation['document_id']);
+
+                            // Same gap as the primary document: manual excess allocations
+                            // also post the customer GL direction — reject supplier invoices.
+                            $this->rejectSupplierInvoiceInMultiline($targetDoc);
+
+                            /** @var numeric-string $allocAmount */
+                            $allocAmount = (string) $allocation['amount'];
+
+                            PaymentAllocation::create([
+                                'payment_id' => $lastPayment->id,
+                                'document_id' => $targetDoc->id,
+                                'amount' => $allocAmount,
+                            ]);
+
+                            $this->createPostedExcessAllocationJournalEntry($lastPayment, $allocAmount, $user);
+
+                            // Update target document balance
+                            /** @var numeric-string $targetBalance */
+                            $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
+                            $newTargetBalance = bcsub($targetBalance, $allocAmount, $this->scale());
+                            $targetDoc->balance_due = $newTargetBalance;
+                            if (bccomp($newTargetBalance, '0.00', $this->scale()) === 0 && $targetDoc->type->canTransitionToPaid()) {
+                                $targetDoc->status = DocumentStatus::Paid;
+
+                                $paidDocId = $targetDoc->id;
+                                $paidDocNumber = $targetDoc->document_number;
+                                $paidDocType = $targetDoc->type->value;
+                                $paidDocPartnerId = $targetDoc->partner_id;
+                                $paidDocTotal = $targetDoc->total ?? '0.00';
+                                DB::afterCommit(function () use ($paidDocId, $tenantId, $companyId, $paidDocNumber, $paidDocType, $paidDocPartnerId, $paidDocTotal): void {
+                                    event(new DocumentFullyPaid(
+                                        documentId: $paidDocId,
+                                        tenantId: $tenantId,
+                                        companyId: $companyId,
+                                        documentNumber: $paidDocNumber,
+                                        documentType: $paidDocType,
+                                        partnerId: $paidDocPartnerId,
+                                        totalPaid: $paidDocTotal,
+                                        paidAt: now()->toIso8601String(),
+                                    ));
+                                });
+                            }
+                            $targetDoc->save();
+
+                            $excessHandlingResult['allocations'][] = [
+                                'document_id' => $targetDoc->id,
+                                'document_number' => $targetDoc->document_number,
+                                'amount' => $allocAmount,
+                            ];
+                        }
+                    } elseif (in_array($excessAllocationMethod, ['fifo', 'due_date'], true)) {
+                        // Use PaymentAllocationService for automatic allocation
+                        $allocationMethod = $excessAllocationMethod === 'fifo'
+                            ? AllocationMethod::FIFO
+                            : AllocationMethod::DUE_DATE_PRIORITY;
+
+                        $preview = $this->allocationService->previewAllocation(
+                            companyId: $companyId,
+                            partnerId: $validated['partner_id'],
+                            paymentAmount: $excessAmount,
+                            allocationMethod: $allocationMethod
+                        );
+
+                        // Apply allocations
+                        foreach ($preview['allocations'] as $allocation) {
+                            /** @var Document $targetDoc */
+                            $targetDoc = Document::query()
+                                ->where('tenant_id', $tenantId)
+                                ->where('company_id', $companyId)
+                                ->lockForUpdate()
+                                ->findOrFail($allocation['document_id']);
+                            /** @var numeric-string $allocAmount */
+                            $allocAmount = (string) $allocation['amount'];
+
+                            PaymentAllocation::create([
+                                'payment_id' => $lastPayment->id,
+                                'document_id' => $targetDoc->id,
+                                'amount' => $allocAmount,
+                            ]);
+
+                            $this->createPostedExcessAllocationJournalEntry($lastPayment, $allocAmount, $user);
+
+                            // Update target document balance
+                            /** @var numeric-string $targetBalance */
+                            $targetBalance = $targetDoc->balance_due ?? $targetDoc->total;
+                            $newTargetBalance = bcsub($targetBalance, $allocAmount, $this->scale());
+                            $targetDoc->balance_due = $newTargetBalance;
+                            if (bccomp($newTargetBalance, '0.00', $this->scale()) === 0 && $targetDoc->type->canTransitionToPaid()) {
+                                $targetDoc->status = DocumentStatus::Paid;
+
+                                $paidDocId = $targetDoc->id;
+                                $paidDocNumber = $targetDoc->document_number;
+                                $paidDocType = $targetDoc->type->value;
+                                $paidDocPartnerId = $targetDoc->partner_id;
+                                $paidDocTotal = $targetDoc->total ?? '0.00';
+                                DB::afterCommit(function () use ($paidDocId, $tenantId, $companyId, $paidDocNumber, $paidDocType, $paidDocPartnerId, $paidDocTotal): void {
+                                    event(new DocumentFullyPaid(
+                                        documentId: $paidDocId,
+                                        tenantId: $tenantId,
+                                        companyId: $companyId,
+                                        documentNumber: $paidDocNumber,
+                                        documentType: $paidDocType,
+                                        partnerId: $paidDocPartnerId,
+                                        totalPaid: $paidDocTotal,
+                                        paidAt: now()->toIso8601String(),
+                                    ));
+                                });
+                            }
+                            $targetDoc->save();
+
+                            $excessHandlingResult['allocations'][] = [
+                                'document_id' => $targetDoc->id,
+                                'document_number' => $allocation['document_number'],
+                                'amount' => $allocAmount,
+                            ];
+                        }
+
+                        // Any remaining excess becomes customer advance
+                        /** @var numeric-string $remainingExcess */
+                        $remainingExcess = $preview['excess_amount'];
+                        if (bccomp($remainingExcess, '0', $this->scale()) > 0) {
+                            $repositoryId = $validated['payments'][count($validated['payments']) - 1]['repository_id'] ?? null;
+                            if ($repositoryId) {
+                                /** @var PaymentRepository|null $repository */
+                                $repository = PaymentRepository::query()
+                                    ->where('tenant_id', $tenantId)
+                                    ->where('company_id', $companyId)
+                                    ->find($repositoryId);
+                                if ($repository && $repository->gl_account_id) {
+                                    $advanceEntry = $this->glService->createCustomerAdvanceJournalEntry(
+                                        companyId: $companyId,
+                                        partnerId: $validated['partner_id'],
+                                        advanceId: $lastPayment->id,
+                                        amount: $remainingExcess,
+                                        paymentMethodAccountId: $repository->gl_account_id,
+                                        date: new \DateTimeImmutable($validated['payment_date']),
+                                        user: $user,
+                                        description: "Customer advance from payment {$lastPayment->reference}",
+                                        currencyCode: $lastPayment->currency
+                                    );
+
+                                    // Link the advance JE so a pure-excess last line carries
+                                    // a JE on its deferred cash movement (reconciliation §9.2).
+                                    if ($lastPayment->journal_entry_id === null) {
+                                        $lastPayment->journal_entry_id = $advanceEntry->id;
+                                        $lastPayment->save();
+                                    }
+                                }
+                            }
+                            $excessHandlingResult['remaining_advance'] = $remainingExcess;
+                        }
                     }
+                }
+
+                // Record the deferred per-line cash movements now that every backing JE
+                // (each line's allocation JE and/or the excess/advance JE posted above) is
+                // linked on its payment. Recorded in line order so per-repository
+                // balance_after stays identical to the in-loop ordering (excess handling
+                // never moves repository balances). sourceId is each line's own payment id,
+                // so the port idempotency key `payment:{id}:main` is unique per line.
+                //
+                // Reconciliation-readiness (spec §9.2): the movement MUST carry a JE. A
+                // cash-moving line whose repository has no gl_account_id posted NO JE —
+                // fail loud with a 422 rather than record a null-JE movement that would
+                // freeze the repo at reconcile.
+                foreach ($pendingMovements as $pending) {
+                    /** @var Payment $movementPayment */
+                    $movementPayment = $pending['payment'];
+                    /** @var PaymentRepository $movementRepository */
+                    $movementRepository = $pending['repository'];
+                    /** @var numeric-string $movementAmount */
+                    $movementAmount = $pending['amount'];
+
+                    /** @var string|null $movementJournalEntryId */
+                    $movementJournalEntryId = $movementPayment->fresh()?->journal_entry_id;
+
+                    if ($movementJournalEntryId === null) {
+                        throw new \DomainException(
+                            "a cash movement requires a GL-linked repository; repository {$movementRepository->id} has no gl_account_id"
+                        );
+                    }
+
+                    $this->movementService->record(new MovementIntent(
+                        repositoryId: $movementRepository->id,
+                        tenantId: $tenantId,
+                        companyId: $companyId,
+                        direction: MovementDirection::In,
+                        amount: $movementAmount,
+                        // Record in the repository's own currency (port invariant),
+                        // not the request currency — single-currency, so they agree.
+                        currency: $movementRepository->currency,
+                        sourceType: MovementSourceType::Payment,
+                        sourceId: $movementPayment->id,
+                        idempotencyLeg: 'main',
+                        journalEntryId: $movementJournalEntryId,
+                        occurredAt: null,
+                        reasonCode: null,
+                        reversesMovementId: null,
+                        createdBy: $user->id,
+                        notes: null,
+                        allowWhileFrozen: false,
+                    ));
+                }
+
+                return [
+                    'payments' => $createdPayments,
+                    'primary_document' => $primaryDocument,
+                    'excess_handling' => $excessHandlingResult,
+                ];
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            // Another concurrent request with the same Idempotency-Key won the race
+            // and committed its batch first. Read it back and return it rather than
+            // surfacing the DB constraint error.
+            if ($idempotencyKey !== null) {
+                $existingBatch = $this->findMultiPaymentBatchByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
+                if ($existingBatch !== null) {
+                    return $this->formatMultiPaymentReplay($existingBatch, $request);
                 }
             }
 
-            return [
-                'payments' => $createdPayments,
-                'primary_document' => $primaryDocument,
-                'excess_handling' => $excessHandlingResult,
-            ];
-        });
+            throw $e;
+        }
 
         // Load relationships for all payments
         foreach ($result['payments'] as $payment) {

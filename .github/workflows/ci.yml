@@ -649,6 +649,131 @@ jobs:
           php artisan test -c phpunit-pgsql.xml \
             --filter="TenantStanclFlipTest|TenantDatabaseIsolationTest|TenantProvisioningServiceTest|TenantReferenceDataSeedingTest|CentralPersonalAccessTokenPhase0bTest|CentralConnectionTest|TenancyManagerConfigTest|TenantMigrationsLoadedInTestingTest|CrossDbForeignKeyAuditTest|PlanLimitsServiceTest|TenancyResolverFailClosedTest|PendingSealMigrationTest|DeviceLossIncidentTest|FiscalEventQuarantineTableTest|FiscalEventsImmutabilityTest|ReceiptChainRebuildTest"
 
+  treasury-spine-pgsql:
+    name: Treasury Spine — PG-only invariants (PHPUnit + PostgreSQL)
+    runs-on: ubuntu-latest
+    # Wave 2C gate: the treasury spine's hardest guarantees are PG-native —
+    # the forbid-balance-write trigger, the repository_movements immutability
+    # trigger, GL-chain advisory locks, and real savepoints. Every test that
+    # asserts one of these calls markTestSkipped() on the sqlite :memory:
+    # fast loop (backend-test), so a broken trigger or lock ordering can be
+    # green there while production breaks. This job forces the same
+    # Feature/Unit suites onto a real Postgres service so they execute
+    # instead of skipping.
+    #
+    # Trigger condition mirrors t6-phase0b-pgsql: runs on PR->dev, PR->main, and
+    # workflow_dispatch, so this gate protects the spine while it is still being
+    # merged into dev, not only the eventual dev -> main promotion. The
+    # `github.ref == 'refs/heads/dev'` arm of the push clause is a no-op today —
+    # this workflow's `on.push.branches` (top of file) is `[main]` only, so a
+    # push event on `dev` never actually triggers this workflow at all; it's
+    # kept only for parity with t6-phase0b-pgsql and to fail safe if the push
+    # trigger is ever widened to include `dev`.
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.base_ref == 'dev' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'))
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: autoerp_secret
+          POSTGRES_DB: autoerp_treasury_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoerp -d autoerp_treasury_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      BROADCAST_CONNECTION: 'null'
+      # Set at job level, not per-step: every step in this job talks to
+      # PostgreSQL (unlike backend-test-pgsql, which keeps one sqlite unit
+      # step alongside its pgsql step and so scopes DB_CONNECTION there).
+      # phpunit.xml pins DB_CONNECTION=sqlite via <env> without force="true",
+      # so this real environment variable still takes precedence.
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: autoerp_treasury_test
+      DB_CENTRAL_DATABASE: autoerp_treasury_test
+      DB_USERNAME: autoerp
+      DB_PASSWORD: autoerp_secret
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment (PostgreSQL)
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
+          sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_treasury_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_treasury_test/' .env.testing
+          sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
+          sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=autoerp_secret/' .env.testing
+          sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
+          sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+
+      # SERIAL EXECUTION IS LOAD-BEARING — DO NOT PARALLELIZE THESE STEPS OR
+      # MATRIX THIS JOB. Two pgsql RefreshDatabase suites racing against the
+      # same schema corrupt each other mid-run and throw fake 2BP01 errors
+      # that look like real failures but aren't (verified 2026-07-09; see
+      # the "pgsql CONCURRENCY RULE" note in .superpowers/sdd/progress.md).
+      # Three separate sequential steps in one runner gives clean failure
+      # attribution AND keeps the suites from ever touching the database
+      # concurrently. If anyone is tempted to "optimize" this into a matrix
+      # or a single parallel phpunit invocation: don't — it will produce
+      # intermittent, non-reproducible CI red that has nothing to do with
+      # the code under test.
+      - name: PG-only invariants — Treasury Feature suite
+        run: ./vendor/bin/phpunit tests/Feature/Treasury
+
+      - name: PG-only invariants — Accounting Feature suite
+        run: ./vendor/bin/phpunit tests/Feature/Accounting
+
+      - name: PG-only invariants — Treasury Unit suite
+        run: ./vendor/bin/phpunit tests/Unit/Treasury
+
   frontend-lint:
     name: Frontend Lint (ESLint)
     runs-on: ubuntu-latest
@@ -863,8 +988,17 @@ jobs:
     name: All Checks Pass
     runs-on: ubuntu-latest
     # Only meaningful when the heavy jobs ran. Skipped on PR→dev.
+    #
+    # treasury-spine-pgsql is included below: its `if:` (workflow_dispatch ||
+    # base_ref==main || base_ref==dev || push to main/dev) is a STRICT SUPERSET
+    # of this job's own `if:` (workflow_dispatch || base_ref==main || push to
+    # main) — every event where all-checks-pass's `if` is true also makes
+    # treasury-spine-pgsql's `if` true, so it always actually RUNS (never sits
+    # `skipped`) whenever this job evaluates its `needs`. A `needs` entry whose
+    # job comes back `skipped` would otherwise fail/skip this aggregate gate
+    # spuriously — confirmed that can't happen here before wiring it in.
     if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: [backend-lint, backend-analyse, backend-architecture, backend-test, backend-test-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, types-drift]
+    needs: [backend-lint, backend-analyse, backend-architecture, backend-test, backend-test-pgsql, treasury-spine-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, types-drift]
     steps:
       - name: All checks passed
         run: echo "All CI checks have passed!"

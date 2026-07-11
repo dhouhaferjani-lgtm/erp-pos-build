@@ -363,6 +363,64 @@ describe('cartStore', () => {
       expect(state.transactionDiscount).toBeUndefined();
     });
   });
+
+  describe('added-line pulse tracking (cart-always-foreground v1)', () => {
+    it('stamps lastAddedLineId and bumps the nonce when a new line is added', () => {
+      expect(useCartStore.getState().lastAddedLineId).toBeNull();
+      expect(useCartStore.getState().lastAddedNonce).toBe(0);
+
+      useCartStore.getState().addItem(makeProduct());
+      const state = useCartStore.getState();
+      expect(state.lastAddedLineId).toBe(state.items[0]!.id);
+      expect(state.lastAddedNonce).toBe(1);
+    });
+
+    it('stamps the MERGED line id and bumps the nonce on a repeat add of the same product', () => {
+      const product = makeProduct();
+      useCartStore.getState().addItem(product);
+      useCartStore.getState().addItem(product);
+
+      const state = useCartStore.getState();
+      expect(state.items).toHaveLength(1); // merged, not a second line
+      expect(state.lastAddedLineId).toBe(state.items[0]!.id);
+      expect(state.lastAddedNonce).toBe(2); // re-fires the pulse on the same line
+    });
+
+    it('routes addItemWithDefaults through the same pulse stamp', () => {
+      useCartStore.getState().addItemWithDefaults(makeProduct());
+      const state = useCartStore.getState();
+      expect(state.lastAddedLineId).toBe(state.items[0]!.id);
+      expect(state.lastAddedNonce).toBe(1);
+    });
+
+    it('stamps the pulse on updateLineModifiers — customize-EDIT confirm (Rev 2, U9)', () => {
+      useCartStore.getState().addItem(makeProduct());
+      const lineId = useCartStore.getState().items[0]!.id;
+
+      useCartStore.getState().updateLineModifiers(lineId, []);
+      const state = useCartStore.getState();
+      expect(state.lastAddedLineId).toBe(lineId);
+      expect(state.lastAddedNonce).toBe(2); // 1 from addItem, +1 from the edit
+    });
+
+    it('does NOT stamp the pulse when updateLineModifiers misses (vanished line stays a no-op)', () => {
+      useCartStore.getState().addItem(makeProduct());
+      useCartStore.getState().updateLineModifiers('no-such-line', []);
+      expect(useCartStore.getState().lastAddedNonce).toBe(1); // unchanged
+    });
+
+    it('resets pulse state on clearCart and replaceCart (recalls must not pulse)', () => {
+      useCartStore.getState().addItem(makeProduct());
+      useCartStore.getState().clearCart('checkout');
+      expect(useCartStore.getState().lastAddedLineId).toBeNull();
+      expect(useCartStore.getState().lastAddedNonce).toBe(0);
+
+      useCartStore.getState().addItem(makeProduct());
+      useCartStore.getState().replaceCart([], undefined);
+      expect(useCartStore.getState().lastAddedLineId).toBeNull();
+      expect(useCartStore.getState().lastAddedNonce).toBe(0);
+    });
+  });
 });
 
 describe('tax recalculation regression', () => {

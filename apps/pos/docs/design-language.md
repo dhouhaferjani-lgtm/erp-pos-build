@@ -82,7 +82,38 @@ The fix for "weak separation": elevation comes from the surface scale, not from 
 - [ ] Interactive elements: visible disabled treatment (not opacity-only) + focus-visible ring; touch targets meet the minimum.
 - [ ] Choose-one controls use `tokens.segmented`; buttons use `tokens.button.*`.
 - [ ] All user-facing strings via `t()` (no hardcoded English/French).
+- [ ] New full-screen surface? Declare its overlay class (a/b/c) — see §9. Class (a) never covers the cart.
 
 ## 8. Adding a new screen/dir
 
 When a new directory is fully tokenized, add its glob to `tokenMigratedGlobs` in `eslint.config.js` so the color guard enforces it at `error`.
+
+## 9. Overlay policy — the cart is always in the foreground
+
+The cart is the source of truth. Any surface whose outcome is "something lands
+in the cart that the operator must visually confirm" must NOT cover the cart.
+(Spec: `docs/superpowers/specs/2026-07-10-pos-cart-always-foreground-design.md`.)
+
+Every new POS surface declares one of three classes in review:
+
+- **(a) Browse / add-to-cart-adjacent** → hosted in the product pane
+  (`ProductPaneHost`, `components/pos/ProductPaneHost.tsx`) or a sub-second
+  centered disambiguation dialog. **Never `fixed inset-0`.**
+  Current: ProductDetailSheet pane, ModifierComposerSheet pane;
+  VariantPickerModal + BarcodeChooserModal (transient dialogs, allowed);
+  ToastSmartPrompts / SmartPromptCard (inline, compliant).
+- **(b) Cart-action takeover** — payment, discounts, quantity, held/recall,
+  refunds, customer attach → full-screen allowed; it IS the cart action.
+  Current: CashPaymentScreen, AdvancedPaymentsModal, CheckoutSuccessModal,
+  DiscountModal, LineDiscountModal, QuantityNumpad, HeldTransactionsModal,
+  RefundCheckoutFlow, ReceiptScanConfirmationSheet, ReceiptLocatorScreen,
+  CustomerSearchModal, CardPaymentModal, VoucherTenderModal, CashDrawerModal,
+  RefundConfirmModal, EndOfDayPreviewModal, SaleDetailModal.
+  Note: CustomerSearchModal stays class (b) in v1, but its attach outcome is
+  cart-visible — a legitimate class-(a) candidate for v2.
+- **(c) System/admin** — shift, PIN, fiscal durability, reports → full-screen
+  allowed. Current: OpenShiftScreen, CloseShiftModal, ReportsMenu,
+  DurabilityGateModal, LoyaltyEnrollDialog, XReportModal, ZReportModal.
+
+No lint tooling in v1 — the pane host being the easiest path is the
+enforcement; reviewers reject an undeclared class-(a) `fixed inset-0` surface.

@@ -92,6 +92,20 @@ server {
     }
 
     # =============================================================================
+    # ES MODULE SCRIPTS (e.g. pdf.js worker: pdf.worker.min-*.mjs)
+    # =============================================================================
+    # Stock nginx mime.types has no .mjs entry, so it falls through to
+    # default_type application/octet-stream — browsers enforce strict MIME
+    # checking for module scripts and refuse to execute it. Scoped location
+    # (not a global mime.types edit) so it doesn't disturb any other type.
+    location ~* \.mjs$ {
+        default_type application/javascript;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+
+    # =============================================================================
     # STATIC ASSET CACHING
     # =============================================================================
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {

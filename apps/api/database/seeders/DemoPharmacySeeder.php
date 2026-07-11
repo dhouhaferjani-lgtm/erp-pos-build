@@ -1151,7 +1151,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
         }
 
         // Large expenses are paid from the bank: CASH-01 opens at 500.000 and
-        // RepositoryOutflowService has no insufficient-funds guard, so routing
+        // the movement port has no insufficient-funds guard, so routing
         // everything through the till would leave it negative on the dashboard.
         $bankRepository = PaymentRepository::query()
             ->where('company_id', $company->id)

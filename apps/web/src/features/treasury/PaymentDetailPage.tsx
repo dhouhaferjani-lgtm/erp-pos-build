@@ -147,6 +147,12 @@ export function PaymentDetailPage() {
   const [partialRefundAmount, setPartialRefundAmount] = useState('')
   const [partialRefundReason, setPartialRefundReason] = useState('')
   const [reverseReason, setReverseReason] = useState('')
+  // Task 18 idempotency key: minted ONCE per dialog-open (one per refund
+  // "intent") and reused across retries of that same submission — a
+  // network-retry of the same user action must carry the same id, while a
+  // NEW dialog-open is a new intent and mints a fresh one.
+  const [refundRequestId, setRefundRequestId] = useState<string | null>(null)
+  const [partialRefundRequestId, setPartialRefundRequestId] = useState<string | null>(null)
 
   const getStatusLabel = (status: Payment['status']) => t(`payments.statuses.${status}`)
   const getPaymentTypeLabel = (type: PaymentType | null) => type ? t(`payments.types.${type}`) : null
@@ -199,9 +205,9 @@ export function PaymentDetailPage() {
   })
 
   const refundMutation = useMutation({
-    mutationFn: async (reason: string) => {
+    mutationFn: async ({ reason, refundRequestId }: { reason: string; refundRequestId: string }) => {
       if (!id) throw new Error('No payment ID')
-      return api.post(`/payments/${id}/refund`, { reason })
+      return api.post(`/payments/${id}/refund`, { reason, refund_request_id: refundRequestId })
     },
     onSuccess: async () => {
       await Promise.all([
@@ -212,6 +218,7 @@ export function PaymentDetailPage() {
       toast.success(t('payments.messages.refunded'))
       setShowRefundModal(false)
       setRefundReason('')
+      setRefundRequestId(null)
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
@@ -219,9 +226,9 @@ export function PaymentDetailPage() {
   })
 
   const partialRefundMutation = useMutation({
-    mutationFn: async ({ amount, reason }: { amount: string; reason: string }) => {
+    mutationFn: async ({ amount, reason, refundRequestId }: { amount: string; reason: string; refundRequestId: string }) => {
       if (!id) throw new Error('No payment ID')
-      return api.post(`/payments/${id}/partial-refund`, { amount, reason })
+      return api.post(`/payments/${id}/partial-refund`, { amount, reason, refund_request_id: refundRequestId })
     },
     onSuccess: async () => {
       await Promise.all([
@@ -233,6 +240,7 @@ export function PaymentDetailPage() {
       setShowPartialRefundModal(false)
       setPartialRefundAmount('')
       setPartialRefundReason('')
+      setPartialRefundRequestId(null)
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
@@ -270,16 +278,21 @@ export function PaymentDetailPage() {
   }
 
   const handleRefund = () => {
-    if (refundReason.trim()) {
-      void refundMutation.mutateAsync(refundReason)
+    if (refundReason.trim() && refundRequestId) {
+      // `.mutate()`, not `mutateAsync()` — the result was already discarded
+      // via `void`, and `mutate()` routes a rejection to the mutation's own
+      // onError (toast) instead of leaving an unhandled promise rejection on
+      // a failed retry attempt (the id-reuse-on-retry case this fix adds).
+      refundMutation.mutate({ reason: refundReason, refundRequestId })
     }
   }
 
   const handlePartialRefund = () => {
-    if (partialRefundAmount && partialRefundReason.trim()) {
-      void partialRefundMutation.mutateAsync({
+    if (partialRefundAmount && partialRefundReason.trim() && partialRefundRequestId) {
+      partialRefundMutation.mutate({
         amount: partialRefundAmount,
         reason: partialRefundReason,
+        refundRequestId: partialRefundRequestId,
       })
     }
   }
@@ -373,7 +386,7 @@ export function PaymentDetailPage() {
               <>
                 <Button
                   variant="secondary"
-                  onClick={() => { setShowRefundModal(true); }}
+                  onClick={() => { setRefundRequestId(crypto.randomUUID()); setShowRefundModal(true); }}
                   disabled={!canRefund || remainingAmount <= 0}
                 >
                   <RotateCcw className="me-2 h-4 w-4" />
@@ -381,7 +394,7 @@ export function PaymentDetailPage() {
                 </Button>
                 <Button
                   variant="secondary"
-                  onClick={() => { setShowPartialRefundModal(true); }}
+                  onClick={() => { setPartialRefundRequestId(crypto.randomUUID()); setShowPartialRefundModal(true); }}
                   disabled={!canRefund || remainingAmount <= 0}
                 >
                   {t('payments.refund.partialRefund')}
@@ -630,6 +643,7 @@ export function PaymentDetailPage() {
         onClose={() => {
           setShowRefundModal(false)
           setRefundReason('')
+          setRefundRequestId(null)
         }}
         title={t('payments.refund.refundTitle')}
       >
@@ -656,6 +670,7 @@ export function PaymentDetailPage() {
             onClick={() => {
               setShowRefundModal(false)
               setRefundReason('')
+              setRefundRequestId(null)
             }}
           >
             {t('common:actions.cancel')}
@@ -677,6 +692,7 @@ export function PaymentDetailPage() {
           setShowPartialRefundModal(false)
           setPartialRefundAmount('')
           setPartialRefundReason('')
+          setPartialRefundRequestId(null)
         }}
         title={t('payments.refund.partialRefundTitle')}
       >
@@ -717,6 +733,7 @@ export function PaymentDetailPage() {
               setShowPartialRefundModal(false)
               setPartialRefundAmount('')
               setPartialRefundReason('')
+              setPartialRefundRequestId(null)
             }}
           >
             {t('common:actions.cancel')}

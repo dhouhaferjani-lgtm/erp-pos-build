@@ -513,6 +513,16 @@ export const tokens = {
     imageIcon: 'text-gray-500',
     chip: 'bg-white/10 text-white',
     mutedChip: 'bg-white/10 text-white/80',
+    input: 'w-full rounded-[var(--radius-input)] border border-gray-700 bg-gray-900 text-white placeholder:text-gray-500 focus:border-gray-500 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60',
+    barcodeIcon: 'text-gray-500',
+    successDot: 'bg-green-300',
+    refreshButton: 'border-gray-700 bg-transparent text-gray-300 hover:border-gray-500 hover:text-white',
+    statusUnavailable: 'bg-white/10 text-gray-300',
+    statusReview: 'bg-amber-300/20 text-amber-100',
+    statusEnriched: 'bg-green-700/20 text-green-300',
+    helper: 'text-gray-500',
+    imageAction: 'bg-black/65 text-white hover:bg-black/80 focus:ring-white',
+    uploadPanel: 'border-gray-700 bg-white text-gray-900',
   },
 }
 

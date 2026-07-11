@@ -1376,18 +1376,29 @@ final class SupplierCreditNoteGlTest extends TestCase
             ->firstOrFail();
 
         // Attempt a direct duplicate insert — the partial unique index must reject it.
+        //
+        // Contained in its own nested DB::transaction() (a real PG savepoint) so the
+        // deliberate constraint violation doesn't abort the OUTER transaction (the one
+        // RefreshDatabase/TestCase wraps this test in). On Postgres, once a transaction
+        // hits an error, every subsequent statement in that same transaction throws
+        // `25P02` ("current transaction is aborted") until a ROLLBACK — including the
+        // count() query below. Laravel's nested DB::transaction() issues
+        // SAVEPOINT/ROLLBACK TO SAVEPOINT, so only the duplicate-insert attempt is
+        // rolled back and the outer transaction survives intact.
         $threw = false;
         try {
-            JournalEntry::create([
-                'tenant_id' => $this->tenant->id,
-                'company_id' => $this->company->id,
-                'entry_number' => 'JE-DUPE-TEST',
-                'entry_date' => now()->toDateString(),
-                'description' => 'Duplicate JE — must be rejected by unique constraint',
-                'status' => JournalEntryStatus::Draft,
-                'source_type' => 'supplier_credit_note',
-                'source_id' => $creditNote->id,   // same as the first JE
-            ]);
+            DB::transaction(function () use ($creditNote): void {
+                JournalEntry::create([
+                    'tenant_id' => $this->tenant->id,
+                    'company_id' => $this->company->id,
+                    'entry_number' => 'JE-DUPE-TEST',
+                    'entry_date' => now()->toDateString(),
+                    'description' => 'Duplicate JE — must be rejected by unique constraint',
+                    'status' => JournalEntryStatus::Draft,
+                    'source_type' => 'supplier_credit_note',
+                    'source_id' => $creditNote->id,   // same as the first JE
+                ]);
+            });
         } catch (UniqueConstraintViolationException|QueryException $e) {
             $threw = true;
         }

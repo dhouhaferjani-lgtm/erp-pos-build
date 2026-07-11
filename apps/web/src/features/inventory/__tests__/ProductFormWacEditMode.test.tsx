@@ -76,6 +76,10 @@ vi.mock('@/hooks/useTaxConfigName', () => ({
   useTaxConfigName: () => null,
 }))
 
+vi.mock('@/hooks/usePermissions', () => ({
+  usePermissions: () => ({ hasPermission: () => true }),
+}))
+
 vi.mock('@/components/molecules/TaxConfigurationField', () => ({
   TaxConfigurationField: () => null,
 }))

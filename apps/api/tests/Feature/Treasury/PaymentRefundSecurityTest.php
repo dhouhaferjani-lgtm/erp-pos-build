@@ -278,7 +278,7 @@ class PaymentRefundSecurityTest extends TestCase
 
         $response = $this->actingAs($this->userA)->postJson(
             "/api/v1/payments/{$this->paymentA->id}/refund",
-            ['reason' => 'Legitimate refund']
+            ['reason' => 'Legitimate refund', 'refund_request_id' => (string) Str::uuid()]
         );
 
         $response->assertStatus(201);

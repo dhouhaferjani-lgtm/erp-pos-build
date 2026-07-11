@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -87,6 +89,22 @@ final class PaymentOriginWriterInventoryTest extends TestCase
 
     private PaymentRepository $bankAccount;
 
+    /**
+     * Final-review fix wave 2: a GL-linked repository, lazily built by
+     * `ledgeredCashRegister()` for tests that now require one (`store()` /
+     * `storeMultiple()`'s ledgered-repository guard, and
+     * `PaymentRefundService`'s GL-linked-repository guard). NOT eagerly
+     * created in `setUp()` — `test_vendor_refund_prepayment_stamps_web_admin`
+     * already creates its OWN Bank/SupplierAdvance accounts, and system
+     * accounts are unique per (company_id, system_purpose); eagerly seeding
+     * a second Bank account for every test would collide with it.
+     * `$this->cashRegister` / `$this->bankAccount` stay deliberately
+     * unledgered — other tests in this file (the MultiPaymentService rows
+     * and the receipt-proration helper) exercise the unledgered path and
+     * must not be disturbed.
+     */
+    private ?PaymentRepository $ledgeredCashRegister = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -166,6 +184,53 @@ final class PaymentOriginWriterInventoryTest extends TestCase
         ]);
     }
 
+    /**
+     * Final-review fix wave 2: lazily build a GL-linked cash register (Bank +
+     * CustomerReceivable system accounts) for tests exercising a guard that
+     * now requires one — `PaymentController::store()`/`storeMultiple()`'s
+     * ledgered-repository guard, and `PaymentRefundService::postRefundGlAndMovement`
+     * (requires gl_account_id) whose GL reversal (createPaymentRefundJournalEntry)
+     * requires a CustomerReceivable account. Memoized per test (not eager in
+     * setUp()) so it never collides with tests that seed their OWN
+     * per-purpose accounts (e.g. test_vendor_refund_prepayment_stamps_web_admin) —
+     * system accounts are unique per (company_id, system_purpose).
+     */
+    private function ledgeredCashRegister(): PaymentRepository
+    {
+        if ($this->ledgeredCashRegister !== null) {
+            return $this->ledgeredCashRegister;
+        }
+
+        $bankAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '512-REFUND',
+            'name' => 'Bank (refund origin fixtures)',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::Bank,
+            'is_active' => true,
+        ]);
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '411-REFUND',
+            'name' => 'Customer Receivable (refund origin fixtures)',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::CustomerReceivable,
+            'is_active' => true,
+        ]);
+
+        return $this->ledgeredCashRegister = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH-REFUND',
+            'name' => 'Ledgered Cash Register (refund origin fixtures)',
+            'type' => RepositoryType::CashRegister,
+            'is_active' => true,
+            'gl_account_id' => $bankAccount->id,
+        ]);
+    }
+
     // -----------------------------------------------------------------
     // §13 row 2 — PaymentController::store()
     // -----------------------------------------------------------------
@@ -178,7 +243,11 @@ final class PaymentOriginWriterInventoryTest extends TestCase
         $response = $this->postJson('/api/v1/payments', [
             'partner_id' => $this->customer->id,
             'payment_method_id' => $this->cashMethod->id,
-            'repository_id' => $this->cashRegister->id,
+            // Final-review fix wave 2: PaymentController::store() now 422s a
+            // customer/AR payment naming an unledgered repository
+            // (PAYMENT_REQUIRES_LEDGERED_REPOSITORY guard) — use the
+            // ledgered fixture, not the shared unledgered $this->cashRegister.
+            'repository_id' => $this->ledgeredCashRegister()->id,
             'amount' => '500.00',
             'currency' => 'EUR',
             'payment_date' => now()->toDateString(),
@@ -210,15 +279,20 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             'document_id' => $invoice->id,
             'currency' => 'EUR',
             'payment_date' => now()->toDateString(),
+            // Final-review fix wave 2: storeMultiple()'s per-line cash-movement
+            // guard (PaymentController.php:~1497) 422s any line whose
+            // repository has no gl_account_id — both lines use the ledgered
+            // fixture, not the shared unledgered $this->cashRegister /
+            // $this->bankAccount.
             'payments' => [
                 [
                     'payment_method_id' => $this->cashMethod->id,
-                    'repository_id' => $this->cashRegister->id,
+                    'repository_id' => $this->ledgeredCashRegister()->id,
                     'amount' => '600.00',
                 ],
                 [
                     'payment_method_id' => $this->cashMethod->id,
-                    'repository_id' => $this->bankAccount->id,
+                    'repository_id' => $this->ledgeredCashRegister()->id,
                     'amount' => '400.00',
                 ],
             ],
@@ -508,13 +582,46 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             'currency' => 'EUR',
         ]);
 
+        // Final-review fix wave (Fix 1): VendorRefundService now requires a
+        // GL-linked repository. Use a repository dedicated to this test (not
+        // the shared $this->cashRegister, which other tests in this file
+        // deliberately leave unledgered) so only this refund exercises the
+        // GL-reversal path.
+        $bankAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '512-VR',
+            'name' => 'Bank (vendor refund)',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::Bank,
+            'is_active' => true,
+        ]);
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4091-VR',
+            'name' => 'Supplier Advances (vendor refund)',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::SupplierAdvance,
+            'is_active' => true,
+        ]);
+        $ledgeredRepository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH-VR',
+            'name' => 'Vendor Refund Register',
+            'type' => RepositoryType::CashRegister,
+            'is_active' => true,
+            'gl_account_id' => $bankAccount->id,
+        ]);
+
         // Seed a prepayment allocation so totalAllocated >= refund amount.
         $prepayment = Payment::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'partner_id' => $supplier->id,
             'payment_method_id' => $this->cashMethod->id,
-            'repository_id' => $this->cashRegister->id,
+            'repository_id' => $ledgeredRepository->id,
             'amount' => '200.00',
             'currency' => 'EUR',
             'status' => PaymentStatus::Completed,
@@ -531,7 +638,7 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             $po,
             amount: '100.00',
             paymentMethodId: $this->cashMethod->id,
-            repositoryId: $this->cashRegister->id,
+            repositoryId: $ledgeredRepository->id,
             reason: 'supplier credit',
             userId: $this->user->id,
         );
@@ -573,7 +680,9 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'payment_method_id' => $this->cashMethod->id,
-            'repository_id' => $this->cashRegister->id,
+            // Final-review fix wave 2: ledgered — these originals get refunded
+            // by PaymentRefundService, which now requires a GL-linked repository.
+            'repository_id' => $this->ledgeredCashRegister()->id,
             'amount' => $amount,
             'currency' => 'EUR',
             'status' => PaymentStatus::Completed,
@@ -589,7 +698,8 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'payment_method_id' => $this->cashMethod->id,
-            'repository_id' => $this->cashRegister->id,
+            // Final-review fix wave 2: ledgered — see seedPosOriginPayment note.
+            'repository_id' => $this->ledgeredCashRegister()->id,
             'amount' => $amount,
             'currency' => 'EUR',
             'status' => PaymentStatus::Completed,
@@ -616,7 +726,8 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             'company_id' => $this->company->id,
             'partner_id' => $this->customer->id,
             'payment_method_id' => $this->cashMethod->id,
-            'repository_id' => $this->cashRegister->id,
+            // Final-review fix wave 2: ledgered — see seedPosOriginPayment note.
+            'repository_id' => $this->ledgeredCashRegister()->id,
             'amount' => $amount,
             'currency' => 'EUR',
             'payment_date' => now()->toDateString(),

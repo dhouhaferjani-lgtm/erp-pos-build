@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ProductDetailDrawer } from '@/components/pos/ProductDetailDrawer';
+import { ProductDetailSheet, type DetailTab } from '@/components/pos/ProductDetailDrawer';
 import type { POSProduct } from '@/types/product';
 
 vi.mock('react-i18next', () => ({
@@ -58,9 +59,38 @@ const product = {
   },
 } as POSProduct;
 
+/**
+ * The overlay host owned tab state; post-deletion HomePage owns it. This
+ * harness reproduces that ownership for the suites that click tabs.
+ */
+function SheetHarness({
+  product: harnessProduct,
+  locationStock,
+  hardBlockOutOfStock,
+  onClose = () => {},
+}: {
+  product: POSProduct | null;
+  locationStock?: Parameters<typeof ProductDetailSheet>[0]['locationStock'];
+  hardBlockOutOfStock?: boolean;
+  onClose?: () => void;
+}) {
+  const [tab, setTab] = useState<DetailTab>('details');
+  if (!harnessProduct) return null;
+  return (
+    <ProductDetailSheet
+      product={harnessProduct}
+      onClose={onClose}
+      locationStock={locationStock}
+      hardBlockOutOfStock={hardBlockOutOfStock}
+      activeTab={tab}
+      onTabChange={setTab}
+    />
+  );
+}
+
 describe('ProductDetailDrawer own-location stock', () => {
   it('renders a centered two-column modal instead of a right drawer', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
 
     const modal = screen.getByTestId('product-detail-modal');
     expect(modal).toHaveClass('w-[1080px]');
@@ -70,7 +100,7 @@ describe('ProductDetailDrawer own-location stock', () => {
   });
 
   it('opens on the Details tab and shows price, barcode, benefits, and the primary add action', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
 
     expect(screen.getByRole('tab', { name: /productDetail\.tabs\.details/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('productDetail.priceTtc')).toBeInTheDocument();
@@ -80,19 +110,19 @@ describe('ProductDetailDrawer own-location stock', () => {
   });
 
   it('renders available from locationStock slice, not legacy stock_quantity', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}}
+    render(<SheetHarness product={product} onClose={() => {}}
       locationStock={{ available: '8.0000', incoming_transfer: '2.0000', incoming_po: '0.0000' }} />);
     expect(screen.queryByText('999')).toBeNull();
     expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('8');
   });
 
   it('renders no stock chrome when slice is null (exempt)', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} locationStock={null} />);
+    render(<SheetHarness product={product} onClose={() => {}} locationStock={null} />);
     expect(screen.queryByTestId('drawer-stock-row')).toBeNull();
   });
 
   it('falls back to legacy stock_quantity when slice is undefined', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('999');
   });
 
@@ -101,18 +131,18 @@ describe('ProductDetailDrawer own-location stock', () => {
   // t('products.stock', { count }) / t('products.outOfStock')), not a bare
   // unlabelled number.
   it('renders the unified grid stock language (products.stock + count) for the slice path', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}}
+    render(<SheetHarness product={product} onClose={() => {}}
       locationStock={{ available: '14.0000', incoming_transfer: '0.0000', incoming_po: '0.0000' }} />);
     expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('products.stock:14');
   });
 
   it('renders the unified grid stock language for the legacy stock_quantity path', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('products.stock:999');
   });
 
   it('renders products.outOfStock (unified language) when the slice is depleted', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}}
+    render(<SheetHarness product={product} onClose={() => {}}
       locationStock={{ available: '0.0000', incoming_transfer: '0.0000', incoming_po: '0.0000' }} />);
     expect(screen.getByTestId('drawer-stock-row')).toHaveTextContent('products.outOfStock');
   });
@@ -122,7 +152,7 @@ describe('ProductDetailDrawer own-location stock', () => {
 // tab stays tappable but the count badge only renders when > 0.
 describe('ProductDetailDrawer — zero-count tab badges', () => {
   it('hides the count badge when the count is 0 (tab label stays, no "0")', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     const equivalents = screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ });
     expect(equivalents.textContent).toBe('productDetail.merchandising.equivalents');
     const complements = screen.getByRole('tab', { name: /productDetail\.merchandising\.complements/ });
@@ -132,7 +162,7 @@ describe('ProductDetailDrawer — zero-count tab badges', () => {
   });
 
   it('keeps zero-count tabs tappable (panel still opens)', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     fireEvent.click(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ }));
     expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ }))
       .toHaveAttribute('aria-selected', 'true');
@@ -144,7 +174,7 @@ describe('ProductDetailDrawer — zero-count tab badges', () => {
 // tabs), and the tab strip scrolls horizontally instead of wrapping.
 describe('ProductDetailDrawer — close button / tab strip structure', () => {
   it('renders the close X as a non-absolute flex sibling of the tablist (reserved gutter)', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     const closeBtn = screen.getByRole('button', { name: 'products.filtersClose' });
     expect(closeBtn.className).not.toContain('absolute');
     const tablist = screen.getByRole('tablist');
@@ -153,7 +183,7 @@ describe('ProductDetailDrawer — close button / tab strip structure', () => {
   });
 
   it('lets the tab strip overflow horizontally with no mid-label wrapping', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     const tablist = screen.getByRole('tablist');
     expect(tablist.className).toContain('overflow-x-auto');
     expect(tablist.className).toContain('min-w-0');
@@ -170,7 +200,7 @@ describe('ProductDetailDrawer — close button / tab strip structure', () => {
 // gap exposing the backdrop or per-pane card chrome.
 describe('ProductDetailDrawer — one-sheet container', () => {
   it('keeps the single-surface contract on the modal container', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     const modal = screen.getByTestId('product-detail-modal');
     expect(modal.className).toContain('bg-surface-overlay');
     expect(modal.className).toContain('shadow-2xl');
@@ -180,7 +210,7 @@ describe('ProductDetailDrawer — one-sheet container', () => {
   });
 
   it('separates the panes with an inset internal divider, not an edge-to-edge pane border', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     const divider = screen.getByTestId('drawer-pane-divider');
     expect(divider.className).toContain('w-px');
     expect(divider.className).toContain('bg-border-subtle');
@@ -194,7 +224,7 @@ describe('ProductDetailDrawer — one-sheet container', () => {
 // Task 18 — restyle + new tab shells + OOS-policy alignment
 describe('ProductDetailDrawer — tab shells (Task 18)', () => {
   it('shows all five tabs, including the Stock & lots and Autres officines shells', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     expect(screen.getByRole('tab', { name: 'productDetail.tabs.details' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.routine/ })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /productDetail\.merchandising\.equivalents/ })).toBeInTheDocument();
@@ -204,7 +234,7 @@ describe('ProductDetailDrawer — tab shells (Task 18)', () => {
   });
 
   it('renders a placeholder (not batch data) on the Stock & lots tab', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     fireEvent.click(screen.getByRole('tab', { name: 'productDetail.tabs.stockLots' }));
     expect(screen.getByText('productDetail.tabs.stockLotsComingSoon')).toBeInTheDocument();
     expect(screen.queryByTestId('routine-step-row')).toBeNull();
@@ -212,7 +242,7 @@ describe('ProductDetailDrawer — tab shells (Task 18)', () => {
   });
 
   it('renders a placeholder (not branch data) on the Autres officines tab', () => {
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     fireEvent.click(screen.getByRole('tab', { name: 'productDetail.tabs.otherBranches' }));
     expect(screen.getByText('productDetail.tabs.otherBranchesComingSoon')).toBeInTheDocument();
   });
@@ -222,14 +252,13 @@ describe('ProductDetailDrawer — OOS-policy alignment (Task 18)', () => {
   const outOfStockProduct = { ...product, stock_quantity: 0 } as POSProduct;
 
   it('disables add-to-cart when out of stock and hardBlockOutOfStock is true (default, block policy)', () => {
-    render(<ProductDetailDrawer isOpen product={outOfStockProduct} onClose={() => {}} />);
+    render(<SheetHarness product={outOfStockProduct} onClose={() => {}} />);
     expect(screen.getByRole('button', { name: 'productDetail.addToCart' })).toBeDisabled();
   });
 
   it('enables add-to-cart when out of stock but hardBlockOutOfStock is false (warn/off policy) so the tap reaches the stock gate', () => {
     render(
-      <ProductDetailDrawer
-        isOpen
+      <SheetHarness
         product={outOfStockProduct}
         onClose={() => {}}
         hardBlockOutOfStock={false}
@@ -240,8 +269,7 @@ describe('ProductDetailDrawer — OOS-policy alignment (Task 18)', () => {
 
   it('never disables when stock-exempt (locationStock null), regardless of policy', () => {
     render(
-      <ProductDetailDrawer
-        isOpen
+      <SheetHarness
         product={outOfStockProduct}
         onClose={() => {}}
         locationStock={null}
@@ -262,7 +290,7 @@ describe('ProductDetailDrawer — hero price trusts the currency formatter', () 
 
   it('renders a non-DT formatter output (EUR) verbatim with no appended DT', () => {
     currencyState.format = () => '38,50 €';
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     const price = screen.getByText('38,50 €');
     expect(price.textContent).toBe('38,50 €');
     expect(price.textContent).not.toMatch(/DT/);
@@ -270,7 +298,7 @@ describe('ProductDetailDrawer — hero price trusts the currency formatter', () 
 
   it('renders a TND formatter output with exactly one DT marker', () => {
     currencyState.format = () => '9,990 DT';
-    render(<ProductDetailDrawer isOpen product={product} onClose={() => {}} />);
+    render(<SheetHarness product={product} onClose={() => {}} />);
     const price = screen.getByText('9,990 DT');
     expect(price.textContent).toBe('9,990 DT');
     expect((price.textContent ?? '').match(/DT/g)).toHaveLength(1);
@@ -282,5 +310,69 @@ describe('ProductDetailDrawer — Strategy A accent repoint (Task 18)', () => {
     const sourcePath = join(process.cwd(), 'src/components/pos/ProductDetailDrawer.tsx');
     const source = readFileSync(sourcePath, 'utf-8');
     expect(source).not.toMatch(/\b(?:bg|text|border)-accent(?:-\w+)?\b/);
+  });
+});
+
+// Cart-always-foreground v1 (spec §2.1) — the sheet gains a 'pane' variant that
+// fills the product pane fluidly with region (not dialog) semantics. The
+// overlay variant stays the default and byte-identical during the transition.
+describe('ProductDetailSheet — pane variant (cart-always-foreground v1)', () => {
+  function renderPane() {
+    return render(
+      <ProductDetailSheet
+        variant="pane"
+        product={product}
+        onClose={() => {}}
+        activeTab="details"
+        onTabChange={() => {}}
+      />,
+    );
+  }
+
+  it('renders as a non-modal region labelled by the product name', () => {
+    renderPane();
+    const pane = screen.getByTestId('product-detail-modal');
+    expect(pane).toHaveAttribute('role', 'region');
+    expect(pane).toHaveAttribute('aria-label', 'Widget');
+    expect(pane).not.toHaveAttribute('aria-modal');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('fills its host fluidly with a min-w floor and no overlay geometry/animation', () => {
+    renderPane();
+    const pane = screen.getByTestId('product-detail-modal');
+    expect(pane).toHaveClass('h-full');
+    expect(pane).toHaveClass('w-full');
+    expect(pane).toHaveClass('min-w-[680px]');
+    expect(pane.className).not.toContain('w-[1080px]');
+    expect(pane.className).not.toContain('h-[680px]');
+    expect(pane.className).not.toContain('max-w-[96vw]');
+    expect(pane.className).not.toContain('max-h-[92vh]');
+    expect(pane.className).not.toContain('ez-sheet-rise');
+    expect(pane.className).not.toContain('fixed');
+  });
+
+  it('keeps the overlay variant as the default (dialog semantics + fixed geometry)', () => {
+    render(
+      <ProductDetailSheet
+        product={product}
+        onClose={() => {}}
+        activeTab="details"
+        onTabChange={() => {}}
+      />,
+    );
+    const sheet = screen.getByTestId('product-detail-modal');
+    expect(sheet).toHaveAttribute('role', 'dialog');
+    expect(sheet).toHaveAttribute('aria-modal', 'true');
+    expect(sheet).toHaveClass('w-[1080px]');
+    expect(sheet).toHaveClass('ez-sheet-rise');
+    // Byte-identity pin: the overlay branch's className has no host of its own
+    // to test (Task 5 deleted the overlay host component) — this string pins
+    // the exact literal in ProductDetailDrawer.tsx's overlay branch (variant
+    // default) so a future refactor can't silently drift its geometry/shadow
+    // classes. Remove only when the 'overlay' variant itself is deleted.
+    expect(sheet.className).toBe(
+      'ez-sheet-rise relative flex h-[680px] max-h-[92vh] w-[1080px] max-w-[96vw] overflow-hidden rounded-panel bg-surface-overlay shadow-2xl',
+    );
   });
 });

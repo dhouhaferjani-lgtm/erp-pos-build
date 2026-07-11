@@ -1,8 +1,3 @@
-// TODO(auth): this hook reads from a hardcoded ROLE_PERMISSIONS map. The proper fix is to consume
-// the user's actual permission list from the auth payload (passport/sanctum response). Until that
-// ships, custom roles with granted permissions will be silently denied. See follow-up ticket.
-// Tracked in: memory/feedback_usePermissions_hardcoded_map.md
-
 import { useAuthStore } from '../stores/authStore'
 
 // Permission keys mapped to modules
@@ -231,6 +226,10 @@ export const PERMISSIONS = {
 
 export type Permission = keyof typeof PERMISSIONS
 
+const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
+  'pricing.view_cost_prices',
+])
+
 // Module-level permission mapping for navigation
 export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   dashboard: ['dashboard.view'],
@@ -275,11 +274,19 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
 export function usePermissions() {
   const user = useAuthStore((state) => state.user)
   const roles = user?.roles ?? []
+  const serverPermissions = user?.permissions
 
   /**
    * Check if user has a specific permission
    */
   const hasPermission = (permission: Permission): boolean => {
+    if (serverPermissions?.includes(permission) === true) {
+      return true
+    }
+    if (SERVER_AUTHORITATIVE_PERMISSIONS.has(permission)) {
+      return false
+    }
+
     const allowedRoles = PERMISSIONS[permission] as readonly string[] | undefined
     if (!allowedRoles) return false
     return roles.some((role) => allowedRoles.includes(role))

@@ -19,14 +19,18 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\PosCustomerAlias;
 use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -42,6 +46,7 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
     public function __construct(
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentAllocationService $allocationService,
+        private readonly TreasuryMovementServiceInterface $movementService,
     ) {}
 
     public function name(): string
@@ -93,36 +98,92 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
                     actorUserId: $actorUserId,
                 );
 
-                return;
+                $payment = $existing;
+            } else {
+                $payment = Payment::query()->create([
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $event->tenant_id,
+                    'company_id' => $event->company_id,
+                    'partner_id' => $partner->id,
+                    'payment_method_id' => $paymentMethod->id,
+                    'repository_id' => $repository->id,
+                    'amount' => $this->paymentAmount($event, $view),
+                    'currency' => $view->payload->currencyCode,
+                    'payment_date' => $view->payload->businessDate,
+                    'status' => PaymentStatus::Completed,
+                    'payment_type' => PaymentType::DocumentPayment,
+                    'origin' => PaymentOrigin::Pos,
+                    'fiscal_event_id' => $event->id,
+                    'created_by' => $actorUserId,
+                    'reference' => 'POS Account Payment '.$view->payload->accountPaymentUuid,
+                    'notes' => $this->paymentNotes($view, $actorUserId),
+                ]);
+
+                $this->allocationService->applyAllocationFromCommand(new ApplyPaymentAllocationCommand(
+                    tenantId: $event->tenant_id,
+                    companyId: $event->company_id,
+                    paymentId: $payment->id,
+                    allocationMethod: AllocationMethod::FIFO,
+                    actorUserId: $actorUserId,
+                    source: 'fiscal_event:ACCOUNT_PAYMENT',
+                    manualAllocations: null,
+                ));
             }
 
-            $payment = Payment::query()->create([
-                'id' => Str::uuid()->toString(),
-                'tenant_id' => $event->tenant_id,
-                'company_id' => $event->company_id,
-                'partner_id' => $partner->id,
-                'payment_method_id' => $paymentMethod->id,
-                'repository_id' => $repository->id,
-                'amount' => $this->paymentAmount($event, $view),
-                'currency' => $view->payload->currencyCode,
-                'payment_date' => $view->payload->businessDate,
-                'status' => PaymentStatus::Completed,
-                'payment_type' => PaymentType::DocumentPayment,
-                'origin' => PaymentOrigin::Pos,
-                'fiscal_event_id' => $event->id,
-                'created_by' => $actorUserId,
-                'reference' => 'POS Account Payment '.$view->payload->accountPaymentUuid,
-                'notes' => $this->paymentNotes($view, $actorUserId),
-            ]);
+            // Task 20 — move the repository balance through the single write
+            // port. ONE movement per account payment, keyed on the canonical
+            // `payment:0` leg. Recorded on BOTH the create AND the
+            // idempotent-existing path (complete-set replay). record() is
+            // idempotent on the leg key.
+            //
+            // Task 24 Fix A guard (belt-and-suspenders, mirrors
+            // PaymentRefundService): a FiscalEvent cash movement must carry a
+            // journal_entry_id or the daily treasury:reconcile freezes the drawer.
+            // The allocation service now posts + links a JE for every cash-moving
+            // account payment — including the null-actor (unresolved cashier) path,
+            // where it seals the advance/AR consequence as a SYSTEM-generated entry —
+            // so this is UNREACHABLE for a GL-linked repository. It fails LOUD only
+            // for a mis-configured repository (no gl_account_id → no GL to post),
+            // refusing to record a null-JE movement rather than silently poisoning
+            // the reconcile.
+            $linkedJournalEntryId = $payment->fresh()?->journal_entry_id;
+            if ($linkedJournalEntryId === null) {
+                throw new \DomainException(
+                    'ACCOUNT_PAYMENT cash movement requires a linked journal entry; payment '.
+                        $payment->id.' for fiscal event '.$event->id.' resolved a null journal_entry_id '.
+                        '(repository '.$repository->id.'). Refusing to record a null-JE movement the reconcile would freeze on.',
+                );
+            }
 
-            $this->allocationService->applyAllocationFromCommand(new ApplyPaymentAllocationCommand(
+            // allowWhileFrozen is TRUE: ACCOUNT_PAYMENT is a DEVICE-authored
+            // event (NOT `isServerOnly()`), so a leg replayed after a
+            // server-side freeze must still record (offline device replay must
+            // never poison the projection queue — HIGH-4). Decided from the
+            // event type, never inferred from the movement sourceType.
+            $this->movementService->record(new MovementIntent(
+                repositoryId: $repository->id,
                 tenantId: $event->tenant_id,
                 companyId: $event->company_id,
-                paymentId: $payment->id,
-                allocationMethod: AllocationMethod::FIFO,
-                actorUserId: $actorUserId,
-                source: 'fiscal_event:ACCOUNT_PAYMENT',
-                manualAllocations: null,
+                direction: MovementDirection::In,
+                amount: $this->paymentAmount($event, $view),
+                // Task 20 review Fix 2 (MINOR) — pass the TENDER currency (the
+                // currency the amount is denominated in, also stamped on the
+                // Payment row above), NOT the repository currency. Passing the
+                // repo currency makes the port's CurrencyMismatchException guard
+                // (`$repo->currency !== $intent->currency`) trivially always-
+                // equal and silently disarms it. Currencies match today so
+                // behavior is unchanged; the guard is restored.
+                currency: $view->payload->currencyCode,
+                sourceType: MovementSourceType::FiscalEvent,
+                sourceId: $event->id,
+                idempotencyLeg: 'payment:0',
+                journalEntryId: $linkedJournalEntryId,
+                occurredAt: null,
+                reasonCode: null,
+                reversesMovementId: null,
+                createdBy: $actorUserId,
+                notes: null,
+                allowWhileFrozen: ! $event->event_type->isServerOnly(),
             ));
         });
     }

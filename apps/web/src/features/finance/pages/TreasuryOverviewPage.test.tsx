@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { EChartsOption } from 'echarts'
 import { render, screen } from '@testing-library/react'
 import { TreasuryOverviewPage } from './TreasuryOverviewPage'
-import type { PaymentRepository } from '@/features/treasury/hooks/usePaymentRepositories'
+import type { CashPosition } from '@/features/treasury/hooks/useCashPosition'
 import { formatCurrency } from '@/lib/format'
 import type { ProfitLossData } from '../types'
 
@@ -14,12 +14,12 @@ vi.mock('react-i18next', () => ({
 }))
 
 const {
-  mockUsePaymentRepositories,
+  mockUseCashPosition,
   mockUseUpcomingPayments,
   mockUseProfitLoss,
   ownerChartProps,
 } = vi.hoisted(() => ({
-  mockUsePaymentRepositories: vi.fn(),
+  mockUseCashPosition: vi.fn(),
   mockUseUpcomingPayments: vi.fn(),
   mockUseProfitLoss: vi.fn(),
   ownerChartProps: [] as {
@@ -31,9 +31,15 @@ const {
   }[],
 }))
 
-vi.mock('@/features/treasury/hooks/usePaymentRepositories', () => ({
-  usePaymentRepositories: () => mockUsePaymentRepositories() as unknown,
-}))
+vi.mock('@/features/treasury/hooks/useCashPosition', async () => {
+  const actual = await vi.importActual<typeof import('@/features/treasury/hooks/useCashPosition')>(
+    '@/features/treasury/hooks/useCashPosition',
+  )
+  return {
+    ...actual,
+    useCashPosition: () => mockUseCashPosition() as unknown,
+  }
+})
 
 vi.mock('../hooks/useUpcomingPayments', () => ({
   useUpcomingPayments: () => mockUseUpcomingPayments() as unknown,
@@ -66,36 +72,44 @@ vi.mock('@/hooks/useCompany', () => ({
   }),
 }))
 
-function repository(
-  id: string,
-  type: PaymentRepository['type'],
-  currentBalance: string | undefined,
-): PaymentRepository {
-  return {
-    id,
-    code: id,
-    name: id,
-    type,
-    is_active: true,
-    is_default: false,
-    balance: currentBalance ?? '0',
-  }
-}
-
 function normalizeSpaces(value: string | null): string {
   return (value ?? '').replace(/\s/g, ' ')
 }
 
+const cashPositionFixture: CashPosition = {
+  as_of: '2026-07-03T00:00:00Z',
+  currency: 'TND',
+  groups: [
+    {
+      type: 'cash_register',
+      total: '125.750',
+      repositories: [
+        { id: 'cash-1', code: 'cash-1', name: 'cash-1', balance: '100.125' },
+        { id: 'cash-2', code: 'cash-2', name: 'cash-2', balance: '25.625' },
+      ],
+    },
+    {
+      type: 'bank_account',
+      total: '50.001',
+      repositories: [{ id: 'bank-1', code: 'bank-1', name: 'bank-1', balance: '50.001' }],
+    },
+    {
+      type: 'safe',
+      total: '0.000',
+      repositories: [{ id: 'safe-1', code: 'safe-1', name: 'safe-1', balance: '0' }],
+    },
+  ],
+  // 999.999 is deliberately absent — 'virtual' repositories are excluded from
+  // the cash position server-side (CashPositionController::CASH_TYPES), so
+  // this fixture never includes them, matching the "not.toContain('999.999')"
+  // assertion below.
+  grand_total: '175.751',
+}
+
 beforeEach(() => {
   ownerChartProps.length = 0
-  mockUsePaymentRepositories.mockReturnValue({
-    data: [
-      repository('cash-1', 'cash_register', '100.125'),
-      repository('cash-2', 'cash_register', '25.625'),
-      repository('bank-1', 'bank_account', '50.001'),
-      repository('safe-1', 'safe', undefined),
-      repository('virtual-1', 'virtual', '999.999'),
-    ],
+  mockUseCashPosition.mockReturnValue({
+    data: cashPositionFixture,
     isLoading: false,
     error: null,
     refetch: vi.fn(),

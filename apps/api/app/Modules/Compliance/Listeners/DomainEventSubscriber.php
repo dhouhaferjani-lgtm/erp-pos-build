@@ -45,6 +45,7 @@ use App\Modules\Treasury\Domain\Events\PaymentRecorded;
 use App\Modules\Treasury\Domain\Events\PaymentRefunded;
 use App\Modules\Treasury\Domain\Events\PaymentReversed;
 use App\Modules\Treasury\Domain\Events\ReconciliationCompleted;
+use App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded;
 use App\Shared\Domain\Events\DomainEvent;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Support\Facades\Auth;
@@ -958,6 +959,26 @@ final class DomainEventSubscriber
     }
 
     /**
+     * Handle RepositoryMovementRecorded events.
+     *
+     * Treasury spine (Task 5) — audit trail for every money movement written
+     * to `repository_movements`. The ledger row is the durable record of
+     * WHAT moved; this audit_events row is the durable record of WHO/WHEN
+     * beyond what the append-only movement row itself carries.
+     */
+    public function handleRepositoryMovementRecorded(RepositoryMovementRecorded $event): void
+    {
+        $this->persistEvent(
+            event: $event,
+            companyId: $event->companyId,
+            aggregateType: 'RepositoryMovement',
+            aggregateId: $event->movementId,
+            eventType: $event->getEventName(),
+            payload: $event->getAuditPayload(),
+        );
+    }
+
+    /**
      * Persist an event to the audit log.
      *
      * @param  array<string, mixed>  $payload
@@ -1041,6 +1062,9 @@ final class DomainEventSubscriber
 
             // Treasury events (audit trail for B2B close-with-writeoff)
             InvoiceClosedWithTolerance::class => 'handleInvoiceClosedWithTolerance',
+
+            // Treasury spine (audit trail for money movements)
+            RepositoryMovementRecorded::class => 'handleRepositoryMovementRecorded',
 
             // Document events (audit trail for Phase-4 conversion auto-strip)
             DocumentLineDiscountStrippedAtConversion::class => 'handleDocumentLineDiscountStrippedAtConversion',

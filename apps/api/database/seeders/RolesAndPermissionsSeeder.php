@@ -181,6 +181,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'expenses.update',
             'expenses.delete',
             'expenses.post',
+            'expenses.pay',
 
             'expense-categories.view',
             'expense-categories.create',
@@ -199,6 +200,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'payments.create',
             'payments.allocate',
             'payments.void',
+            'payments.refund',
+            // payments.reverse: deliberately admin-only (owner decision, ratified 2026-07-10).
+            // The reverse endpoint currently moves no cash and posts no GL — it's a
+            // bookkeeping-level undo — so it stays restricted to admin until it gets
+            // spine treatment (see payments.refund grants below for the money-moving flow).
+            'payments.reverse',
 
             'instruments.view',
             'instruments.create',
@@ -210,6 +217,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
             'treasury.view',
             'treasury.manage',
+            'treasury.adjust',
 
             // Accounting
             'journal.view',
@@ -453,13 +461,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'uom.view', 'uom.create', 'uom.edit', 'uom.delete',
             'inventory.transfers.view', 'inventory.transfers.create', 'inventory.transfers.complete', 'inventory.transfers.cancel',
             'deliveries.view', 'deliveries.create', 'deliveries.edit', 'deliveries.delete', 'deliveries.confirm',
-            'expenses.view', 'expenses.create', 'expenses.update', 'expenses.post',
+            'expenses.view', 'expenses.create', 'expenses.update', 'expenses.post', 'expenses.pay',
             'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
             'income.view', 'income.create', 'income.update', 'income.post',
-            'payments.view', 'payments.create', 'payments.allocate',
+            'payments.view', 'payments.create', 'payments.allocate', 'payments.refund',
             'instruments.view', 'instruments.create', 'instruments.transfer',
             'repositories.view',
-            'treasury.view',
+            'treasury.view', 'treasury.adjust',
             'journal.view',
             'accounts.view', 'accounts.manage',
             'reports.financial', 'reports.operational', 'reports.manage', 'dashboard.owner',
@@ -673,13 +681,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'supplier-invoices.create-pending', 'supplier-invoices.link-receipts', 'supplier-invoices.approve-invoice-first',
             'document-ingestions.view', 'document-ingestions.create', 'document-ingestions.commit', 'document-ingestions.reject',
             'credit-notes.view', 'credit-notes.post',
-            'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete', 'expenses.post',
+            'expenses.view', 'expenses.create', 'expenses.update', 'expenses.delete', 'expenses.post', 'expenses.pay',
             'expense-categories.view', 'expense-categories.create', 'expense-categories.update', 'expense-categories.delete',
             'income.view', 'income.create', 'income.update', 'income.delete', 'income.post',
-            'payments.view', 'payments.create', 'payments.allocate',
+            'payments.view', 'payments.create', 'payments.allocate', 'payments.refund',
             'instruments.view', 'instruments.transfer', 'instruments.clear',
             'repositories.view', 'repositories.manage',
-            'treasury.view', 'treasury.manage',
+            'treasury.view', 'treasury.manage', 'treasury.adjust',
             'journal.view', 'journal.create', 'journal.post',
             'accounts.view', 'accounts.manage',
             'reports.financial', 'reports.manage',

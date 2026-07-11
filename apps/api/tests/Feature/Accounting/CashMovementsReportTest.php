@@ -21,6 +21,7 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -462,6 +463,100 @@ final class CashMovementsReportTest extends TestCase
         $response->assertJsonPath('data.0.source_type', 'payment');
         $response->assertJsonPath('data.0.source_id', $payment->id);
         $response->assertJsonPath('data.0.amount', '64.00');
+    }
+
+    public function test_cash_movements_report_counts_pos_refund_once_as_a_single_outflow(): void
+    {
+        // Reproduces exactly what TreasuryReceiptBridge writes for a POS refund
+        // (SALE_RECEIPT with invoice_type_code=REFUND): a POS Payment leg
+        // (payment_type=POS, origin=Pos, fiscal_event_id set) whose
+        // journal_entry_id points at a `pos_receipt_refund` GL entry whose cash
+        // line CREDITS the drawer (money out). The at-rest money is correct; the
+        // report must surface EXACTLY ONE cash-movement row, direction Out.
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Refund Shop',
+            'code' => 'RSHOP',
+            'type' => 'shop',
+            'pos_enabled' => true,
+        ]);
+
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $location->id,
+            'code' => 'POS02',
+        ]);
+
+        // The original sale receipt the refund reverses (satisfies the
+        // pos_receipts_return_logic check: a Return must reference an original).
+        $originalEventId = $this->fiscalEvent($terminal, '2026-07-04');
+        $originalReceipt = Receipt::factory()
+            ->for($this->tenant, 'tenant')
+            ->for($this->company, 'company')
+            ->for($location, 'location')
+            ->for($terminal, 'terminal')
+            ->for($this->user, 'cashier')
+            ->withTotal('30.000', '0.000')
+            ->create([
+                'receipt_number' => 'POS-2026-0002',
+                'receipt_type' => ReceiptType::Sale,
+                'fiscal_status' => FiscalStatus::Fiscalized,
+                'fiscal_event_id' => $originalEventId,
+                'posted_at' => '2026-07-04 09:00:00',
+                'partner_id' => $this->partner->id,
+                'currency' => 'EUR',
+            ]);
+
+        $fiscalEventId = $this->fiscalEvent($terminal, '2026-07-04');
+        $receipt = Receipt::factory()
+            ->for($this->tenant, 'tenant')
+            ->for($this->company, 'company')
+            ->for($location, 'location')
+            ->for($terminal, 'terminal')
+            ->for($this->user, 'cashier')
+            ->withTotal('30.000', '0.000')
+            ->create([
+                'receipt_number' => 'POS-2026-0003',
+                'receipt_type' => ReceiptType::Return,
+                'original_receipt_id' => $originalReceipt->id,
+                'return_reason' => ReturnReason::CustomerChangedMind,
+                'fiscal_status' => FiscalStatus::Fiscalized,
+                'fiscal_event_id' => $fiscalEventId,
+                'posted_at' => '2026-07-04 10:00:00',
+                'partner_id' => $this->partner->id,
+                'currency' => 'EUR',
+            ]);
+
+        // The refund GL entry — cash CREDITED (out), revenue DEBITED — the
+        // inverse of a sale receipt. source_type='pos_receipt_refund',
+        // source_id=receipt->id (NOT payment->id).
+        $refundEntry = $this->journalEntry('2026-07-04', 'pos_receipt_refund', $receipt->id);
+        $this->journalLine($refundEntry, $this->cashAccount, '0.000', '30.000', 'POS refund cash out');
+        $this->journalLine($refundEntry, $this->revenueAccount, '30.000', '0.000', 'POS refund revenue reversal');
+
+        // The refund tender leg — a POS Payment linked to the refund GL entry.
+        $payment = $this->payment(
+            repository: $this->cashRepository,
+            amount: '30.000',
+            paymentDate: '2026-07-04',
+            paymentType: PaymentType::POS,
+            origin: PaymentOrigin::Pos,
+            fiscalEventId: $fiscalEventId,
+        );
+        $payment->update(['journal_entry_id' => $refundEntry->id]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/reports/cash-movements?from=2026-07-04&to=2026-07-04');
+
+        $response->assertOk();
+        // Exactly ONE row — no phantom inflow from the payments side, no
+        // duplicate outflow from the GL line.
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.source_type', 'payment');
+        $response->assertJsonPath('data.0.source_id', $payment->id);
+        $response->assertJsonPath('data.0.direction', 'out');
+        $response->assertJsonPath('data.0.amount', '30.00');
     }
 
     public function test_cash_movements_report_validates_date_filters(): void

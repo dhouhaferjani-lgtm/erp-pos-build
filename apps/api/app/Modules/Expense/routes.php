@@ -28,6 +28,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::match(['put', 'patch'], 'expenses/{id}', [ExpenseController::class, 'update'])->name('expenses.update');
     Route::delete('expenses/{id}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
     Route::post('expenses/{id}/post', [ExpenseController::class, 'post'])->name('expenses.post');
+    Route::post('expenses/{id}/pay', [ExpenseController::class, 'pay'])->middleware('can:expenses.pay')->name('expenses.pay');
     Route::post('expenses/{id}/reverse', [ExpenseController::class, 'reverse'])->name('expenses.reverse');
 
     // Expense categories

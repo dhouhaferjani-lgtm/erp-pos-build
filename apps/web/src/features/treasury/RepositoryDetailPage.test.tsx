@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { RepositoryDetailPage } from './RepositoryDetailPage'
 
@@ -69,13 +69,27 @@ const transaction = {
   created_at: '2026-06-01T00:00:00Z',
 }
 
+// A refund payment stores a NEGATIVE amount (PaymentRefundService) — unlike
+// RepositoryMovement.amount, which is unsigned with a separate `direction`.
+const refundTransaction = {
+  ...transaction,
+  id: 'txn-2',
+  payment_number: 'PAY-002',
+  amount: '-50000.000',
+}
+
+// Mutable so a single test can inject an extra (refund) row without
+// affecting the other tests in this file, which assert against the single
+// fixed `transaction` shape.
+let mockTransactions: unknown[] = [transaction]
+
 // Drive the two useQuery calls deterministically by inspecting the queryKey:
 // ['payment-repository', id] vs ['payment-repository-transactions', id].
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
     const flat = JSON.stringify(queryKey)
     if (flat.includes('payment-repository-transactions')) {
-      return { data: { data: [transaction] }, isLoading: false }
+      return { data: { data: mockTransactions }, isLoading: false }
     }
     return { data: { data: repository }, isLoading: false, error: null }
   },
@@ -84,6 +98,10 @@ vi.mock('@tanstack/react-query', () => ({
 }))
 
 describe('RepositoryDetailPage', () => {
+  afterEach(() => {
+    mockTransactions = [transaction]
+  })
+
   it('renders exactly one h1 (the repository name) via PageHeader', () => {
     render(<RepositoryDetailPage />)
     const headings = screen.getAllByRole('heading', { level: 1 })
@@ -103,5 +121,19 @@ describe('RepositoryDetailPage', () => {
     // t(key, 'completed') returns the string fallback 'completed' per the i18n mock.
     const statusPill = within(table).getByText('completed')
     expect(statusPill.className).toContain('rounded-full')
+  })
+
+  it('renders a refund transaction with a single leading sign (no "+-" double sign)', () => {
+    mockTransactions = [transaction, refundTransaction]
+
+    render(<RepositoryDetailPage />)
+
+    const table = screen.getByRole('table')
+    const refundRow = within(table).getByText('PAY-002').closest('tr')
+    expect(refundRow).not.toBeNull()
+
+    const amountCell = within(refundRow as HTMLElement).getAllByRole('cell').at(-1)
+    expect(amountCell?.textContent).not.toMatch(/\+-/)
+    expect(amountCell?.textContent?.trim().startsWith('-')).toBe(true)
   })
 })
