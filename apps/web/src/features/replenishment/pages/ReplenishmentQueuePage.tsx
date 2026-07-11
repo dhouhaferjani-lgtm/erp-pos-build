@@ -16,6 +16,9 @@ import { borderColors, colors, textColors, tokens } from '@/lib/designTokens'
 import { useOpenReplenishment, useReplenishmentHistory } from '../api/queries'
 import { ReplenishmentStatusBadge } from '../components/ReplenishmentStatusBadge'
 import { RequestContextPanel } from '../components/RequestContextPanel'
+import { CreateTransferDialog } from '../components/CreateTransferDialog'
+import { AddToPoDialog } from '../components/AddToPoDialog'
+import { RejectDialog } from '../components/RejectDialog'
 import type { ReplenishmentLine, ReplenishmentStatus } from '../types'
 
 type QueueView = 'shop' | 'product'
@@ -46,6 +49,7 @@ function OpenQueue({ filters }: { filters: QueueFilters }) {
   const [view, setView] = useState<QueueView>('shop')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [contextLine, setContextLine] = useState<ReplenishmentLine | null>(null)
+  const [activeDialog, setActiveDialog] = useState<'transfer' | 'po' | 'reject' | null>(null)
   const query = useOpenReplenishment({
     ...(filters.locationIds.length > 0 ? { location_ids: filters.locationIds } : {}),
     ...(filters.from ? { from: filters.from } : {}),
@@ -201,14 +205,23 @@ function OpenQueue({ filters }: { filters: QueueFilters }) {
         <RequirePermission permission="replenishment.process">
           <div className={`sticky bottom-0 flex flex-wrap items-center gap-2 border-t p-3 ${borderColors.light} ${colors.white}`}>
             <span className={`me-auto text-sm ${textColors.secondary}`}>{t('selection.count', { count: selected.length })}</span>
-            <Button type="button">{t('actions.create_transfer')}</Button>
-            <Button type="button" variant="secondary">{t('actions.add_to_po')}</Button>
-            <Button type="button" variant="danger">{t('actions.reject')}</Button>
+            <Button type="button" onClick={() => { setActiveDialog('transfer') }}>{t('actions.create_transfer')}</Button>
+            <Button type="button" variant="secondary" onClick={() => { setActiveDialog('po') }}>{t('actions.add_to_po')}</Button>
+            <Button type="button" variant="danger" onClick={() => { setActiveDialog('reject') }}>{t('actions.reject')}</Button>
           </div>
         </RequirePermission>
       ) : null}
 
       {contextLine ? <RequestContextPanel line={contextLine} onClose={() => { setContextLine(null) }} /> : null}
+      {activeDialog === 'transfer' ? (
+        <CreateTransferDialog selected={selected} isOpen onClose={() => { setActiveDialog(null) }} />
+      ) : null}
+      {activeDialog === 'po' ? (
+        <AddToPoDialog selected={selected} isOpen onClose={() => { setActiveDialog(null) }} />
+      ) : null}
+      {activeDialog === 'reject' ? (
+        <RejectDialog selected={selected} isOpen onClose={() => { setActiveDialog(null) }} />
+      ) : null}
     </div>
   )
 }
