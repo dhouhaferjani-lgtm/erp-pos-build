@@ -19,8 +19,16 @@ use App\Modules\Document\Domain\Events\DocumentFullyPaid;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
+use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
+use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
+use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
+use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
+use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
+use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
@@ -29,6 +37,8 @@ use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Events\PaymentRecorded;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\PaymentInstrument;
+use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
@@ -51,6 +61,8 @@ class PaymentController extends Controller
         private readonly WithholdingCertificateService $withholdingService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly TreasuryMovementServiceInterface $movementService,
+        private readonly InstrumentLifecycleService $instrumentLifecycle,
+        private readonly InstrumentAccountResolver $instrumentAccountResolver,
     ) {}
 
     private function scale(): int
@@ -314,6 +326,14 @@ class PaymentController extends Controller
                 'uuid',
                 ScopedExists::tenantAndCompany('payment_instruments', $tenantId, $companyId),
             ],
+            'instrument' => ['nullable', 'array'],
+            'instrument.reference' => ['required_with:instrument', 'string', 'max:100'],
+            'instrument.maturity_date' => ['nullable', 'date'],
+            'instrument.drawer_name' => ['nullable', 'string', 'max:150'],
+            'instrument.bank_id' => ['nullable', 'uuid'],
+            'instrument.bank_name' => ['nullable', 'string', 'max:100'],
+            'instrument.bank_branch' => ['nullable', 'string', 'max:100'],
+            'instrument.bank_account' => ['nullable', 'string', 'max:50'],
             'repository_id' => [
                 'nullable',
                 'uuid',
@@ -339,6 +359,18 @@ class PaymentController extends Controller
             'allocations.*.amount.regex' => 'Allocation amount must have at most 3 decimal places.',
             'withholding_rate.regex' => 'Withholding rate must have at most 4 decimal places.',
         ]);
+
+        $paymentMethodId = (string) $validated['payment_method_id'];
+        $paymentMethod = PaymentMethod::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->whereKey($paymentMethodId)
+            ->firstOrFail();
+        $deferredKind = $paymentMethod->has_maturity
+            && in_array($paymentMethod->instrument_kind, [InstrumentKind::Cheque, InstrumentKind::Effet], true)
+                ? $paymentMethod->instrument_kind
+                : null;
+        $paymentCurrency = strtoupper((string) ($validated['currency'] ?? $company->currency));
 
         /** @var numeric-string $paymentAmount */
         $paymentAmount = (string) $validated['amount'];
@@ -510,6 +542,65 @@ class PaymentController extends Controller
             ], 422);
         }
 
+        $isDeferredCustomer = ! $isSupplierPayment && $deferredKind !== null;
+        $portfolioDebitAccountId = null;
+        if ($isDeferredCustomer) {
+            $hasInlineInstrument = isset($validated['instrument']) && is_array($validated['instrument']);
+            $hasInstrumentId = isset($validated['instrument_id']);
+            if ($hasInlineInstrument === $hasInstrumentId) {
+                return response()->json([
+                    'error' => ['code' => 'INVALID_INSTRUMENT_INPUT', 'message' => 'Provide exactly one of instrument or instrument_id.'],
+                ], 422);
+            }
+            if (! isset($validated['repository_id'])) {
+                return response()->json([
+                    'error' => ['code' => 'REPOSITORY_REQUIRED', 'message' => 'Deferred tenders require a custody repository.'],
+                ], 422);
+            }
+            if (($validated['withholding_enabled'] ?? false) === true) {
+                return response()->json([
+                    'error' => ['code' => 'WITHHOLDING_NOT_SUPPORTED', 'message' => 'Withholding is not supported on deferred tenders.'],
+                ], 422);
+            }
+            if ($deferredKind === InstrumentKind::Effet
+                && $hasInlineInstrument
+                && empty($validated['instrument']['maturity_date'])) {
+                return response()->json([
+                    'error' => ['code' => 'MATURITY_REQUIRED', 'message' => 'Effet instruments require a maturity date.'],
+                ], 422);
+            }
+            try {
+                $portfolioDebitAccountId = $this->instrumentAccountResolver->resolveOrFail(
+                    $deferredKind === InstrumentKind::Cheque
+                        ? InstrumentAccountPurpose::ChecksToCollect
+                        : InstrumentAccountPurpose::EffectsReceivable,
+                    $companyId,
+                );
+            } catch (\DomainException $exception) {
+                return response()->json([
+                    'error' => ['code' => 'MISSING_PORTFOLIO_ACCOUNT', 'message' => $exception->getMessage()],
+                ], 422);
+            }
+
+            if ($hasInstrumentId) {
+                $candidate = PaymentInstrument::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->find($validated['instrument_id']);
+                if (! $candidate instanceof PaymentInstrument
+                    || $candidate->status !== InstrumentStatus::Received
+                    || $candidate->payment_id !== null
+                    || $candidate->partner_id !== $validated['partner_id']
+                    || $candidate->kind !== $deferredKind
+                    || bccomp($candidate->amount, $paymentAmount, $this->scale()) !== 0
+                    || $candidate->currency !== $paymentCurrency) {
+                    return response()->json([
+                        'error' => ['code' => 'INVALID_INSTRUMENT', 'message' => 'Supplied instrument is not eligible for this payment.'],
+                    ], 422);
+                }
+            }
+        }
+
         // Supplier payments require a ledgered repository (a gl_account_id to post
         // the Cr Bank leg). Without it the cash would leave the repository with no
         // 401 entry. Reject up front rather than moving cash with no ledger record.
@@ -584,7 +675,67 @@ class PaymentController extends Controller
         // aborted transaction throws a second error, so the rollback must complete
         // first.
         try {
-            $payment = DB::transaction(function () use ($validated, $user, $paymentAmount, $adjustedAllocations, $tenantId, $companyId, $isSupplierPayment, $idempotencyKey) {
+            $payment = DB::transaction(function () use (
+                $validated,
+                $user,
+                $paymentAmount,
+                $adjustedAllocations,
+                $tenantId,
+                $companyId,
+                $isSupplierPayment,
+                $idempotencyKey,
+                $isDeferredCustomer,
+                $deferredKind,
+                $portfolioDebitAccountId,
+                $paymentCurrency,
+                $paymentMethod,
+            ) {
+                $instrument = null;
+                if ($isDeferredCustomer) {
+                    if (isset($validated['instrument_id'])) {
+                        $instrumentId = (string) $validated['instrument_id'];
+                        $instrument = PaymentInstrument::query()
+                            ->where('tenant_id', $tenantId)
+                            ->where('company_id', $companyId)
+                            ->lockForUpdate()
+                            ->whereKey($instrumentId)
+                            ->firstOrFail();
+                        if ($instrument->status !== InstrumentStatus::Received
+                            || $instrument->payment_id !== null
+                            || $instrument->partner_id !== $validated['partner_id']
+                            || $instrument->kind !== $deferredKind
+                            || bccomp($instrument->amount, $paymentAmount, $this->scale()) !== 0
+                            || $instrument->currency !== $paymentCurrency) {
+                            throw new HttpResponseException(response()->json([
+                                'error' => ['code' => 'INVALID_INSTRUMENT', 'message' => 'Supplied instrument is no longer eligible for this payment.'],
+                            ], 422));
+                        }
+                    } else {
+                        $instrumentData = $validated['instrument'];
+                        $instrument = $this->instrumentLifecycle->receive(new ReceiveInstrumentData(
+                            tenantId: $tenantId,
+                            companyId: $companyId,
+                            paymentMethodId: $paymentMethod->id,
+                            kind: $deferredKind,
+                            direction: InstrumentDirection::Inbound,
+                            origin: InstrumentOrigin::Web,
+                            reference: (string) $instrumentData['reference'],
+                            amount: $paymentAmount,
+                            currency: $paymentCurrency,
+                            repositoryId: (string) $validated['repository_id'],
+                            partnerId: (string) $validated['partner_id'],
+                            drawerName: isset($instrumentData['drawer_name']) ? (string) $instrumentData['drawer_name'] : null,
+                            maturityDate: isset($instrumentData['maturity_date']) ? (string) $instrumentData['maturity_date'] : null,
+                            receivedDate: $validated['payment_date'],
+                            bankId: isset($instrumentData['bank_id']) ? (string) $instrumentData['bank_id'] : null,
+                            bankName: isset($instrumentData['bank_name']) ? (string) $instrumentData['bank_name'] : null,
+                            bankBranch: isset($instrumentData['bank_branch']) ? (string) $instrumentData['bank_branch'] : null,
+                            bankAccount: isset($instrumentData['bank_account']) ? (string) $instrumentData['bank_account'] : null,
+                            createdBy: $user->id,
+                        ));
+                    }
+                }
+
                 // Determine payment type: advance if no allocations, otherwise document payment
                 $paymentType = empty($adjustedAllocations)
                     ? PaymentType::Advance
@@ -598,10 +749,12 @@ class PaymentController extends Controller
                     'company_id' => $companyId,
                     'partner_id' => $validated['partner_id'],
                     'payment_method_id' => $validated['payment_method_id'],
-                    'instrument_id' => $validated['instrument_id'] ?? null,
+                    'instrument_id' => $instrument instanceof PaymentInstrument
+                        ? $instrument->id
+                        : ($validated['instrument_id'] ?? null),
                     'repository_id' => $validated['repository_id'] ?? null,
                     'amount' => $paymentAmount,
-                    'currency' => $validated['currency'] ?? 'TND',
+                    'currency' => $paymentCurrency,
                     'payment_date' => $validated['payment_date'],
                     'status' => PaymentStatus::Completed,
                     'payment_type' => $paymentType,
@@ -612,15 +765,19 @@ class PaymentController extends Controller
                     'idempotency_key' => $idempotencyKey,
                 ]);
 
+                if ($instrument instanceof PaymentInstrument) {
+                    $instrument->update(['payment_id' => $payment->id]);
+                }
+
                 // Dispatch PaymentRecorded event for audit trail
-                DB::afterCommit(function () use ($payment, $tenantId, $companyId, $validated, $paymentAmount): void {
+                DB::afterCommit(function () use ($payment, $tenantId, $companyId, $validated, $paymentAmount, $paymentCurrency): void {
                     event(new PaymentRecorded(
                         paymentId: $payment->id,
                         tenantId: $tenantId,
                         companyId: $companyId,
                         partnerId: $validated['partner_id'],
                         amount: $paymentAmount,
-                        currency: $validated['currency'] ?? 'TND',
+                        currency: $paymentCurrency,
                         paymentMethodId: $validated['payment_method_id'],
                         recordedAt: now()->toIso8601String(),
                     ));
@@ -796,7 +953,9 @@ class PaymentController extends Controller
                             partnerId: $validated['partner_id'],
                             paymentId: $payment->id,
                             amount: $totalAllocatedForGL,
-                            paymentMethodAccountId: $repository->gl_account_id,
+                            paymentMethodAccountId: $isDeferredCustomer
+                                ? $portfolioDebitAccountId
+                                : $repository->gl_account_id,
                             date: new \DateTimeImmutable($validated['payment_date']),
                             description: "Customer payment - {$payment->reference}",
                             user: $user,
@@ -840,11 +999,14 @@ class PaymentController extends Controller
                             partnerId: $validated['partner_id'],
                             advanceId: $payment->id,
                             amount: $excessAmount,
-                            paymentMethodAccountId: $repository->gl_account_id,
+                            paymentMethodAccountId: $isDeferredCustomer
+                                ? $portfolioDebitAccountId
+                                : $repository->gl_account_id,
                             date: new \DateTimeImmutable($validated['payment_date']),
                             user: $user,
                             description: "Customer advance from payment {$payment->reference}",
-                            currencyCode: $payment->currency
+                            currencyCode: $payment->currency,
+                            mode: PostingMode::SynchronousInTransaction,
                         );
 
                         $advanceJournalEntryId = $advanceEntry->id;
@@ -879,7 +1041,7 @@ class PaymentController extends Controller
                 // posted (a misconfigured null-gl_account_id repository), fail loud with a
                 // 422 rather than record a null-JE cash movement that would freeze the repo
                 // at reconcile.
-                if ($repository instanceof PaymentRepository) {
+                if ($repository instanceof PaymentRepository && ! $isDeferredCustomer) {
                     /** @var string|null $movementJournalEntryId */
                     $movementJournalEntryId = $primaryJournalEntryId ?? $advanceJournalEntryId;
 

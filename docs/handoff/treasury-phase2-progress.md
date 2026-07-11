@@ -166,3 +166,17 @@
 - Permission evidence: create/compose/read/remit use `instruments.remit`, settlement uses `instruments.clear`, and dishonor uses `instruments.bounce`; a remit-only user is forbidden from both settlement actions until the independent permission is granted.
 - Lifecycle evidence: the two-line API flow creates a draft, remits both instruments, clears each via the lifecycle service, and reports the slip `closed` only after the last pending line settles. A draft line can be removed; the same mutation after remit returns 422.
 - Money-path deviation: none. The controller never writes slip, instrument, journal, movement, or repository state directly.
+
+### Task 13 — Deferred customer tenders enter the portfolio, not cash
+
+- Status: complete.
+- Files touched: `PaymentController`; new deferred-tender payment feature test; this progress log. `GeneralLedgerService` required no signature change because both customer-payment and customer-advance builders already accept an explicit debit account id.
+- RED: `./vendor/bin/phpunit tests/Feature/Treasury/DeferredTenderPaymentTest.php` — expected missing-instrument error plus three contract failures: portfolio debit absent, repository/withholding guards absent, and a Deposited supplied instrument accepted.
+- GREEN: task path — PASS, 7 tests / 28 assertions. Task + five existing payment/spine/idempotency suites — PASS, 50 tests / 241 assertions; 20 existing PHPUnit deprecations reported.
+- Verification: targeted PHPStan on the controller and task test — zero errors; Pint — pass; `git diff --check` — pass.
+- Lock/atomicity evidence: a supplied instrument is revalidated and locked before any allocated document lock; inline receive creates the new instrument before Payment/allocation/GL work. A missing AR account after instrument creation rolls back instrument, payment, allocation, document balance, links, and JEs.
+- Accounting evidence: inbound effet payment debits 413 and cheque payment debits 5312; an excess payment's allocation JE and advance JE both debit the portfolio account, and their total equals the full payment/instrument amount. Both entries post synchronously in-transaction. No repository movement is recorded and the repository balance remains unchanged.
+- Validation/link evidence: deferred customer methods require exactly one inline instrument or eligible Received/unlinked/partner+kind+amount+currency-matching `instrument_id`, require repository custody, require effet maturity, and reject withholding. Both `payments.instrument_id` and `payment_instruments.payment_id` are written atomically.
+- Compatibility evidence: immediate cash still posts to the repository GL account and writes one movement; `has_maturity + InstrumentKind::Other` remains on that same immediate path with no instrument.
+- Currency note: single-payment currency now defaults to the active company currency. The remaining Task-14 literal sweep stays assigned to Task 14.
+- Money-path deviation: none. Receipt-time deferred tenders post portfolio GL only and never call the movement port.
