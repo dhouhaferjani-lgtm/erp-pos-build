@@ -336,6 +336,8 @@ final class ReconcileTreasuryTest extends TestCase
             ->with('treasury.reconcile.drift', Mockery::type('array'))
             ->andThrow(new \RuntimeException('simulated audit/log failure'));
 
+        Log::shouldReceive('info')->zeroOrMoreTimes();
+
         Log::shouldReceive('error')
             ->once()
             ->with('treasury.reconcile.alert_failed', Mockery::on(

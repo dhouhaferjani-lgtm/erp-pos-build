@@ -8,11 +8,19 @@ use App\Console\TenantScopedCommand;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
+use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
+use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
+use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\InstrumentRemittanceLine;
+use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -35,12 +43,14 @@ use Throwable;
  *      (a Posted `journal_entries` row) with a matching amount. Exemptions:
  *      `opening_balance` legs and same-GL-account transfer legs.
  *   3. Every `transfer_group_id` nets to zero across its legs.
+ *   4. Linked, post-cutover inbound portfolio nominal value matches the full
+ *      balance of each reserved portfolio account. Manual no-receipt paper and
+ *      pre-watermark rows/JEs are excluded.
  *
- * On ANY drift the repository is FROZEN (Task 13 `freeze()`) with a reason
- * naming the failed check, and an alert is raised: an `error`-level log line
- * AND an `audit_events` row (`treasury.reconcile.drift`). It NEVER repairs —
- * the operator investigates, then clears the freeze. A clean repository is
- * left untouched and reported OK.
+ * Checks 1–3 freeze the affected cash repository and raise
+ * `treasury.reconcile.drift`. Check 4 has no repository target: it raises
+ * `treasury.reconcile.portfolio_drift` and returns FAILURE but NEVER freezes.
+ * The command never repairs either class of drift.
  *
  * **Freeze outcome survives alerting failure** (2026-07-09 audit-fix-1 Rev-2,
  * Critical): the freeze write always happens BEFORE the alert is raised. If
@@ -61,13 +71,15 @@ use Throwable;
  * the run continues to the next repository — it never aborts reconciliation
  * for the rest of the tenant or for later tenants. `forEachTenant()` applies
  * the same isolation one level up, per-tenant. The exit code is FAILURE if
- * ANY repository froze OR errored this run.
+ * ANY repository froze, portfolio check drifted, or check errored this run.
  *
  * Scheduled DAILY in routes/console.php.
  */
 final class ReconcileTreasuryCommand extends TenantScopedCommand
 {
     private const DRIFT_EVENT_TYPE = 'treasury.reconcile.drift';
+
+    private const PORTFOLIO_DRIFT_EVENT_TYPE = 'treasury.reconcile.portfolio_drift';
 
     /**
      * Per-repository check FAILURE (as opposed to a genuine drift FINDING).
@@ -107,6 +119,7 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
         private readonly TreasuryMovementServiceInterface $movementService,
         private readonly AuditService $auditService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly InstrumentAccountResolver $instrumentAccountResolver,
     ) {
         parent::__construct($companyContext);
     }
@@ -118,8 +131,9 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
         $checked = 0;
         $frozen = 0;
         $errored = 0;
+        $portfolioDrifts = 0;
 
-        $tenantExit = $this->forEachTenant(function (Tenant $tenant) use ($tenantFilter, &$checked, &$frozen, &$errored): int {
+        $tenantExit = $this->forEachTenant(function (Tenant $tenant) use ($tenantFilter, &$checked, &$frozen, &$errored, &$portfolioDrifts): int {
             if ($tenantFilter !== null && $tenant->id !== $tenantFilter) {
                 return self::SUCCESS;
             }
@@ -172,22 +186,258 @@ final class ReconcileTreasuryCommand extends TenantScopedCommand
                 }
             }
 
+            $companies = Company::query()
+                ->where('tenant_id', $tenant->id)
+                ->orderBy('id')
+                ->get();
+
+            foreach ($companies as $company) {
+                try {
+                    $mismatches = $this->portfolioMismatches($company);
+                    if ($mismatches !== []) {
+                        $this->alertPortfolioDrift($company, $mismatches);
+                        $portfolioDrifts++;
+                    }
+                } catch (Throwable $e) {
+                    $errored++;
+                    Log::error(self::ERROR_EVENT_TYPE, [
+                        'tenant_id' => $tenant->id,
+                        'company_id' => $company->id,
+                        'check' => 'portfolio_gl_coherence',
+                        'exception_class' => $e::class,
+                        'exception_message' => $e->getMessage(),
+                    ]);
+                    $this->error(sprintf(
+                        'ERROR checking portfolio for company %s (tenant %s): %s',
+                        $company->id,
+                        $tenant->id,
+                        $e->getMessage(),
+                    ));
+                }
+            }
+
             return self::SUCCESS;
         });
 
         $this->info(sprintf(
-            'treasury:reconcile — checked %d repository(ies); froze %d on drift; %d error(s).',
+            'treasury:reconcile — checked %d repository(ies); froze %d on cash drift; found %d portfolio drift(s); %d error(s).',
             $checked,
             $frozen,
+            $portfolioDrifts,
             $errored,
         ));
 
-        // A fresh freeze OR a per-repository/per-tenant error this run surfaces a
-        // non-zero exit so ops/CI notice. Subsequent runs skip the now-frozen repo
-        // and (barring a fresh error) return SUCCESS.
-        return ($frozen > 0 || $errored > 0 || $tenantExit !== self::SUCCESS)
+        // Any fresh cash freeze, current portfolio mismatch, or check error
+        // surfaces a non-zero exit. Frozen repositories are skipped on later
+        // runs; portfolio drift continues alerting until the equality is restored.
+        return ($frozen > 0 || $portfolioDrifts > 0 || $errored > 0 || $tenantExit !== self::SUCCESS)
             ? self::FAILURE
             : self::SUCCESS;
+    }
+
+    /**
+     * Check #4 is company-level and alert-only: it never freezes a repository.
+     * Manual inbound instruments remain intentionally unlinked until supplied to
+     * a payment, so only `payment_id`-linked paper participates in the equality.
+     *
+     * @return list<array{purpose: string, account_id: string, instrument_total: numeric-string, gl_balance: numeric-string}>
+     */
+    private function portfolioMismatches(Company $company): array
+    {
+        $scale = $this->scaleResolver->getScaleSafe($company->currency, 3);
+        $comparisons = [
+            [InstrumentAccountPurpose::ChecksToCollect, InstrumentKind::Cheque, [InstrumentStatus::Received, InstrumentStatus::Deposited]],
+            [InstrumentAccountPurpose::EffectsReceivable, InstrumentKind::Effet, [InstrumentStatus::Received]],
+            [InstrumentAccountPurpose::EffectsInCollection, InstrumentKind::Effet, [InstrumentStatus::Deposited]],
+        ];
+        $mismatches = [];
+
+        foreach ($comparisons as [$purpose, $kind, $statuses]) {
+            $accountId = $this->instrumentAccountResolver->resolve($purpose, $company->id);
+            if ($accountId === null) {
+                Log::info('treasury.reconcile.portfolio_account_missing', [
+                    'tenant_id' => $company->tenant_id,
+                    'company_id' => $company->id,
+                    'purpose' => $purpose->value,
+                ]);
+
+                continue;
+            }
+
+            $instrumentTotal = $this->pendingInstrumentTotal($company, $kind, $statuses, $scale);
+            $glBalance = $this->portfolioAccountBalance($company, $accountId, $scale);
+            if (bccomp($instrumentTotal, $glBalance, $scale) !== 0) {
+                $mismatches[] = [
+                    'purpose' => $purpose->value,
+                    'account_id' => $accountId,
+                    'instrument_total' => $instrumentTotal,
+                    'gl_balance' => $glBalance,
+                ];
+            }
+        }
+
+        return $mismatches;
+    }
+
+    /**
+     * @param  list<InstrumentStatus>  $statuses
+     * @return numeric-string
+     */
+    private function pendingInstrumentTotal(Company $company, InstrumentKind $kind, array $statuses, int $scale): string
+    {
+        $query = PaymentInstrument::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('direction', InstrumentDirection::Inbound)
+            ->where('kind', $kind)
+            ->whereIn('status', $statuses)
+            ->whereNotNull('payment_id');
+
+        if ($company->phase2_cutover_at !== null) {
+            $query->where('created_at', '>=', $company->phase2_cutover_at);
+        }
+
+        /** @var Collection<int, PaymentInstrument> $instruments */
+        $instruments = $query->get(['amount']);
+
+        return $instruments->reduce(
+            static fn (string $sum, PaymentInstrument $instrument): string => bcadd($sum, $instrument->amount, $scale),
+            '0',
+        );
+    }
+
+    /** @return numeric-string */
+    private function portfolioAccountBalance(Company $company, string $accountId, int $scale): string
+    {
+        $query = JournalLine::query()
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->where('journal_entries.tenant_id', $company->tenant_id)
+            ->where('journal_entries.company_id', $company->id)
+            ->where('journal_entries.status', JournalEntryStatus::Posted)
+            ->where('journal_lines.account_id', $accountId);
+
+        if ($company->phase2_cutover_at !== null) {
+            $query->where('journal_entries.created_at', '>=', $company->phase2_cutover_at);
+        }
+
+        /** @var Collection<int, JournalLine> $lines */
+        $lines = $query->get(['journal_lines.debit', 'journal_lines.credit']);
+
+        $fullBalance = $lines->reduce(
+            static fn (string $balance, JournalLine $line): string => bcsub(
+                bcadd($balance, $line->debit, $scale),
+                $line->credit,
+                $scale,
+            ),
+            '0',
+        );
+
+        // Manual registration records custody but deliberately posts no receipt
+        // GL. Its later remit/clear/cancel entries must therefore be removed from
+        // both sides of this comparison as one coherent legacy/manual circuit;
+        // otherwise its first lifecycle JE would create permanent false drift.
+        return bcsub($fullBalance, $this->manualInstrumentGlNet($company, $accountId, $scale), $scale);
+    }
+
+    /** @return numeric-string */
+    private function manualInstrumentGlNet(Company $company, string $accountId, int $scale): string
+    {
+        $manualQuery = PaymentInstrument::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->where('direction', InstrumentDirection::Inbound)
+            ->whereNull('payment_id');
+        if ($company->phase2_cutover_at !== null) {
+            $manualQuery->where('created_at', '>=', $company->phase2_cutover_at);
+        }
+
+        /** @var list<string> $manualIds */
+        $manualIds = $manualQuery->pluck('id')->all();
+        if ($manualIds === []) {
+            return '0';
+        }
+
+        $directQuery = JournalLine::query()
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->where('journal_entries.tenant_id', $company->tenant_id)
+            ->where('journal_entries.company_id', $company->id)
+            ->where('journal_entries.status', JournalEntryStatus::Posted)
+            ->where('journal_entries.source_type', 'instrument')
+            ->whereIn('journal_entries.source_id', $manualIds)
+            ->where('journal_lines.account_id', $accountId);
+        if ($company->phase2_cutover_at !== null) {
+            $directQuery->where('journal_entries.created_at', '>=', $company->phase2_cutover_at);
+        }
+
+        /** @var Collection<int, JournalLine> $directLines */
+        $directLines = $directQuery->get(['journal_lines.debit', 'journal_lines.credit']);
+        $net = $directLines->reduce(
+            static fn (string $balance, JournalLine $line): string => bcsub(
+                bcadd($balance, $line->debit, $scale),
+                $line->credit,
+                $scale,
+            ),
+            '0',
+        );
+
+        /** @var Collection<int, InstrumentRemittanceLine> $manualRemittanceLines */
+        $manualRemittanceLines = InstrumentRemittanceLine::query()
+            ->whereIn('instrument_id', $manualIds)
+            ->get(['remittance_id', 'amount']);
+
+        foreach ($manualRemittanceLines->groupBy('remittance_id') as $remittanceId => $remittanceLines) {
+            $manualAmount = $remittanceLines->reduce(
+                static fn (string $sum, InstrumentRemittanceLine $line): string => bcadd($sum, $line->amount, $scale),
+                '0',
+            );
+            $remittanceEntryQuery = JournalLine::query()
+                ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+                ->where('journal_entries.tenant_id', $company->tenant_id)
+                ->where('journal_entries.company_id', $company->id)
+                ->where('journal_entries.status', JournalEntryStatus::Posted)
+                ->where('journal_entries.source_type', 'instrument_remittance')
+                ->where('journal_entries.source_id', (string) $remittanceId)
+                ->where('journal_lines.account_id', $accountId);
+            if ($company->phase2_cutover_at !== null) {
+                $remittanceEntryQuery->where('journal_entries.created_at', '>=', $company->phase2_cutover_at);
+            }
+
+            /** @var Collection<int, JournalLine> $remittanceEntryLines */
+            $remittanceEntryLines = $remittanceEntryQuery->get(['journal_lines.debit', 'journal_lines.credit']);
+            foreach ($remittanceEntryLines as $line) {
+                if (bccomp($line->debit, '0', $scale) > 0) {
+                    $net = bcadd($net, $manualAmount, $scale);
+                } elseif (bccomp($line->credit, '0', $scale) > 0) {
+                    $net = bcsub($net, $manualAmount, $scale);
+                }
+            }
+        }
+
+        return $net;
+    }
+
+    /**
+     * @param  list<array{purpose: string, account_id: string, instrument_total: numeric-string, gl_balance: numeric-string}>  $mismatches
+     */
+    private function alertPortfolioDrift(Company $company, array $mismatches): void
+    {
+        Log::error(self::PORTFOLIO_DRIFT_EVENT_TYPE, [
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
+            'mismatches' => $mismatches,
+        ]);
+
+        $this->auditService->record(
+            companyId: $company->id,
+            userId: null,
+            eventType: self::PORTFOLIO_DRIFT_EVENT_TYPE,
+            aggregateType: 'Company',
+            aggregateId: $company->id,
+            payload: ['mismatches' => $mismatches],
+            metadata: ['source' => 'treasury:reconcile'],
+        );
+
+        $this->error(sprintf('PORTFOLIO DRIFT company %s — %d mismatch(es); cash repositories were not frozen.', $company->id, count($mismatches)));
     }
 
     /**

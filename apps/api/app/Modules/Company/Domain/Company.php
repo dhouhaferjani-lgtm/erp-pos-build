@@ -41,6 +41,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $legal_name Legal/registered name
  * @property string|null $code Internal company code
  * @property string $country_code ISO 3166-1 alpha-2 country code (CRITICAL!)
+ * @property Carbon|null $phase2_cutover_at Treasury Phase 2 reconcile watermark
  * @property string|null $tax_id VAT/Tax identification number
  * @property string|null $registration_number Company registration number
  * @property string|null $vat_number VAT number (may differ from tax_id)
@@ -278,6 +279,7 @@ class Company extends Model
         'smart_prompts_enabled',
         'smart_prompts_variant',
         'allow_cross_location_stock_view',
+        'phase2_cutover_at',
     ];
 
     /**
@@ -324,6 +326,7 @@ class Company extends Model
             'smart_prompts_variant' => SmartPromptsVariant::class,
             'pos_stock_policy' => PosStockPolicy::class,
             'allow_cross_location_stock_view' => 'boolean',
+            'phase2_cutover_at' => 'datetime',
         ];
     }
 
