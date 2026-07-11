@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Application\Services;
 
+use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
@@ -248,9 +249,11 @@ class PaymentAllocationService
                 $document->save();
             }
 
-            // Create GL journal entry for the payment if repository has gl_account_id
+            // Create GL journal entries when either the cash repository or a
+            // maturity-leg portfolio override supplies the debit account.
             $journalEntryId = null;
-            if ($payment->repository && $payment->repository->gl_account_id && bccomp($totalAllocated, '0', 4) > 0) {
+            $debitAccountId = $command->cashAccountOverrideId ?? $payment->repository?->gl_account_id;
+            if ($payment->repository && $debitAccountId !== null && bccomp($totalAllocated, '0', 4) > 0) {
                 // Check if any allocations are to sales orders (prepayments)
                 /** @var numeric-string $allocatedToOrders */
                 $allocatedToOrders = '0.00';
@@ -279,11 +282,14 @@ class PaymentAllocationService
                         partnerId: $payment->partner_id,
                         paymentId: $payment->id,
                         amount: $allocatedToInvoices,
-                        paymentMethodAccountId: $payment->repository->gl_account_id,
+                        paymentMethodAccountId: $debitAccountId,
                         date: $payment->payment_date,
                         description: "Customer payment - {$payment->reference}",
                         user: $actor instanceof User ? $actor : null,
-                        currencyCode: $payment->currency
+                        currencyCode: $payment->currency,
+                        mode: $command->cashAccountOverrideId !== null
+                            ? PostingMode::SynchronousInTransaction
+                            : PostingMode::AfterCommit,
                     );
 
                     $journalEntryId = $journalEntry->id;
@@ -306,11 +312,14 @@ class PaymentAllocationService
                         partnerId: $payment->partner_id,
                         advanceId: $payment->id,
                         amount: $allocatedToOrders,
-                        paymentMethodAccountId: $payment->repository->gl_account_id,
+                        paymentMethodAccountId: $debitAccountId,
                         date: $payment->payment_date,
                         user: $actor instanceof User ? $actor : null,
                         description: "Prepayment on order - {$payment->reference}",
-                        currencyCode: $payment->currency
+                        currencyCode: $payment->currency,
+                        mode: $command->cashAccountOverrideId !== null
+                            ? PostingMode::SynchronousInTransaction
+                            : PostingMode::AfterCommit,
                     );
 
                     // If no invoice allocation, use this as main journal entry
@@ -327,7 +336,7 @@ class PaymentAllocationService
             $excessAmount = $preview['excess_amount'];
             $advanceJournalEntryId = null;
 
-            if (bccomp($excessAmount, '0', 4) > 0 && $payment->repository && $payment->repository->gl_account_id) {
+            if (bccomp($excessAmount, '0', 4) > 0 && $payment->repository && $debitAccountId !== null) {
                 // Create customer advance GL entry for excess (Dr. Bank, Cr. Customer
                 // Advance). NO actor gate (Task 24 Fix A): cash moved, so the excess
                 // must post its 419 customer-advance consequence even when the actor
@@ -340,11 +349,14 @@ class PaymentAllocationService
                     partnerId: $payment->partner_id,
                     advanceId: $payment->id,
                     amount: bcsub($excessAmount, '0', $this->scale($payment->currency)), // Format to currency scale
-                    paymentMethodAccountId: $payment->repository->gl_account_id,
+                    paymentMethodAccountId: $debitAccountId,
                     date: $payment->payment_date,
                     user: $actor instanceof User ? $actor : null,
                     description: "Customer advance from payment {$payment->reference}",
-                    currencyCode: $payment->currency
+                    currencyCode: $payment->currency,
+                    mode: $command->cashAccountOverrideId !== null
+                        ? PostingMode::SynchronousInTransaction
+                        : PostingMode::AfterCommit,
                 );
 
                 $advanceJournalEntryId = $advanceEntry->id;

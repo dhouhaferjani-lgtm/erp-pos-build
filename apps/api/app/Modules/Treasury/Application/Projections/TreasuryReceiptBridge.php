@@ -13,6 +13,7 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\ProjectionDependencyMissingException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\Treasury\Application\DTOs\MaturityLegContext;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Projections\Concerns\HandlesMaturityTenderLeg;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
@@ -540,8 +541,13 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                         $line,
                         $index,
                         $paymentMethod,
-                        $receipt,
-                        $repository,
+                        new MaturityLegContext(
+                            currency: $receipt->currency,
+                            repositoryId: $repository->id,
+                            partnerId: $receipt->partner_id,
+                            receivedDate: $receipt->posted_at->toDateString(),
+                            createdBy: $receipt->cashier_id,
+                        ),
                     );
                     if ($existing->instrument_id !== null && $existing->instrument_id !== $result->instrument->id) {
                         throw new RuntimeException('TreasuryReceiptBridge: maturity payment links a conflicting instrument.');
@@ -549,6 +555,13 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                     if ($existing->instrument_id === null) {
                         $existing->instrument_id = $result->instrument->id;
                         $existing->save();
+                    }
+                    if ($result->instrument->payment_id !== null && $result->instrument->payment_id !== $existing->id) {
+                        throw new RuntimeException('TreasuryReceiptBridge: maturity instrument links a conflicting payment.');
+                    }
+                    if ($result->instrument->payment_id === null) {
+                        $result->instrument->payment_id = $existing->id;
+                        $result->instrument->save();
                     }
                     if (DB::table('repository_movements')
                         ->where('idempotency_key', $legKey)
@@ -570,8 +583,13 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                     $line,
                     $index,
                     $paymentMethod,
-                    $receipt,
-                    $repository,
+                    new MaturityLegContext(
+                        currency: $receipt->currency,
+                        repositoryId: $repository->id,
+                        partnerId: $receipt->partner_id,
+                        receivedDate: $receipt->posted_at->toDateString(),
+                        createdBy: $receipt->cashier_id,
+                    ),
                 );
                 $instrument = $result->instrument;
                 $cashAccountOverrideId = $result->portfolioAccountId;

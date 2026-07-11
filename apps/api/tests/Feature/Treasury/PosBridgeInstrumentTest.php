@@ -277,6 +277,7 @@ final class PosBridgeInstrumentTest extends TestCase
         $this->assertSame($journalEntryId, $payment->journal_entry_id);
         $this->assertNotNull($payment->instrument_id);
         $this->assertSame(1, PaymentInstrument::query()->whereKey($payment->instrument_id)->count());
+        $this->assertSame($payment->id, PaymentInstrument::query()->findOrFail($payment->instrument_id)->payment_id);
         $this->assertSame(0, DB::table('repository_movements')->where('source_id', $event->id)->count());
         $this->assertSame('0.000', (string) PaymentRepository::query()->findOrFail($this->repositoryId)->balance);
     }

@@ -6,7 +6,7 @@ namespace App\Modules\Treasury\Application\Projections\Concerns;
 
 use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
-use App\Modules\POS\Domain\Receipt;
+use App\Modules\Treasury\Application\DTOs\MaturityLegContext;
 use App\Modules\Treasury\Application\DTOs\MaturityLegResult;
 use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
 use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
@@ -17,7 +17,6 @@ use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
-use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -53,8 +52,7 @@ final readonly class HandlesMaturityTenderLeg
         PaymentDTO $leg,
         int $index,
         PaymentMethod $method,
-        Receipt $context,
-        PaymentRepository $custodyRepository,
+        MaturityLegContext $context,
     ): MaturityLegResult {
         if (! $this->handles($method)) {
             throw new RuntimeException('Maturity-leg handler invoked for a non-paper tender.');
@@ -85,13 +83,13 @@ final readonly class HandlesMaturityTenderLeg
                     reference: 'POS-'.substr($event->id, 0, 8).'-'.$index,
                     amount: $leg->amount,
                     currency: $context->currency,
-                    repositoryId: $custodyRepository->id,
-                    partnerId: $context->partner_id,
+                    repositoryId: $context->repositoryId,
+                    partnerId: $context->partnerId,
                     maturityDate: null,
-                    receivedDate: $context->posted_at->toDateString(),
+                    receivedDate: $context->receivedDate,
                     idempotencyKey: $idempotencyKey,
                     needsDetails: true,
-                    createdBy: $context->cashier_id,
+                    createdBy: $context->createdBy,
                 ));
             } catch (UniqueConstraintViolationException) {
                 // receive() owns a nested transaction/savepoint. Query only

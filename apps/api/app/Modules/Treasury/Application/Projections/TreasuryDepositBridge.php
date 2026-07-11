@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\DepositReceiptView;
+use App\Modules\Fiscal\Domain\DTOs\Canonical\PaymentDTO;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\ProjectionInvariantViolationException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
@@ -17,7 +18,10 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
+use App\Modules\Treasury\Application\DTOs\MaturityLegContext;
+use App\Modules\Treasury\Application\DTOs\MaturityLegResult;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Application\Projections\Concerns\HandlesMaturityTenderLeg;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
@@ -62,6 +66,7 @@ final class TreasuryDepositBridge implements FiscalEventProjector
         private readonly CanonicalPayloadReader $canonicalReader,
         private readonly PaymentAllocationService $allocationService,
         private readonly TreasuryMovementServiceInterface $movementService,
+        private readonly HandlesMaturityTenderLeg $maturityLegHandler,
     ) {}
 
     public function name(): string
@@ -100,6 +105,10 @@ final class TreasuryDepositBridge implements FiscalEventProjector
             $paymentMethod = $this->resolvePaymentMethod($event, $view);
             $repository = $this->resolveRepository($event, $view);
             $actorUserId = $this->resolveActorUserId($event, $view);
+            $isMaturityLeg = $this->maturityLegHandler->handles($paymentMethod);
+            $cashAccountOverrideId = null;
+            $instrument = null;
+            $shouldRecordMovement = true;
 
             $existing = $this->existingPaymentForEvent($event);
             if ($existing instanceof Payment) {
@@ -114,13 +123,58 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                 );
 
                 $payment = $existing;
+                if ($isMaturityLeg) {
+                    $linkedJournalEntryId = $existing->journal_entry_id;
+                    if ($linkedJournalEntryId === null) {
+                        throw $this->invariant($event, 'maturity_payment_missing_journal_entry');
+                    }
+                    $debitAccountId = DB::table('journal_lines')
+                        ->where('journal_entry_id', $linkedJournalEntryId)
+                        ->where('line_order', 0)
+                        ->value('account_id');
+                    if ($debitAccountId === $repository->gl_account_id) {
+                        $isMaturityLeg = false;
+                    } elseif ($debitAccountId === $this->maturityLegHandler->portfolioAccountId($paymentMethod, $event->company_id)) {
+                        $result = $this->handleMaturityLeg($event, $view, $paymentMethod, $repository, $partner, $actorUserId);
+                        if ($existing->instrument_id !== null && $existing->instrument_id !== $result->instrument->id) {
+                            throw $this->invariant($event, 'maturity_payment_instrument_conflict');
+                        }
+                        if ($existing->instrument_id === null) {
+                            $existing->instrument_id = $result->instrument->id;
+                            $existing->save();
+                        }
+                        if ($result->instrument->payment_id !== null && $result->instrument->payment_id !== $existing->id) {
+                            throw $this->invariant($event, 'maturity_instrument_payment_conflict');
+                        }
+                        if ($result->instrument->payment_id === null) {
+                            $result->instrument->payment_id = $existing->id;
+                            $result->instrument->save();
+                        }
+                        if (DB::table('repository_movements')
+                            ->where('idempotency_key', sprintf('fiscal_event:%s:payment:0', $event->id))
+                            ->exists()) {
+                            throw $this->invariant($event, 'portfolio_maturity_leg_has_cash_movement');
+                        }
+                        $shouldRecordMovement = false;
+                    } else {
+                        throw $this->invariant($event, 'maturity_payment_unrecognized_debit_account');
+                    }
+                }
             } else {
+                if ($isMaturityLeg) {
+                    $result = $this->handleMaturityLeg($event, $view, $paymentMethod, $repository, $partner, $actorUserId);
+                    $instrument = $result->instrument;
+                    $cashAccountOverrideId = $result->portfolioAccountId;
+                    $shouldRecordMovement = false;
+                }
+
                 $payment = Payment::query()->create([
                     'id' => Str::uuid()->toString(),
                     'tenant_id' => $event->tenant_id,
                     'company_id' => $event->company_id,
                     'partner_id' => $partner->id,
                     'payment_method_id' => $paymentMethod->id,
+                    'instrument_id' => $instrument?->id,
                     'repository_id' => $repository->id,
                     'amount' => $this->paymentAmount($event, $view),
                     'currency' => $view->payload->currencyCode,
@@ -142,7 +196,17 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                     actorUserId: $actorUserId,
                     source: 'fiscal_event:DEPOSIT_RECEIPT',
                     manualAllocations: null,
+                    cashAccountOverrideId: $cashAccountOverrideId,
                 ));
+
+                if ($instrument !== null) {
+                    $instrument->payment_id = $payment->id;
+                    $instrument->save();
+                }
+            }
+
+            if (! $shouldRecordMovement) {
+                return;
             }
 
             // Task 20 — move the repository balance through the single write
@@ -199,6 +263,36 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                 allowWhileFrozen: ! $event->event_type->isServerOnly(),
             ));
         });
+    }
+
+    private function handleMaturityLeg(
+        FiscalEvent $event,
+        DepositReceiptView $view,
+        PaymentMethod $method,
+        PaymentRepository $repository,
+        Partner $partner,
+        string $actorUserId,
+    ): MaturityLegResult {
+        return $this->maturityLegHandler->handleMaturityLeg(
+            $event,
+            new PaymentDTO(
+                amount: $this->paymentAmount($event, $view),
+                foreignCurrencyAmount: null,
+                foreignCurrencyCode: null,
+                instrumentSerial: null,
+                instrumentType: null,
+                methodCode: $view->payment->methodCode,
+            ),
+            0,
+            $method,
+            new MaturityLegContext(
+                currency: $view->payload->currencyCode,
+                repositoryId: $repository->id,
+                partnerId: $partner->id,
+                receivedDate: $view->payload->businessDate,
+                createdBy: $actorUserId,
+            ),
+        );
     }
 
     private function resolveCustomer(FiscalEvent $event, DepositReceiptView $view): Partner

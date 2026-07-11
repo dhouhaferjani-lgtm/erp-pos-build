@@ -400,27 +400,21 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        // Synchronous in-transaction posting is only used by atomic money-movement
-        // flows that always carry a resolved actor — refuse a null actor there
-        // (mirrors createPaymentReceivedJournalEntry).
-        if ($mode === PostingMode::SynchronousInTransaction && $user === null) {
-            throw new \LogicException('createCustomerAdvanceJournalEntry: synchronous in-transaction GL posting requires an actor ($user); refusing to return an unposted Draft into an atomic money-movement flow.');
-        }
-
-        if ($user !== null) {
-            if ($mode === PostingMode::SynchronousInTransaction) {
-                $this->postEntryNow($entry, $user, $currencyCode);
-            } else {
-                $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
-            }
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            // Worker projections may not resolve the device cashier. The
+            // posting primitive supports a null actor and still seals the
+            // entry synchronously; actor absence must not weaken atomicity.
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } elseif ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         } else {
             // Actor could not be resolved (e.g. an offline-authored ACCOUNT_PAYMENT
             // whose cashier is not a resolvable company member). The GL consequence
             // (Dr Bank / Cr Customer-Advance) is deterministic and independent of who
             // posted it, so seal it as a SYSTEM-generated POSTED entry rather than
             // leaving an unposted Draft that the treasury reconcile would freeze on
-            // (Task 24 Fix A). AfterCommit only (the Synchronous + null-actor
-            // combination is refused above).
+            // (Task 24 Fix A). This branch is the AfterCommit legacy path;
+            // synchronous null-actor projection posting was handled above.
             $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $companyId, $currencyCode);
         }
 
@@ -1043,16 +1037,12 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        if ($mode === PostingMode::SynchronousInTransaction && $user === null) {
-            throw new \LogicException('createPaymentReceivedJournalEntry: synchronous in-transaction GL posting requires an actor ($user); refusing to return an unposted Draft into an atomic money-movement flow.');
-        }
-
-        if ($user !== null) {
-            if ($mode === PostingMode::SynchronousInTransaction) {
-                $this->postEntryNow($entry, $user, $currencyCode);
-            } else {
-                $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
-            }
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            // Same worker-safe posture as customer advances: postEntryNow
+            // accepts a null actor and keeps the financial write atomic.
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } elseif ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         } else {
             // Actor could not be resolved (e.g. an offline-authored ACCOUNT_PAYMENT
             // whose cashier is not a resolvable company member). The GL consequence
@@ -1060,8 +1050,8 @@ final class GeneralLedgerService
             // who posted it, so seal it as a SYSTEM-generated POSTED entry rather
             // than leaving an unposted Draft that the caller would then link to a
             // cash movement — which the treasury reconcile freezes on (Task 24 Fix
-            // A). AfterCommit only (the Synchronous + null-actor combination is
-            // refused above).
+            // A). This branch is the AfterCommit legacy path; synchronous
+            // null-actor projection posting was handled above.
             $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $companyId, $currencyCode);
         }
 

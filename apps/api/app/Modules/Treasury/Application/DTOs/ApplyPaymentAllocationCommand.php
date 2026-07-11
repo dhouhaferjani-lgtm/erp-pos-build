@@ -19,5 +19,6 @@ final readonly class ApplyPaymentAllocationCommand
         public ?string $actorUserId,
         public string $source,
         public ?array $manualAllocations = null,
+        public ?string $cashAccountOverrideId = null,
     ) {}
 }
